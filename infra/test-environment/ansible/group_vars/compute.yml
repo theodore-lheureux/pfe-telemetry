@@ -1,0 +1,20 @@
+---
+ansible_python_interpreter: /usr/bin/python3
+ansible_ssh_host_key_checking: false
+ansible_ssh_common_args: -o UserKnownHostsFile=/dev/null
+
+pfe_prerequisites:
+  - ca-certificates
+  - python3
+  - iproute2
+  - iputils-ping
+  - stress-ng
+  - fio
+pfe_probe_version: v0.4.57
+pfe_probe_platforms:
+  x86_64:
+    arch: amd64
+    checksum: sha256:9193773627d3ed5a0fabe37ed81264b4a8e9d5a2156ce09fb6010caaabb0f06b
+  aarch64:
+    arch: arm64
+    checksum: sha256:1a68f86e8d11bf06d6f5828ee091af17be5a4fa4ea05df685e97e5e1e434932e

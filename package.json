@@ -1,0 +1,30 @@
+{
+  "name": "pfe-telemetry",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "prepare": "bun --bun run lefthook install",
+    "dev": "bun --bun run --filter @pfe/web dev",
+    "build": "bun --bun run --filter @pfe/web build",
+    "typecheck": "bun --bun run --filter @pfe/web typecheck",
+    "lint": "just lint",
+    "lint:fix": "just lint-fix",
+    "format": "just format",
+    "format:check": "just format-check",
+    "check": "just check",
+    "hooks:install": "bun --bun run lefthook install",
+    "env": "just env"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "lefthook": "2.1.17",
+    "prettier": "3.9.9"
+  },
+  "packageManager": "bun@1.4.2",
+  "trustedDependencies": [
+    "lefthook"
+  ]
+}

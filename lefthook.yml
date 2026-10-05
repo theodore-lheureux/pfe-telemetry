@@ -1,0 +1,58 @@
+min_version: 2.1.17
+glob_matcher: doublestar
+lefthook: bun --bun run lefthook
+
+# Check only: hooks do not format files or add unstaged changes to a commit.
+pre-commit:
+  parallel: true
+  exclude:
+    - apps/web/src/routeTree.gen.ts
+    - bun.lock
+    - "**/node_modules/**"
+    - "**/dist/**"
+    - "**/.output/**"
+    - "**/.tanstack/**"
+    - "**/.venv/**"
+    - "**/target/**"
+    - infra/test-environment/.state/**
+    - infra/test-environment/.vagrant/**
+  jobs:
+    - name: web-and-config
+      glob: "**/*.{ts,tsx,json,jsonc,css}"
+      run: bun --bun run biome check --no-errors-on-unmatched --error-on-warnings {staged_files}
+    - name: documentation
+      glob: "**/*.{md,yaml,yml}"
+      run: bun --bun run prettier --check {staged_files}
+    - name: just-format
+      glob: "**/justfile"
+      run: just --fmt --check && just --justfile infra/test-environment/justfile --fmt --check
+    - name: ansible-syntax
+      glob: "infra/test-environment/ansible/**/*.yml"
+      run: uv run --locked ansible-playbook --syntax-check --inventory compute, infra/test-environment/ansible/*.yml
+    - name: rust-format
+      glob:
+        - "**/*.rs"
+        - "**/Cargo.toml"
+        - rust-toolchain.toml
+      run: cargo fmt --all -- --check
+    - name: vagrant-syntax
+      glob: "infra/test-environment/Vagrantfile"
+      run: ruby -c {staged_files}
+
+# Compilation and type checks happen before pushing, rather than on every commit.
+pre-push:
+  parallel: true
+  jobs:
+    - name: web-types
+      glob:
+        - "apps/web/**"
+        - package.json
+        - bun.lock
+      run: bun run typecheck
+    - name: rust-clippy
+      glob:
+        - "**/*.rs"
+        - "**/Cargo.toml"
+        - Cargo.lock
+        - rust-toolchain.toml
+      run: cargo clippy --locked --workspace --all-targets -- -D warnings

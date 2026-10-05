@@ -1,0 +1,33 @@
+{
+  "editor.formatOnSave": true,
+  "[typescript][typescriptreact][json][jsonc][css]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "[markdown][yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/target/**": true,
+    "**/.venv/**": true,
+    "**/.state/**": true,
+    "**/.vagrant/**": true,
+    "**/.output/**": true,
+    "**/.tanstack/**": true,
+    "**/dist/**": true
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/target": true,
+    "**/.venv": true,
+    "**/.state": true,
+    "**/.vagrant": true,
+    "**/.output": true,
+    "**/.tanstack": true,
+    "**/dist": true,
+    "**/routeTree.gen.ts": true
+  }
+}

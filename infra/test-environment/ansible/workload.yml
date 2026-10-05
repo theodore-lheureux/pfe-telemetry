@@ -1,0 +1,190 @@
+---
+- name: Run a workload on the selected compute nodes
+  hosts: compute
+  gather_facts: true
+  gather_subset: ["!all", hardware]
+  vars:
+    pfe_workload: cpu
+    pfe_duration: 10
+    pfe_workers: 1
+    pfe_memory_mb: 64
+    pfe_io_mb: 64
+    pfe_results_root: "{{ playbook_dir }}/../.state/results"
+    pfe_tool: "{{ 'fio' if pfe_workload == 'io' else 'stress-ng' }}"
+    pfe_commands:
+      cpu:
+        - stress-ng
+        - --cpu
+        - "{{ pfe_workers | string }}"
+        - --cpu-method
+        - sqrt
+        - --timeout
+        - "{{ pfe_duration }}s"
+        - --metrics-brief
+        - --yaml
+        - "{{ pfe_output_file }}"
+      memory:
+        - stress-ng
+        - --vm
+        - "{{ pfe_workers | string }}"
+        - --vm-bytes
+        - "{{ pfe_memory_mb }}M"
+        - --vm-keep
+        - --timeout
+        - "{{ pfe_duration }}s"
+        - --metrics-brief
+        - --yaml
+        - "{{ pfe_output_file }}"
+      io:
+        - fio
+        - --output-format=json
+        - "--output={{ pfe_output_file }}"
+        - "--directory={{ pfe_guest_run.path }}"
+        - "--runtime={{ pfe_duration }}"
+        - "--size={{ pfe_io_mb }}M"
+        - "--numjobs={{ pfe_workers }}"
+        - "{{ pfe_guest_run.path }}/sequential-write.fio"
+  tasks:
+    - name: Validate workload parameters
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - pfe_workload in ['cpu', 'memory', 'io']
+          - pfe_duration | string is match('^[0-9]+$')
+          - pfe_duration | int >= 1 and pfe_duration | int <= 300
+          - pfe_workers | string is match('^[0-9]+$')
+          - pfe_workers | int >= 1 and pfe_workers | int <= 4
+          - pfe_memory_mb | string is match('^[0-9]+$')
+          - pfe_memory_mb | int >= 16 and pfe_memory_mb | int <= 256
+          - pfe_io_mb | string is match('^[0-9]+$')
+          - pfe_io_mb | int >= 16 and pfe_io_mb | int * pfe_workers | int <= 256
+        fail_msg: "Use normal execution with cpu, memory, or io; duration 1-300 seconds; 1-4 workers; 16-256 MiB of memory; and at most 256 MiB of I/O files per node."
+
+    - name: Create the local results directory
+      ansible.builtin.file:
+        path: "{{ pfe_results_root }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Allocate a results directory for this run
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ pfe_results_root }}"
+        prefix: "{{ pfe_workload }}-"
+      register: pfe_results
+      delegate_to: localhost
+      run_once: true
+
+    - name: Create the local node results directory
+      ansible.builtin.file:
+        path: "{{ pfe_results.path }}/{{ inventory_hostname }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Read the workload tool version
+      ansible.builtin.command:
+        argv: ["{{ pfe_tool }}", --version]
+      register: pfe_tool_version
+      changed_when: false
+
+    - name: Allocate the guest working directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: /var/tmp
+        prefix: pfe-workload-
+      register: pfe_guest_run
+
+    - name: Select the result file and command
+      ansible.builtin.set_fact:
+        pfe_output_file: "{{ pfe_guest_run.path }}/result.{{ 'json' if pfe_workload == 'io' else 'yaml' }}"
+
+    - name: Run the workload and collect its results
+      block:
+        - name: Copy the I/O profile
+          ansible.builtin.copy:
+            src: sequential-write.fio
+            dest: "{{ pfe_guest_run.path }}/sequential-write.fio"
+            mode: "0644"
+          when: pfe_workload == 'io'
+
+        - name: Start the workload
+          ansible.builtin.command:
+            argv: "{{ pfe_commands[pfe_workload] }}"
+          async: "{{ pfe_duration | int + 60 }}"
+          poll: 0
+          register: pfe_job
+
+        - name: Wait for workload completion
+          ansible.builtin.async_status:
+            jid: "{{ pfe_job.ansible_job_id }}"
+          register: pfe_job_result
+          until: pfe_job_result.finished
+          retries: "{{ (pfe_duration | int + 90) // 2 }}"
+          delay: 2
+      always:
+        - name: Save the run context and process result
+          ansible.builtin.copy:
+            dest: "{{ pfe_results.path }}/{{ inventory_hostname }}/run.json"
+            mode: "0644"
+            content: "{{ pfe_run_context | to_nice_json }}\n"
+          vars:
+            pfe_run_context:
+              run_id: "{{ pfe_results.path | basename }}"
+              workload: "{{ pfe_workload }}"
+              duration_seconds: "{{ pfe_duration | int }}"
+              workers: "{{ pfe_workers | int }}"
+              memory_mb: "{{ pfe_memory_mb | int if pfe_workload == 'memory' else none }}"
+              io_file_mb: "{{ pfe_io_mb | int if pfe_workload == 'io' else none }}"
+              command: "{{ pfe_commands[pfe_workload] }}"
+              tool_version: "{{ pfe_tool_version.stdout | trim }}"
+              host_observed_at_utc: "{{ ansible_facts.date_time.iso8601 }}"
+              node:
+                inventory_name: "{{ inventory_hostname }}"
+                hostname: "{{ ansible_facts.hostname }}"
+                machine_id: "{{ ansible_facts.machine_id }}"
+                architecture: "{{ ansible_facts.architecture }}"
+                kernel: "{{ ansible_facts.kernel }}"
+                logical_cpus: "{{ ansible_facts.processor_vcpus }}"
+                memory_mb: "{{ ansible_facts.memtotal_mb }}"
+              process: "{{ pfe_job_result | default(pfe_job | default({})) }}"
+          delegate_to: localhost
+
+        - name: Check for tool output
+          ansible.builtin.stat:
+            path: "{{ pfe_output_file }}"
+          register: pfe_output_stat
+
+        - name: Fetch the tool output
+          ansible.builtin.fetch:
+            src: "{{ pfe_output_file }}"
+            dest: "{{ pfe_results.path }}/{{ inventory_hostname }}/"
+            flat: true
+          when: pfe_output_stat.stat.exists
+
+        - name: Archive the I/O profile
+          ansible.builtin.copy:
+            src: sequential-write.fio
+            dest: "{{ pfe_results.path }}/{{ inventory_hostname }}/sequential-write.fio"
+            mode: "0644"
+          delegate_to: localhost
+          when: pfe_workload == 'io'
+
+        - name: Remove the completed async job record
+          ansible.builtin.async_status:
+            jid: "{{ pfe_job.ansible_job_id }}"
+            mode: cleanup
+          when: pfe_job_result is defined and pfe_job_result.finished | default(false)
+
+        - name: Remove the guest working directory
+          ansible.builtin.file:
+            path: "{{ pfe_guest_run.path }}"
+            state: absent
+          when: pfe_job is not defined or (pfe_job_result is defined and pfe_job_result.finished | default(false))
+
+        - name: Report the local results directory
+          ansible.builtin.debug:
+            msg: "Results: {{ pfe_results.path }}"
+          run_once: true

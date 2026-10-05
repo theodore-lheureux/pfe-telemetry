@@ -1,0 +1,24 @@
+---
+- name: Confirm node hostname and private address
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.hostname == pfe_hostname
+      - pfe_private_ip in ansible_facts.all_ipv4_addresses
+
+- name: Check ingestion gRPC connectivity
+  ansible.builtin.command:
+    argv:
+      - grpc_health_probe
+      - "-addr={{ pfe_ingestion_address }}"
+      - -service=grpc.health.v1.Health
+      - -connect-timeout=3s
+      - -rpc-timeout=3s
+  changed_when: false
+  check_mode: false
+
+- name: Check private connectivity to the other compute nodes
+  ansible.builtin.command:
+    argv: [ping, "-c", "1", "-W", "2", "{{ hostvars[item].pfe_private_ip }}"]
+  loop: "{{ groups['compute'] | difference([inventory_hostname]) | sort }}"
+  changed_when: false
+  check_mode: false

@@ -1,0 +1,57 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set positional-arguments
+set dotenv-filename := ".env"
+
+export VAGRANT_CHECKPOINT_DISABLE := "1"
+export ANSIBLE_CONFIG := source_directory() / "ansible/ansible.cfg"
+export PATH := env("PATH") + ":/Applications/VirtualBox.app/Contents/MacOS"
+
+default:
+    @just --justfile "{{ justfile() }}" --list env
+
+# Start the ingestion server before provisioning the nodes.
+up:
+    docker compose up --build --detach --wait --wait-timeout 90 --remove-orphans
+    uv run --project ../.. --locked vagrant up --provider=virtualbox --no-parallel
+    just --justfile "{{ justfile() }}" env verify
+
+verify *args:
+    uv run --project ../.. --locked ansible-playbook ansible/site.yml --tags verify "$@"
+
+check *args:
+    uv run --project ../.. --locked ansible-playbook ansible/site.yml --check --diff --tags all,verify "$@"
+
+inventory +args:
+    uv run --project ../.. --locked ansible-inventory --playbook-dir ansible "$@"
+
+provision *nodes:
+    uv run --project ../.. --locked vagrant provision "$@"
+    just --justfile "{{ justfile() }}" env verify
+
+# Run cpu, memory, or io on all nodes or an inventory limit.
+workload kind='cpu' seconds='10' nodes='all' *args:
+    uv run --project ../.. --locked ansible-playbook ansible/workload.yml --limit "$3" --extra-vars "pfe_workload=$1" --extra-vars "pfe_duration=$2" "${@:4}"
+
+status:
+    uv run --project ../.. --locked vagrant status
+    docker compose ps --all
+
+stop:
+    uv run --project ../.. --locked vagrant halt
+    docker compose stop
+
+# Vagrant asks for confirmation before deleting guest disks.
+destroy:
+    uv run --project ../.. --locked vagrant destroy
+    docker compose down
+
+# Pass native options through, e.g. `just env vagrant ssh node1`.
+vagrant +args:
+    uv run --project ../.. --locked vagrant "$@"
+
+compose +args:
+    docker compose "$@"
+
+validate:
+    uv run --project ../.. --locked vagrant validate
+    docker compose config --quiet

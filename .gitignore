@@ -1,0 +1,15 @@
+node_modules
+dist
+.output
+.tanstack
+.env*
+!.env.example
+*.log
+test-results
+infra/test-environment/.vagrant/
+infra/test-environment/.state/
+.venv/
+.ansible/
+target/
+lefthook-local.yml
+lefthook-local.yaml

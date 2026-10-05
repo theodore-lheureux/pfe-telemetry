@@ -1,0 +1,13 @@
+.git
+node_modules
+**/node_modules
+target
+.venv
+.ansible
+dist
+**/dist
+**/.output
+**/.tanstack
+**/.env
+**/.env.*
+infra

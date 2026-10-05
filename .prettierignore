@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.output/
+.tanstack/
+.venv/
+.ansible/
+target/
+infra/test-environment/.state/
+infra/test-environment/.vagrant/
+apps/web/src/routeTree.gen.ts
+bun.lock

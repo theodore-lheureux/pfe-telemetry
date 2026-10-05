@@ -1,0 +1,35 @@
+---
+- name: Configure the compute nodes
+  hosts: compute
+  become: true
+  gather_facts: true
+  gather_subset: ["!all", network]
+  tasks:
+    - name: Read the installed packages
+      ansible.builtin.package_facts:
+        manager: apt
+
+    - name: Install connectivity and workload prerequisites
+      ansible.builtin.apt:
+        name: "{{ pfe_prerequisites }}"
+        state: present
+        update_cache: "{{ pfe_prerequisites | difference(ansible_facts.packages.keys() | list) | length > 0 }}"
+        cache_valid_time: 3600
+
+    - name: Confirm the health probe supports the guest architecture
+      ansible.builtin.assert:
+        that: ansible_facts.architecture in pfe_probe_platforms
+
+    - name: Install the standard gRPC health probe
+      ansible.builtin.get_url:
+        url: "https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/{{ pfe_probe_version }}/grpc_health_probe-linux-{{ pfe_probe_platforms[ansible_facts.architecture].arch }}"
+        checksum: "{{ pfe_probe_platforms[ansible_facts.architecture].checksum }}"
+        dest: /usr/local/bin/grpc_health_probe
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Verify connectivity
+      ansible.builtin.import_tasks: tasks/verify.yml
+      become: false
+      tags: [never, verify]
