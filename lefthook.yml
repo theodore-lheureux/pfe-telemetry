@@ -16,6 +16,7 @@ pre-commit:
     - "**/target/**"
     - infra/test-environment/.state/**
     - infra/test-environment/.vagrant/**
+    - infra/test-environment/monitoring/grafana/dashboards/node-exporter-full.json
   jobs:
     - name: web-and-config
       glob: "**/*.{ts,tsx,json,jsonc,css}"

@@ -18,3 +18,8 @@ pfe_probe_platforms:
   aarch64:
     arch: arm64
     checksum: sha256:1a68f86e8d11bf06d6f5828ee091af17be5a4fa4ea05df685e97e5e1e434932e
+
+alloy_version: "1.20.1"
+alloy_env_file_vars:
+  CUSTOM_ARGS: --disable-reporting
+alloy_config: "{{ lookup('ansible.builtin.template', 'node-metrics.alloy.j2') }}"

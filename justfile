@@ -1,7 +1,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set positional-arguments
 
-# Manage the local VMs and ingestion server.
+# Manage the local VMs, ingestion server, and monitoring.
 mod env 'infra/test-environment/justfile'
 
 default:

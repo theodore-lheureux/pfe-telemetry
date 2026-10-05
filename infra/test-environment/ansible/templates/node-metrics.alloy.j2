@@ -1,0 +1,31 @@
+prometheus.exporter.unix "node" {
+  enable_collectors        = ["systemd", "processes"]
+  include_exporter_metrics = true
+}
+
+discovery.relabel "node" {
+  targets = prometheus.exporter.unix.node.targets
+
+  rule {
+    target_label = "instance"
+    replacement  = constants.hostname
+  }
+
+  rule {
+    target_label = "job"
+    replacement  = "node"
+  }
+}
+
+prometheus.scrape "node" {
+  targets         = discovery.relabel.node.output
+  scrape_interval = "5s"
+  scrape_timeout  = "4s"
+  forward_to      = [prometheus.remote_write.local.receiver]
+}
+
+prometheus.remote_write "local" {
+  endpoint {
+    url = "{{ pfe_prometheus_url }}/api/v1/write"
+  }
+}

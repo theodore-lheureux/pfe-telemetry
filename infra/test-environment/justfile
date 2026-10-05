@@ -9,7 +9,7 @@ export PATH := env("PATH") + ":/Applications/VirtualBox.app/Contents/MacOS"
 default:
     @just --justfile "{{ justfile() }}" --list env
 
-# Start the ingestion server before provisioning the nodes.
+# Start the host services before provisioning the nodes.
 up:
     docker compose up --build --detach --wait --wait-timeout 90 --remove-orphans
     uv run --project ../.. --locked vagrant up --provider=virtualbox --no-parallel

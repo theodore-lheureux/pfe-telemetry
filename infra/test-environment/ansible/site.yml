@@ -29,6 +29,11 @@
         group: root
         mode: "0755"
 
+    - name: Install and configure VM monitoring
+      ansible.builtin.import_role:
+        name: grafana.grafana.alloy
+      tags: monitoring
+
     - name: Verify connectivity
       ansible.builtin.import_tasks: tasks/verify.yml
       become: false

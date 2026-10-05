@@ -1,4 +1,4 @@
-# Two independent Linux kernels. The ingestion server runs in Docker Compose.
+# Two independent Linux kernels. Host services run in Docker Compose.
 Vagrant.require_version ">= 2.4.9", "< 3.0"
 
 def environment_integer(name, default, minimum, maximum)
@@ -8,6 +8,7 @@ def environment_integer(name, default, minimum, maximum)
 end
 
 port = environment_integer("TEST_ENV_HOST_PORT", 8088, 1024, 65535)
+prometheus_port = environment_integer("TEST_ENV_PROMETHEUS_PORT", 9090, 1024, 65535)
 cpus = environment_integer("TEST_ENV_NODE_CPUS", 1, 1, 4)
 memory = environment_integer("TEST_ENV_NODE_MEMORY_MB", 1024, 512, 4096)
 
@@ -45,7 +46,10 @@ Vagrant.configure("2") do |config|
     ansible.config_file = "ansible/ansible.cfg"
     ansible.groups = {
       "compute" => nodes.keys,
-      "compute:vars" => { "pfe_ingestion_address" => "10.0.2.2:#{port}" }
+      "compute:vars" => {
+        "pfe_ingestion_address" => "10.0.2.2:#{port}",
+        "pfe_prometheus_url" => "http://10.0.2.2:#{prometheus_port}"
+      }
     }
     ansible.host_vars = nodes
   end

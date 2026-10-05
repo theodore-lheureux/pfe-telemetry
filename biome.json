@@ -15,6 +15,7 @@
       "!!**/target",
       "!!infra/test-environment/.state",
       "!!infra/test-environment/.vagrant",
+      "!!infra/test-environment/monitoring/grafana/dashboards/node-exporter-full.json",
       "!!apps/web/src/routeTree.gen.ts",
       "!!bun.lock"
     ]

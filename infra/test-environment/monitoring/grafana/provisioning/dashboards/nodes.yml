@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: Compute nodes
+    folder: Test environment
+    type: file
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

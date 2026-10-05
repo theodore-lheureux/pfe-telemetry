@@ -22,3 +22,15 @@
   loop: "{{ groups['compute'] | difference([inventory_hostname]) | sort }}"
   changed_when: false
   check_mode: false
+
+- name: Check the local monitoring agent
+  ansible.builtin.uri:
+    url: http://127.0.0.1:12345/-/ready
+    use_proxy: false
+  check_mode: false
+
+- name: Check Prometheus connectivity
+  ansible.builtin.uri:
+    url: "{{ pfe_prometheus_url }}/-/ready"
+    use_proxy: false
+  check_mode: false

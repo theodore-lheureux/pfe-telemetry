@@ -16,7 +16,7 @@ apps/
 crates/                 Shared Rust libraries
 docs/                   Architecture, serialization, and reliability considerations
 infra/
-  test-environment/     Vagrant VMs, Compose ingestion server, and workload playbooks
+  test-environment/     Vagrant VMs, ingestion server, Grafana, and workload playbooks
 tests/                  Cross-component validation scenarios
 ```
 
@@ -50,6 +50,8 @@ just env stop
 ```
 
 `just env` lists the environment commands and loads the optional, ignored `infra/test-environment/.env`. Use that file for VM resource settings and ports. VirtualBox preferences control VM storage. `apps/web/.env` controls the web development port (3001 by default). See [the test environment README](infra/test-environment/README.md) for VM prerequisites, networking, and cleanup. The web application runs independently of the environment; telemetry queries are not implemented.
+
+After `just env up`, [Grafana](http://localhost:3003/d/node-exporter-full/node-exporter-full) displays live Linux metrics from both VMs using Alloy, Prometheus, and the prebuilt Node Exporter Full dashboard.
 
 ## Checks and formatting
 
