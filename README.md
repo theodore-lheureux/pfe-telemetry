@@ -24,6 +24,8 @@ tests/                  Cross-component validation scenarios
 
 All contributors need [Bun](https://bun.sh/) 1.4.2 (pinned in `.bun-version`), [just](https://just.systems/) 1.58.0, [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.12.23, and [Rust through rustup](https://www.rust-lang.org/tools/install). The Rust toolchain is pinned in `rust-toolchain.toml`. uv installs the Python version pinned in `.python-version` for Ansible.
 
+On Windows, follow the [Windows setup guide](docs/windows-setup.md) instead. The test environment runs from Ubuntu on WSL2 because Ansible does not run on native Windows.
+
 ```sh
 just setup
 ```

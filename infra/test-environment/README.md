@@ -8,7 +8,7 @@ Run `just setup` at the repository root to install the locked Ansible tooling an
 
 Allow roughly 20 GiB for the box cache and two disks, plus the monitoring images and data. Each VM defaults to 1 CPU and 1024 MiB of RAM. The ingestion container is limited to 0.25 CPU and 128 MiB, Prometheus to 0.25 CPU and 256 MiB, and Grafana to 1 CPU and 1 GiB, in addition to Docker Desktop's own VM. The first run needs internet access to download images, build Rust dependencies, and install missing guest packages.
 
-The configuration pins `bento/ubuntu-26.04` to `202606.01.0` and selects the host architecture automatically. The command recipes require Bash. Native Windows use is unverified.
+The configuration pins `bento/ubuntu-26.04` to `202606.01.0` and selects the host architecture automatically. The command recipes require Bash. Native Windows is not supported because Ansible cannot run on a Windows host; on Windows, run the environment from Ubuntu on WSL2 as described in the [Windows setup guide](../../docs/windows-setup.md).
 
 ## Commands
 
