@@ -1,0 +1,20 @@
+[
+  {
+    "project_id": "pfe",
+    "source_id": "node1-collector",
+    "token_sha256": "REPLACE_WITH_SHA256_OF_NODE1_TOKEN",
+    "hosts": ["pfe-compute-1"],
+    "require_host_id": true,
+    "maximum_submission_age": 3600,
+    "allowed_clock_skew": 60
+  },
+  {
+    "project_id": "pfe",
+    "source_id": "node2-collector",
+    "token_sha256": "REPLACE_WITH_SHA256_OF_NODE2_TOKEN",
+    "hosts": ["pfe-compute-2"],
+    "require_host_id": true,
+    "maximum_submission_age": 3600,
+    "allowed_clock_skew": 60
+  }
+]
