@@ -1,0 +1,16 @@
+syntax = "proto3";
+package pfe.ingestion.v1;
+
+message Envelope {
+  uint32 format_version = 1;
+  string record_id = 2;
+  string project_id = 3;
+  string source_id = 4;
+  uint64 received_unix_nano = 5;
+  string payload_kind = 6;
+  string profile = 7;
+  string client_batch_id = 8;
+  uint64 client_created_unix_nano = 9;
+  // Protobuf-encoded OTLP metrics request.
+  bytes payload = 10;
+}
