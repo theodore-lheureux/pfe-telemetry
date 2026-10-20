@@ -2,32 +2,32 @@
 
 The system collects resource measurements from distributed workloads and relates them to executions, processes, and nodes. Live views and post-mortem analysis use the same measurements. Workload-specific details are metadata, so collection and analysis can support different applications.
 
-The web application is a TanStack Start scaffold with TanStack Query and shadcn/ui. The Rust collector is a scaffold. The Tonic server exposes gRPC health checks and OTLP service interfaces; export handling, durable publication, storage, and authentication are not implemented.
+The web application is a TanStack Start scaffold with TanStack Query and shadcn/ui. The Rust collector samples Linux node/process resources with verified process identity, coverage diagnostics and counter continuity. It persists pending batches locally and retries temporary failures with stable batch IDs. Source credentials bind uploads to enrolled project/source identities and hosts. The Tonic ingestion service validates metrics and waits for Kafka publication before acknowledging them. One storage worker publishes replay-safe Parquet files, which DuckDB queries through a read-only mount. Trace storage, execution associations and browser queries are not implemented. See the [local pipeline](../infra/telemetry/README.md) and [service reference](../apps/server/README.md).
 
 ## Component responsibilities
 
-| Component                  | Responsibility                                                                                                                  |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Rust collector             | Collect node and process measurements, attach execution context, batch samples, and buffer pending uploads.                     |
-| Rust ingestion service     | Authenticate sources, validate batches, apply admission limits, and publish accepted telemetry durably.                         |
-| Storage worker             | Consume retained batches, process measurements, and publish analytical data.                                                    |
-| TanStack Start application | Render the interface with SSR, manage browser sessions, and authorize queries and exports through server-side application code. |
-| Broker, if selected        | Retain accepted batches independently of processing and track consumer progress.                                                |
+| Component                  | Responsibility                                                                                                                   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Rust collector             | Collect node and process measurements, batch samples, and buffer pending uploads; execution attribution needs platform evidence. |
+| Rust ingestion service     | Authenticate sources, validate batches, apply admission limits, and publish accepted telemetry durably.                          |
+| Storage worker             | Consume retained batches, process measurements, and publish analytical data.                                                     |
+| TanStack Start application | Render the interface with SSR, manage browser sessions, and authorize queries and exports through server-side application code.  |
+| Kafka                      | Retain accepted batches independently of processing and track consumer progress.                                                 |
 
 TanStack Start provides the web application's server-side functions and endpoints. Collectors export telemetry to the Rust ingestion service. Human sessions and execution access are managed in the web application; collector authentication and durable acceptance are enforced by the ingestion service.
 
-The storage worker is a separate component responsibility. Its deployment and analytical storage interface remain to be selected. The ingestion executable serves telemetry export and health RPCs.
+The ingestion and storage worker are separate executables in `apps/server`. The ingestion executable serves telemetry export and health RPCs. The worker owns Parquet publication; analytical queries read published files.
 
 ## Data flow
 
-Collectors send OTLP batches over gRPC with binary Protobuf. The ingestion service validates identity, access, schema, and size before acceptance. With a broker, acceptance follows successful publication; processing then writes measurements to analytical storage. Without a broker, acceptance follows a durable storage commit.
+Collectors send OTLP batches over gRPC with binary Protobuf. The ingestion service validates identity, access, schema, and size before acceptance. Acceptance follows successful Kafka publication; processing then writes measurements to analytical storage.
 
 ```mermaid
 flowchart LR
     collectors["Collectors on workload nodes"] -->|OTLP/gRPC| ingest["Rust ingestion service"]
-    ingest --> broker["Optional durable broker"]
+    ingest --> broker["Kafka"]
     broker --> worker["Rust storage worker"]
-    worker --> storage["Telemetry storage"]
+    worker --> storage["Published Parquet files"]
     web["TanStack Start UI and server functions"] -->|Authorized queries| storage
 ```
 
@@ -37,7 +37,7 @@ See [ingestion server](ingestion-server.md) for the Tonic choice and receiver be
 
 ## Storage and recordings
 
-Rust is used for collection and ingestion. DuckDB is a candidate for analytical queries, with Parquet for retained measurements and exports. Telemetry transport uses OTLP/gRPC with binary Protobuf; retained ingestion records use a Protobuf envelope, and web endpoints use JSON. Storage integration and the broker remain open.
+Rust is used for collection, ingestion and storage processing. DuckDB queries published Parquet measurements. Telemetry transport uses OTLP/gRPC with binary Protobuf; Kafka retains a Protobuf ingestion envelope. Web endpoints will use JSON. Portable exports and the browser query interface are not implemented.
 
 DuckDB's embedded read-write mode uses one writer process, which can have multiple threads. The storage worker and TanStack Start cannot independently open the same writable database file as a shared storage interface. Published Parquet files can provide an analytical boundary; another queryable storage service is an alternative. Adding broker consumers does not make a shared DuckDB file writable from multiple processes. [DuckDB concurrency](https://duckdb.org/docs/current/connect/concurrency)
 
@@ -57,7 +57,7 @@ Use encrypted transport outside the isolated local environment. Collect only the
 
 Each measurement needs its source, unit, collection time, and node or process context. Preserve missing samples, collector disconnections, and clock uncertainty. A shared timeline can reveal correlated changes; a controlled experiment is needed to attribute a slowdown to a competing workload.
 
-The [test environment](../infra/test-environment/README.md) provides two Vagrant VMs provisioned with Ansible and the Tonic server in Compose. Standard gRPC health probes check connectivity. Separate workload playbooks run stress-ng for CPU and memory pressure and fio for I/O, with commands, tool versions, and results retained locally. Export handlers remain unimplemented until a durable sink is configured.
+The [test environment](../infra/test-environment/README.md) provides two Vagrant VMs provisioned with Ansible and the Tonic server in Compose. Standard gRPC health probes check connectivity. Separate workload playbooks run stress-ng for CPU and memory pressure and fio for I/O, with commands, tool versions, and results retained locally. The separate [telemetry pipeline](../infra/telemetry/README.md) enables metrics acceptance and analytical queries. The original environment server keeps acceptance disabled when no source policies are configured.
 
 Validation should cover baseline executions, overlapping workloads, and controlled resource contention. Existing workload tools can provide repeatable load; synthetic event generators can exercise ingestion volume and malformed inputs. Record workload versions, commands, resource allocations, and sampling settings with the results.
 

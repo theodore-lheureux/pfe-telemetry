@@ -11,18 +11,19 @@ See [architecture](docs/architecture.md), [ingestion server](docs/ingestion-serv
 ```text
 apps/
   web/                  TanStack Start web application with SSR
-  collector/            Rust collector scaffold
-  server/               Tonic OTLP ingestion server
+  collector/            Linux procfs collector with persistent OTLP export
+  server/               Tonic ingestion and Kafka-to-Parquet storage worker
 crates/                 Shared Rust libraries
 docs/                   Architecture, serialization, and reliability considerations
 infra/
   test-environment/     Vagrant VMs, ingestion server, Grafana, and workload playbooks
+  telemetry/            Kafka pipeline and DuckDB operator queries
 tests/                  Cross-component validation scenarios
 ```
 
 ## Development setup
 
-All contributors need [Bun](https://bun.sh/) 1.4.2 (pinned in `.bun-version`), [just](https://just.systems/) 1.58.0, [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.12.23, and [Rust through rustup](https://www.rust-lang.org/tools/install). The Rust toolchain is pinned in `rust-toolchain.toml`. uv installs the Python version pinned in `.python-version` for Ansible.
+All contributors need [Bun](https://bun.sh/) 1.4.2 (pinned in `.bun-version`), [just](https://just.systems/) 1.58.0, [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.12.23, and [Rust through rustup](https://www.rust-lang.org/tools/install). The Rust toolchain is pinned in `rust-toolchain.toml`. uv installs the Python version pinned in `.python-version` for Ansible. Native ingestion builds also require Make and a C/C++ compiler for librdkafka; the container build supplies them.
 
 On Windows, follow the [Windows setup guide](docs/windows-setup.md) instead. The test environment runs from Ubuntu on WSL2 because Ansible does not run on native Windows.
 
@@ -51,7 +52,7 @@ just env verify
 just env stop
 ```
 
-`just env` lists the environment commands and loads the optional, ignored `infra/test-environment/.env`. Use that file for VM resource settings and ports. VirtualBox preferences control VM storage. `apps/web/.env` controls the web development port (3001 by default). See [the test environment README](infra/test-environment/README.md) for VM prerequisites, networking, and cleanup. The web application runs independently of the environment; telemetry queries are not implemented.
+`just env` lists the environment commands and loads the optional, ignored `infra/test-environment/.env`. Use that file for VM resource settings and ports. VirtualBox preferences control VM storage. `apps/web/.env` controls the web development port (3001 by default). See [the test environment README](infra/test-environment/README.md) for VM prerequisites, networking, and cleanup. The web application runs independently of the environment; browser telemetry queries are not implemented. The [local telemetry pipeline](infra/telemetry/README.md) provides ingestion, Parquet storage and DuckDB operator queries.
 
 After `just env up`, [Grafana](http://localhost:3003/d/node-exporter-full/node-exporter-full) displays live Linux metrics from both VMs using Alloy, Prometheus, and the prebuilt Node Exporter Full dashboard.
 
@@ -79,7 +80,7 @@ just lint-fix
 
 `format` formats repository files. `lint-fix` applies safe Biome fixes. Format the Vagrantfile manually. Repository lint and format commands are defined in the justfile; the root Bun scripts delegate to them. Use `just --list` for component checks and commands.
 
-CI checks formatting, linting, the web build, Rust tests, Ansible syntax, and Compose configuration. It caches Bun downloads, Cargo dependencies, and uv packages. VM provisioning and connectivity checks run locally.
+CI checks formatting, linting, the web build, Rust tests, Kafka recovery, Ansible syntax, and Compose configuration. It caches Bun downloads, Cargo dependencies, and uv packages. VM provisioning and connectivity checks run locally.
 
 ## Adding components
 

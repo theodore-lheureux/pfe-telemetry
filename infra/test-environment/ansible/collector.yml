@@ -1,0 +1,68 @@
+---
+- name: Install the telemetry collector on compute nodes
+  hosts: compute
+  become: true
+  gather_facts: true
+  gather_subset: ["!all", min]
+  vars:
+    pfe_collector_endpoint: http://10.0.2.2:14317
+    pfe_collector_interval_ms: 1000
+    pfe_collector_state: started
+    pfe_collector_token_directory: "{{ playbook_dir }}/../../telemetry/.state"
+  tasks:
+    - name: Validate collector configuration
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.system == 'Linux'
+          - pfe_collector_binary is defined
+          - pfe_collector_state in ['started', 'stopped']
+          - pfe_collector_interval_ms | int >= 100
+          - pfe_collector_interval_ms | int <= 60000
+
+    - name: Create the private collector configuration directory
+      ansible.builtin.file:
+        path: /etc/pfe-collector
+        state: directory
+        owner: "{{ ansible_user }}"
+        mode: "0700"
+
+    - name: Install the collector executable
+      ansible.builtin.copy:
+        src: "{{ pfe_collector_binary }}"
+        dest: /usr/local/bin/pfe-collector
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart the telemetry collector
+
+    - name: Install this node's source credential
+      ansible.builtin.copy:
+        src: "{{ pfe_collector_token_directory }}/{{ inventory_hostname }}.token"
+        dest: /etc/pfe-collector/source.token
+        owner: "{{ ansible_user }}"
+        mode: "0600"
+      no_log: true
+      notify: Restart the telemetry collector
+
+    - name: Install the telemetry collector service
+      ansible.builtin.template:
+        src: collector.service.j2
+        dest: /etc/systemd/system/pfe-collector.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart the telemetry collector
+
+    - name: Manage the telemetry collector without enabling boot startup
+      ansible.builtin.systemd_service:
+        name: pfe-collector
+        daemon_reload: true
+        enabled: false
+        state: "{{ pfe_collector_state }}"
+
+  handlers:
+    - name: Restart the telemetry collector
+      ansible.builtin.systemd_service:
+        name: pfe-collector
+        state: restarted
+      when: pfe_collector_state == 'started'

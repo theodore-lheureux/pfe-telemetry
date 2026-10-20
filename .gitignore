@@ -7,7 +7,7 @@ dist
 *.log
 test-results
 infra/test-environment/.vagrant/
-infra/test-environment/.state/
+.state/
 .venv/
 .ansible/
 target/

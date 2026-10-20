@@ -4,6 +4,9 @@ set positional-arguments
 # Manage the local VMs, ingestion server, and monitoring.
 mod env 'infra/test-environment/justfile'
 
+# Ingest telemetry through Kafka and query published Parquet files.
+mod telemetry 'infra/telemetry/justfile'
+
 default:
     @just --list
 
@@ -15,7 +18,7 @@ setup: config
 
 # Create missing configuration files
 config:
-    @for directory in apps/web infra/test-environment; do if [ ! -e "$directory/.env" ]; then cp "$directory/.env.example" "$directory/.env"; fi; done
+    @for directory in apps/web infra/test-environment infra/telemetry; do if [ ! -e "$directory/.env" ]; then cp "$directory/.env.example" "$directory/.env"; fi; done
 
 dev *args:
     bun run dev "$@"
@@ -37,11 +40,13 @@ check-docs:
     bun --bun run prettier --check '**/*.{md,yaml,yml}'
     just --fmt --check
     just --justfile infra/test-environment/justfile --fmt --check
+    just --justfile infra/telemetry/justfile --fmt --check
 
 check-environment:
     ruby -c infra/test-environment/Vagrantfile
     uv run --locked ansible-playbook --syntax-check --inventory compute, infra/test-environment/ansible/*.yml
     docker compose --env-file infra/test-environment/.env.example --file infra/test-environment/compose.yaml config --quiet
+    docker compose --env-file infra/telemetry/.env.example --file infra/telemetry/compose.yaml config --quiet
 
 check-rust:
     cargo fmt --all -- --check
@@ -63,6 +68,7 @@ format:
     cargo fmt --all
     just --fmt
     just --justfile infra/test-environment/justfile --fmt
+    just --justfile infra/telemetry/justfile --fmt
 
 format-check: check-docs
     bun --bun run biome format .

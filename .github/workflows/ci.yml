@@ -53,6 +53,28 @@ jobs:
     name: Rust
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    services:
+      kafka:
+        image: apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+        ports:
+          - 9092:9092
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 1
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+          KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
+        options: >-
+          --memory=768m
+          --health-cmd="/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"
+          --health-interval=10s --health-timeout=10s --health-retries=12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -65,7 +87,14 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
         with:
           just-version: "1.58.0"
+      - name: Install Kafka client build dependencies
+        run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends make g++
       - run: just check-rust test
+      - name: Verify Kafka recovery and duplicate-safe storage
+        run: cargo test --locked -p pfe-server --test pipeline -- --ignored
+        timeout-minutes: 2
+        env:
+          TELEMETRY_KAFKA_BOOTSTRAP: localhost:9092
 
   environment:
     name: Test environment

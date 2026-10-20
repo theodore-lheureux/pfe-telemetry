@@ -1,0 +1,26 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set positional-arguments
+set dotenv-filename := ".env"
+
+up:
+    docker compose up --build --detach --wait --wait-timeout 180
+
+status:
+    docker compose ps --all
+
+stop:
+    docker compose stop
+
+# Build a Linux collector for Docker's current architecture.
+build-collector:
+    docker build --file ../../apps/collector/Dockerfile --target artifact --output type=local,dest=.state/bin ../..
+
+query sql:
+    docker compose run --rm --no-deps query -c "$1"
+
+compose +args:
+    docker compose "$@"
+
+# Install a collector built for the VMs' Linux architecture.
+collectors binary=(source_directory() / ".state/bin/pfe-collector") *args:
+    ANSIBLE_CONFIG=../test-environment/ansible/ansible.cfg uv run --project ../.. --locked ansible-playbook ../test-environment/ansible/collector.yml --extra-vars "pfe_collector_binary='$1'" "${@:2}"

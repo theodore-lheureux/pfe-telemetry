@@ -37,7 +37,7 @@ Both binary transports use the same message definitions. gRPC does not establish
 
 ## Retention and replay
 
-Retain complete decoded OTLP requests before storage transformations or aggregation. Re-encoding them in a Protobuf ingestion envelope supports recovery, corrected storage mappings, and new analysis of supported fields. Include authenticated source and project context, receipt time, format version, and a stable record identity. [Serialization](serialization.md#retention-replay-and-compatibility)
+Retain complete decoded OTLP requests before storage transformations or aggregation. Re-encoding them in a Protobuf ingestion envelope supports recovery, corrected storage mappings, and new analysis of supported fields. Include authenticated source and project context, receipt time, format version, and a stable record identity. [Serialization](serialization.md#retention-and-replay)
 
 Re-encoding does not promise identical bytes or preservation of fields absent from the bindings. Prost's generated decoder skips unknown fields. Application-defined metric names and attributes use existing OTLP fields and remain part of the decoded request. [Prost decoding](https://docs.rs/prost-derive/latest/src/prost_derive/lib.rs.html#191)
 
@@ -45,17 +45,17 @@ Original-byte preservation is a separate capability. A custom Tonic codec and re
 
 ## Runtime and health
 
-The server binds to `127.0.0.1:4317` by default. `PFE_INGEST_ADDR` selects another socket address; `RUST_LOG` controls logging. The container listens on port 4317. Compose publishes it on host loopback using `TEST_ENV_HOST_PORT`.
+The server binds to `127.0.0.1:4317` by default. `TELEMETRY_INGESTION_ADDR` selects another socket address; `RUST_LOG` controls logging. The container listens on port 4317. The test environment publishes its connectivity receiver using `TEST_ENV_HOST_PORT`; the telemetry pipeline uses `TELEMETRY_INGESTION_PORT`, defaulting to 14317 on host loopback.
 
-Metrics and traces support uncompressed and gzip-compressed requests with a 4 MiB decoded-message limit. Each connection allows at most 32 concurrent handlers, with a 10-second handler timeout. This is not a global admission limit. Global limits and publication deadlines belong at the durable acceptance boundary. Ctrl-C and SIGTERM trigger graceful shutdown.
+Metrics and traces support uncompressed and gzip-compressed requests with a 4 MiB decoded-message limit. Each connection allows at most 32 concurrent handlers, with a 10-second handler timeout. This is not a global admission limit. Metrics ingestion additionally allows at most 16 concurrent admitted exports and waits up to five seconds for Kafka delivery confirmation. Ctrl-C and SIGTERM trigger graceful shutdown.
 
-| Health service name                   | Current status                                       |
-| ------------------------------------- | ---------------------------------------------------- |
-| `grpc.health.v1.Health`               | `SERVING` while the gRPC server is running.          |
-| Empty name, meaning overall readiness | `NOT_SERVING` until durable ingestion is configured. |
-| OTLP metrics and trace service names  | `NOT_SERVING` until durable ingestion is configured. |
+| Health service name                   | Current status                                               |
+| ------------------------------------- | ------------------------------------------------------------ |
+| `grpc.health.v1.Health`               | `SERVING` while the gRPC server is running.                  |
+| Empty name, meaning overall readiness | `SERVING` when configured Kafka topic metadata is available. |
+| OTLP metrics service name             | `SERVING` when configured Kafka topic metadata is available. |
 
-Metrics and trace exports return `UNIMPLEMENTED`; no export is acknowledged as accepted. Compose and VM verification use `grpc_health_probe` against the named health service to check process connectivity. [Health checking](https://grpc.io/docs/guides/health-checking/), [health probe](https://github.com/grpc-ecosystem/grpc-health-probe)
+Configured metrics ingestion authenticates sources and publishes validated requests to Kafka before acknowledgement. Without `TELEMETRY_INGESTION_SOURCES_FILE`, metrics exports remain `UNIMPLEMENTED`. Trace storage remains `UNIMPLEMENTED`. Overall and metrics readiness follow Kafka metadata checks when configured; the named health service remains a process-connectivity check. See the [service reference](../apps/server/README.md) for actual limits and [local pipeline](../infra/telemetry/README.md) for setup.
 
 ## Security
 
@@ -65,6 +65,6 @@ Do not log telemetry bodies or credentials. Apply retention and access policies 
 
 ## Validation
 
-Validation should exercise health checks, gzip-compressed requests, oversized-message rejection, and the absence of successful export acknowledgements before a sink is configured. The environment checks that compute hosts can reach the server and each other; these connectivity checks do not validate telemetry acceptance.
+Automated tests cover health checks, gzip-compressed requests, oversized-message rejection, authentication, and the absence of successful export acknowledgements before publication. The Kafka integration test exercises a lost response after acceptance, an identified retry, worker restart before offset commit, duplicate-safe replay and processing after an idle interval. It runs separately from tests that do not require a broker.
 
-Further checks require durable publication and processing: export from two language SDKs, interrupt publication, lose a response after acceptance, retry an identified batch, replay into a corrected storage mapping, and measure backlog recovery. [Reliability scenarios](ingestion-and-reliability.md#validation-scenarios)
+The environment's compute-host connectivity checks do not validate telemetry acceptance. Additional validation includes exports from two language SDKs, replay into a corrected storage mapping and measured backlog recovery under sustained load. [Reliability scenarios](ingestion-and-reliability.md#validation-scenarios)

@@ -20,13 +20,15 @@ Apache Iggy is another candidate for exploring Rust infrastructure. It provides 
 
 ## Selection
 
-NATS JetStream is the first candidate for a small pipeline with bounded replay. Kafka becomes a stronger candidate when independent analysis consumers, partitioned processing, and replicated failure experiments are project requirements. Redpanda provides an alternative Kafka-compatible deployment. No broker has been selected or installed.
+Kafka is used by the [local telemetry pipeline](../infra/telemetry/README.md). It retains accepted metrics independently of Parquet processing and tracks storage consumer offsets. The Rust producer uses idempotence and `acks=all`; the worker commits offsets after file publication. The local deployment has one partition and one replica. It exercises processing recovery and replay without claiming broker failure tolerance or measured cluster-scale throughput.
+
+NATS JetStream remains a smaller alternative if Kafka's operating cost outweighs the value of its consumer ecosystem and planned replication experiments. Redpanda provides a Kafka-compatible deployment alternative.
 
 For JetStream, file-backed storage, a durable pull consumer, and limits retention would fit replay. Work-queue retention removes acknowledged messages. Publication acknowledgement is not necessarily an immediate disk flush, so synchronization settings and failure assumptions still need validation. [Retention](https://docs.nats.io/learn/jetstream/retention-policies), [node loss](https://docs.nats.io/learn/jetstream/surviving-node-loss).
 
 ## Kafka deployment
 
-A local Kafka setup can start with one Compose service, a persistent volume, and one topic such as `telemetry.raw` with one partition and one replica. KRaft allows a development process to serve as both broker and controller without ZooKeeper. [Docker setup](https://kafka.apache.org/43/getting-started/docker/), [KRaft](https://kafka.apache.org/43/operations/kraft/).
+The local setup uses a Compose broker, a persistent volume, and the `pfe.metrics.v1` topic with one partition and one replica. KRaft allows a development process to serve as both broker and controller without ZooKeeper. [Docker setup](https://kafka.apache.org/43/getting-started/docker/), [KRaft](https://kafka.apache.org/43/operations/kraft/).
 
 Only the Rust backend produces and consumes Kafka records. Host applications and container applications need reachable advertised broker addresses. Vagrant collectors use OTLP/gRPC to reach the ingestion server. Topic initialization, health checks, retention, and disk limits belong in the environment configuration. [Advertised listeners](https://kafka.apache.org/43/configuration/broker-configs/#advertised.listeners).
 

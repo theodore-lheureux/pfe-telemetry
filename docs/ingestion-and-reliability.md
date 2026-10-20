@@ -12,7 +12,7 @@ Acceptance means the batch entered the retained ingestion log or storage; it doe
 
 A timeout can occur after a successful write. The collector therefore retains the batch and retries with the same identity. Batch and sample identities must remain stable across retries, be scoped to their source and project, and avoid reuse after collector restarts.
 
-Standard third-party OTLP exporters may not supply stable batch or sample identities. Their retries can create separate accepted records. A backend-assigned record identity prevents duplicates during internal replay, but does not prove that a later export request is the same client submission. Deduplication for these inputs depends on signal-specific identities and semantics; the collector guarantee does not automatically extend to every exporter. [OTLP delivery scope](https://opentelemetry.io/docs/specs/otlp/), [retained record format](serialization.md#retention-replay-and-compatibility).
+Standard third-party OTLP exporters may not supply stable batch or sample identities. Their retries can create separate accepted records. A backend-assigned record identity prevents duplicates during internal replay, but does not prove that a later export request is the same client submission. Deduplication for these inputs depends on signal-specific identities and semantics; the collector guarantee does not automatically extend to every exporter. [OTLP delivery scope](https://opentelemetry.io/docs/specs/otlp/), [retained record format](serialization.md#retention-and-replay).
 
 ## Intended guarantees
 

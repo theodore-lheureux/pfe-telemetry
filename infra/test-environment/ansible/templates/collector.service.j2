@@ -1,0 +1,35 @@
+[Unit]
+Description=PFE telemetry collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ ansible_user }}
+Environment={{ ('OTEL_EXPORTER_OTLP_ENDPOINT=' ~ pfe_collector_endpoint) | to_json }}
+Environment={{ ('TELEMETRY_COLLECTOR_HOST_ID=' ~ ansible_facts.hostname) | to_json }}
+Environment=TELEMETRY_COLLECTOR_SOURCE_TOKEN_FILE=/etc/pfe-collector/source.token
+Environment=TELEMETRY_COLLECTOR_QUEUE_DIRECTORY=/var/lib/pfe-collector
+Environment=TELEMETRY_COLLECTOR_INTERVAL_MS={{ pfe_collector_interval_ms }}
+Environment=TELEMETRY_COLLECTOR_VISIBILITY=host
+Environment=TELEMETRY_COLLECTOR_PROCESS_NAMESPACE_ID=host
+ExecStart=/usr/local/bin/pfe-collector
+StateDirectory=pfe-collector
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+UMask=0077
+MemoryMax=256M
+MemorySwapMax=0
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

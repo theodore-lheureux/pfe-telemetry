@@ -1,0 +1,161 @@
+name: pfe-telemetry-pipeline
+
+x-application: &application
+  image: pfe-telemetry-ingestion:local
+  build:
+    context: ../..
+    dockerfile: apps/server/Dockerfile
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 512m
+  cpus: 1
+  pids_limit: 128
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "2m"
+      max-file: "3"
+
+services:
+  kafka:
+    image: apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_RETENTION_HOURS: 6
+      KAFKA_LOG_RETENTION_BYTES: 134217728
+      KAFKA_LOG_SEGMENT_BYTES: 16777216
+      KAFKA_LOG_ROLL_MS: 60000
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 60000
+      KAFKA_MESSAGE_MAX_BYTES: 6291456
+      KAFKA_REPLICA_FETCH_MAX_BYTES: 6291456
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 256
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          CMD,
+          /opt/kafka/bin/kafka-topics.sh,
+          --bootstrap-server,
+          localhost:9092,
+          --list,
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "2m"
+        max-file: "3"
+
+  topics:
+    image: apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+    entrypoint: [/opt/kafka/bin/kafka-topics.sh]
+    command:
+      - --bootstrap-server
+      - kafka:9092
+      - --create
+      - --if-not-exists
+      - --topic
+      - pfe.metrics.v1
+      - --partitions
+      - "1"
+      - --replication-factor
+      - "1"
+      - --config
+      - min.insync.replicas=1
+      - --config
+      - max.message.bytes=6291456
+    depends_on:
+      kafka:
+        condition: service_healthy
+    mem_limit: 256m
+    restart: "no"
+
+  ingestion:
+    <<: *application
+    ports:
+      - "127.0.0.1:${TELEMETRY_INGESTION_PORT:-14317}:4317"
+    environment:
+      TELEMETRY_INGESTION_SOURCES_FILE: /etc/pfe/sources.json
+      TELEMETRY_KAFKA_BOOTSTRAP: kafka:9092
+    volumes:
+      - type: bind
+        source: ${TELEMETRY_INGESTION_SOURCES_FILE:-./.state/sources.json}
+        target: /etc/pfe/sources.json
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      topics:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          CMD,
+          grpc_health_probe,
+          -addr=127.0.0.1:4317,
+          -service=opentelemetry.proto.collector.metrics.v1.MetricsService,
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  storage:
+    <<: *application
+    entrypoint: [/usr/local/bin/pfe-storage]
+    environment:
+      TELEMETRY_KAFKA_BOOTSTRAP: kafka:9092
+      TELEMETRY_STORAGE_DIRECTORY: /var/lib/pfe/measurements/v1
+    volumes:
+      - measurements:/var/lib/pfe/measurements
+    depends_on:
+      topics:
+        condition: service_completed_successfully
+
+  query:
+    image: duckdb/duckdb@sha256:69128eff5f937dcd451dd3342d0d2d2e24edcab5ad71e0042b1cc6602257be73
+    user: "10001:10001"
+    profiles: [tools]
+    entrypoint: [duckdb, -init, /queries.sql]
+    volumes:
+      - measurements:/data:ro
+      - ./sql/views.sql:/queries.sql:ro
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 1
+    pids_limit: 64
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+
+volumes:
+  kafka-data:
+  measurements:

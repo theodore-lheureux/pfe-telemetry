@@ -8,7 +8,7 @@ Draft version 1.0.
 
 Use OTLP/gRPC `opentelemetry.proto.collector.metrics.v1.MetricsService/Export` with the standard `ExportMetricsServiceRequest` and `ExportMetricsServiceResponse`. Support uncompressed and gzip requests, with a 4 MiB decoded receiver limit and a 1 MiB collector limit before compression. [Service definition](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto), [receiver settings](../apps/server/README.md)
 
-Request metadata `pfe-collection-profile: external/1.0` selects the external collection profile. Requests without it use standard OTLP compatibility input. Ingestion must accept standard OTLP metrics and traces within source permissions and admission limits. Preserve their native semantics and mark absent context as unknown. Compatibility input does not guarantee full process identity or duplicate-safe client retries.
+Request metadata `pfe-collection-profile: external/1.0` selects the external collection profile. Requests without it use standard OTLP input (`standard`). Ingestion must accept standard OTLP metrics and traces within source permissions and admission limits. Preserve their native semantics and mark absent context as unknown. Standard OTLP input does not guarantee full process identity or duplicate-safe client retries.
 
 Authentication must establish trusted `project_id` and `source_id`, permitted hosts and signal types. Payload attributes cannot change these permissions. Require TLS outside the isolated test environment. Execution registration and human ownership belong to the [application API](architecture.md).
 
@@ -34,7 +34,7 @@ Treat UUIDs as opaque identifiers. Their embedded time must not replace explicit
 
 The process key is `(authenticated project, host.id, boot_id, namespace_id, process.pid, incarnation_id)`. On Linux, `start-ticks:<decimal>` is valid when the collector reads and rechecks both the PID and start ticks before emission. Rounded creation times or UUIDs regenerated on discovery cannot satisfy this identity. Discard readings when the process incarnation cannot be verified.
 
-Every external `ScopeMetrics.scope` requires non-empty `name` and `version` strings, at most 128 bytes, identifying the collection or normalization component. An adapter's mapping description must retain source metric names, dimensions and conversions. Keep weaker compatibility identities separate from fully identified process histories.
+Every external `ScopeMetrics.scope` requires non-empty `name` and `version` strings, at most 128 bytes, identifying the collection or normalization component. An adapter's mapping description must retain source metric names, dimensions and conversions. Keep resources without verified process identity separate from fully identified process histories.
 
 | Optional attribute                                 | Type and placement                                                                                      |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -83,7 +83,7 @@ CPU rate can exceed one. Calculating a percentage relative to allocated resource
 
 Emit `pfe.clock.status` and any known `pfe.clock.uncertainty` once per completed cycle, with the same timestamp as `pfe.collection.scan.duration`. Match them to readings in that scan window using authenticated project/source, host, boot, collection source, epoch and instrumentation scope. A synchronized status and uncertainty bound must cover the entire window. Missing, conflicting or insufficient diagnostics leave clock quality unknown; do not carry an older bound into later cycles. Retain these diagnostics through batch splitting and storage so late arrivals can be matched by source time rather than receipt order.
 
-An unknown clock status can coexist with a coarse estimate adequate for submission-age admission, but supplies no measured synchronization bound across nodes. Compatibility delta sums retain their original intervals and types; conversion requires a documented mapping.
+An unknown clock status can coexist with a coarse estimate adequate for submission-age admission, but supplies no measured synchronization bound across nodes. Standard OTLP delta sums retain their original intervals and types; conversion requires a documented mapping.
 
 ## Missing readings
 
@@ -120,9 +120,9 @@ Validate the whole request before durable publication. Return gRPC `OK` with an 
 
 Remove pending records on confirmed success. A terminal rejection or expiry permits removal, provided the local discard and its reason are recorded. A timeout or lost acknowledgement leaves acceptance uncertain. Keep the batch pending for retry within its lifetime.
 
-Retained envelopes include trusted project and source IDs, receipt time, server-generated UUIDv7 `record_id`, payload kind, profile and version, client identity and time, and the supported re-encoded OTLP payload. Retain the record ID unchanged through replay. See [serialization](serialization.md#retention-replay-and-compatibility).
+Retained envelopes include trusted project and source IDs, receipt time, server-generated UUIDv7 `record_id`, payload kind, profile and version, client identity and time, and the supported re-encoded OTLP payload. Retain the record ID unchanged through replay. See [serialization](serialization.md#retention-and-replay).
 
-Deduplicate external submissions by `(project_id, source_id, payload_kind, pfe-batch-id)`. Atomically commit measurements, deduplication state and aggregates before advancing consumer progress. Compatibility replay uses the trusted `record_id` instead of a client batch ID. Separate client resubmissions may therefore duplicate data.
+Deduplicate external submissions by `(project_id, source_id, payload_kind, pfe-batch-id)`. Atomically commit measurements, deduplication state and aggregates before advancing consumer progress. Replay of requests without a batch ID uses the trusted `record_id` instead of a client batch ID. Separate client resubmissions may therefore duplicate data.
 
 The producer must keep batch content immutable. Ingestion is not required to detect every conflict caused by malicious batch ID reuse. Any detected conflict must not overwrite the first batch.
 
@@ -141,11 +141,11 @@ Keep deduplication state until `created_at + R + S` has passed and the replay ho
 
 Follow the [OTLP failure table](https://opentelemetry.io/docs/specs/otlp/#failures) for other statuses. `RESOURCE_EXHAUSTED` is retryable only with recovery `RetryInfo`; received partial success is never retried. Keep credentials and telemetry bodies out of logs/responses.
 
-## Compatibility
+## Supported formats
 
-Accept additive `external/1.<minor>` extensions under source policy. Unknown optional fields do not satisfy baseline requirements. Changes to identity, required fields, units or aggregation meaning require a new metric name or profile major version. Reject unknown major versions without fallback.
+The external collection profile is `external/1.0`. Standard OTLP input uses `standard`, which is also the default when the profile header is absent. Reject other profiles without inferring a mapping or silently selecting another profile.
 
-Retain original profiles and historical mappings. Re-encoding supported Protobuf fields does not preserve unknown future fields or the original byte layout.
+Envelope and storage schema versions identify the current format. Reject unsupported versions without advancing processing. Re-encoding supported Protobuf fields does not preserve unknown fields or the original byte layout.
 
 ## Examples
 
