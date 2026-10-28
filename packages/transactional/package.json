@@ -6,10 +6,11 @@
     ".": "./src/index.tsx"
   },
   "scripts": {
-    "dev": "email dev --dir ./emails --port 3002",
-    "typecheck": "tsc --noEmit"
+    "dev": "bun run --filter @pfe/i18n compile && email dev --dir ./emails --port 3002",
+    "typecheck": "bun run --filter @pfe/i18n compile && tsc --noEmit"
   },
   "dependencies": {
+    "@pfe/i18n": "workspace:*",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-email": "6.11.6"

@@ -4,10 +4,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "preview": "vite preview --host 127.0.0.1 --strictPort",
     "build": "vite build",
-    "typecheck": "tsc --noEmit",
-    "test": "bun test tests/unit",
-    "test:db": "bun test tests/integration",
+    "typecheck": "bun run --filter @pfe/i18n compile && tsc --noEmit",
+    "test": "bun run --filter @pfe/i18n compile && bun test tests/unit",
+    "test:db": "bun run --filter @pfe/i18n compile && bun test --timeout 30000 tests/integration",
+    "test:browser": "bun run --filter @pfe/i18n compile && playwright test",
     "db:generate": "drizzle-kit generate",
     "db:check": "drizzle-kit check",
     "db:migrate": "bun scripts/migrate.ts"
@@ -15,7 +17,9 @@
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.15",
     "@better-auth/passkey": "1.7.15",
+    "@pfe/i18n": "workspace:*",
     "@pfe/transactional": "workspace:*",
+    "@tanstack/react-form": "1.33.5",
     "@tanstack/react-query": "5.104.1",
     "@tanstack/react-router": "1.170.41",
     "@tanstack/react-router-ssr-query": "1.167.3",
@@ -24,6 +28,8 @@
     "class-variance-authority": "0.7.1",
     "cn": "0.4.0",
     "drizzle-orm": "0.45.4",
+    "es-toolkit": "1.53.1",
+    "lucide-react": "1.67.0",
     "nodemailer": "10.3.1",
     "pg": "8.23.1",
     "radix-ui": "1.6.7",
@@ -31,6 +37,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "4.3.3",
     "@types/bun": "1.4.4",
     "@types/node": "26.6.4",

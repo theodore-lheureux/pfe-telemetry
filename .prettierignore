@@ -9,3 +9,5 @@ infra/test-environment/.state/
 infra/test-environment/.vagrant/
 apps/web/src/routeTree.gen.ts
 bun.lock
+packages/i18n/src/paraglide/
+packages/i18n/project.inlang/cache/

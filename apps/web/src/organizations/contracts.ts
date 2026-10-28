@@ -1,5 +1,16 @@
 export type OrganizationRole = "owner" | "admin" | "member";
 export type ProjectRole = "viewer" | "member" | "admin";
+export type FailureReason =
+	| "LAST_OWNER"
+	| "VERIFIED_EMAIL_REQUIRED"
+	| "INVALID_TIME_RANGE"
+	| "INVALID_EXECUTION_WINDOW"
+	| "INVALID_EXPIRY"
+	| "INVALID_NAME"
+	| "HOSTS_REQUIRED"
+	| "HOSTS_UNIQUE"
+	| "INVALID_IDENTIFIER"
+	| "CREDENTIAL_INACTIVE";
 
 export interface OrganizationSummary {
 	id: string;
@@ -59,7 +70,9 @@ export type OperationResult<T> =
 					| "FORBIDDEN"
 					| "NOT_FOUND"
 					| "INVALID_INPUT"
-					| "CONFLICT";
+					| "CONFLICT"
+					| "RATE_LIMITED";
 				message: string;
+				reason?: FailureReason;
 			};
 	  };

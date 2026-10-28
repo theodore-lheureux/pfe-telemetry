@@ -1,3 +1,4 @@
+import { InputError } from "../lib/input-error";
 import type {
 	CreateProjectInput,
 	OrganizationInput,
@@ -20,7 +21,7 @@ export function parseIdentifier(value: unknown) {
 
 export function parseName(value: unknown) {
 	if (typeof value !== "string" || !value.trim() || value.trim().length > 120)
-		throw new Error("Name must contain 1–120 characters");
+		throw new InputError("INVALID_NAME", "Name must contain 1–120 characters");
 	return value.trim();
 }
 

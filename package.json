@@ -10,7 +10,8 @@
     "prepare": "bun --bun run lefthook install",
     "dev": "bun --bun run --filter @pfe/web dev",
     "build": "bun --bun run --filter @pfe/web build",
-    "typecheck": "bun --bun run --filter '@pfe/*' typecheck",
+    "i18n:compile": "bun run --filter @pfe/i18n compile",
+    "typecheck": "bun run i18n:compile && bun run --cwd packages/i18n typecheck && bun run --cwd packages/transactional typecheck && bun run --cwd apps/web typecheck",
     "lint": "just lint",
     "lint:fix": "just lint-fix",
     "format": "just format",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
+    "@inlang/paraglide-js": "3.0.0",
     "lefthook": "2.1.17",
     "prettier": "3.9.9"
   },

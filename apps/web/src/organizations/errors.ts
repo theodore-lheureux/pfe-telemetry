@@ -1,4 +1,4 @@
-import type { OperationResult } from "./contracts";
+import type { FailureReason, OperationResult } from "./contracts";
 
 export type OperationErrorCode = NonNullable<
 	OperationResult<never>["error"]
@@ -8,6 +8,7 @@ export class OperationError extends Error {
 	constructor(
 		readonly code: OperationErrorCode,
 		message: string,
+		readonly reason?: FailureReason,
 	) {
 		super(message);
 	}

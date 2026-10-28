@@ -1,0 +1,16 @@
+{
+  "name": "@pfe/i18n",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./labels": "./src/labels.ts",
+    "./messages": "./src/paraglide/messages.js",
+    "./runtime": "./src/paraglide/runtime.js",
+    "./server": "./src/paraglide/server.js"
+  },
+  "scripts": {
+    "compile": "bun scripts/compile.ts",
+    "typecheck": "tsc --noEmit"
+  }
+}

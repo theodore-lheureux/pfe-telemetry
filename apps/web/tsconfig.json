@@ -13,5 +13,12 @@
     "types": ["vite/client"],
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "scripts", "tests", "drizzle.config.ts", "vite.config.ts"]
+  "include": [
+    "src",
+    "scripts",
+    "tests",
+    "drizzle.config.ts",
+    "vite.config.ts",
+    "playwright.config.ts"
+  ]
 }

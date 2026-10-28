@@ -13,6 +13,17 @@
 - Do not introduce separate version labels solely to distinguish earlier experiments. Use the current package version for instrumentation metadata.
 - Keep support for current external protocols and integrations distinct from backward compatibility with our own prototypes.
 
+## Frontend
+
+- Prefer appropriate shadcn/ui components using the existing `apps/web/components.json` configuration. Keep native form semantics, typed Router links and accessible async confirmation behavior.
+- Support English and French throughout the UI and transactional emails with shared compiled catalogs and locale-aware formatting. Resolve locale per request; pass email locale explicitly. Keep technical identifiers, commands and protocol values unchanged.
+
+## Agent coordination
+
+- Create implementation agents through Herdr in separate linked worktrees of the `pfe-telemetry` workspace. Discover its current workspace ID instead of hardcoding it, and use `herdr worktree create --workspace <id>` with an explicit base commit or branch.
+- Start each agent in its new worktree's pane and preserve the user's focus with `--no-focus`. Do not use Herdr panes for routine commands or development servers.
+- Use regular subagents for reviews when needed. Present each ticket's changes in Plannotator for approval before committing; do not push or merge without authorization.
+
 ## Comments and tests
 
 - Comment only non-obvious intent, constraints or safety requirements. Do not restate names, standard tool behavior or implementation steps.
@@ -26,6 +37,7 @@
 - Create a QueryClient inside `getRouter`, never at module scope. The SSR integration supplies its provider, hydration and streaming; do not duplicate them. Process-wide database pools must not hold request-specific session data.
 - Await authentication, authorization and critical page data. Defer only secondary data under Suspense, with handled query rejections and explicit freshness settings. Do not add artificial streaming examples to product routes. Verify streaming through the production host/proxy.
 - Keep the HTML document in the root `shellComponent` so shared pending/error/not-found UI retains the document shell. Add shared helpers, middleware or protected layouts when repeated use justifies them, not preemptively.
+- Preserve `Date` values in internal application RPC responses using Start's native serialization. Convert to ISO strings only at text or JSON integration boundaries, such as URLs, HTML attributes and worker payloads.
 - Check [Start's documentation](https://tanstack.com/start/latest/docs/framework/react/overview) against installed package APIs before applying rolling-documentation examples.
 
 ## Database schemas

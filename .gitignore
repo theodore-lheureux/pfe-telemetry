@@ -13,3 +13,5 @@ infra/test-environment/.vagrant/
 target/
 lefthook-local.yml
 lefthook-local.yaml
+packages/i18n/src/paraglide/
+packages/i18n/project.inlang/cache/
