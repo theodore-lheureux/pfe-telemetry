@@ -1,3 +1,5 @@
+import type { Locale } from "@pfe/i18n";
+import { m } from "@pfe/i18n/messages";
 import {
 	Body,
 	Button,
@@ -10,11 +12,17 @@ import {
 	Text,
 } from "react-email";
 
-export default function SignInEmail({ url }: { url: string }) {
+export default function SignInEmail({
+	url,
+	locale,
+}: {
+	url: string;
+	locale: Locale;
+}) {
 	return (
-		<Html lang="en">
+		<Html lang={locale}>
 			<Head />
-			<Preview>Your sign-in link for PFE Telemetry</Preview>
+			<Preview>{m.email_sign_in_preview({}, { locale })}</Preview>
 			<Body
 				style={{ backgroundColor: "#f5f5f5", fontFamily: "Arial, sans-serif" }}
 			>
@@ -26,11 +34,8 @@ export default function SignInEmail({ url }: { url: string }) {
 						maxWidth: "480px",
 					}}
 				>
-					<Heading>Sign in to PFE Telemetry</Heading>
-					<Text>
-						Use this link to sign in or recover access to your account. It
-						expires in five minutes and can only be used once.
-					</Text>
+					<Heading>{m.email_sign_in_subject({}, { locale })}</Heading>
+					<Text>{m.email_sign_in_body({}, { locale })}</Text>
 					<Button
 						href={url}
 						style={{
@@ -40,18 +45,18 @@ export default function SignInEmail({ url }: { url: string }) {
 							borderRadius: "6px",
 						}}
 					>
-						Sign in
+						{m.sign_in({}, { locale })}
 					</Button>
-					<Text>If the button does not work, open this link:</Text>
+					<Text>{m.email_link_fallback({}, { locale })}</Text>
 					<Link href={url}>{url}</Link>
-					<Text>
-						If you did not request this email, you can ignore it. Do not forward
-						this link.
-					</Text>
+					<Text>{m.email_sign_in_ignore({}, { locale })}</Text>
 				</Container>
 			</Body>
 		</Html>
 	);
 }
 
-SignInEmail.PreviewProps = { url: "https://telemetry.example.com/login" };
+SignInEmail.PreviewProps = {
+	url: "https://telemetry.example.com/login",
+	locale: "en",
+};

@@ -10,6 +10,8 @@ New organization grants use one canonical role: `owner`, `admin` or `member`. Na
 
 Project roles are `viewer`, `member` and `admin`. Every role grants project read access. Project admins can update project settings and manage explicit project memberships; viewers and members cannot. Only organization owners/admins create projects. The `member` role is available for non-administrative execution actions as those operations are implemented.
 
+Only effective project admins manage [collector credentials and enrollment policy](collector-credentials.md), including listing credentials. Credential identities and lifecycle operations are project-scoped.
+
 Any project reader can read all executions in that project. Execution ownership records attribution and controls permitted modifications, not read visibility. Per-execution private/shared ACLs are not part of this model. Separate projects provide the isolation boundary for unrelated workloads.
 
 The same project scope must apply to future telemetry queries, exports and live channels. The current implementation covers organization/project metadata and membership operations; it does not make ClickHouse or the existing operator DuckDB queries tenant-authorized.
@@ -40,6 +42,24 @@ Every operation resolves the current session and canonical membership. The activ
 
 `access.server.ts` owns membership lookup and effective permission decisions. `organizations.server.ts` handles organization reads and native Better Auth creation; `projects.server.ts` handles project and grant operations. These feature modules use Drizzle directly and receive server-resolved actors, not browser headers. Tenant predicates and access checks stay beside the operations they protect. Future telemetry handlers must use the same access decision before querying a sink.
 
+## Organization invitations
+
+`src/organizations/invitation.functions.ts` wraps [Better Auth invitations](https://www.better-auth.com/docs/plugins/organization#invitations). Input and response types are defined in `invitation-contracts.ts`.
+
+| Operation                                                   | Access                      |
+| ----------------------------------------------------------- | --------------------------- |
+| `createInvitation`, `cancelInvitation`                      | Organization owner/admin    |
+| `listInvitations`                                           | Organization member         |
+| `inspectInvitation`, `acceptInvitation`, `rejectInvitation` | Matching verified recipient |
+
+All operations require a verified session, including native endpoints. Only owners may invite owners. Invitations expire after 48 hours; check expiry as well as status. Resending a live pending invitation preserves its role; expired invitations receive a new link. Cancel and recreate an invitation to change its role.
+
+Email links open `/invitations/$invitationId`. Acceptance requires an explicit POST, creates a canonical membership and does not restore previous project grants. Invitations do not bypass closed registration.
+
+Create/resend attempts are limited to ten per user per minute across HTTP and server calls. A successful response does not guarantee email delivery; use Resend to retry. Canceling or rejecting an invitation does not revoke an existing membership.
+
+Refresh invitation data after changes and membership/session state after acceptance. Preserve the local return URL through sign-in.
+
 ## Database integrity
 
 The native member table has unique `(organization_id, user_id)` and `(id, organization_id)` keys. The second key supports tenant-qualified project membership foreign keys. Both project and organization membership must reference the same organization, even when data is written outside application helpers.
@@ -50,6 +70,16 @@ Organization deletion is disabled. Adding that workflow requires explicitly hand
 
 `0002_organizations_and_projects.sql` defines the tables and constraints. `0003_organization_owner_integrity.sql` contains the trigger. The application maintains `src/db/auth-schema.ts` and its member unique keys directly; Drizzle owns migration generation and history. Do not replace the database invariant with an unlocked application-side count.
 
+## Member administration
+
+The member administration page is `/organizations/$organizationId/members`. Every organization member can see the canonical member directory and leave; only owners/admins can change roles, remove other members or manage invitations. Administrators cannot appoint, demote or remove owners. To replace an owner, an existing owner first promotes another member to owner, then removes or demotes the previous owner. The final owner cannot leave. Concurrent owner loss returns a controlled conflict rather than bypassing the database invariant.
+
+Effective project admins manage explicit grants at `/organizations/$organizationId/projects/$projectId/settings/members`. The selector lists current members of the same organization. Organization owner/admin access is shown as implicit and cannot be reduced by a project grant. Removing a redundant explicit grant leaves that implicit access intact. Giving up one's own explicit project administration returns to the organization's project list.
+
+`member.functions.ts` exposes `listOrganizationMembers`, `listProjectGrantCandidates`, `updateOrganizationMemberRole`, `removeOrganizationMember` and `leaveOrganization`. Each operation resolves a verified session independently. `members.server.ts` projects safe directory fields and calls native Better Auth APIs for organization membership changes; project grants use the existing application operations. Router context/loaders own the UI state and are invalidated after successful changes. The UI does not introduce Better Auth organization stores or private Query data.
+
+Invitation email links open `/invitations/$invitationId`. Sign-in preserves that local return path. Invitation details are shown only after the backend verifies the signed-in user's matching, verified email. Opening a link never joins an organization: acceptance and rejection require explicit POST actions. Unavailable links show invalid, expired, canceled or already-used feedback; rejection shows a terminal confirmation and does not remove an existing membership. New ordinary members still need explicit project access. Administrators can cancel pending invitations or retry delivery with Resend; only owners can resend owner invitations. A resend preserves the stored role, and an expired invitation receives a new link. Creation and resend feedback do not guarantee email delivery.
+
 ## Validation
 
-Run `just test-db` with an isolated PostgreSQL test account as described in [web development](../apps/web/README.md#test-database-changes). The organization tests cover private defaults, role precedence, cross-organization identifiers and foreign keys, revocation, native promotion restrictions, concurrent owner loss and user-delete cascades.
+Run `just test-db` with an isolated PostgreSQL test account as described in [web development](../apps/web/README.md#test-database-changes). The organization tests cover private defaults, role precedence, cross-organization identifiers and foreign keys, revocation, native promotion restrictions, concurrent owner loss and user-delete cascades. Invitation regressions cover native role restrictions, verified mailbox matching, expiry, replay, concurrent acceptance, resend, delivery failure and shared send-attempt limits. `just test-web` checks invitation validation and email rendering/delivery with a non-network transport.

@@ -1,12 +1,17 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { passkey } from "@better-auth/passkey";
+import { type Locale, requestLocale } from "@pfe/i18n";
+import type { OrganizationInvitationEmailProps } from "@pfe/transactional";
 import { type BetterAuthPlugin, betterAuth } from "better-auth";
 import { createAuthMiddleware, freshSessionMiddleware } from "better-auth/api";
 import { magicLink } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import type { getDatabase } from "../db/client.server";
 import * as schema from "../db/schema";
-import { organizationPlugin } from "../organizations/auth-plugin.server";
+import {
+	invitationSecurity,
+	organizationPlugin,
+} from "../organizations/auth-plugin.server";
 import type { AuthConfig } from "./config.server";
 
 const credentialSecurity = {
@@ -28,7 +33,16 @@ const credentialSecurity = {
 export function createAuth(
 	config: AuthConfig,
 	database: ReturnType<typeof getDatabase>,
-	sendLink: (email: string, url: string) => Promise<void>,
+	email: {
+		sendSignInLink: (
+			email: string,
+			url: string,
+			locale: Locale,
+		) => Promise<void>;
+		sendOrganizationInvitation: (
+			props: OrganizationInvitationEmailProps,
+		) => Promise<void>;
+	},
 ) {
 	return betterAuth({
 		appName: "PFE Telemetry",
@@ -50,12 +64,14 @@ export function createAuth(
 			disableCSRFCheck: false,
 		},
 		plugins: [
-			organizationPlugin(),
+			organizationPlugin(config.origin, email.sendOrganizationInvitation),
+			invitationSecurity(database),
 			magicLink({
 				disableSignUp: !config.allowSignUp,
 				storeToken: "hashed",
 				expiresIn: 300,
-				sendMagicLink: ({ email, url }) => sendLink(email, url),
+				sendMagicLink: ({ email: recipient, url }, context) =>
+					email.sendSignInLink(recipient, url, requestLocale(context?.headers)),
 			}),
 			passkey({
 				rpID: config.rpID,

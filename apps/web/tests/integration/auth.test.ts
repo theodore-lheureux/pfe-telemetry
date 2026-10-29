@@ -29,13 +29,14 @@ let database: ReturnType<typeof createDatabase>;
 let sentLinks: { email: string; url: string }[];
 
 function auth(allowSignUp = true) {
-	return createAuth(
-		{ ...config, allowSignUp },
-		database.db,
-		async (email, url) => {
+	return createAuth({ ...config, allowSignUp }, database.db, {
+		sendSignInLink: async (email, url) => {
 			sentLinks.push({ email, url });
 		},
-	);
+		sendOrganizationInvitation: async () => {
+			throw new Error("Unexpected invitation email");
+		},
+	});
 }
 
 beforeEach(async () => {

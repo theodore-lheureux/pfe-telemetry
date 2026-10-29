@@ -1,5 +1,18 @@
-import { APIError } from "better-auth/api";
+import { randomUUID } from "node:crypto";
+import { requestLocale } from "@pfe/i18n";
+import type { OrganizationInvitationEmailProps } from "@pfe/transactional";
+import type { BetterAuthPlugin } from "better-auth";
+import {
+	APIError,
+	createAuthMiddleware,
+	getSessionFromCtx,
+} from "better-auth/api";
 import { organization } from "better-auth/plugins";
+import { and, eq, gt, sql } from "drizzle-orm";
+import { requireVerifiedSession } from "../auth/session-policy";
+import type { getDatabase } from "../db/client.server";
+import { invitation, member, rateLimit } from "../db/schema";
+import { resolveOrganizationRole } from "./access.server";
 import { parseName, parseOrganizationInput, parseSlug } from "./validation";
 
 function checkRole(role: unknown) {
@@ -10,11 +23,115 @@ function checkRole(role: unknown) {
 	}
 }
 
-export function organizationPlugin() {
+export function invitationSecurity(database: ReturnType<typeof getDatabase>) {
+	return {
+		id: "invitation-security",
+		hooks: {
+			before: [
+				{
+					matcher: (ctx) =>
+						[
+							"/organization/invite-member",
+							"/organization/list-invitations",
+							"/organization/get-full-organization",
+							"/organization/cancel-invitation",
+						].includes(ctx.path ?? ""),
+					handler: createAuthMiddleware(async (ctx) => {
+						const session = requireVerifiedSession(
+							await getSessionFromCtx(ctx),
+							({ code, message, reason }) =>
+								new APIError(
+									code === "UNAUTHENTICATED" ? "UNAUTHORIZED" : "FORBIDDEN",
+									{ message, ...(reason ? { code: reason } : {}) },
+								),
+						);
+						if (ctx.path !== "/organization/invite-member") return;
+						checkRole(ctx.body?.role);
+						// Share the send limit with server API calls, within native cleanup's 60-second window.
+						const now = Date.now();
+						const key = `invitation-send:${session.user.id}`;
+						const [limit] = await database
+							.insert(rateLimit)
+							.values({
+								id: randomUUID(),
+								key,
+								count: 1,
+								lastRequest: now,
+							})
+							.onConflictDoUpdate({
+								target: rateLimit.key,
+								set: {
+									count: sql`CASE WHEN ${rateLimit.lastRequest} <= ${now - 60_000} THEN 1 ELSE ${rateLimit.count} + 1 END`,
+									lastRequest: sql`CASE WHEN ${rateLimit.lastRequest} <= ${now - 60_000} THEN ${now} ELSE ${rateLimit.lastRequest} END`,
+								},
+							})
+							.returning({ count: rateLimit.count });
+						if (limit.count > 10)
+							throw new APIError("TOO_MANY_REQUESTS", {
+								message: "Too many invitation attempts; try again in a minute",
+							});
+						if (!ctx.body?.resend) return;
+						const organizationId =
+							ctx.body.organizationId || session.session.activeOrganizationId;
+						if (!organizationId || typeof ctx.body.email !== "string") return;
+						const [membership] = await database
+							.select({ role: member.role })
+							.from(member)
+							.where(
+								and(
+									eq(member.organizationId, organizationId),
+									eq(member.userId, session.user.id),
+								),
+							);
+						const role = membership && resolveOrganizationRole(membership.role);
+						if (role !== "owner" && role !== "admin") return;
+						// Native resend skips beforeCreateInvitation; check the stored role here.
+						const pending = await database
+							.select({ role: invitation.role })
+							.from(invitation)
+							.where(
+								and(
+									eq(invitation.organizationId, organizationId),
+									eq(invitation.email, ctx.body.email.toLowerCase()),
+									eq(invitation.status, "pending"),
+									gt(invitation.expiresAt, new Date()),
+								),
+							);
+						if (pending.some((entry) => entry.role !== ctx.body.role))
+							throw new APIError("BAD_REQUEST", {
+								message:
+									"Resend must keep the invitation role; cancel it before changing the role",
+							});
+					}),
+				},
+			],
+		},
+	} satisfies BetterAuthPlugin;
+}
+
+export function organizationPlugin(
+	origin: string,
+	sendInvitation: (props: OrganizationInvitationEmailProps) => Promise<void>,
+) {
 	return organization({
 		allowUserToCreateOrganization: (user) => user.emailVerified,
 		disableOrganizationDeletion: true,
 		requireEmailVerificationOnInvitation: true,
+		sendInvitationEmail: async (
+			{ id, email, role, organization, inviter, invitation },
+			request,
+		) => {
+			checkRole(role);
+			await sendInvitation({
+				locale: requestLocale(request?.headers),
+				url: new URL(`/invitations/${encodeURIComponent(id)}`, origin).href,
+				email,
+				role: role as OrganizationInvitationEmailProps["role"],
+				organizationName: organization.name,
+				inviterEmail: inviter.user.email,
+				expiresAt: invitation.expiresAt,
+			});
+		},
 		organizationHooks: {
 			beforeCreateOrganization: async ({ organization }) => {
 				try {
@@ -59,6 +176,19 @@ export function organizationPlugin() {
 			},
 			beforeAcceptInvitation: async ({ invitation }) => {
 				checkRole(invitation.role ?? "member");
+			},
+			beforeRejectInvitation: async ({ invitation }) => {
+				if (invitation.expiresAt <= new Date())
+					throw new APIError("BAD_REQUEST", {
+						code: "INVITATION_NOT_FOUND",
+						message: "Invitation is unavailable",
+					});
+			},
+			beforeCancelInvitation: async ({ invitation }) => {
+				if (invitation.status !== "pending")
+					throw new APIError("CONFLICT", {
+						message: "Invitation is no longer pending",
+					});
 			},
 		},
 	});
