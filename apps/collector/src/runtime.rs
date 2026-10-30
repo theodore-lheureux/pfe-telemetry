@@ -38,6 +38,7 @@ pub async fn run(config: Config) -> Result<()> {
         queue_max_batches: max_batches,
         queue_max_age_seconds,
         queue_directory: directory,
+        drain,
         ..
     } = config;
     let period = Duration::from_millis(interval_ms);
@@ -56,6 +57,13 @@ pub async fn run(config: Config) -> Result<()> {
     let spool = Arc::new(Mutex::new(spool));
     let client = client(endpoint);
     let loss = LossTracker::default();
+    if drain {
+        let (_stop, stopped) = watch::channel(false);
+        return tokio::select! {
+            result = export(client, spool, loss, max_age, None, stopped, authorization) => result,
+            () = shutdown_signal()? => Ok(()),
+        };
+    }
     let feedback = loss.clone();
     let collector =
         tokio::task::spawn_blocking(move || crate::Collector::new(sampler_config, feedback))
@@ -77,7 +85,7 @@ pub async fn run(config: Config) -> Result<()> {
         spool,
         loss,
         max_age,
-        notify,
+        Some(notify),
         stopped,
         authorization,
     ));
@@ -322,7 +330,7 @@ async fn export(
     spool: SharedSpool,
     loss: LossTracker,
     max_age: Duration,
-    notify: Arc<Notify>,
+    notify: Option<Arc<Notify>>,
     mut stopped: watch::Receiver<bool>,
     authorization: Option<tonic::metadata::MetadataValue<tonic::metadata::Ascii>>,
 ) -> Result<()> {
@@ -331,6 +339,10 @@ async fn export(
             return Ok(());
         }
         let Some(batch) = access(&spool, |spool| spool.front()).await? else {
+            let Some(notify) = &notify else {
+                tracing::info!("Persistent export queue is empty");
+                return Ok(());
+            };
             tokio::select! { _ = stopped.changed() => return Ok(()), () = notify.notified() => {} }
             continue;
         };
@@ -439,6 +451,7 @@ mod tests {
         unavailable: bool,
         rejected: bool,
         partial: bool,
+        authorization: Option<String>,
     }
     #[tonic::async_trait]
     impl MetricsService for Receiver {
@@ -446,6 +459,15 @@ mod tests {
             &self,
             request: Request<ExportMetricsServiceRequest>,
         ) -> std::result::Result<Response<ExportMetricsServiceResponse>, Status> {
+            if let Some(expected) = &self.0.lock().unwrap().authorization
+                && request
+                    .metadata()
+                    .get("authorization")
+                    .and_then(|v| v.to_str().ok())
+                    != Some(expected.as_str())
+            {
+                return Err(Status::unauthenticated("Invalid collector credentials"));
+            }
             let id = request
                 .metadata()
                 .get("pfe-batch-id")
@@ -559,7 +581,7 @@ mod tests {
             fixture.spool.clone(),
             fixture.loss.clone(),
             Duration::from_secs(60),
-            Arc::new(Notify::new()),
+            Some(Arc::new(Notify::new())),
             stopped,
             None,
         ));
@@ -700,7 +722,7 @@ mod tests {
             fixture.spool.clone(),
             fixture.loss.clone(),
             Duration::ZERO,
-            Arc::new(Notify::new()),
+            Some(Arc::new(Notify::new())),
             stopped,
             None,
         ));
@@ -721,6 +743,96 @@ mod tests {
         assert_eq!(local.code(), tonic::Code::Unknown);
         assert!(retry_delay(&local).is_some());
         assert!(retry_delay(&Status::unknown("server rejection")).is_none());
+    }
+
+    #[tokio::test]
+    async fn drain_then_rotate_keeps_old_queue_binding_and_uses_a_new_queue() {
+        use clap::Parser;
+        let directory = std::env::temp_dir().join(format!("pfe-rotation-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir(&directory).unwrap();
+        let token_file = directory.join("source.token");
+        let token =
+            "pfe_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        std::fs::write(&token_file, token).unwrap();
+        let queue = directory.join("old-queue");
+        let receiver = Receiver::default();
+        let (endpoint, server_stop) = server(receiver.clone()).await;
+        let configuration = |queue: &std::path::Path| {
+            Config::try_parse_from([
+                "collector",
+                "--drain",
+                "--endpoint",
+                &endpoint.uri().to_string(),
+                "--source-token-file",
+                token_file.to_str().unwrap(),
+                "--queue-directory",
+                queue.to_str().unwrap(),
+            ])
+            .unwrap()
+        };
+        let config = configuration(&queue);
+        let destination = config.export().unwrap().queue_destination;
+        let loss = LossTracker::default();
+        let batch = Batch::new("epoch".into(), ExportMetricsServiceRequest::default(), 1).unwrap();
+        {
+            let mut spool = Spool::open(
+                &queue,
+                &destination,
+                config.queue_max_bytes,
+                config.queue_max_batches,
+            )
+            .unwrap();
+            spool.enqueue(&batch, &loss).unwrap();
+        }
+        std::fs::write(&token_file, token.replace('A', "B")).unwrap();
+        assert!(run(configuration(&queue)).await.is_err());
+        assert_eq!(
+            Spool::open(&queue, &destination, 64 * 1024 * 1024, 1024)
+                .unwrap()
+                .usage()
+                .unwrap()
+                .1,
+            1
+        );
+        std::fs::write(&token_file, token).unwrap();
+        receiver.0.lock().unwrap().authorization = Some(format!("Bearer {token}"));
+        tokio::time::timeout(Duration::from_secs(5), run(config))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(receiver.0.lock().unwrap().requests.len(), 1);
+        assert_eq!(
+            Spool::open(&queue, &destination, 64 * 1024 * 1024, 1024)
+                .unwrap()
+                .usage()
+                .unwrap()
+                .1,
+            0
+        );
+        std::fs::write(&token_file, token.replace('A', "B")).unwrap();
+        assert!(run(configuration(&queue)).await.is_err());
+        let new_queue = directory.join("rotated-queue");
+        let rotated_config = configuration(&new_queue);
+        let rotated_destination = rotated_config.export().unwrap().queue_destination;
+        {
+            let mut spool = Spool::open(
+                &new_queue,
+                &rotated_destination,
+                rotated_config.queue_max_bytes,
+                rotated_config.queue_max_batches,
+            )
+            .unwrap();
+            spool.enqueue(&batch, &loss).unwrap();
+        }
+        receiver.0.lock().unwrap().authorization =
+            Some(format!("Bearer {}", token.replace('A', "B")));
+        tokio::time::timeout(Duration::from_secs(5), run(configuration(&new_queue)))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(receiver.0.lock().unwrap().requests.len(), 2);
+        let _ = server_stop.send(());
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

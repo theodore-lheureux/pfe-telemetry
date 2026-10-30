@@ -49,13 +49,13 @@ The server binds to `127.0.0.1:4317` by default. `TELEMETRY_INGESTION_ADDR` sele
 
 Metrics and traces support uncompressed and gzip-compressed requests with a 4 MiB decoded-message limit. Each connection allows at most 32 concurrent handlers, with a 10-second handler timeout. This is not a global admission limit. Metrics ingestion additionally allows at most 16 concurrent admitted exports and waits up to five seconds for Kafka delivery confirmation. Ctrl-C and SIGTERM trigger graceful shutdown.
 
-| Health service name                   | Current status                                               |
-| ------------------------------------- | ------------------------------------------------------------ |
-| `grpc.health.v1.Health`               | `SERVING` while the gRPC server is running.                  |
-| Empty name, meaning overall readiness | `SERVING` when configured Kafka topic metadata is available. |
-| OTLP metrics service name             | `SERVING` when configured Kafka topic metadata is available. |
+| Health service name                   | Current status                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `grpc.health.v1.Health`               | `SERVING` while the gRPC server is running.                               |
+| Empty name, meaning overall readiness | `SERVING` when Kafka metadata and credential-table access checks succeed. |
+| OTLP metrics service name             | `SERVING` when Kafka metadata and credential-table access checks succeed. |
 
-Configured metrics ingestion authenticates sources and publishes validated requests to Kafka before acknowledgement. Without `TELEMETRY_INGESTION_SOURCES_FILE`, metrics exports remain `UNIMPLEMENTED`. Trace storage remains `UNIMPLEMENTED`. Overall and metrics readiness follow Kafka metadata checks when configured; the named health service remains a process-connectivity check. See the [service reference](../apps/server/README.md) for actual limits and [local pipeline](../infra/telemetry/README.md) for setup.
+Configured metrics ingestion authenticates web-managed project credentials against PostgreSQL for every submission and publishes validated requests to Kafka before acknowledgement. Without `TELEMETRY_INGESTION_DATABASE_URL`, metrics exports remain `UNIMPLEMENTED`. Trace storage remains `UNIMPLEMENTED`. Overall and metrics readiness follow Kafka metadata and credential-table access checks when configured; the named health service remains a process-connectivity check. See the [service reference](../apps/server/README.md) for actual limits and [local pipeline](../infra/telemetry/README.md) for setup.
 
 ## Security
 

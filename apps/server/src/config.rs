@@ -29,8 +29,8 @@ pub struct IngestionConfig {
         default_value = "127.0.0.1:4317"
     )]
     pub address: SocketAddr,
-    #[arg(long, env = "TELEMETRY_INGESTION_SOURCES_FILE", hide_env_values = true)]
-    pub sources_file: Option<PathBuf>,
+    #[arg(long, env = "TELEMETRY_INGESTION_DATABASE_URL", hide_env_values = true)]
+    pub database_url: Option<String>,
     #[command(flatten)]
     pub broker: BrokerConfig,
 }
@@ -69,12 +69,17 @@ mod tests {
             "pfe-server",
             "--address",
             "127.0.0.1:4318",
-            "--sources-file",
-            "sources.json",
+            "--database-url",
+            "postgresql://reader@localhost/pfe?sslmode=disable",
         ])
         .unwrap();
         assert_eq!(server.address.port(), 4318);
-        assert_eq!(server.sources_file.unwrap(), PathBuf::from("sources.json"));
+        assert!(
+            server
+                .database_url
+                .unwrap()
+                .starts_with("postgresql://reader@")
+        );
         assert!(IngestionConfig::try_parse_from(["pfe-server", "--address", "invalid"]).is_err());
         let worker = StorageConfig::try_parse_from([
             "pfe-storage",

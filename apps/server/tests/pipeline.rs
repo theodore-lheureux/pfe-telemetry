@@ -29,7 +29,7 @@ impl Sink for LoseResponse {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "Requires a real Kafka broker; set TELEMETRY_KAFKA_BOOTSTRAP"]
+#[ignore = "Requires Kafka, disposable TEST_DATABASE_URL and web migrations"]
 async fn retained_batches_recover_after_worker_restart_and_lost_acknowledgement() {
     let bootstrap = std::env::var("TELEMETRY_KAFKA_BOOTSTRAP").expect("TELEMETRY_KAFKA_BOOTSTRAP");
     let topic = format!("pfe-test-{}", Uuid::now_v7());

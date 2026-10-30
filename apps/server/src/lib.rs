@@ -28,7 +28,7 @@ use tonic::{Request, Response, Status, codec::CompressionEncoding, transport::Se
 use tonic_health::{ServingStatus, server::health_reporter};
 use uuid::Uuid;
 
-use auth::{Sources, one};
+use auth::{Credentials, one};
 use broker::Sink;
 use envelope::Envelope;
 
@@ -68,7 +68,7 @@ pub fn unix_nanos() -> Result<u64> {
 
 #[derive(Clone)]
 struct Ingestion {
-    configured: Option<(Arc<Sources>, Arc<dyn Sink>)>,
+    configured: Option<(Arc<Credentials>, Arc<dyn Sink>)>,
     admission: Arc<Semaphore>,
 }
 
@@ -77,17 +77,17 @@ impl Ingestion {
         &self,
         request: Request<ExportMetricsServiceRequest>,
     ) -> std::result::Result<Response<ExportMetricsServiceResponse>, Status> {
-        let Some((sources, sink)) = &self.configured else {
+        let Some((credentials, sink)) = &self.configured else {
             return Err(Status::unimplemented(
                 "Durable telemetry ingestion is not configured",
             ));
         };
-        let source = sources.authenticate(request.metadata())?;
         let _permit = self
             .admission
             .clone()
             .try_acquire_owned()
             .map_err(|_| Status::unavailable("Ingestion is at capacity"))?;
+        let source = credentials.authenticate(request.metadata()).await?;
         let received =
             unix_nanos().map_err(|_| Status::unavailable("Ingestion clock is unavailable"))?;
         let profile = one(request.metadata(), "pfe-collection-profile")?
@@ -202,11 +202,11 @@ pub async fn router() -> Router {
     build_router(None).await
 }
 
-pub async fn configured_router(sources: Sources, sink: Arc<dyn Sink>) -> Router {
-    build_router(Some((Arc::new(sources), sink))).await
+pub async fn configured_router(credentials: Credentials, sink: Arc<dyn Sink>) -> Router {
+    build_router(Some((Arc::new(credentials), sink))).await
 }
 
-async fn build_router(configured: Option<(Arc<Sources>, Arc<dyn Sink>)>) -> Router {
+async fn build_router(configured: Option<(Arc<Credentials>, Arc<dyn Sink>)>) -> Router {
     let (reporter, health) = health_reporter();
     reporter
         .set_service_status(HEALTH_SERVICE, ServingStatus::Serving)
@@ -221,13 +221,19 @@ async fn build_router(configured: Option<(Arc<Sources>, Arc<dyn Sink>)>) -> Rout
     reporter
         .set_not_serving::<TraceServiceServer<Ingestion>>()
         .await;
-    if let Some((_, sink)) = &configured {
+    if let Some((credentials, sink)) = &configured {
         let sink = sink.clone();
+        let credentials = Arc::downgrade(credentials);
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(Duration::from_secs(5));
             loop {
                 tick.tick().await;
-                let status = if sink.ready().await {
+                let Some(credentials) = credentials.upgrade() else {
+                    break;
+                };
+                let (broker_ready, credentials_ready) =
+                    tokio::join!(sink.ready(), credentials.ready());
+                let status = if broker_ready && credentials_ready {
                     ServingStatus::Serving
                 } else {
                     ServingStatus::NotServing

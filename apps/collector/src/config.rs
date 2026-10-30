@@ -17,6 +17,9 @@ use crate::{CollectorConfig, spool::Result};
     about = "Collect Linux node and process resource metrics"
 )]
 pub struct Config {
+    /// Export the existing queue without sampling, then exit when it is empty.
+    #[arg(long)]
+    pub drain: bool,
     /// Sampling interval in milliseconds.
     #[arg(long, env = "TELEMETRY_COLLECTOR_INTERVAL_MS", default_value_t = 1000, value_parser = clap::value_parser!(u64).range(100..=60_000))]
     pub interval_ms: u64,
@@ -136,6 +139,34 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn web_credential_file_is_sensitive_and_rotation_changes_queue_binding() {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let path = std::env::temp_dir().join(format!("pfe-token-test-{}", uuid::Uuid::now_v7()));
+        let token =
+            "pfe_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+            .unwrap();
+        writeln!(file, "{token}").unwrap();
+        let config =
+            Config::try_parse_from(["collector", "--source-token-file", path.to_str().unwrap()])
+                .unwrap();
+        let first = config.export().unwrap();
+        let authorization = first.authorization.unwrap();
+        assert!(authorization.is_sensitive());
+        assert_eq!(authorization.to_str().unwrap(), format!("Bearer {token}"));
+        assert!(!first.queue_destination.contains(token));
+        fs::write(&path, token.replace('A', "B")).unwrap();
+        let rotated = config.export().unwrap();
+        assert_ne!(first.queue_destination, rotated.queue_destination);
+        fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn settings_enforce_sampling_and_queue_limits() {

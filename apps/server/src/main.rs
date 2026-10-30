@@ -9,7 +9,7 @@ use tracing_subscriber::EnvFilter;
 async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let IngestionConfig {
         address,
-        sources_file,
+        database_url,
         broker: BrokerConfig {
             kafka_bootstrap,
             kafka_topic,
@@ -21,15 +21,15 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         )
         .init();
 
-    let router = if let Some(path) = sources_file {
-        let sources = pfe_server::auth::Sources::load(&path)?;
+    let router = if let Some(database_url) = database_url {
+        let credentials = pfe_server::auth::Credentials::new(&database_url)?;
         let sink = std::sync::Arc::new(pfe_server::broker::KafkaSink::new(
             &kafka_bootstrap,
             &kafka_topic,
         )?);
-        pfe_server::configured_router(sources, sink).await
+        pfe_server::configured_router(credentials, sink).await
     } else {
-        tracing::warn!("No source policies configured; telemetry acceptance is disabled");
+        tracing::warn!("No credential database configured; telemetry acceptance is disabled");
         pfe_server::router().await
     };
     tracing::info!(%address, "Starting OTLP/gRPC server");

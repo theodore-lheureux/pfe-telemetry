@@ -6,6 +6,7 @@ use tonic::Code;
 use uuid::Uuid;
 
 #[tokio::test]
+#[ignore = "Requires disposable TEST_DATABASE_URL and web migrations"]
 async fn gzip_ingestion_authenticates_and_retains_before_success() {
     let sink = Arc::new(TestSink::default());
     let (mut client, stop, task) = server(sink.clone()).await;
@@ -19,7 +20,7 @@ async fn gzip_ingestion_authenticates_and_retains_before_success() {
     {
         let records = sink.records.lock().unwrap();
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].project_id, "trusted-project");
+        assert_eq!(records[0].project_id, PROJECT_ID);
         assert_eq!(records[0].source_id, "trusted-source");
         assert_eq!(records[0].client_batch_id, id);
     }
@@ -38,6 +39,7 @@ async fn gzip_ingestion_authenticates_and_retains_before_success() {
 }
 
 #[tokio::test]
+#[ignore = "Requires disposable TEST_DATABASE_URL and web migrations"]
 async fn rejects_invalid_batches_without_partial_publication() {
     let sink = Arc::new(TestSink::default());
     let (mut client, stop, task) = server(sink.clone()).await;
@@ -112,6 +114,7 @@ async fn rejects_invalid_batches_without_partial_publication() {
 }
 
 #[tokio::test]
+#[ignore = "Requires disposable TEST_DATABASE_URL and web migrations"]
 async fn external_profile_requires_identity_and_correct_units() {
     let sink = Arc::new(TestSink::default());
     let (mut client, stop, task) = server(sink.clone()).await;
@@ -168,6 +171,7 @@ async fn external_profile_requires_identity_and_correct_units() {
 }
 
 #[tokio::test]
+#[ignore = "Requires disposable TEST_DATABASE_URL and web migrations"]
 async fn oversized_requests_are_terminal_and_never_published() {
     let sink = Arc::new(TestSink::default());
     let (mut client, stop, task) = server(sink.clone()).await;
@@ -188,6 +192,7 @@ async fn oversized_requests_are_terminal_and_never_published() {
 }
 
 #[tokio::test]
+#[ignore = "Requires disposable TEST_DATABASE_URL and web migrations"]
 async fn response_waits_for_publication_confirmation() {
     use pfe_server::{Result, broker::Sink, envelope::Envelope};
     struct Delayed(tokio::sync::Semaphore);

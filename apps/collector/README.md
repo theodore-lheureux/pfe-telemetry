@@ -11,6 +11,7 @@ The executable requires Linux and `/proc`. Linux dependencies are target-gated; 
 | Variable                                    | Default                                         | Meaning                                                                                                 |
 | ------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `OTEL_EXPORTER_OTLP_ENDPOINT`               | `http://127.0.0.1:14317`                        | OTLP/gRPC ingestion endpoint.                                                                           |
+| `TELEMETRY_COLLECTOR_SOURCE_TOKEN_FILE`     | Unset                                           | Private file containing the web-issued project collector credential, read at startup.                   |
 | `TELEMETRY_COLLECTOR_INTERVAL_MS`           | `1000`                                          | Intended sampling period, between 100 and 60000 ms.                                                     |
 | `TELEMETRY_COLLECTOR_HOST_ID`               | `/etc/machine-id`                               | Explicit enrolled host identity, 1-128 UTF-8 bytes. Cloned machine IDs require distinct enrollment IDs. |
 | `TELEMETRY_COLLECTOR_VISIBILITY`            | `restricted`                                    | `host` only when deployment has verified enumeration of initial host PIDs; otherwise `restricted`.      |
@@ -83,7 +84,7 @@ SIGINT/SIGTERM finishes acquisition, drains the scan buffer to disk, cancels net
 
 Loss feedback invalidates baseline counter continuity for subsequent scans. Current-epoch cumulative loss diagnostics can appear in later captures; SQLite's persisted-batch loss totals survive restarts, while exported current-epoch counters reset. Already enqueued observations retain their original segments and timestamps. The queue cannot recover measurements that were never committed, including an interrupted scan, or survive disk loss.
 
-Enrollment is configured through local source policies. Production TLS, automatic enrollment, execution associations and application instrumentation in this collector remain unimplemented. Application instrumentation uses standard OpenTelemetry SDKs; this collector gathers external Linux measurements.
+Enrollment is managed by project administrators in the web application and checked against PostgreSQL on every submission. Production OTLP TLS, automatic collector enrollment, execution associations and application instrumentation in this collector remain unimplemented. Application instrumentation uses standard OpenTelemetry SDKs; this collector gathers external Linux measurements.
 
 Only allowlisted identity and metric dimensions are exported. Parsing `/proc/PID/stat` reads a process-name field and discards it. The sampler does not read command arguments, environment, executable links, application files or process memory. Host identity is read from machine/boot metadata or supplied through configuration; namespace identity is supplied by deployment. Neither process contents nor receiver-supplied free-form errors are logged.
 
@@ -91,9 +92,16 @@ Local connection failures wrapped by Tonic as `UNKNOWN` retain their underlying 
 
 ## Authenticated ingestion
 
-`TELEMETRY_COLLECTOR_SOURCE_TOKEN_FILE` reads a source bearer token from a private file at startup and sends it as gRPC authorization metadata. Tokens must contain 32-512 printable ASCII characters; a trailing newline is removed. The exporter can run without a token, but the configured ingestion service rejects unauthenticated requests. The [telemetry pipeline](../../infra/telemetry/README.md) requires enrolled credentials and permitted host IDs.
+`TELEMETRY_COLLECTOR_SOURCE_TOKEN_FILE` reads a bearer token from a private file at startup and sends it as sensitive gRPC authorization metadata. The web application issues `pfe_<lowercase UUID>_<43 base64url characters>` tokens; a trailing newline is removed. Other OTLP receivers may use their own printable ASCII tokens (32-512 characters). The exporter can run without a token, but the configured ingestion service rejects unauthenticated requests. The [telemetry pipeline](../../infra/telemetry/README.md) requires project credentials and permitted host IDs; payload project/source claims grant no access.
 
-The queue is bound to the destination and token digest. Changing credentials refuses the existing queue, preventing pending data from silently moving to another enrolled source. Credential rotation and queue migration are not implemented. Use a new queue directory while retaining the old queue for its original identity.
+The queue is bound to the destination and token digest. Changing credentials refuses the existing queue, even when empty, preventing pending data from silently moving to another enrolled source. For rotation:
+
+1. Stop the sampling collector. Graceful shutdown commits buffered scans and leaves pending uploads on disk.
+2. With the old token and unchanged endpoint/queue settings, run `pfe-collector --drain`. It exports only existing batches and exits when the queue is empty, without opening `/proc` or sampling. It uses the ordinary retry, terminal-rejection and expiry policies; an empty queue does not prove every batch was accepted. Interrupting drain preserves unfinished uploads. Keep the token active until drain finishes and inspect rejection/loss diagnostics.
+3. Rotate the credential in the web application, install the new token in the private file and select a new queue directory. Do not edit the old queue's destination setting or copy its batches into another queue.
+4. Restart normal collection without `--drain`.
+
+Ingestion rejects the old token on its next authentication lookup. Revocation and expiry also reject new submissions without restarting ingestion. Authentication rejection is terminal and discards the affected batch; database unavailability is retryable. Existing queues cannot migrate to rotated tokens, and old queues cannot drain after their token becomes invalid.
 
 ## Sources
 

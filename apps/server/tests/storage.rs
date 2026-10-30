@@ -29,7 +29,7 @@ fn publication_survives_restart_and_replay_without_precision_loss() {
     assert_eq!(row.get_ulong(28).unwrap(), u64::MAX - 1);
     assert_eq!(row.get_long(31).unwrap(), 9_007_199_254_740_993);
     assert!(row.get_double(32).is_err());
-    assert_eq!(row.get_string(1).unwrap(), "trusted-project");
+    assert_eq!(row.get_string(1).unwrap(), PROJECT_ID);
     assert_eq!(row.get_string(22).unwrap(), "pfe.node.memory.total");
     assert_eq!(row.get_string(24).unwrap(), "By");
     assert_eq!(row.get_string(3).unwrap(), &envelope.record_id);
@@ -112,9 +112,14 @@ fn native_histograms_and_missing_values_survive_storage() {
             })),
             ..Default::default()
         });
-    let source = policy()
-        .authenticate(export(body.clone(), "").metadata())
-        .unwrap();
+    let source = pfe_server::auth::Source {
+        project_id: PROJECT_ID.into(),
+        source_id: "trusted-source".into(),
+        hosts: vec!["node1".into()],
+        require_host_id: true,
+        maximum_submission_age: 3600,
+        allowed_clock_skew: 60,
+    };
     assert_eq!(
         pfe_server::metrics::validate(&body, &source, false).unwrap(),
         2
