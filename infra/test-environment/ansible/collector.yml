@@ -8,6 +8,7 @@
     pfe_collector_endpoint: http://10.0.2.2:14317
     pfe_collector_interval_ms: 1000
     pfe_collector_state: started
+    pfe_collector_queue_name: pfe-collector
     pfe_collector_token_directory: "{{ playbook_dir }}/../../telemetry/.state"
   tasks:
     - name: Validate collector configuration
@@ -18,6 +19,7 @@
           - pfe_collector_state in ['started', 'stopped']
           - pfe_collector_interval_ms | int >= 100
           - pfe_collector_interval_ms | int <= 60000
+          - pfe_collector_queue_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
 
     - name: Create the private collector configuration directory
       ansible.builtin.file:

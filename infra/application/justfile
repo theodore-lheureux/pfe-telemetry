@@ -11,5 +11,10 @@ status:
 stop:
     docker compose stop
 
+# Run after application migrations; the password is read from the environment.
+provision-ingestion:
+    test -n "${PFE_INGESTION_PASSWORD:?Set PFE_INGESTION_PASSWORD}"
+    docker compose exec -T --env PFE_INGESTION_PASSWORD postgres psql --username=pfe --dbname=pfe < ingestion-role.sql
+
 compose +args:
     docker compose "$@"

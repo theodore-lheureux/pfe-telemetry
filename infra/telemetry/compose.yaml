@@ -101,15 +101,9 @@ services:
     ports:
       - "127.0.0.1:${TELEMETRY_INGESTION_PORT:-14317}:4317"
     environment:
-      TELEMETRY_INGESTION_SOURCES_FILE: /etc/pfe/sources.json
+      TELEMETRY_INGESTION_DATABASE_URL: ${TELEMETRY_INGESTION_DATABASE_URL:?Set the read-only credential database URL in infra/telemetry/.env}
       TELEMETRY_KAFKA_BOOTSTRAP: kafka:9092
-    volumes:
-      - type: bind
-        source: ${TELEMETRY_INGESTION_SOURCES_FILE:-./.state/sources.json}
-        target: /etc/pfe/sources.json
-        read_only: true
-        bind:
-          create_host_path: false
+    networks: [default, credentials]
     depends_on:
       topics:
         condition: service_completed_successfully
@@ -159,3 +153,8 @@ services:
 volumes:
   kafka-data:
   measurements:
+
+networks:
+  credentials:
+    name: ${PFE_CREDENTIAL_NETWORK_NAME:-pfe-credential-authority}
+    external: true
