@@ -1,134 +1,188 @@
+import { m } from "@pfe/i18n/messages";
+import { useSelector } from "@tanstack/react-form";
 import {
 	createFileRoute,
 	Link,
+	type SearchSchemaInput,
 	useHydrated,
 	useRouter,
 } from "@tanstack/react-router";
-import { type FormEvent, useState } from "react";
+import { createIsomorphicFn } from "@tanstack/react-start";
+import { getRequestUrl } from "@tanstack/react-start/server";
+import { useEffect, useRef, useState } from "react";
 import { authClient } from "../auth/client";
+import { loginSearch, signInDestinations } from "../auth/redirect";
+import { useAppForm } from "../components/app-form";
+import { useLocaleChangeBlocker } from "../components/locale-safety";
+import { useMutationFeedback } from "../components/mutation-feedback";
+import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 
+const currentOrigin = createIsomorphicFn()
+	.server(() => getRequestUrl().origin)
+	.client(() => window.location.origin);
+
 export const Route = createFileRoute("/login")({
-	validateSearch: (search: Record<string, unknown>): { error?: string } => ({
-		error: typeof search.error === "string" ? search.error : undefined,
-	}),
+	validateSearch: (search: Record<string, unknown> & SearchSchemaInput) =>
+		loginSearch(search, currentOrigin()),
+	head: () => ({ meta: [{ title: `${m.sign_in()} · ${m.app_title()}` }] }),
 	component: Login,
 });
 
 function Login() {
-	const { error } = Route.useSearch();
+	const { error, redirect } = Route.useSearch();
 	const router = useRouter();
 	const hydrated = useHydrated();
-	const [email, setEmail] = useState("");
-	const [pending, setPending] = useState(false);
+	const setFeedback = useMutationFeedback();
+	const [passkeyPending, setPasskeyPending] = useState(false);
+	const form = useAppForm({
+		defaultValues: { email: "" },
+		onSubmit: async ({ value }) => signInWithEmail(value.email),
+	});
+	const emailPending = useSelector(form.store, (state) => state.isSubmitting);
+	const pending = passkeyPending || emailPending;
+	useLocaleChangeBlocker(pending);
 	const passkeysSupported =
 		hydrated && window.isSecureContext && "PublicKeyCredential" in window;
 	const [message, setMessage] = useState("");
+	const lifetime = useRef({ mounted: false, generation: 0 });
+	useEffect(() => {
+		const state = lifetime.current;
+		state.mounted = true;
+		const stop = router.subscribe(
+			"onBeforeNavigate",
+			({ fromLocation, toLocation }) => {
+				if (
+					fromLocation?.href !== toLocation.href ||
+					fromLocation?.state.__TSR_key !== toLocation.state.__TSR_key
+				)
+					state.generation++;
+			},
+		);
+		return () => {
+			state.mounted = false;
+			state.generation++;
+			stop();
+		};
+	}, [router]);
 
 	async function signInWithPasskey() {
-		setPending(true);
+		if (pending || !passkeysSupported) return;
+		const generation = ++lifetime.current.generation;
+		const current = () =>
+			lifetime.current.mounted && lifetime.current.generation === generation;
+		setPasskeyPending(true);
 		setMessage("");
 		try {
 			const result = await authClient.signIn.passkey();
+			if (!current()) return;
 			if (result.error) {
-				setMessage(
-					"Passkey sign-in was not completed. Try again or use email.",
-				);
+				setMessage(m.passkey_signin_was_not_completed_try_again_or());
 			} else {
+				router.options.context.queryClient.clear();
+				setFeedback(null);
+				router.clearCache();
 				await router.invalidate({ sync: true });
-				await router.navigate({ to: "/account", replace: true });
+				if (!current()) return;
+				await router.navigate({ href: redirect, replace: true });
 			}
 		} catch {
-			setMessage("Sign-in is unavailable. Please try again.");
+			if (current()) setMessage(m.signin_is_unavailable_please_try_again());
 		} finally {
-			setPending(false);
+			if (lifetime.current.mounted) setPasskeyPending(false);
 		}
 	}
 
-	async function signInWithEmail(event: FormEvent<HTMLFormElement>) {
-		event.preventDefault();
-		setPending(true);
+	async function signInWithEmail(email: string) {
+		if (!hydrated || passkeyPending) return;
+		const generation = ++lifetime.current.generation;
 		setMessage("");
 		try {
 			const result = await authClient.signIn.magicLink({
 				email,
-				callbackURL: "/account",
-				newUserCallbackURL: "/account",
-				errorCallbackURL: "/login",
+				...signInDestinations(redirect),
 			});
+			if (
+				!lifetime.current.mounted ||
+				lifetime.current.generation !== generation
+			)
+				return;
 			setMessage(
 				result.error
-					? "We could not send a sign-in link. Please try again later."
-					: "If this address can sign in, a link is on its way. Check your inbox; it expires in five minutes.",
+					? m.we_could_not_send_a_signin_link_please()
+					: m.if_this_address_can_sign_in_a_link(),
 			);
 		} catch {
-			setMessage("We could not send a sign-in link. Please try again later.");
-		} finally {
-			setPending(false);
+			if (
+				lifetime.current.mounted &&
+				lifetime.current.generation === generation
+			)
+				setMessage(m.we_could_not_send_a_signin_link_please());
 		}
 	}
 
 	return (
 		<main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 px-6 py-12">
 			<Link to="/" className="text-sm text-muted-foreground">
-				PFE Telemetry
+				{m.app_title()}
 			</Link>
 			<div>
-				<h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
+				<h1 className="text-2xl font-semibold tracking-tight">{m.sign_in()}</h1>
 				<p className="mt-2 text-sm text-muted-foreground">
-					Use a passkey, or get a secure sign-in link by email.
+					{m.use_a_passkey_or_get_a_secure_signin()}
 				</p>
 			</div>
 			{error && (
-				<p role="alert" className="text-sm text-destructive">
-					This sign-in link is invalid, expired, or cannot create an account.
-					Request a new link or contact your administrator.
-				</p>
+				<Alert variant="destructive">
+					<AlertDescription>
+						{m.this_signin_link_is_invalid_expired_or_cannot()}
+					</AlertDescription>
+				</Alert>
 			)}
 			<Button
 				size="lg"
 				disabled={pending || !passkeysSupported}
 				onClick={signInWithPasskey}
 			>
-				Sign in with a passkey
+				{m.sign_in_with_a_passkey()}
 			</Button>
 			{!passkeysSupported && (
 				<p className="text-sm text-muted-foreground">
-					Passkeys require a supported browser and HTTPS, or localhost for
-					development.
+					{m.passkeys_require_a_supported_browser_and_https_or()}
 				</p>
 			)}
 			<form
 				method="post"
-				onSubmit={signInWithEmail}
+				onSubmit={(event) => {
+					event.preventDefault();
+					event.stopPropagation();
+					void form.handleSubmit();
+				}}
 				className="flex flex-col gap-3 border-t pt-6"
 			>
-				<label htmlFor="email" className="text-sm font-medium">
-					Email address
-				</label>
-				<input
-					id="email"
-					name="email"
-					type="email"
-					autoComplete="email"
-					required
-					disabled={!hydrated || pending}
-					maxLength={254}
-					value={email}
-					onChange={(event) => setEmail(event.target.value)}
-					className="h-10 rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring"
-				/>
+				<form.AppField name="email">
+					{(field) => (
+						<field.TextField
+							id="email"
+							label={m.email_address()}
+							type="email"
+							autoComplete="email"
+							required
+							disabled={!hydrated || pending}
+							maxLength={254}
+						/>
+					)}
+				</form.AppField>
 				<Button
 					size="lg"
 					variant="outline"
 					type="submit"
 					disabled={!hydrated || pending}
 				>
-					Email me a sign-in link
+					{m.email_me_a_signin_link()}
 				</Button>
 				<p className="text-sm text-muted-foreground">
-					New here or lost your passkeys? Start with email. New accounts are
-					available only when registration is enabled.
+					{m.new_here_or_lost_your_passkeys_start_with()}
 				</p>
 			</form>
 			<p role="status" aria-live="polite" className="text-sm">

@@ -9,19 +9,29 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AccountRouteImport } from './routes/account'
+import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppWorkspaceRouteRouteImport } from './routes/_app/_workspace/route'
+import { Route as AppAccountRouteImport } from './routes/_app/account'
+import { Route as InvitationsInvitationIdRouteImport } from './routes/invitations/$invitationId'
+import { Route as AppWorkspaceIndexRouteImport } from './routes/_app/_workspace/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AppWorkspaceOrganizationsOrganizationIdRouteRouteImport } from './routes/_app/_workspace/organizations/$organizationId/route'
+import { Route as AppWorkspaceOrganizationsNewRouteImport } from './routes/_app/_workspace/organizations/new'
+import { Route as AppWorkspaceOrganizationsOrganizationIdIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/index'
+import { Route as AppWorkspaceOrganizationsOrganizationIdMembersRouteImport } from './routes/_app/_workspace/organizations/$organizationId/members'
+import { Route as AppWorkspaceOrganizationsOrganizationIdSettingsRouteImport } from './routes/_app/_workspace/organizations/$organizationId/settings'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/route'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsNewRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/new'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/index'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/index'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionId'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/index'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/credentials'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/members'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountRoute = AccountRouteImport.update({
-  id: '/account',
-  path: '/account',
+const AppRouteRoute = AppRouteRouteImport.update({
+  id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -29,60 +39,267 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppWorkspaceRouteRoute = AppWorkspaceRouteRouteImport.update({
+  id: '/_workspace',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppAccountRoute = AppAccountRouteImport.update({
+  id: '/account',
+  path: '/account',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const InvitationsInvitationIdRoute = InvitationsInvitationIdRouteImport.update({
+  id: '/invitations/$invitationId',
+  path: '/invitations/$invitationId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppWorkspaceIndexRoute = AppWorkspaceIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AppWorkspaceRouteRoute,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppWorkspaceOrganizationsOrganizationIdRouteRoute =
+  AppWorkspaceOrganizationsOrganizationIdRouteRouteImport.update({
+    id: '/organizations/$organizationId',
+    path: '/organizations/$organizationId',
+    getParentRoute: () => AppWorkspaceRouteRoute,
+  } as any)
+const AppWorkspaceOrganizationsNewRoute =
+  AppWorkspaceOrganizationsNewRouteImport.update({
+    id: '/organizations/new',
+    path: '/organizations/new',
+    getParentRoute: () => AppWorkspaceRouteRoute,
+  } as any)
+const AppWorkspaceOrganizationsOrganizationIdIndexRoute =
+  AppWorkspaceOrganizationsOrganizationIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppWorkspaceOrganizationsOrganizationIdRouteRoute,
+  } as any)
+const AppWorkspaceOrganizationsOrganizationIdMembersRoute =
+  AppWorkspaceOrganizationsOrganizationIdMembersRouteImport.update({
+    id: '/members',
+    path: '/members',
+    getParentRoute: () => AppWorkspaceOrganizationsOrganizationIdRouteRoute,
+  } as any)
+const AppWorkspaceOrganizationsOrganizationIdSettingsRoute =
+  AppWorkspaceOrganizationsOrganizationIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AppWorkspaceOrganizationsOrganizationIdRouteRoute,
+  } as any)
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteImport.update(
+    {
+      id: '/projects/$projectId',
+      path: '/projects/$projectId',
+      getParentRoute: () => AppWorkspaceOrganizationsOrganizationIdRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsNewRouteImport.update({
+    id: '/projects/new',
+    path: '/projects/new',
+    getParentRoute: () => AppWorkspaceOrganizationsOrganizationIdRouteRoute,
+  } as any)
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRouteImport.update(
+    {
+      id: '/',
+      path: '/',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRouteImport.update(
+    {
+      id: '/executions/',
+      path: '/executions/',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRouteImport.update(
+    {
+      id: '/executions/$executionId',
+      path: '/executions/$executionId',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRouteImport.update(
+    {
+      id: '/settings/',
+      path: '/settings/',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRouteImport.update(
+    {
+      id: '/settings/credentials',
+      path: '/settings/credentials',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRouteImport.update(
+    {
+      id: '/settings/members',
+      path: '/settings/members',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/account': typeof AccountRoute
+  '/': typeof AppWorkspaceIndexRoute
   '/login': typeof LoginRoute
+  '/account': typeof AppAccountRoute
+  '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/organizations/$organizationId': typeof AppWorkspaceOrganizationsOrganizationIdRouteRouteWithChildren
+  '/organizations/new': typeof AppWorkspaceOrganizationsNewRoute
+  '/organizations/$organizationId/members': typeof AppWorkspaceOrganizationsOrganizationIdMembersRoute
+  '/organizations/$organizationId/settings': typeof AppWorkspaceOrganizationsOrganizationIdSettingsRoute
+  '/organizations/$organizationId/': typeof AppWorkspaceOrganizationsOrganizationIdIndexRoute
+  '/organizations/$organizationId/projects/$projectId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteWithChildren
+  '/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
+  '/organizations/$organizationId/projects/$projectId/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
+  '/organizations/$organizationId/projects/$projectId/executions/$executionId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute
+  '/organizations/$organizationId/projects/$projectId/settings/credentials': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRoute
+  '/organizations/$organizationId/projects/$projectId/settings/members': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRoute
+  '/organizations/$organizationId/projects/$projectId/executions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
+  '/organizations/$organizationId/projects/$projectId/settings/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/account': typeof AccountRoute
+  '/': typeof AppWorkspaceIndexRoute
   '/login': typeof LoginRoute
+  '/account': typeof AppAccountRoute
+  '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/organizations/new': typeof AppWorkspaceOrganizationsNewRoute
+  '/organizations/$organizationId/members': typeof AppWorkspaceOrganizationsOrganizationIdMembersRoute
+  '/organizations/$organizationId/settings': typeof AppWorkspaceOrganizationsOrganizationIdSettingsRoute
+  '/organizations/$organizationId': typeof AppWorkspaceOrganizationsOrganizationIdIndexRoute
+  '/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
+  '/organizations/$organizationId/projects/$projectId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
+  '/organizations/$organizationId/projects/$projectId/executions/$executionId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute
+  '/organizations/$organizationId/projects/$projectId/settings/credentials': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRoute
+  '/organizations/$organizationId/projects/$projectId/settings/members': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRoute
+  '/organizations/$organizationId/projects/$projectId/executions': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
+  '/organizations/$organizationId/projects/$projectId/settings': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/account': typeof AccountRoute
+  '/_app': typeof AppRouteRouteWithChildren
   '/login': typeof LoginRoute
+  '/_app/_workspace': typeof AppWorkspaceRouteRouteWithChildren
+  '/_app/account': typeof AppAccountRoute
+  '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/_app/_workspace/': typeof AppWorkspaceIndexRoute
+  '/_app/_workspace/organizations/$organizationId': typeof AppWorkspaceOrganizationsOrganizationIdRouteRouteWithChildren
+  '/_app/_workspace/organizations/new': typeof AppWorkspaceOrganizationsNewRoute
+  '/_app/_workspace/organizations/$organizationId/members': typeof AppWorkspaceOrganizationsOrganizationIdMembersRoute
+  '/_app/_workspace/organizations/$organizationId/settings': typeof AppWorkspaceOrganizationsOrganizationIdSettingsRoute
+  '/_app/_workspace/organizations/$organizationId/': typeof AppWorkspaceOrganizationsOrganizationIdIndexRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteWithChildren
+  '/_app/_workspace/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/credentials': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/members': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/account' | '/login' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/account'
+    | '/invitations/$invitationId'
+    | '/api/auth/$'
+    | '/organizations/$organizationId'
+    | '/organizations/new'
+    | '/organizations/$organizationId/members'
+    | '/organizations/$organizationId/settings'
+    | '/organizations/$organizationId/'
+    | '/organizations/$organizationId/projects/$projectId'
+    | '/organizations/$organizationId/projects/new'
+    | '/organizations/$organizationId/projects/$projectId/'
+    | '/organizations/$organizationId/projects/$projectId/executions/$executionId'
+    | '/organizations/$organizationId/projects/$projectId/settings/credentials'
+    | '/organizations/$organizationId/projects/$projectId/settings/members'
+    | '/organizations/$organizationId/projects/$projectId/executions/'
+    | '/organizations/$organizationId/projects/$projectId/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/account' | '/login' | '/api/auth/$'
-  id: '__root__' | '/' | '/account' | '/login' | '/api/auth/$'
+  to:
+    | '/'
+    | '/login'
+    | '/account'
+    | '/invitations/$invitationId'
+    | '/api/auth/$'
+    | '/organizations/new'
+    | '/organizations/$organizationId/members'
+    | '/organizations/$organizationId/settings'
+    | '/organizations/$organizationId'
+    | '/organizations/$organizationId/projects/new'
+    | '/organizations/$organizationId/projects/$projectId'
+    | '/organizations/$organizationId/projects/$projectId/executions/$executionId'
+    | '/organizations/$organizationId/projects/$projectId/settings/credentials'
+    | '/organizations/$organizationId/projects/$projectId/settings/members'
+    | '/organizations/$organizationId/projects/$projectId/executions'
+    | '/organizations/$organizationId/projects/$projectId/settings'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/login'
+    | '/_app/_workspace'
+    | '/_app/account'
+    | '/invitations/$invitationId'
+    | '/api/auth/$'
+    | '/_app/_workspace/'
+    | '/_app/_workspace/organizations/$organizationId'
+    | '/_app/_workspace/organizations/new'
+    | '/_app/_workspace/organizations/$organizationId/members'
+    | '/_app/_workspace/organizations/$organizationId/settings'
+    | '/_app/_workspace/organizations/$organizationId/'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId'
+    | '/_app/_workspace/organizations/$organizationId/projects/new'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionId'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/credentials'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/members'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AccountRoute: typeof AccountRoute
+  AppRouteRoute: typeof AppRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
+  InvitationsInvitationIdRoute: typeof InvitationsInvitationIdRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/account': {
-      id: '/account'
-      path: '/account'
-      fullPath: '/account'
-      preLoaderRoute: typeof AccountRouteImport
+      preLoaderRoute: typeof AppRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -92,6 +309,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/_workspace': {
+      id: '/_app/_workspace'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppWorkspaceRouteRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/account': {
+      id: '/_app/account'
+      path: '/account'
+      fullPath: '/account'
+      preLoaderRoute: typeof AppAccountRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/invitations/$invitationId': {
+      id: '/invitations/$invitationId'
+      path: '/invitations/$invitationId'
+      fullPath: '/invitations/$invitationId'
+      preLoaderRoute: typeof InvitationsInvitationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/_workspace/': {
+      id: '/_app/_workspace/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof AppWorkspaceIndexRouteImport
+      parentRoute: typeof AppWorkspaceRouteRoute
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -99,13 +344,191 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/_workspace/organizations/$organizationId': {
+      id: '/_app/_workspace/organizations/$organizationId'
+      path: '/organizations/$organizationId'
+      fullPath: '/organizations/$organizationId'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdRouteRouteImport
+      parentRoute: typeof AppWorkspaceRouteRoute
+    }
+    '/_app/_workspace/organizations/new': {
+      id: '/_app/_workspace/organizations/new'
+      path: '/organizations/new'
+      fullPath: '/organizations/new'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsNewRouteImport
+      parentRoute: typeof AppWorkspaceRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/': {
+      id: '/_app/_workspace/organizations/$organizationId/'
+      path: '/'
+      fullPath: '/organizations/$organizationId/'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdIndexRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/members': {
+      id: '/_app/_workspace/organizations/$organizationId/members'
+      path: '/members'
+      fullPath: '/organizations/$organizationId/members'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdMembersRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/settings': {
+      id: '/_app/_workspace/organizations/$organizationId/settings'
+      path: '/settings'
+      fullPath: '/organizations/$organizationId/settings'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdSettingsRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/organizations/$organizationId/projects/$projectId'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/new': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/new'
+      path: '/projects/new'
+      fullPath: '/organizations/$organizationId/projects/new'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/'
+      path: '/'
+      fullPath: '/organizations/$organizationId/projects/$projectId/'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/'
+      path: '/executions'
+      fullPath: '/organizations/$organizationId/projects/$projectId/executions/'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionId': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionId'
+      path: '/executions/$executionId'
+      fullPath: '/organizations/$organizationId/projects/$projectId/executions/$executionId'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/'
+      path: '/settings'
+      fullPath: '/organizations/$organizationId/projects/$projectId/settings/'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/credentials': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/credentials'
+      path: '/settings/credentials'
+      fullPath: '/organizations/$organizationId/projects/$projectId/settings/credentials'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/members': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/settings/members'
+      path: '/settings/members'
+      fullPath: '/organizations/$organizationId/projects/$projectId/settings/members'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
   }
 }
 
+interface AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren {
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRoute
+}
+
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren: AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren =
+  {
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsCredentialsRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsMembersRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdSettingsIndexRoute,
+  }
+
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteWithChildren =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute._addFileChildren(
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren,
+  )
+
+interface AppWorkspaceOrganizationsOrganizationIdRouteRouteChildren {
+  AppWorkspaceOrganizationsOrganizationIdMembersRoute: typeof AppWorkspaceOrganizationsOrganizationIdMembersRoute
+  AppWorkspaceOrganizationsOrganizationIdSettingsRoute: typeof AppWorkspaceOrganizationsOrganizationIdSettingsRoute
+  AppWorkspaceOrganizationsOrganizationIdIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdIndexRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteWithChildren
+  AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
+}
+
+const AppWorkspaceOrganizationsOrganizationIdRouteRouteChildren: AppWorkspaceOrganizationsOrganizationIdRouteRouteChildren =
+  {
+    AppWorkspaceOrganizationsOrganizationIdMembersRoute:
+      AppWorkspaceOrganizationsOrganizationIdMembersRoute,
+    AppWorkspaceOrganizationsOrganizationIdSettingsRoute:
+      AppWorkspaceOrganizationsOrganizationIdSettingsRoute,
+    AppWorkspaceOrganizationsOrganizationIdIndexRoute:
+      AppWorkspaceOrganizationsOrganizationIdIndexRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteWithChildren,
+    AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute,
+  }
+
+const AppWorkspaceOrganizationsOrganizationIdRouteRouteWithChildren =
+  AppWorkspaceOrganizationsOrganizationIdRouteRoute._addFileChildren(
+    AppWorkspaceOrganizationsOrganizationIdRouteRouteChildren,
+  )
+
+interface AppWorkspaceRouteRouteChildren {
+  AppWorkspaceIndexRoute: typeof AppWorkspaceIndexRoute
+  AppWorkspaceOrganizationsOrganizationIdRouteRoute: typeof AppWorkspaceOrganizationsOrganizationIdRouteRouteWithChildren
+  AppWorkspaceOrganizationsNewRoute: typeof AppWorkspaceOrganizationsNewRoute
+}
+
+const AppWorkspaceRouteRouteChildren: AppWorkspaceRouteRouteChildren = {
+  AppWorkspaceIndexRoute: AppWorkspaceIndexRoute,
+  AppWorkspaceOrganizationsOrganizationIdRouteRoute:
+    AppWorkspaceOrganizationsOrganizationIdRouteRouteWithChildren,
+  AppWorkspaceOrganizationsNewRoute: AppWorkspaceOrganizationsNewRoute,
+}
+
+const AppWorkspaceRouteRouteWithChildren =
+  AppWorkspaceRouteRoute._addFileChildren(AppWorkspaceRouteRouteChildren)
+
+interface AppRouteRouteChildren {
+  AppWorkspaceRouteRoute: typeof AppWorkspaceRouteRouteWithChildren
+  AppAccountRoute: typeof AppAccountRoute
+}
+
+const AppRouteRouteChildren: AppRouteRouteChildren = {
+  AppWorkspaceRouteRoute: AppWorkspaceRouteRouteWithChildren,
+  AppAccountRoute: AppAccountRoute,
+}
+
+const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
+  AppRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  AccountRoute: AccountRoute,
+  AppRouteRoute: AppRouteRouteWithChildren,
   LoginRoute: LoginRoute,
+  InvitationsInvitationIdRoute: InvitationsInvitationIdRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
