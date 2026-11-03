@@ -43,7 +43,7 @@ export function CreateCredentialForm({
 	const submitting = useSelector(form.store, (state) => state.isSubmitting);
 	return (
 		<section
-			className="rounded-lg border p-5"
+			className="rounded-lg border bg-card p-5 text-card-foreground"
 			aria-labelledby="create-credential-title"
 		>
 			<h2 id="create-credential-title" className="mb-4 font-semibold">

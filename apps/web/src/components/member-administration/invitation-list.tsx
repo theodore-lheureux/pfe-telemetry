@@ -34,7 +34,7 @@ export function InvitationList({
 			<p className="text-sm text-muted-foreground">{m.no_invitations()}</p>
 		);
 	return (
-		<ul className="divide-y rounded-md border">
+		<ul className="divide-y rounded-md border bg-card text-card-foreground">
 			{invitations.map((invitation) => {
 				const expired = invitation.expiresAt.getTime() <= asOf;
 				const liveForEmail = invitations.some(

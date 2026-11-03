@@ -27,19 +27,13 @@ export const Route = createFileRoute("/_app")({
 function App() {
 	const { user } = Route.useRouteContext();
 	return (
-		<div className="min-h-svh bg-background">
-			<a
-				href="#main-content"
-				className="sr-only focus:not-sr-only focus:block focus:p-3"
-			>
-				{m.skip_to_content()}
-			</a>
-			<header className="border-b">
-				<div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
-					<Link to="/" className="font-semibold tracking-tight">
-						{m.app_title()}
-					</Link>
-					<nav aria-label={m.account()} className="flex items-center gap-2">
+		<div className="bg-background">
+			<div className="border-b bg-card">
+				<div className="mx-auto flex max-w-7xl flex-wrap items-center gap-4 px-4 py-2 sm:px-6">
+					<nav
+						aria-label={m.account()}
+						className="flex flex-wrap items-center gap-2"
+					>
 						<Link to="/" className={navClass} activeOptions={{ exact: true }}>
 							{m.organizations()}
 						</Link>
@@ -49,10 +43,11 @@ function App() {
 						</Link>
 					</nav>
 				</div>
-			</header>
+			</div>
 			<main
 				id="main-content"
-				className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-8"
+				tabIndex={-1}
+				className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6"
 			>
 				<Outlet />
 			</main>

@@ -38,7 +38,7 @@ export function OrganizationMembers({
 			<p role={state.failed ? "alert" : "status"} className="text-sm">
 				{state.message}
 			</p>
-			<ul className="divide-y rounded-md border">
+			<ul className="divide-y rounded-md border bg-card text-card-foreground">
 				{members.map((member) => (
 					<MemberRow
 						key={member.id}

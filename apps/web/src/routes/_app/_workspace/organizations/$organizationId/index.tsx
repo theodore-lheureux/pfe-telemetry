@@ -40,7 +40,7 @@ function Projects() {
 									organizationId: organization.id,
 									projectId: project.id,
 								}}
-								className="flex h-full flex-col gap-3 rounded-xl border p-5 hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+								className="flex h-full flex-col gap-3 rounded-lg border bg-card p-5 text-card-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
 							>
 								<span className="font-semibold">{project.name}</span>
 								<span className="text-sm text-muted-foreground">

@@ -8,7 +8,7 @@ import {
 export function CollectorSetup() {
 	return (
 		<section
-			className="flex flex-col gap-4 rounded-lg border p-5"
+			className="flex min-w-0 flex-col gap-4 rounded-lg border bg-card p-5 text-card-foreground"
 			aria-labelledby="collector-setup-title"
 		>
 			<h2 id="collector-setup-title" className="font-semibold">

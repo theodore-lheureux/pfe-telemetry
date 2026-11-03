@@ -382,5 +382,8 @@
   "your_session_has_ended_sign_in_again_to": "Votre session a expiré. Reconnectez-vous pour répondre à cette invitation.",
   "all_source_hosts": "tous les hôtes de la source",
   "bytes_by": "octets (By)",
-  "seconds_s": "secondes (s)"
+  "seconds_s": "secondes (s)",
+  "brand_home": "Recount · Accueil",
+  "theme_switch_light": "Passer au mode clair",
+  "theme_switch_dark": "Passer au mode sombre"
 }

@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Recount logo</title>
+    <link rel="icon" type="image/svg+xml" href="/recount-lattice.svg" />
+    <style>
+      :root {
+        --page: #f5f7f8;
+        --ink: #0f1b1f;
+        --muted: #475a62;
+        --line: #d9e2e5;
+        --light: #ffffff;
+        --dark: #0c181c;
+        --teal: #0f766e;
+        --step: 8px;
+        color-scheme: light;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font:
+          15px/1.55 "Helvetica Neue",
+          Helvetica,
+          Arial,
+          system-ui,
+          sans-serif;
+      }
+      a {
+        color: var(--teal);
+        text-underline-offset: 3px;
+      }
+      a:focus-visible {
+        outline: 3px solid color-mix(in srgb, var(--teal) 55%, transparent);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+      img {
+        display: block;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        min-height: 52vh;
+      }
+      .hero > div {
+        display: grid;
+        place-items: center;
+        padding: calc(var(--step) * 8) calc(var(--step) * 4);
+      }
+      .hero img {
+        width: min(420px, 100%);
+        height: auto;
+      }
+
+      main {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: calc(var(--step) * 6) calc(var(--step) * 3)
+          calc(var(--step) * 10);
+      }
+      section > div > p {
+        margin: 0 0 calc(var(--step) * 2);
+        max-width: 64ch;
+        color: var(--muted);
+      }
+      .intro {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        justify-content: space-between;
+        gap: calc(var(--step) * 2);
+        padding-bottom: calc(var(--step) * 5);
+        border-bottom: 1px solid var(--line);
+      }
+      h1 {
+        margin: 0;
+        font-size: 28px;
+        line-height: 1.15;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+      }
+      .intro p {
+        margin: var(--step) 0 0;
+        max-width: 60ch;
+        color: var(--muted);
+      }
+      .button {
+        display: inline-flex;
+        align-items: center;
+        height: 36px;
+        padding: 0 14px;
+        border-radius: 4px;
+        background: var(--ink);
+        color: #f8fafc;
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .button:hover {
+        background: #1d2e33;
+      }
+
+      section {
+        display: grid;
+        grid-template-columns: 180px minmax(0, 1fr);
+        gap: calc(var(--step) * 3);
+        padding: calc(var(--step) * 5) 0;
+        border-bottom: 1px solid var(--line);
+      }
+      h2 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 500;
+      }
+
+      .tiles {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: calc(var(--step) * 1.5);
+      }
+      figure {
+        margin: 0;
+      }
+      .tile {
+        display: grid;
+        place-items: center;
+        min-height: 168px;
+        padding: calc(var(--step) * 3);
+        border-radius: 4px;
+        border: 1px solid var(--line);
+      }
+      .tile.light {
+        background: var(--light);
+      }
+      .tile.dark {
+        background: var(--dark);
+        border-color: var(--dark);
+      }
+      .tile img {
+        max-width: 100%;
+        height: auto;
+      }
+      figcaption {
+        margin-top: var(--step);
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .scale {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: calc(var(--step) * 4);
+        padding: calc(var(--step) * 3);
+        border-radius: 4px;
+      }
+      .scale {
+        overflow-x: auto;
+        max-width: 100%;
+      }
+      .scale figure {
+        flex-shrink: 0;
+      }
+      .scale + .scale {
+        margin-top: calc(var(--step) * 1.5);
+      }
+      .scale.light {
+        background: var(--light);
+        border: 1px solid var(--line);
+      }
+      .scale.dark {
+        background: var(--dark);
+      }
+      .scale figcaption {
+        font-variant-numeric: tabular-nums;
+      }
+      .scale.dark figcaption {
+        color: #9db2b9;
+      }
+
+      dl {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: var(--step) calc(var(--step) * 3);
+        margin: 0;
+      }
+      dt {
+        font-weight: 500;
+      }
+      dd {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      ul.files {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 2px;
+      }
+      ul.files li {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: var(--step);
+        padding: 10px 0;
+        border-top: 1px solid var(--line);
+      }
+      ul.files li:first-child {
+        border-top: 0;
+      }
+      ul.files span {
+        color: var(--muted);
+      }
+
+      @media (max-width: 720px) {
+        .hero {
+          grid-template-columns: 1fr;
+          min-height: 0;
+        }
+        .hero > div {
+          padding: calc(var(--step) * 6) calc(var(--step) * 3);
+        }
+        section {
+          grid-template-columns: minmax(0, 1fr);
+          gap: calc(var(--step) * 2);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="hero">
+      <div style="background: var(--light)">
+        <img
+          src="recount-lockup-on-light.svg"
+          width="420"
+          height="98"
+          alt="Recount logo on a light background"
+        />
+      </div>
+      <div style="background: var(--dark)">
+        <img
+          src="recount-lockup-on-dark.svg"
+          width="420"
+          height="98"
+          alt="Recount logo on a dark background"
+        />
+      </div>
+    </header>
+
+    <main>
+      <div class="intro">
+        <div>
+          <h1>Recount logo</h1>
+          <p>
+            The Lattice symbol and the Recount wordmark, drawn as vectors. Pick
+            the file for your background and use it as supplied.
+          </p>
+        </div>
+        <a class="button" href="/recount-logo-package.zip" download
+          >Download logo package</a
+        >
+      </div>
+
+      <section aria-labelledby="wordmark">
+        <h2 id="wordmark">Wordmark</h2>
+        <div>
+          <p>
+            Use it where the symbol already appears nearby, for example on a
+            page that has the app icon.
+          </p>
+          <div class="tiles">
+            <figure>
+              <div class="tile light">
+                <img
+                  src="recount-wordmark-on-light.svg"
+                  width="232"
+                  height="63"
+                  alt="Recount wordmark, slate ink"
+                />
+              </div>
+              <figcaption>On light</figcaption>
+            </figure>
+            <figure>
+              <div class="tile dark">
+                <img
+                  src="recount-wordmark-on-dark.svg"
+                  width="232"
+                  height="63"
+                  alt="Recount wordmark, frost white"
+                />
+              </div>
+              <figcaption>On dark</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="symbol">
+        <h2 id="symbol">Symbol</h2>
+        <div>
+          <p>
+            Lattice, two linked squares, for small spaces. Teal is for a single
+            accent on a light background.
+          </p>
+          <div class="tiles">
+            <figure>
+              <div class="tile light">
+                <img
+                  src="recount-symbol-on-light.svg"
+                  width="96"
+                  height="96"
+                  alt="Lattice symbol, slate ink"
+                />
+              </div>
+              <figcaption>On light</figcaption>
+            </figure>
+            <figure>
+              <div class="tile dark">
+                <img
+                  src="recount-symbol-on-dark.svg"
+                  width="96"
+                  height="96"
+                  alt="Lattice symbol, frost white"
+                />
+              </div>
+              <figcaption>On dark</figcaption>
+            </figure>
+            <figure>
+              <div class="tile light">
+                <img
+                  src="recount-symbol-teal.svg"
+                  width="96"
+                  height="96"
+                  alt="Lattice symbol, Tide teal"
+                />
+              </div>
+              <figcaption>Teal accent</figcaption>
+            </figure>
+            <figure>
+              <div class="tile light">
+                <img
+                  src="recount-app-icon.svg"
+                  width="96"
+                  height="96"
+                  alt="Recount app icon"
+                />
+              </div>
+              <figcaption>App icon</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="scale">
+        <h2 id="scale">Scale</h2>
+        <div>
+          <p>
+            The files are shown at real sizes. Don't use a lockup narrower than
+            96px or a symbol smaller than 16px.
+          </p>
+          <div class="scale light">
+            <figure>
+              <img
+                src="recount-lockup-on-light.svg"
+                width="96"
+                height="23"
+                alt="Lockup at 96px wide"
+              />
+              <figcaption>96px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-lockup-on-light.svg"
+                width="120"
+                height="28"
+                alt="Lockup at 120px wide"
+              />
+              <figcaption>120px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-lockup-on-light.svg"
+                width="192"
+                height="45"
+                alt="Lockup at 192px wide"
+              />
+              <figcaption>192px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-lockup-on-light.svg"
+                width="320"
+                height="75"
+                alt="Lockup at 320px wide"
+              />
+              <figcaption>320px</figcaption>
+            </figure>
+          </div>
+          <div class="scale dark">
+            <figure>
+              <img
+                src="recount-lockup-on-dark.svg"
+                width="96"
+                height="23"
+                alt="Lockup on dark at 96px wide"
+              />
+              <figcaption>96px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-lockup-on-dark.svg"
+                width="120"
+                height="28"
+                alt="Lockup on dark at 120px wide"
+              />
+              <figcaption>120px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-lockup-on-dark.svg"
+                width="192"
+                height="45"
+                alt="Lockup on dark at 192px wide"
+              />
+              <figcaption>192px</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-lockup-on-dark.svg"
+                width="320"
+                height="75"
+                alt="Lockup on dark at 320px wide"
+              />
+              <figcaption>320px</figcaption>
+            </figure>
+          </div>
+          <div class="scale light">
+            <figure>
+              <img
+                src="recount-symbol-on-light.svg"
+                width="16"
+                height="16"
+                alt="Symbol at 16px"
+              />
+              <figcaption>16</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-symbol-on-light.svg"
+                width="24"
+                height="24"
+                alt="Symbol at 24px"
+              />
+              <figcaption>24</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-symbol-on-light.svg"
+                width="48"
+                height="48"
+                alt="Symbol at 48px"
+              />
+              <figcaption>48</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-app-icon.svg"
+                width="32"
+                height="32"
+                alt="App icon at 32px"
+              />
+              <figcaption>Icon 32</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-app-icon.svg"
+                width="64"
+                height="64"
+                alt="App icon at 64px"
+              />
+              <figcaption>Icon 64</figcaption>
+            </figure>
+            <figure>
+              <img
+                src="recount-app-icon.svg"
+                width="128"
+                height="128"
+                alt="App icon at 128px"
+              />
+              <figcaption>Icon 128</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="use">
+        <h2 id="use">Use</h2>
+        <div>
+          <dl>
+            <dt>Clearspace</dt>
+            <dd>
+              Each file includes padding one Lattice stroke wide. Leave at least
+              that much space again around it.
+            </dd>
+            <dt>Aspect</dt>
+            <dd>
+              Lockup 256 : 60, wordmark 193 : 52, symbol and icon 1 : 1. Scale
+              by width or height only.
+            </dd>
+            <dt>Color</dt>
+            <dd>
+              Slate ink on light, frost on dark. Pick the file for the
+              background and don't recolor it.
+            </dd>
+            <dt>Geometry</dt>
+            <dd>Don't redraw, re-space or retype any part of the logo.</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section aria-labelledby="files">
+        <h2 id="files">Files</h2>
+        <div>
+          <ul class="files">
+            <li>
+              <a href="/recount-logo-package.zip" download
+                >recount-logo-package.zip</a
+              ><span>Every file below, with README</span>
+            </li>
+            <li>
+              <a href="recount-lockup-on-light.svg" download
+                >recount-lockup-on-light.svg</a
+              ><span>Lockup, light backgrounds</span>
+            </li>
+            <li>
+              <a href="recount-lockup-on-dark.svg" download
+                >recount-lockup-on-dark.svg</a
+              ><span>Lockup, dark backgrounds</span>
+            </li>
+            <li>
+              <a href="recount-wordmark-on-light.svg" download
+                >recount-wordmark-on-light.svg</a
+              ><span>Wordmark, light backgrounds</span>
+            </li>
+            <li>
+              <a href="recount-wordmark-on-dark.svg" download
+                >recount-wordmark-on-dark.svg</a
+              ><span>Wordmark, dark backgrounds</span>
+            </li>
+            <li>
+              <a href="recount-symbol-on-light.svg" download
+                >recount-symbol-on-light.svg</a
+              ><span>Symbol, light backgrounds</span>
+            </li>
+            <li>
+              <a href="recount-symbol-on-dark.svg" download
+                >recount-symbol-on-dark.svg</a
+              ><span>Symbol, dark backgrounds</span>
+            </li>
+            <li>
+              <a href="recount-symbol-teal.svg" download
+                >recount-symbol-teal.svg</a
+              ><span>Symbol, teal accent</span>
+            </li>
+            <li>
+              <a href="recount-app-icon.svg" download>recount-app-icon.svg</a
+              ><span>App icon</span>
+            </li>
+            <li>
+              <a href="README.md" download>README.md</a><span>Usage guide</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

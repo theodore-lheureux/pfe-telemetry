@@ -192,7 +192,7 @@ function EntityFields<T>({
 				event.stopPropagation();
 				void form.handleSubmit();
 			}}
-			className="flex max-w-xl flex-col gap-4 rounded-xl border p-5"
+			className="flex max-w-xl flex-col gap-4 rounded-lg border bg-card p-5 text-card-foreground"
 			aria-busy={pending}
 		>
 			<form.AppField

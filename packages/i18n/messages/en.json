@@ -382,5 +382,8 @@
   "your_session_has_ended_sign_in_again_to": "Your session has ended. Sign in again to respond to this invitation.",
   "all_source_hosts": "all source hosts",
   "bytes_by": "bytes (By)",
-  "seconds_s": "seconds (s)"
+  "seconds_s": "seconds (s)",
+  "brand_home": "Recount · Go home",
+  "theme_switch_light": "Switch to light",
+  "theme_switch_dark": "Switch to dark"
 }

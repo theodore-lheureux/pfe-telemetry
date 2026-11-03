@@ -27,7 +27,7 @@ export function CredentialList({
 }) {
 	return (
 		<section
-			className="flex flex-col gap-4 rounded-lg border p-5"
+			className="flex flex-col gap-4 rounded-lg border bg-card p-5 text-card-foreground"
 			aria-labelledby="credential-list-title"
 			aria-busy={pending}
 		>

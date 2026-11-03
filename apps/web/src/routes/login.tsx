@@ -122,7 +122,7 @@ function Login() {
 	}
 
 	return (
-		<main className="mx-auto flex min-h-svh max-w-md flex-col justify-center gap-6 px-6 py-12">
+		<main className="mx-auto my-8 flex w-[calc(100%_-_2rem)] max-w-md flex-col gap-6 rounded-lg border bg-card p-5 text-card-foreground sm:my-16">
 			<Link to="/" className="text-sm text-muted-foreground">
 				{m.app_title()}
 			</Link>

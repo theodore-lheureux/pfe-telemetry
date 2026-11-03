@@ -108,7 +108,7 @@ function Account() {
 		<div className="flex max-w-xl flex-col gap-6">
 			<div className="flex items-center justify-between gap-4">
 				<Link to="/" className="text-sm text-muted-foreground">
-					{m.app_title()}
+					{m.go_home()}
 				</Link>
 				<Button
 					variant="outline"
@@ -129,7 +129,7 @@ function Account() {
 				<p className="mt-2 text-sm text-muted-foreground">{user.email}</p>
 			</div>
 			<section
-				className="flex flex-col gap-4 rounded-lg border p-5"
+				className="flex flex-col gap-4 rounded-lg border bg-card p-5 text-card-foreground"
 				aria-labelledby="passkeys-title"
 			>
 				<h2 id="passkeys-title" className="font-semibold">

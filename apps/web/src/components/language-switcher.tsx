@@ -2,6 +2,7 @@ import type { Locale } from "@pfe/i18n";
 import { m } from "@pfe/i18n/messages";
 import { getLocale, setLocale } from "@pfe/i18n/runtime";
 import { useHydrated } from "@tanstack/react-router";
+import { LanguagesIcon } from "lucide-react";
 import { useState } from "react";
 import { useLocaleChangeBlocked } from "./locale-safety";
 import {
@@ -22,7 +23,13 @@ export function LanguageSwitcher() {
 	const [requested, setRequested] = useState<Locale | null>(null);
 	return (
 		<div className="flex items-center gap-2">
-			<Label htmlFor="language">{m.language()}</Label>
+			<LanguagesIcon
+				aria-hidden="true"
+				className="size-4 text-muted-foreground"
+			/>
+			<Label htmlFor="language" className="sr-only">
+				{m.language()}
+			</Label>
 			<NativeSelect
 				id="language"
 				value={getLocale()}
