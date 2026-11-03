@@ -15,6 +15,20 @@
       "when": 1793683532355,
       "tag": "0001_passwordless_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793685944846,
+      "tag": "0002_organizations_and_projects",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793685948535,
+      "tag": "0003_organization_owner_integrity",
+      "breakpoints": true
     }
   ]
 }

@@ -28,6 +28,16 @@
 - Keep the HTML document in the root `shellComponent` so shared pending/error/not-found UI retains the document shell. Add shared helpers, middleware or protected layouts when repeated use justifies them, not preemptively.
 - Check [Start's documentation](https://tanstack.com/start/latest/docs/framework/react/overview) against installed package APIs before applying rolling-documentation examples.
 
+## Database schemas
+
+- Auth and application Drizzle schemas are application-maintained. Update auth configuration and tables together; Drizzle owns the generate → review → migrate workflow and committed migration history.
+- Preserve application constraints when adding or upgrading Better Auth plugins; do not automatically regenerate the auth schema or introduce a second migration runner.
+
+## Access control
+
+- Follow [organization and project access](docs/application-access.md). Projects are private except for explicit project members and organization owners/admins; project read access includes all executions.
+- Use Better Auth's canonical memberships. Preserve tenant-qualified keys and the transactional owner guard when changing schemas; the guard counter is not an authorization source.
+
 ## Rust dependencies
 
 - Check the registry for the latest stable release before adding or updating a dependency. Do not choose versions from memory or use prereleases without an explicit requirement.

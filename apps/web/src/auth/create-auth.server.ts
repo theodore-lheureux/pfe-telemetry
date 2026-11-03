@@ -6,6 +6,7 @@ import { magicLink } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import type { getDatabase } from "../db/client.server";
 import * as schema from "../db/schema";
+import { organizationPlugin } from "../organizations/auth-plugin.server";
 import type { AuthConfig } from "./config.server";
 
 const credentialSecurity = {
@@ -49,6 +50,7 @@ export function createAuth(
 			disableCSRFCheck: false,
 		},
 		plugins: [
+			organizationPlugin(),
 			magicLink({
 				disableSignUp: !config.allowSignUp,
 				storeToken: "hashed",

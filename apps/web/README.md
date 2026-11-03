@@ -108,7 +108,13 @@ SMTP delivery requires TLS with certificate validation. Delivery failures do not
 
 Passkey registration and changes require authentication within the last ten minutes. HTTPS is required outside localhost; the passkey relying-party ID is the hostname in `BETTER_AUTH_URL`. Changing that hostname affects which passkeys can be used. Granular organization/project/execution permissions are separate from authentication and are not granted by an account session.
 
-After changing the auth plugins/configuration, run `just auth-generate`, review `src/db/auth-schema.ts`, then generate a Drizzle migration. Do not apply Better Auth's separate migration command. `just test-db` includes authentication regressions for registration controls, single-use/expired links, session revocation, origin checks, shared rate limits and recent-authentication enforcement.
+`src/db/auth-schema.ts` is application-maintained, including the membership constraints used by project access. Update it alongside Better Auth plugin/configuration changes, using the same Drizzle generate → review → migrate workflow as other application tables. Do not run Better Auth's separate migration command.
+
+`just test-db` includes authentication regressions for registration controls, single-use/expired links, session revocation, origin checks, shared rate limits and recent-authentication enforcement.
+
+## Organizations and projects
+
+Verified users can create organizations through Better Auth. Projects are private by default, with explicit Viewer/Member/Admin memberships and organization owner/admin access. Start server functions provide scoped CRUD and project-grant operations; navigation and invitation email flows are separate features. See [organizations and project access](../../docs/application-access.md) for the policy, interfaces and database invariants.
 
 ## UI components
 
