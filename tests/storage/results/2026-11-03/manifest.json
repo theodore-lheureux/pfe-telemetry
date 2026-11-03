@@ -1,0 +1,25 @@
+{
+  "source_sha256": {
+    "apps/server/examples/storage-load.rs": "21ff633e3da5b0e370a44dea8bce7a6dd698045ce5455a93fa05fcee39d35d30",
+    "tests/storage/Dockerfile": "5470ffbbbc58e0f997003abcb51a79e551d49b09b53bc76c9d81edbb127ac45f",
+    "tests/storage/run.py": "959de12823510216a785611c7ccd5ee92e1a1755be4f007f26f6c43b34e37e1a",
+    "tests/storage/summarize.py": "06d7b23f62a8d6d38fd4d80015120d131974aee67048ae7354b6c2d9670ebbe0",
+    "infra/telemetry/compose.yaml": "3e9ab353b7e8f554287a4b76c372a5e489704a8b7f51138d6c8f65ad0e49f4b3",
+    "infra/telemetry/sql/views.sql": "a977a5040e6e76946290b13920ec7b261571500202c12a30aeb17c7cacc3ddf7",
+    "Cargo.lock": "f6ede106d2f257f5d230c9f06927bc497579d4cfc0ad40bd34568273def53d33",
+    "apps/server/src/storage.rs": "1fab1835ef89fefede488c61f90496aea8131b208f78aed5cbd38abff702b679",
+    "apps/server/src/broker.rs": "01c9eb67d98c96b2e160e238e0ddfe424b345257949b3c14afaa124e3a304a3e"
+  },
+  "artifact_sha256": {
+    "summary.json": "3ff7f4c6f993ced6ebcc754575270919bfee62b0dcd2cf048f9422632d713b7f",
+    "query-stderr.txt.gz": "3d45c53312378616125c4f190ec3204466948608e29625c5b0a77650e9872ccd",
+    "events.jsonl.gz": "17a8dbc6d1a4ab9d53aa28b30cafb060d7c3680be975a31ac572e6056f4bfa40"
+  },
+  "host_cpu": "Apple M4",
+  "host_memory_bytes": 17179869184,
+  "commands": [
+    "docker build --file tests/storage/Dockerfile --tag pfe-storage-experiment:local .",
+    "uv run --locked python tests/storage/run.py --output infra/telemetry/.state/storage-study --history 500 --batches 150 --interval-ms 100 --repeats 3",
+    "uv run --locked python tests/storage/summarize.py infra/telemetry/.state/storage-study"
+  ]
+}
