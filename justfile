@@ -43,6 +43,12 @@ db-check:
 db-migrate:
     bun run --filter @pfe/web db:migrate
 
+auth-generate:
+    bun run --filter @pfe/web auth:generate
+
+email-dev:
+    bun run --filter @pfe/transactional dev
+
 test-db:
     bun run --filter @pfe/web test:db
 

@@ -14,6 +14,7 @@ import { sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { applyMigrations, migrationsFolder } from "../../scripts/migrations";
 import { createDatabase } from "../../src/db/client.server";
+import { user } from "../../src/db/schema";
 
 const adminUrl = process.env.TEST_DATABASE_URL;
 if (!adminUrl) {
@@ -83,6 +84,16 @@ describe("application database", () => {
 		const { db } = database();
 		const schema = await db.execute(sql`SELECT to_regnamespace('app') AS name`);
 		expect(schema.rows[0]).toEqual({ name: "app" });
+		const [created] = await db
+			.insert(user)
+			.values({
+				id: "migration-check",
+				name: "Migration check",
+				email: "migration-check@example.invalid",
+			})
+			.returning({ createdAt: user.createdAt, updatedAt: user.updatedAt });
+		expect(created.createdAt).toBeInstanceOf(Date);
+		expect(created.updatedAt).toBeInstanceOf(Date);
 		const before = await db.execute(
 			sql`SELECT * FROM drizzle.__drizzle_migrations ORDER BY id`,
 		);

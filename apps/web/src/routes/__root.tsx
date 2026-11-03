@@ -5,6 +5,8 @@ import {
 	Outlet,
 	Scripts,
 } from "@tanstack/react-router";
+import type { ReactNode } from "react";
+import { RouteNotFound } from "../components/route-feedback";
 import css from "../styles.css?url";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
@@ -17,18 +19,20 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 			],
 			links: [{ rel: "stylesheet", href: css }],
 		}),
-		component: Root,
+		component: Outlet,
+		shellComponent: RootDocument,
+		notFoundComponent: RouteNotFound,
 	},
 );
 
-function Root() {
+function RootDocument({ children }: { children: ReactNode }) {
 	return (
 		<html lang="en">
 			<head>
 				<HeadContent />
 			</head>
 			<body>
-				<Outlet />
+				{children}
 				<Scripts />
 			</body>
 		</html>

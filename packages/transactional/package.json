@@ -1,0 +1,23 @@
+{
+  "name": "@pfe/transactional",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.tsx"
+  },
+  "scripts": {
+    "dev": "email dev --dir ./emails --port 3002",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-email": "6.11.6"
+  },
+  "devDependencies": {
+    "@react-email/ui": "6.11.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2"
+  }
+}

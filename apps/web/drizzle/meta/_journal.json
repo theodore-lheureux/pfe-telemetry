@@ -8,6 +8,13 @@
       "when": 1793679867359,
       "tag": "0000_application_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793683532355,
+      "tag": "0001_passwordless_auth",
+      "breakpoints": true
     }
   ]
 }

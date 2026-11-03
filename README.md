@@ -13,6 +13,8 @@ apps/
   web/                  TanStack Start web application with SSR
   collector/            Linux procfs collector with persistent OTLP export
   server/               Tonic ingestion and Kafka-to-Parquet storage worker
+packages/
+  transactional/        React Email templates, rendering, and previews
 crates/                 Shared Rust libraries
 docs/                   Architecture, serialization, and reliability considerations
 infra/
@@ -33,7 +35,7 @@ just setup
 
 This installs locked dependencies, installs Lefthook's Git hooks, checks the Rust workspace, and copies missing `.env` files from the component examples. It preserves existing `.env` files. Hooks use the locked Lefthook dependency through Bun. Use `just hooks-install` to reinstall hooks in a checkout.
 
-Bun manages the web workspace and shared web tooling. Cargo manages Rust packages. uv manages Ansible for the test environment. Use the root lockfiles; do not create component lockfiles.
+Bun manages the TypeScript workspaces and shared web tooling. Cargo manages Rust packages. uv manages Ansible for the test environment. Use the root lockfiles; do not create component lockfiles.
 
 ## Run components
 
@@ -69,7 +71,7 @@ After `just env up`, [Grafana](http://localhost:3003/d/node-exporter-full/node-e
 
 The commit hook selects checks by staged file type. Rust formatting checks the entire Cargo workspace. Hooks read the working tree without modifying or staging files, so unstaged edits in a partially staged file can produce a diagnostic. Generated routes, build artifacts, dependencies, and VM state are excluded.
 
-The push hook runs web type checking when web files change and Clippy when Rust files or manifests change.
+The push hook runs TypeScript checking when web or shared package files change and Clippy when Rust files or manifests change.
 
 ```sh
 just check

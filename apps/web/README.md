@@ -29,6 +29,8 @@ just build
 
 `getRouter` creates a QueryClient for each server request. The SSR integration supplies the provider and transfers cached data to the browser. Route loaders access it through `context.queryClient`. Keep query keys and functions together with `queryOptions`; choose freshness settings for each query.
 
+Start's default server supports streaming SSR. Await authentication and other critical data before rendering; fetch slower secondary data without blocking the loader and render it under Suspense through the Query SSR integration. Current account routes do not have deferred data. Shared loading/error/not-found components provide route feedback, and the root document remains outside those boundaries through `shellComponent`. Verify that the production host and proxy preserve streamed responses before relying on progressive delivery.
+
 TanStack Start server functions handle browser-facing reads and mutations. The Rust server handles collector ingestion.
 
 ## Application database
@@ -80,6 +82,33 @@ TEST_DATABASE_URL=postgresql://pfe:YOUR_GENERATED_PASSWORD@127.0.0.1:15432/pfe j
 ```
 
 The integration suite requires a PostgreSQL account with permission to create databases. It creates uniquely named temporary databases and removes only those databases afterward; it does not reset the database named in the URL. Tests cover fresh/repeated migrations, concurrent migration jobs, and recovery after failed DDL. CI runs the suite against PostgreSQL. Do not use production credentials for tests.
+
+## Authentication and email
+
+Better Auth provides PostgreSQL-backed sessions, passkeys and email magic links. Password authentication is disabled. New users verify their email through a five-minute, single-use link, then add passkeys from `/account`. Email links also support sign-in and recovery when passkeys are lost. Recovery proves mailbox access; it does not automatically remove existing passkeys or other sessions. Account settings provide both actions.
+
+Set these server-only values in `apps/web/.env` before using authentication:
+
+| Setting              | Value                                                                                                                      |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET` | At least 32 random characters; generate with `openssl rand -hex 32`. Keep stable across restarts and replicas.             |
+| `BETTER_AUTH_URL`    | Public application origin, such as `https://telemetry.example.com`. Use `http://localhost:3001` locally.                   |
+| `AUTH_ALLOW_SIGN_UP` | Explicitly `true` or `false`. With `false`, existing users can sign in but unknown email addresses cannot create accounts. |
+| `SMTP_HOST`          | SMTP server; `smtp.resend.com` for Resend.                                                                                 |
+| `SMTP_PORT`          | `465` for implicit TLS, or the provider's STARTTLS port, commonly `587`.                                                   |
+| `SMTP_USER`          | SMTP username; `resend` for Resend.                                                                                        |
+| `SMTP_PASSWORD`      | SMTP credential supplied by the email provider.                                                                            |
+| `EMAIL_FROM`         | A sender address on a domain verified with the provider.                                                                   |
+
+Run `just db-migrate` before starting the application. For a new installation, enable registration to create the first account, then disable it if public registration is not wanted. Invitation-based account creation is added with organization administration; there is no administrator backdoor or default user.
+
+SMTP delivery requires TLS with certificate validation. Delivery failures do not create a browser session or expose SMTP errors to the browser. Keep SMTP credentials out of source, client environment variables and logs. Templates and HTML/plain-text rendering live in [the transactional package](../../packages/transactional/README.md); the web application owns SMTP delivery. Run `just email-dev` to preview templates at `http://localhost:3002` without sending mail.
+
+`/api/auth/$` mounts Better Auth's handler. The account route reads its identity once through `getCurrentUser` and shares it through route context. Private server functions must independently validate the current session and resource permissions; route guards are not authorization. Session lookups are database-backed without a cookie cache, so revocation takes effect on the next protected request. Authentication responses, identity reads and account HTML use `private, no-store`. Passkey sign-in and logout invalidate route state before typed navigation. Email verification follows Better Auth's HTTP redirect. Request limiting uses PostgreSQL so application instances share counters; production proxies must strip untrusted forwarding headers and supply the correct client IP. Origin and CSRF checks remain enabled.
+
+Passkey registration and changes require authentication within the last ten minutes. HTTPS is required outside localhost; the passkey relying-party ID is the hostname in `BETTER_AUTH_URL`. Changing that hostname affects which passkeys can be used. Granular organization/project/execution permissions are separate from authentication and are not granted by an account session.
+
+After changing the auth plugins/configuration, run `just auth-generate`, review `src/db/auth-schema.ts`, then generate a Drizzle migration. Do not apply Better Auth's separate migration command. `just test-db` includes authentication regressions for registration controls, single-use/expired links, session revocation, origin checks, shared rate limits and recent-authentication enforcement.
 
 ## UI components
 

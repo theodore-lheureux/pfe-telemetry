@@ -3,13 +3,14 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "apps/web"
+    "apps/web",
+    "packages/*"
   ],
   "scripts": {
     "prepare": "bun --bun run lefthook install",
     "dev": "bun --bun run --filter @pfe/web dev",
     "build": "bun --bun run --filter @pfe/web build",
-    "typecheck": "bun --bun run --filter @pfe/web typecheck",
+    "typecheck": "bun --bun run --filter '@pfe/*' typecheck",
     "lint": "just lint",
     "lint:fix": "just lint-fix",
     "format": "just format",

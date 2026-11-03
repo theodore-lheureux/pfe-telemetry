@@ -18,6 +18,16 @@
 - Comment only non-obvious intent, constraints or safety requirements. Do not restate names, standard tool behavior or implementation steps.
 - Retain tests that protect application behavior, security boundaries or failure-prone integration logic. Avoid redundant cases and tests of dependency internals; exploratory checks need not remain in the repository.
 
+## TanStack Start
+
+- Route loaders and components are isomorphic. Put privileged reads and mutations in server functions or server routes, with credentials and database access in `.server.ts` modules.
+- Share UI identity through route context instead of repeating session RPCs. Independently authorize every private server operation; route context and `beforeLoad` guards are not access-control boundaries.
+- Use typed Router navigation and invalidate the owner of changed state: Router context/loaders, Query data or Better Auth stores. Clear private Query data on account changes when such data exists. Keep protocol redirects and raw HTTP responses in HTTP handlers; use redirects, ordinary errors or typed results for application RPCs.
+- Create a QueryClient inside `getRouter`, never at module scope. The SSR integration supplies its provider, hydration and streaming; do not duplicate them. Process-wide database pools must not hold request-specific session data.
+- Await authentication, authorization and critical page data. Defer only secondary data under Suspense, with handled query rejections and explicit freshness settings. Do not add artificial streaming examples to product routes. Verify streaming through the production host/proxy.
+- Keep the HTML document in the root `shellComponent` so shared pending/error/not-found UI retains the document shell. Add shared helpers, middleware or protected layouts when repeated use justifies them, not preemptively.
+- Check [Start's documentation](https://tanstack.com/start/latest/docs/framework/react/overview) against installed package APIs before applying rolling-documentation examples.
+
 ## Rust dependencies
 
 - Check the registry for the latest stable release before adding or updating a dependency. Do not choose versions from memory or use prereleases without an explicit requirement.

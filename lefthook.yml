@@ -47,6 +47,7 @@ pre-push:
     - name: web-types
       glob:
         - "apps/web/**"
+        - "packages/**"
         - package.json
         - bun.lock
       run: bun run typecheck
