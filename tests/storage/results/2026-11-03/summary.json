@@ -1,0 +1,1638 @@
+{
+  "parameters": {
+    "kind": "parameters",
+    "time_ns": 1793672364498560000,
+    "parameters": {
+      "output": "/Users/simeon/repo/pfe-telemetry/infra/telemetry/.state/storage-study",
+      "history": 500,
+      "batches": 150,
+      "interval_ms": 100,
+      "repeats": 3
+    },
+    "rows_per_batch": 192,
+    "created_origin_ns": 1793672364498249000
+  },
+  "scenarios": [
+    {
+      "name": "pfe-storage-exp-storage-study-0-1-ro",
+      "readers": 1,
+      "write": false,
+      "phase_s": 15.023826,
+      "accepted_rows": 0,
+      "accepted_rows_per_s": null,
+      "ack_ms": null,
+      "sampled_latest_ack_to_observation_ms": null,
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 66,
+            "p50": 43.31,
+            "p95": 48.251,
+            "p99": 66.685,
+            "max": 66.685
+          },
+          "engine_ms": {
+            "n": 66,
+            "p50": 43.0,
+            "p95": 48.0,
+            "p99": 66.0,
+            "max": 66.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 66,
+            "p50": 40.505,
+            "p95": 46.913,
+            "p99": 52.286,
+            "max": 52.286
+          },
+          "engine_ms": {
+            "n": 66,
+            "p50": 40.0,
+            "p95": 46.0,
+            "p99": 52.0,
+            "max": 52.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 66,
+            "p50": 104.793,
+            "p95": 119.688,
+            "p99": 138.395,
+            "max": 138.395
+          },
+          "engine_ms": {
+            "n": 66,
+            "p50": 105.0,
+            "p95": 119.0,
+            "p99": 138.0,
+            "max": 138.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 65,
+            "p50": 34.366,
+            "p95": 38.646,
+            "p99": 39.512,
+            "max": 39.512
+          },
+          "engine_ms": {
+            "n": 65,
+            "p50": 34.0,
+            "p95": 38.0,
+            "p99": 40.0,
+            "max": 40.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 1.14,
+          "memory_bytes": 3178233.856,
+          "block_read_bytes": 14300000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 3.71,
+          "memory_bytes": 330406297.6,
+          "block_read_bytes": 75200000.0,
+          "block_write_bytes": 9130000.0
+        },
+        "storage-1": {
+          "cpu_percent": 0.02,
+          "memory_bytes": 3109027.84,
+          "block_read_bytes": 0,
+          "block_write_bytes": 12300000.0
+        },
+        "reader-0": {
+          "cpu_percent": 107.61,
+          "memory_bytes": 124465971.2,
+          "block_read_bytes": 19600000.0,
+          "block_write_bytes": 0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-0-0-rw",
+      "readers": 0,
+      "write": true,
+      "phase_s": 15.281303,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1919.5271319630258,
+      "ack_ms": {
+        "n": 150,
+        "p50": 10.09736,
+        "p95": 12.771301000000001,
+        "p99": 13.275856000000001,
+        "max": 13.597256999999999
+      },
+      "sampled_latest_ack_to_observation_ms": null,
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 3.09,
+          "memory_bytes": 2662334.464,
+          "block_read_bytes": 2490000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 101.91,
+          "memory_bytes": 408944640.0,
+          "block_read_bytes": 67600000.0,
+          "block_write_bytes": 9120000.0
+        },
+        "storage-1": {
+          "cpu_percent": 6.53,
+          "memory_bytes": 4690280.448,
+          "block_read_bytes": 0,
+          "block_write_bytes": 15800000.0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-0-1-rw",
+      "readers": 1,
+      "write": true,
+      "phase_s": 17.276914,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1919.5493094041315,
+      "ack_ms": {
+        "n": 150,
+        "p50": 7.360523,
+        "p95": 10.024557999999999,
+        "p99": 10.685556,
+        "max": 13.124633
+      },
+      "sampled_latest_ack_to_observation_ms": {
+        "n": 50,
+        "p50": 94.120926,
+        "p95": 153.011942,
+        "p99": 161.234411,
+        "max": 161.234411
+      },
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 51,
+            "p50": 53.243,
+            "p95": 86.662,
+            "p99": 107.296,
+            "max": 107.296
+          },
+          "engine_ms": {
+            "n": 51,
+            "p50": 53.0,
+            "p95": 86.0,
+            "p99": 107.0,
+            "max": 107.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 50,
+            "p50": 50.442,
+            "p95": 73.999,
+            "p99": 118.568,
+            "max": 118.568
+          },
+          "engine_ms": {
+            "n": 50,
+            "p50": 50.0,
+            "p95": 73.0,
+            "p99": 118.0,
+            "max": 118.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 50,
+            "p50": 136.187,
+            "p95": 202.835,
+            "p99": 224.524,
+            "max": 224.524
+          },
+          "engine_ms": {
+            "n": 50,
+            "p50": 136.0,
+            "p95": 202.0,
+            "p99": 224.0,
+            "max": 224.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 50,
+            "p50": 44.884,
+            "p95": 68.128,
+            "p99": 81.027,
+            "max": 81.027
+          },
+          "engine_ms": {
+            "n": 50,
+            "p50": 45.0,
+            "p95": 68.0,
+            "p99": 81.0,
+            "max": 81.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 2.25,
+          "memory_bytes": 2924478.464,
+          "block_read_bytes": 6220000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 5.0,
+          "memory_bytes": 321283686.4,
+          "block_read_bytes": 70500000.0,
+          "block_write_bytes": 11700000.0
+        },
+        "storage-1": {
+          "cpu_percent": 2.51,
+          "memory_bytes": 4665114.624,
+          "block_read_bytes": 2660000.0,
+          "block_write_bytes": 16000000.0
+        },
+        "reader-0": {
+          "cpu_percent": 111.12,
+          "memory_bytes": 148478361.6,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-0-4-rw",
+      "readers": 4,
+      "write": true,
+      "phase_s": 16.447282,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1920.1532519414645,
+      "ack_ms": {
+        "n": 150,
+        "p50": 8.479603000000001,
+        "p95": 51.039368,
+        "p99": 56.29398,
+        "max": 57.169643
+      },
+      "sampled_latest_ack_to_observation_ms": {
+        "n": 90,
+        "p50": 88.934708,
+        "p95": 144.007895,
+        "p99": 157.256386,
+        "max": 157.256386
+      },
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 200,
+            "p50": 57.552,
+            "p95": 79.833,
+            "p99": 114.753,
+            "max": 132.384
+          },
+          "engine_ms": {
+            "n": 200,
+            "p50": 57.0,
+            "p95": 79.0,
+            "p99": 113.0,
+            "max": 131.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 199,
+            "p50": 52.839,
+            "p95": 77.741,
+            "p99": 132.339,
+            "max": 139.707
+          },
+          "engine_ms": {
+            "n": 199,
+            "p50": 53.0,
+            "p95": 77.0,
+            "p99": 131.0,
+            "max": 139.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 198,
+            "p50": 143.511,
+            "p95": 191.378,
+            "p99": 265.255,
+            "max": 266.101
+          },
+          "engine_ms": {
+            "n": 198,
+            "p50": 143.0,
+            "p95": 190.0,
+            "p99": 265.0,
+            "max": 265.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 196,
+            "p50": 47.437,
+            "p95": 63.16,
+            "p99": 77.007,
+            "max": 77.036
+          },
+          "engine_ms": {
+            "n": 196,
+            "p50": 47.0,
+            "p95": 63.0,
+            "p99": 76.0,
+            "max": 77.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 2.59,
+          "memory_bytes": 2436890.624,
+          "block_read_bytes": 14900000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 7.89,
+          "memory_bytes": 324114841.6,
+          "block_read_bytes": 66500000.0,
+          "block_write_bytes": 11700000.0
+        },
+        "storage-1": {
+          "cpu_percent": 3.05,
+          "memory_bytes": 5455740.928,
+          "block_read_bytes": 4290000.0,
+          "block_write_bytes": 16000000.0
+        },
+        "reader-0": {
+          "cpu_percent": 108.92,
+          "memory_bytes": 140089753.6,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "reader-1": {
+          "cpu_percent": 107.24,
+          "memory_bytes": 146590924.8,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "reader-2": {
+          "cpu_percent": 107.14,
+          "memory_bytes": 134637158.4,
+          "block_read_bytes": 4100.0,
+          "block_write_bytes": 0
+        },
+        "reader-3": {
+          "cpu_percent": 108.13,
+          "memory_bytes": 133588582.4,
+          "block_read_bytes": 131000.0,
+          "block_write_bytes": 0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-1-1-ro",
+      "readers": 1,
+      "write": false,
+      "phase_s": 15.044115,
+      "accepted_rows": 0,
+      "accepted_rows_per_s": null,
+      "ack_ms": null,
+      "sampled_latest_ack_to_observation_ms": null,
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 56,
+            "p50": 50.599,
+            "p95": 80.008,
+            "p99": 100.449,
+            "max": 100.449
+          },
+          "engine_ms": {
+            "n": 56,
+            "p50": 50.0,
+            "p95": 80.0,
+            "p99": 100.0,
+            "max": 100.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 56,
+            "p50": 48.073,
+            "p95": 65.343,
+            "p99": 103.821,
+            "max": 103.821
+          },
+          "engine_ms": {
+            "n": 56,
+            "p50": 47.0,
+            "p95": 65.0,
+            "p99": 103.0,
+            "max": 103.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 55,
+            "p50": 119.654,
+            "p95": 158.35,
+            "p99": 194.336,
+            "max": 194.336
+          },
+          "engine_ms": {
+            "n": 55,
+            "p50": 119.0,
+            "p95": 158.0,
+            "p99": 194.0,
+            "max": 194.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 55,
+            "p50": 38.702,
+            "p95": 52.767,
+            "p99": 55.885,
+            "max": 55.885
+          },
+          "engine_ms": {
+            "n": 55,
+            "p50": 38.0,
+            "p95": 52.0,
+            "p99": 55.0,
+            "max": 55.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 2.94,
+          "memory_bytes": 2466250.752,
+          "block_read_bytes": 22400000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 6.16,
+          "memory_bytes": 331245158.4,
+          "block_read_bytes": 106000.0,
+          "block_write_bytes": 9170000.0
+        },
+        "storage-1": {
+          "cpu_percent": 0.03,
+          "memory_bytes": 3702521.856,
+          "block_read_bytes": 9000000.0,
+          "block_write_bytes": 12300000.0
+        },
+        "reader-0": {
+          "cpu_percent": 107.22,
+          "memory_bytes": 123731968.0,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-1-0-rw",
+      "readers": 0,
+      "write": true,
+      "phase_s": 17.245551,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1919.8654442331654,
+      "ack_ms": {
+        "n": 150,
+        "p50": 9.047732,
+        "p95": 11.627436,
+        "p99": 32.034521000000005,
+        "max": 33.525892
+      },
+      "sampled_latest_ack_to_observation_ms": null,
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 2.87,
+          "memory_bytes": 3068133.376,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 26.31,
+          "memory_bytes": 332922880.0,
+          "block_read_bytes": 68700000.0,
+          "block_write_bytes": 11700000.0
+        },
+        "storage-1": {
+          "cpu_percent": 4.52,
+          "memory_bytes": 4145020.928,
+          "block_read_bytes": 0,
+          "block_write_bytes": 16000000.0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-1-1-rw",
+      "readers": 1,
+      "write": true,
+      "phase_s": 17.243541,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1920.2624095288356,
+      "ack_ms": {
+        "n": 150,
+        "p50": 7.558152000000001,
+        "p95": 16.798342,
+        "p99": 52.935437,
+        "max": 53.14647900000001
+      },
+      "sampled_latest_ack_to_observation_ms": {
+        "n": 52,
+        "p50": 98.150616,
+        "p95": 145.458003,
+        "p99": 155.03849,
+        "max": 155.03849
+      },
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 53,
+            "p50": 54.37,
+            "p95": 63.745,
+            "p99": 67.251,
+            "max": 67.251
+          },
+          "engine_ms": {
+            "n": 53,
+            "p50": 54.0,
+            "p95": 63.0,
+            "p99": 67.0,
+            "max": 67.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 53,
+            "p50": 50.282,
+            "p95": 66.031,
+            "p99": 76.933,
+            "max": 76.933
+          },
+          "engine_ms": {
+            "n": 53,
+            "p50": 50.0,
+            "p95": 64.0,
+            "p99": 73.0,
+            "max": 73.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 53,
+            "p50": 138.583,
+            "p95": 167.309,
+            "p99": 174.463,
+            "max": 174.463
+          },
+          "engine_ms": {
+            "n": 53,
+            "p50": 138.0,
+            "p95": 167.0,
+            "p99": 174.0,
+            "max": 174.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 52,
+            "p50": 43.911,
+            "p95": 55.885,
+            "p99": 59.016,
+            "max": 59.016
+          },
+          "engine_ms": {
+            "n": 52,
+            "p50": 43.0,
+            "p95": 55.0,
+            "p99": 56.0,
+            "max": 56.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 1.6,
+          "memory_bytes": 4022337.536,
+          "block_read_bytes": 25300000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 4.75,
+          "memory_bytes": 324639129.6,
+          "block_read_bytes": 71500000.0,
+          "block_write_bytes": 11700000.0
+        },
+        "storage-1": {
+          "cpu_percent": 2.05,
+          "memory_bytes": 4239392.768,
+          "block_read_bytes": 1600000.0,
+          "block_write_bytes": 16000000.0
+        },
+        "reader-0": {
+          "cpu_percent": 110.98,
+          "memory_bytes": 139775180.8,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-1-4-rw",
+      "readers": 4,
+      "write": true,
+      "phase_s": 17.451789,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1919.8532795295605,
+      "ack_ms": {
+        "n": 150,
+        "p50": 8.720608,
+        "p95": 47.415282000000005,
+        "p99": 52.43623,
+        "max": 54.637893
+      },
+      "sampled_latest_ack_to_observation_ms": {
+        "n": 84,
+        "p50": 94.662215,
+        "p95": 153.403553,
+        "p99": 178.153219,
+        "max": 178.153219
+      },
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 164,
+            "p50": 71.282,
+            "p95": 93.241,
+            "p99": 113.351,
+            "max": 113.598
+          },
+          "engine_ms": {
+            "n": 164,
+            "p50": 70.0,
+            "p95": 93.0,
+            "p99": 112.0,
+            "max": 113.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 163,
+            "p50": 68.575,
+            "p95": 92.753,
+            "p99": 137.645,
+            "max": 145.277
+          },
+          "engine_ms": {
+            "n": 163,
+            "p50": 68.0,
+            "p95": 92.0,
+            "p99": 137.0,
+            "max": 145.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 163,
+            "p50": 175.058,
+            "p95": 230.158,
+            "p99": 257.602,
+            "max": 283.504
+          },
+          "engine_ms": {
+            "n": 163,
+            "p50": 174.0,
+            "p95": 229.0,
+            "p99": 257.0,
+            "max": 282.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 160,
+            "p50": 57.252,
+            "p95": 79.234,
+            "p99": 101.305,
+            "max": 113.2
+          },
+          "engine_ms": {
+            "n": 160,
+            "p50": 56.0,
+            "p95": 78.0,
+            "p99": 100.0,
+            "max": 108.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 2.58,
+          "memory_bytes": 2600468.48,
+          "block_read_bytes": 3580000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 12.01,
+          "memory_bytes": 324429414.4,
+          "block_read_bytes": 75900000.0,
+          "block_write_bytes": 11800000.0
+        },
+        "storage-1": {
+          "cpu_percent": 2.92,
+          "memory_bytes": 4226809.856,
+          "block_read_bytes": 2140000.0,
+          "block_write_bytes": 16000000.0
+        },
+        "reader-0": {
+          "cpu_percent": 106.2,
+          "memory_bytes": 138621747.2,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "reader-1": {
+          "cpu_percent": 107.31,
+          "memory_bytes": 133378867.2,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "reader-2": {
+          "cpu_percent": 107.34,
+          "memory_bytes": 138097459.2,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "reader-3": {
+          "cpu_percent": 107.18,
+          "memory_bytes": 135476019.2,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-2-1-ro",
+      "readers": 1,
+      "write": false,
+      "phase_s": 15.068723,
+      "accepted_rows": 0,
+      "accepted_rows_per_s": null,
+      "ack_ms": null,
+      "sampled_latest_ack_to_observation_ms": null,
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 60,
+            "p50": 46.995,
+            "p95": 57.053,
+            "p99": 60.206,
+            "max": 60.206
+          },
+          "engine_ms": {
+            "n": 60,
+            "p50": 46.0,
+            "p95": 57.0,
+            "p99": 60.0,
+            "max": 60.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 60,
+            "p50": 43.961,
+            "p95": 48.858,
+            "p99": 70.481,
+            "max": 70.481
+          },
+          "engine_ms": {
+            "n": 60,
+            "p50": 44.0,
+            "p95": 48.0,
+            "p99": 69.0,
+            "max": 69.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 60,
+            "p50": 113.595,
+            "p95": 137.777,
+            "p99": 157.166,
+            "max": 157.166
+          },
+          "engine_ms": {
+            "n": 60,
+            "p50": 114.0,
+            "p95": 137.0,
+            "p99": 157.0,
+            "max": 157.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 59,
+            "p50": 37.331,
+            "p95": 54.644,
+            "p99": 76.92,
+            "max": 76.92
+          },
+          "engine_ms": {
+            "n": 59,
+            "p50": 37.0,
+            "p95": 54.0,
+            "p99": 77.0,
+            "max": 77.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 1.24,
+          "memory_bytes": 2634022.912,
+          "block_read_bytes": 4480000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 4.68,
+          "memory_bytes": 331035443.2,
+          "block_read_bytes": 66000000.0,
+          "block_write_bytes": 9120000.0
+        },
+        "storage-1": {
+          "cpu_percent": 0.07,
+          "memory_bytes": 2801795.072,
+          "block_read_bytes": 2040000.0,
+          "block_write_bytes": 12300000.0
+        },
+        "reader-0": {
+          "cpu_percent": 108.24,
+          "memory_bytes": 123731968.0,
+          "block_read_bytes": 8210000.000000001,
+          "block_write_bytes": 0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-2-0-rw",
+      "readers": 0,
+      "write": true,
+      "phase_s": 17.29638,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1919.4808140629164,
+      "ack_ms": {
+        "n": 150,
+        "p50": 9.658223000000001,
+        "p95": 12.028716,
+        "p99": 43.631254,
+        "max": 44.765291999999995
+      },
+      "sampled_latest_ack_to_observation_ms": null,
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": null,
+          "engine_ms": null
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 1.58,
+          "memory_bytes": 2956984.32,
+          "block_read_bytes": 14700000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 18.09,
+          "memory_bytes": 329567436.8,
+          "block_read_bytes": 86700000.0,
+          "block_write_bytes": 11700000.0
+        },
+        "storage-1": {
+          "cpu_percent": 4.66,
+          "memory_bytes": 4976541.696,
+          "block_read_bytes": 2720000.0,
+          "block_write_bytes": 16000000.0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-2-1-rw",
+      "readers": 1,
+      "write": true,
+      "phase_s": 17.268794,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1919.661404066243,
+      "ack_ms": {
+        "n": 150,
+        "p50": 7.384688000000001,
+        "p95": 9.369307000000001,
+        "p99": 10.464596,
+        "max": 11.489093
+      },
+      "sampled_latest_ack_to_observation_ms": {
+        "n": 57,
+        "p50": 98.303444,
+        "p95": 138.485266,
+        "p99": 146.589395,
+        "max": 146.589395
+      },
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 58,
+            "p50": 48.894,
+            "p95": 61.409,
+            "p99": 74.284,
+            "max": 74.284
+          },
+          "engine_ms": {
+            "n": 58,
+            "p50": 49.0,
+            "p95": 61.0,
+            "p99": 73.0,
+            "max": 73.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 58,
+            "p50": 47.856,
+            "p95": 58.192,
+            "p99": 62.615,
+            "max": 62.615
+          },
+          "engine_ms": {
+            "n": 58,
+            "p50": 48.0,
+            "p95": 57.0,
+            "p99": 62.0,
+            "max": 62.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 58,
+            "p50": 120.67,
+            "p95": 146.203,
+            "p99": 174.331,
+            "max": 174.331
+          },
+          "engine_ms": {
+            "n": 58,
+            "p50": 120.0,
+            "p95": 145.0,
+            "p99": 172.0,
+            "max": 172.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 57,
+            "p50": 40.238,
+            "p95": 48.482,
+            "p99": 60.555,
+            "max": 60.555
+          },
+          "engine_ms": {
+            "n": 57,
+            "p50": 40.0,
+            "p95": 48.0,
+            "p99": 61.0,
+            "max": 61.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 1.48,
+          "memory_bytes": 2481979.392,
+          "block_read_bytes": 5280000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 4.31,
+          "memory_bytes": 330406297.6,
+          "block_read_bytes": 71100000.0,
+          "block_write_bytes": 11700000.0
+        },
+        "storage-1": {
+          "cpu_percent": 1.65,
+          "memory_bytes": 4226809.856,
+          "block_read_bytes": 2790000.0,
+          "block_write_bytes": 16000000.0
+        },
+        "reader-0": {
+          "cpu_percent": 109.01,
+          "memory_bytes": 149317222.4,
+          "block_read_bytes": 10400000.0,
+          "block_write_bytes": 0
+        }
+      }
+    },
+    {
+      "name": "pfe-storage-exp-storage-study-2-4-rw",
+      "readers": 4,
+      "write": true,
+      "phase_s": 17.434539,
+      "accepted_rows": 28800,
+      "accepted_rows_per_s": 1920.1197813245735,
+      "ack_ms": {
+        "n": 150,
+        "p50": 8.335396,
+        "p95": 28.197639,
+        "p99": 32.625129,
+        "max": 32.674628
+      },
+      "sampled_latest_ack_to_observation_ms": {
+        "n": 72,
+        "p50": 84.385436,
+        "p95": 150.702135,
+        "p99": 178.618886,
+        "max": 178.618886
+      },
+      "queries": {
+        "range": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 205,
+            "p50": 54.803,
+            "p95": 76.973,
+            "p99": 86.824,
+            "max": 90.33
+          },
+          "engine_ms": {
+            "n": 205,
+            "p50": 54.0,
+            "p95": 76.0,
+            "p99": 86.0,
+            "max": 90.0
+          }
+        },
+        "aggregate": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 204,
+            "p50": 52.011,
+            "p95": 69.531,
+            "p99": 80.875,
+            "max": 82.852
+          },
+          "engine_ms": {
+            "n": 204,
+            "p50": 51.0,
+            "p95": 69.0,
+            "p99": 80.0,
+            "max": 83.0
+          }
+        },
+        "rates": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 204,
+            "p50": 138.576,
+            "p95": 172.54,
+            "p99": 220.61,
+            "max": 223.244
+          },
+          "engine_ms": {
+            "n": 204,
+            "p50": 138.0,
+            "p95": 172.0,
+            "p99": 220.0,
+            "max": 222.0
+          }
+        },
+        "freshness": {
+          "errors": 0,
+          "elapsed_ms": {
+            "n": 203,
+            "p50": 45.634,
+            "p95": 59.677,
+            "p99": 77.232,
+            "max": 81.97
+          },
+          "engine_ms": {
+            "n": 203,
+            "p50": 45.0,
+            "p95": 59.0,
+            "p99": 76.0,
+            "max": 82.0
+          }
+        }
+      },
+      "resource_peaks": {
+        "ingestion-1": {
+          "cpu_percent": 2.27,
+          "memory_bytes": 5451546.624,
+          "block_read_bytes": 3350000.0,
+          "block_write_bytes": 0
+        },
+        "kafka-1": {
+          "cpu_percent": 10.46,
+          "memory_bytes": 330720870.4,
+          "block_read_bytes": 70600000.0,
+          "block_write_bytes": 11700000.0
+        },
+        "storage-1": {
+          "cpu_percent": 3.07,
+          "memory_bytes": 4488953.856,
+          "block_read_bytes": 2670000.0,
+          "block_write_bytes": 16000000.0
+        },
+        "reader-0": {
+          "cpu_percent": 105.51,
+          "memory_bytes": 147639500.8,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "reader-1": {
+          "cpu_percent": 106.08,
+          "memory_bytes": 138097459.2,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "reader-2": {
+          "cpu_percent": 105.76,
+          "memory_bytes": 146800640.0,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        },
+        "reader-3": {
+          "cpu_percent": 105.02,
+          "memory_bytes": 142606336.0,
+          "block_read_bytes": 0,
+          "block_write_bytes": 0
+        }
+      }
+    }
+  ],
+  "integrity": [
+    {
+      "kind": "integrity",
+      "time_ns": 1793672384698118000,
+      "scenario": "pfe-storage-exp-storage-study-0-1-ro",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672400507786000,
+      "scenario": "pfe-storage-exp-storage-study-0-1-ro",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672422117307000,
+      "scenario": "pfe-storage-exp-storage-study-0-0-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672438157983000,
+      "scenario": "pfe-storage-exp-storage-study-0-0-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672461910549000,
+      "scenario": "pfe-storage-exp-storage-study-0-1-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672480061550000,
+      "scenario": "pfe-storage-exp-storage-study-0-1-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672502605356000,
+      "scenario": "pfe-storage-exp-storage-study-0-4-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672521115052000,
+      "scenario": "pfe-storage-exp-storage-study-0-4-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672544276577000,
+      "scenario": "pfe-storage-exp-storage-study-1-1-ro",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672560250423000,
+      "scenario": "pfe-storage-exp-storage-study-1-1-ro",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672582695607000,
+      "scenario": "pfe-storage-exp-storage-study-1-0-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672600567646000,
+      "scenario": "pfe-storage-exp-storage-study-1-0-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672623642177000,
+      "scenario": "pfe-storage-exp-storage-study-1-1-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672641813879000,
+      "scenario": "pfe-storage-exp-storage-study-1-1-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672664423754000,
+      "scenario": "pfe-storage-exp-storage-study-1-4-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672683915159000,
+      "scenario": "pfe-storage-exp-storage-study-1-4-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672706732038000,
+      "scenario": "pfe-storage-exp-storage-study-2-1-ro",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672722702650000,
+      "scenario": "pfe-storage-exp-storage-study-2-1-ro",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672745132261000,
+      "scenario": "pfe-storage-exp-storage-study-2-0-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672763122026000,
+      "scenario": "pfe-storage-exp-storage-study-2-0-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672784883658000,
+      "scenario": "pfe-storage-exp-storage-study-2-1-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672803065153000,
+      "scenario": "pfe-storage-exp-storage-study-2-1-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672825050268000,
+      "scenario": "pfe-storage-exp-storage-study-2-4-rw",
+      "batches": 500,
+      "result": [
+        {
+          "rows": 96000,
+          "identities": 96000,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672844359887000,
+      "scenario": "pfe-storage-exp-storage-study-2-4-rw",
+      "batches": 650,
+      "result": [
+        {
+          "rows": 124800,
+          "identities": 124800,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672899539131000,
+      "scenario": "pfe-storage-exp-storage-study-2-4-rw",
+      "batches": 800,
+      "result": [
+        {
+          "rows": 153600,
+          "identities": 153600,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672915191357000,
+      "scenario": "pfe-storage-exp-storage-study-2-4-rw",
+      "batches": 800,
+      "result": [
+        {
+          "rows": 153600,
+          "identities": 153600,
+          "invalid": 0
+        }
+      ]
+    },
+    {
+      "kind": "integrity",
+      "time_ns": 1793672923393322000,
+      "scenario": "pfe-storage-exp-storage-study-2-4-rw",
+      "batches": 800,
+      "result": [
+        {
+          "rows": 153600,
+          "identities": 153600,
+          "invalid": 0
+        }
+      ]
+    }
+  ],
+  "recovery": [
+    {
+      "kind": "resume",
+      "time_ns": 1793672851492232000,
+      "elapsed_s": 2.383128792018397
+    },
+    {
+      "kind": "recovery_pass",
+      "time_ns": 1793672923395100000,
+      "scenario": "pfe-storage-exp-storage-study-2-4-rw",
+      "batches": 800
+    }
+  ],
+  "completed_ns": 1793672928492505000
+}

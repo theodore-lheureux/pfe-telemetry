@@ -84,3 +84,5 @@ Stopping services keeps both named volumes. `docker compose down --volumes` dele
 The broker uses one replica, six-hour retention and a 128 MiB per-partition retention target. Cleanup is asynchronous; active segments, metadata and internal topics use additional space. A single broker does not protect accepted data against loss of its disk. Kafka acknowledgements follow its replication and page-cache policy; this local setup does not promise survival of a host power failure. Collectors retain unacknowledged batches according to their own queue limits.
 
 Historical Parquet files have no automatic expiry. One file per batch favors simple recovery; sustained deployments need compaction and an explicit retention policy. The setup has one storage writer and local operator queries. Browser authorization, trace storage, distributed execution associations and production TLS remain separate work.
+
+See the [storage experiment](../../docs/storage-experiment.md) for concurrent ingestion/query measurements and recovery checks. The [experiment runner](../../tests/storage/README.md) creates isolated Compose projects without modifying this pipeline's volumes.

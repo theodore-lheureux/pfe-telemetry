@@ -66,3 +66,5 @@ Use deterministic sample identities and compare the accepted set with stored res
 | Inject late samples and clock differences across nodes.                | Analysis distinguishes collection time from arrival order and shows uncertainty.                 |
 
 Record collector overhead, accepted data rate, backlog age, recovery time, and sample-to-query delay for baseline and competing-workload runs. Failure tests establish behavior under their stated conditions; performance targets need separate measurements.
+
+The [storage experiment](storage-experiment.md) exercises concurrent ingestion and historical queries, worker interruption, process restart and full replay into published Parquet files. Its scope is the single-broker local pipeline with intact volumes.

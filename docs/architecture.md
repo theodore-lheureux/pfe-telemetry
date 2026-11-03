@@ -41,6 +41,8 @@ Rust is used for collection, ingestion and storage processing. DuckDB queries pu
 
 DuckDB's embedded read-write mode uses one writer process, which can have multiple threads. The storage worker and TanStack Start cannot independently open the same writable database file as a shared storage interface. Published Parquet files can provide an analytical boundary; another queryable storage service is an alternative. Adding broker consumers does not make a shared DuckDB file writable from multiple processes. [DuckDB concurrency](https://duckdb.org/docs/current/connect/concurrency)
 
+The [storage experiment](storage-experiment.md) evaluates ingestion alongside historical DuckDB queries, including resource use, writer ownership, restart and replay. Its [runner](../tests/storage/README.md) preserves the workload parameters, commands and measurements.
+
 A hosted platform can retain recordings centrally. Portable exports are an additional way to share a capture, reproduce an analysis, or inspect measurements offline. An export needs units, timestamps, execution and node identifiers, collection settings, and a schema version alongside the samples. Arrow and Parquet are candidate interchange and storage formats; export is independent of broker replay.
 
 Broker retention covers processing recovery. Historical storage has its own retention policy for post-mortem analysis. Expiring a broker record should not delete its archived measurements.
