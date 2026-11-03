@@ -1,6 +1,6 @@
 # Local telemetry pipeline
 
-Run authenticated OTLP metrics ingestion, a single Kafka broker, one Rust storage worker and DuckDB queries against published Parquet files. Existing Grafana monitoring and Vagrant VMs are managed separately by `just env`.
+Run authenticated OTLP metrics ingestion, a single Kafka broker, one Rust storage worker and ClickHouse analytics. Existing Grafana monitoring and Vagrant VMs are managed separately by `just env`.
 
 ## Configure project credentials
 
@@ -61,19 +61,23 @@ After draining, rotate in the web application and update the private `.state/<ho
 
 ## Query measurements
 
-After at least one batch has been processed:
+Set three distinct private passwords in `infra/telemetry/.env`: `CLICKHOUSE_ADMIN_PASSWORD`, `CLICKHOUSE_WRITER_PASSWORD` and `CLICKHOUSE_READER_PASSWORD`. Compose initializes the current schema on an empty volume. For an existing current-schema volume, repeat schema provisioning explicitly:
 
 ```sh
-just telemetry query "SELECT host_id, metric_name, count(*) AS samples FROM measurements GROUP BY ALL ORDER BY ALL"
-just telemetry query "SELECT host_id, time_unix_nano, value_int FROM measurements WHERE metric_name = 'pfe.node.memory.available' ORDER BY time_unix_nano DESC LIMIT 20"
-just telemetry query "SELECT host_id, metric_name, point_attributes_json, rate_per_second FROM metric_rates WHERE metric_name IN ('pfe.node.cpu.time', 'system.disk.io') AND rate_per_second IS NOT NULL ORDER BY time_unix_nano DESC LIMIT 20"
+just telemetry compose exec -T clickhouse sh -c 'clickhouse-client --user telemetry_admin --password "$CLICKHOUSE_PASSWORD" --multiquery' < infra/telemetry/clickhouse/schema.sql
 ```
 
-[SQL views](sql/views.sql) read complete files through a read-only mount. Integer values remain `BIGINT`, timestamps `UBIGINT`, and floating-point values `DOUBLE`. Missing scalar values stay null. Resource, scope, metric and point context is retained, including diagnostics and counter segments. Original supported resource, scope and point messages are also available as binary Protobuf columns.
+The pinned image is supported ClickHouse 26.8 LTS. The administrator provisions the schema; the storage writer has SELECT/INSERT and the application reader SELECT only. Neither runtime login can create/drop/alter/truncate telemetry. Provisioning does not upgrade an incompatible existing schema: recreate disposable prototype state explicitly rather than silently reinterpreting it.
 
-`metric_rates` compares cumulative monotonic sums with matching stream attributes, counter origins and identities. It does not combine devices or CPU modes, interpolate missing readings, resolve execution associations, or establish clock synchronization between nodes. Review collection diagnostics and intervals when interpreting rates. Application delta sums retain their original semantics and do not enter this view.
+Configure `apps/web/.env` with `TELEMETRY_CLICKHOUSE_URL=http://127.0.0.1:18123` and `TELEMETRY_CLICKHOUSE_READER_PASSWORD` matching the reader password. Change `TELEMETRY_CLICKHOUSE_PORT` when the loopback port is occupied. The web application does not receive the writer or administrator password. See [recordings and query limits](../../docs/execution-telemetry.md).
 
-Local queries use a 128 MB DuckDB memory limit and up to 24 MB of temporary space. Filter rate queries by metric or stream; queries spanning every stream can exceed these limits.
+Operator SQL is separate from tenant-authorized application queries. For duplicate-safe batch inspection:
+
+```sh
+just telemetry query "SELECT project_id, source_id, uniqExact(storage_key) AS logical_batches FROM telemetry.batches GROUP BY project_id, source_id LIMIT 20"
+```
+
+Raw `count()` over `batches` counts physical insert attempts, not logical observations. Point queries must select the earliest complete row per logical key before filtering, following the application query. There are no derived rate views or portable exports.
 
 ## Interrupt and resume processing
 
@@ -84,20 +88,20 @@ just telemetry compose start storage
 just telemetry compose logs --tail 20 storage
 ```
 
-The worker commits an offset after publishing a complete file. If it dies after publication but before that commit, replay recognizes the same batch and avoids duplicate rows. Consumer lag is available through the standard Kafka tool:
+The worker commits an offset only after confirmed complete batch storage. If it dies after insertion but before that commit, replay recognizes the same key/digest, and queries suppress any physical duplicates. Temporary ClickHouse failure retries without advancing the offset. Consumer lag is available through the standard Kafka tool:
 
 ```sh
-just telemetry compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --describe --group pfe-storage-v1
+just telemetry compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --describe --group pfe-storage
 ```
 
 ```sh
 just telemetry stop
 ```
 
-Stopping services keeps both named volumes. `docker compose down --volumes` deletes retained ingestion records and historical measurements.
+Stopping services keeps both named volumes. `docker compose down --volumes` deletes retained ingestion records and historical measurements; use it only for explicitly disposable state.
 
 ## Local limits
 
 The broker uses one replica, six-hour retention and a 128 MiB per-partition retention target. Cleanup is asynchronous; active segments, metadata and internal topics use additional space. A single broker does not protect accepted data against loss of its disk. Kafka acknowledgements follow its replication and page-cache policy; this local setup does not promise survival of a host power failure. Collectors retain unacknowledged batches according to their own queue limits.
 
-Historical Parquet files have no automatic expiry. One file per batch favors simple recovery; sustained deployments need compaction and an explicit retention policy. The setup has one storage writer and local operator queries. Browser authorization, trace storage, distributed execution associations and production TLS remain separate work.
+ClickHouse history and deduplication state have no automatic expiry. Logical source-history scans are resource-capped; sustained high-volume history needs a more selective coordinated acceptance index. The setup has one storage worker and one ClickHouse node, without disk-loss failover. Browser queries enforce project access; trace storage, distributed execution associations and production TLS remain separate work.

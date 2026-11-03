@@ -29,7 +29,7 @@ Standard third-party OTLP exporters may not supply stable batch or sample identi
 
 The worker commits its broker position only after committing the corresponding measurements. In Kafka, this position is a consumer offset; in JetStream, processing is acknowledged through the consumer.
 
-If the worker crashes after storage succeeds but before recording progress, it receives the batch again. Measurement writes and deduplication state must be atomic, and derived aggregates must also tolerate repetition. A Parquet-based sink needs a recoverable file-publication and checkpoint mechanism before it can provide equivalent behavior.
+If the worker crashes after storage succeeds but before recording progress, it receives the batch again. ClickHouse stores measurements and their batch identity in one atomic row. Queries deduplicate that row before filtering or aggregation; uncertain inserts and offset commits can replay without multiplying measurements. See [execution analytics](execution-telemetry.md#storage-and-replay) for the implemented boundaries.
 
 Kafka producer idempotence handles producer retries, but a collector resubmitting an OTLP batch is an application-level retry. Kafka transactions also do not automatically include writes to an external database. [Producer idempotence](https://kafka.apache.org/43/configuration/producer-configs/#enable.idempotence), [Rust consumer guidance](https://github.com/fede1024/rust-rdkafka), [external storage semantics](https://kafka.apache.org/43/design/design/#message-delivery-semantics).
 

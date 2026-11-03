@@ -4,7 +4,7 @@ set positional-arguments
 # Manage the local VMs, ingestion server, and monitoring.
 mod env 'infra/test-environment/justfile'
 
-# Ingest telemetry through Kafka and query published Parquet files.
+# Ingest telemetry through Kafka and query ClickHouse.
 mod telemetry 'infra/telemetry/justfile'
 
 mod app 'infra/application/justfile'

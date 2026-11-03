@@ -125,34 +125,47 @@ services:
     entrypoint: [/usr/local/bin/pfe-storage]
     environment:
       TELEMETRY_KAFKA_BOOTSTRAP: kafka:9092
-      TELEMETRY_STORAGE_DIRECTORY: /var/lib/pfe/measurements/v1
-    volumes:
-      - measurements:/var/lib/pfe/measurements
+      TELEMETRY_CLICKHOUSE_URL: http://clickhouse:8123
+      TELEMETRY_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_WRITER_PASSWORD:?Set CLICKHOUSE_WRITER_PASSWORD}
     depends_on:
       topics:
         condition: service_completed_successfully
+      clickhouse:
+        condition: service_healthy
 
-  query:
-    image: duckdb/duckdb@sha256:69128eff5f937dcd451dd3342d0d2d2e24edcab5ad71e0042b1cc6602257be73
-    user: "10001:10001"
-    profiles: [tools]
-    entrypoint: [duckdb, -init, /queries.sql]
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.8.34.13@sha256:8b28eb09479c36c4533eec7a6268917d04ba3a6fd90e3f4205f70e761b6d7779
+    environment:
+      CLICKHOUSE_USER: telemetry_admin
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      CLICKHOUSE_WRITER_PASSWORD: ${CLICKHOUSE_WRITER_PASSWORD:?Set CLICKHOUSE_WRITER_PASSWORD}
+      CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD:?Set CLICKHOUSE_READER_PASSWORD}
+    ports:
+      - "127.0.0.1:${TELEMETRY_CLICKHOUSE_PORT:-18123}:8123"
     volumes:
-      - measurements:/data:ro
-      - ./sql/views.sql:/queries.sql:ro
-    network_mode: none
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    mem_limit: 256m
-    cpus: 1
-    pids_limit: 64
-    tmpfs:
-      - /tmp:size=32m,mode=1777
+      - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+      - ./clickhouse/users.xml:/etc/clickhouse-server/users.d/telemetry.xml:ro
+      - ./clickhouse/config.xml:/etc/clickhouse-server/config.d/telemetry.xml:ro
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 512
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          CMD-SHELL,
+          'clickhouse-client --user telemetry_reader --password "$$CLICKHOUSE_READER_PASSWORD" --query "SELECT count() FROM telemetry.batches WHERE 0"',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
 volumes:
   kafka-data:
-  measurements:
+  clickhouse-data:
 
 networks:
   credentials:

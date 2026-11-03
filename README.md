@@ -12,14 +12,14 @@ See [architecture](docs/architecture.md), [ingestion server](docs/ingestion-serv
 apps/
   web/                  TanStack Start web application with SSR
   collector/            Linux procfs collector with persistent OTLP export
-  server/               Tonic ingestion and Kafka-to-Parquet storage worker
+  server/               Tonic ingestion and Kafka-to-ClickHouse storage worker
 packages/
   transactional/        React Email templates, rendering, and previews
 crates/                 Shared Rust libraries
 docs/                   Architecture, serialization, and reliability considerations
 infra/
   test-environment/     Vagrant VMs, ingestion server, Grafana, and workload playbooks
-  telemetry/            Kafka pipeline and DuckDB operator queries
+  telemetry/            Kafka pipeline and ClickHouse provisioning
 tests/                  Cross-component validation scenarios
 ```
 
@@ -54,7 +54,7 @@ just env verify
 just env stop
 ```
 
-`just env` lists the environment commands and loads the optional, ignored `infra/test-environment/.env`. Use that file for VM resource settings and ports. VirtualBox preferences control VM storage. `apps/web/.env` controls the web development port (3001 by default). See [the test environment README](infra/test-environment/README.md) for VM prerequisites, networking, and cleanup. The web application runs independently of the environment; browser telemetry queries are not implemented. The [local telemetry pipeline](infra/telemetry/README.md) provides ingestion, Parquet storage and DuckDB operator queries.
+`just env` lists the environment commands and loads the optional, ignored `infra/test-environment/.env`. Use that file for VM resource settings and ports. VirtualBox preferences control VM storage. `apps/web/.env` controls the web development port (3001 by default). See [the test environment README](infra/test-environment/README.md) for VM prerequisites, networking, and cleanup. The [local telemetry pipeline](infra/telemetry/README.md) provides ingestion and ClickHouse analytics. The web application authorizes [execution recordings and node-context queries](docs/execution-telemetry.md).
 
 After `just env up`, [Grafana](http://localhost:3003/d/node-exporter-full/node-exporter-full) displays live Linux metrics from both VMs using Alloy, Prometheus, and the prebuilt Node Exporter Full dashboard.
 

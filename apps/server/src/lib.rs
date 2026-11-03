@@ -1,11 +1,11 @@
-//! OTLP ingestion, retained envelopes and replay-safe analytical files.
+//! OTLP ingestion, retained envelopes and replay-safe analytics.
 
+pub mod analytics;
 pub mod auth;
 pub mod broker;
 pub mod config;
 pub mod envelope;
 pub mod metrics;
-pub mod storage;
 
 use std::{
     sync::Arc,
@@ -152,6 +152,9 @@ impl Ingestion {
         let external = profile == "external/1.0";
         let (payload, count) = tokio::task::spawn_blocking(move || {
             let count = metrics::validate(&body, &source, external)?;
+            analytics::normalization_capacity(&body).map_err(|_| {
+                Status::resource_exhausted("Batch exceeds analytical normalization capacity")
+            })?;
             Ok::<_, Status>((body.encode_to_vec(), count))
         })
         .await

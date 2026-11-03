@@ -6,7 +6,7 @@ pub fn digest(bytes: &[u8]) -> String {
     hex(Sha256::digest(bytes))
 }
 
-fn hex(bytes: impl AsRef<[u8]>) -> String {
+pub(crate) fn hex(bytes: impl AsRef<[u8]>) -> String {
     bytes.as_ref().iter().map(|b| format!("{b:02x}")).collect()
 }
 

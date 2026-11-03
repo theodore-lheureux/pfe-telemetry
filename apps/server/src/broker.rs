@@ -10,7 +10,12 @@ use rdkafka::{
     util::Timeout,
 };
 
-use crate::{Result, envelope::Envelope, storage::Store};
+use crate::{Result, analytics::LogPosition, envelope::Envelope};
+
+#[tonic::async_trait]
+pub trait BatchStore: Send + Sync {
+    async fn publish(&self, envelope: &Envelope, position: LogPosition<'_>) -> Result<bool>;
+}
 
 #[tonic::async_trait]
 pub trait Sink: Send + Sync {
@@ -98,9 +103,12 @@ pub fn consumer(bootstrap: &str, topic: &str, group: &str) -> Result<StreamConsu
     Ok(consumer)
 }
 
-pub async fn consume_one(consumer: &StreamConsumer, store: Arc<Store>) -> Result<Option<bool>> {
+pub async fn consume_one<S: BatchStore>(
+    consumer: &StreamConsumer,
+    store: Arc<S>,
+) -> Result<Option<bool>> {
     // Poll group events regularly even when no telemetry arrives. The timeout
-    // covers receipt only; file publication and offset commits must finish.
+    // covers receipt only; storage confirmation and offset commits must finish.
     let message = match tokio::time::timeout(Duration::from_secs(5), consumer.recv()).await {
         Ok(Ok(message)) => message,
         Ok(Err(error)) if temporary_consumer_error(&error) => {
@@ -120,8 +128,20 @@ pub async fn consume_one(consumer: &StreamConsumer, store: Arc<Store>) -> Result
     let partition = message.partition();
     let offset = message.offset();
     let record_id = envelope.record_id.clone();
-    let written = tokio::task::spawn_blocking(move || store.publish(&envelope)).await??;
-    // A replay of any earlier message is safe only after file publication succeeds.
+    if message.key() != Some(envelope.storage_key().as_bytes()) {
+        return Err("Envelope key does not match authenticated batch identity".into());
+    }
+    let written = store
+        .publish(
+            &envelope,
+            LogPosition {
+                topic: &topic,
+                partition,
+                offset,
+            },
+        )
+        .await?;
+    // An unconfirmed offset commit only causes replay of already durable storage.
     consumer.commit_message(&message, CommitMode::Async)?;
     tracing::info!(%topic, partition, offset, %record_id, written, "Stored telemetry; queued offset commit");
     Ok(Some(written))

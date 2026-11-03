@@ -14,7 +14,7 @@ Only effective project admins manage [collector credentials and enrollment polic
 
 Any project reader can read all executions in that project. Execution ownership records attribution and controls permitted modifications, not read visibility. Per-execution private/shared ACLs are not part of this model. Separate projects provide the isolation boundary for unrelated workloads.
 
-The same project scope must apply to future telemetry queries, exports and live channels. The current implementation covers organization/project metadata and membership operations; it does not make ClickHouse or the existing operator DuckDB queries tenant-authorized.
+The same project scope applies to [execution recordings and telemetry queries](execution-telemetry.md). Every telemetry RPC checks current project membership before resolving the recording and querying ClickHouse. Direct operator SQL is not a tenant-authorized application interface.
 
 ## Application interfaces
 

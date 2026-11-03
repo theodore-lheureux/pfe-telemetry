@@ -9,6 +9,7 @@
     "typecheck": "bun run --filter @pfe/i18n compile && tsc --noEmit",
     "test": "bun run --filter @pfe/i18n compile && bun test tests/unit",
     "test:db": "bun run --filter @pfe/i18n compile && bun test --timeout 30000 tests/integration",
+    "test:telemetry": "bun run --filter @pfe/i18n compile && bun test --timeout 30000 tests/telemetry",
     "test:browser": "bun run --filter @pfe/i18n compile && playwright test",
     "db:generate": "drizzle-kit generate",
     "db:check": "drizzle-kit check",
@@ -17,6 +18,7 @@
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.15",
     "@better-auth/passkey": "1.7.15",
+    "@clickhouse/client": "1.24.1",
     "@pfe/i18n": "workspace:*",
     "@pfe/transactional": "workspace:*",
     "@tanstack/react-form": "1.33.5",
@@ -34,7 +36,8 @@
     "pg": "8.23.1",
     "radix-ui": "1.6.7",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "uuid": "14.0.3"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

@@ -8,9 +8,9 @@ default-run = "pfe-server"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive", "env"] }
+clickhouse = { version = "0.15.3", features = ["rustls-tls-ring", "rustls-tls-webpki-roots"] }
 deadpool-postgres = "0.14.2"
 opentelemetry-proto = { version = "0.33", default-features = false, features = ["gen-tonic", "metrics", "trace"] }
-parquet = { version = "60.0.0", default-features = false, features = ["snap"] }
 prost = "0.14"
 rdkafka = { version = "0.39.0", default-features = false, features = ["tokio"] }
 serde = { version = "1.0.229", features = ["derive"] }

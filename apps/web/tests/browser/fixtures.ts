@@ -132,6 +132,7 @@ async function createWorkspace() {
 	}
 	return {
 		origin,
+		databaseUrl: url.toString(),
 		links,
 		database,
 		auth,

@@ -186,6 +186,23 @@ async fn oversized_requests_are_terminal_and_never_published() {
         client.export(export(body, "")).await.unwrap_err().code(),
         Code::ResourceExhausted
     );
+    let mut body = request();
+    body.resource_metrics[0]
+        .resource
+        .as_mut()
+        .unwrap()
+        .attributes
+        .push(attr("pfe.collection.scope", &"x".repeat(4096)));
+    let Some(metric::Data::Gauge(gauge)) =
+        &mut body.resource_metrics[0].scope_metrics[0].metrics[0].data
+    else {
+        panic!()
+    };
+    gauge.data_points = vec![gauge.data_points[0].clone(); 20_000];
+    assert!(prost::Message::encoded_len(&body) < pfe_server::MAX_MESSAGE_BYTES);
+    let error = client.export(export(body, "")).await.unwrap_err();
+    assert_eq!(error.code(), Code::ResourceExhausted);
+    assert!(error.message().contains("normalization capacity"));
     assert!(sink.records.lock().unwrap().is_empty());
     let _ = stop.send(());
     task.await.unwrap();

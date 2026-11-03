@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, path::PathBuf};
+use std::net::SocketAddr;
 
 use clap::{Args, Parser};
 
@@ -35,12 +35,12 @@ pub struct IngestionConfig {
     pub broker: BrokerConfig,
 }
 
-/// Consumer progress and analytical file settings.
+/// Consumer progress and analytical storage settings.
 #[derive(Parser)]
 #[command(
     name = "pfe-storage",
     version,
-    about = "Publish retained OTLP measurements as Parquet"
+    about = "Persist retained OTLP measurements in ClickHouse"
 )]
 pub struct StorageConfig {
     #[command(flatten)]
@@ -48,15 +48,19 @@ pub struct StorageConfig {
     #[arg(
         long,
         env = "TELEMETRY_STORAGE_KAFKA_GROUP",
-        default_value = "pfe-storage-v1"
+        default_value = "pfe-storage"
     )]
     pub kafka_group: String,
+    #[arg(long, env = "TELEMETRY_CLICKHOUSE_URL")]
+    pub clickhouse_url: String,
     #[arg(
         long,
-        env = "TELEMETRY_STORAGE_DIRECTORY",
-        default_value = ".state/measurements/v1"
+        env = "TELEMETRY_CLICKHOUSE_USER",
+        default_value = "telemetry_writer"
     )]
-    pub directory: PathBuf,
+    pub clickhouse_user: String,
+    #[arg(long, env = "TELEMETRY_CLICKHOUSE_PASSWORD", hide_env_values = true)]
+    pub clickhouse_password: String,
 }
 
 #[cfg(test)]
@@ -85,11 +89,13 @@ mod tests {
             "pfe-storage",
             "--kafka-group",
             "replay",
-            "--directory",
-            "measurements",
+            "--clickhouse-url",
+            "http://localhost:8123",
+            "--clickhouse-password",
+            "test-only",
         ])
         .unwrap();
         assert_eq!(worker.kafka_group, "replay");
-        assert_eq!(worker.directory, PathBuf::from("measurements"));
+        assert_eq!(worker.clickhouse_url, "http://localhost:8123");
     }
 }

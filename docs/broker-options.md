@@ -20,7 +20,7 @@ Apache Iggy is another candidate for exploring Rust infrastructure. It provides 
 
 ## Selection
 
-Kafka is used by the [local telemetry pipeline](../infra/telemetry/README.md). It retains accepted metrics independently of Parquet processing and tracks storage consumer offsets. The Rust producer uses idempotence and `acks=all`; the worker commits offsets after file publication. The local deployment has one partition and one replica. It exercises processing recovery and replay without claiming broker failure tolerance or measured cluster-scale throughput.
+Kafka is used by the [local telemetry pipeline](../infra/telemetry/README.md). It retains accepted metrics independently of ClickHouse processing and tracks storage consumer offsets. The Rust producer uses idempotence and `acks=all`; the worker commits offsets only after confirmed synchronous batch storage. The local deployment has one partition and one replica. It exercises processing recovery and replay without claiming broker failure tolerance or measured cluster-scale throughput.
 
 NATS JetStream remains a smaller alternative if Kafka's operating cost outweighs the value of its consumer ecosystem and planned replication experiments. Redpanda provides a Kafka-compatible deployment alternative.
 

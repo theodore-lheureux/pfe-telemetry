@@ -16,7 +16,7 @@ build-collector:
     docker build --file ../../apps/collector/Dockerfile --target artifact --output type=local,dest=.state/bin ../..
 
 query sql:
-    docker compose run --rm --no-deps query -c "$1"
+    docker compose exec -T clickhouse sh -c 'exec clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "$1"' sh "$1"
 
 compose +args:
     docker compose "$@"

@@ -156,3 +156,15 @@ bun --bun run shadcn add input
 ```
 
 `components.json` defines the theme and import aliases. Use the root Bun lockfile for dependency changes.
+
+## Execution analytics
+
+Apply the committed Drizzle migrations for execution metadata, then configure the read-only ClickHouse endpoint and password from `.env.example`. Follow [local telemetry setup](../../infra/telemetry/README.md) and [execution/query semantics](../../docs/execution-telemetry.md). No Python query runtime or local analytical files are required.
+
+With disposable ClickHouse credentials, run `bun run --cwd apps/web test:telemetry`. The optional collector-to-browser test uses an isolated stack and built Linux binaries. Build its toolchain image from the repository root:
+
+```sh
+docker build --file apps/server/Dockerfile --target integration --tag pfe-telemetry-rust-integration:local .
+```
+
+Set `PFE_PIPELINE_TEST=true`, `PFE_BROWSER_PORT` to a free port, `TEST_DATABASE_URL`, and the three `TELEMETRY_CLICKHOUSE_*` test settings, then run `bun run --cwd apps/web test:browser execution-pipeline.spec.ts`. Its default test network/cache/image names are in the test; override the `PFE_PIPELINE_*` settings for another isolated setup, including `PFE_PIPELINE_DATABASE_NETWORK`, `PFE_PIPELINE_DATABASE_HOST` and `PFE_PIPELINE_DATABASE_PORT` for the isolated PostgreSQL service. Mount the worktree and an independent build cache into that image and run `cargo build --locked --workspace --bins` first, explicitly setting `CARGO_TARGET_DIR=/pfe20-target` with the same cache selected by `PFE_PIPELINE_TARGET_VOLUME`. The test intercepts authentication email and removes only its own containers and random database. Use a unique Playwright `--output` directory when other agents run browser tests.

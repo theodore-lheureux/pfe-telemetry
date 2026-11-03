@@ -16,7 +16,6 @@ use pfe_server::{
     envelope::{Envelope, digest},
 };
 use std::{
-    fs,
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -107,27 +106,6 @@ pub fn export(
     }
     request
 }
-pub struct Directory(pub PathBuf);
-impl Directory {
-    pub fn new() -> Self {
-        let path = std::env::temp_dir().join(format!("pfe-storage-test-{}", Uuid::now_v7()));
-        fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-    pub fn files(&self) -> Vec<PathBuf> {
-        fs::read_dir(&self.0)
-            .unwrap()
-            .map(|v| v.unwrap().path())
-            .filter(|v| v.extension().is_some_and(|v| v == "parquet"))
-            .collect()
-    }
-}
-impl Drop for Directory {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
 #[derive(Default)]
 pub struct TestSink {
     pub records: Mutex<Vec<Envelope>>,

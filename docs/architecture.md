@@ -2,7 +2,7 @@
 
 The system collects resource measurements from distributed workloads and relates them to executions, processes, and nodes. Live views and post-mortem analysis use the same measurements. Workload-specific details are metadata, so collection and analysis can support different applications.
 
-The web application is a TanStack Start scaffold with TanStack Query and shadcn/ui. The Rust collector samples Linux node/process resources with verified process identity, coverage diagnostics and counter continuity. It persists pending batches locally and retries temporary failures with stable batch IDs. Source credentials bind uploads to enrolled project/source identities and hosts. The Tonic ingestion service validates metrics and waits for Kafka publication before acknowledging them. One storage worker publishes replay-safe Parquet files, which DuckDB queries through a read-only mount. Trace storage, execution associations and browser queries are not implemented. See the [local pipeline](../infra/telemetry/README.md) and [service reference](../apps/server/README.md).
+The web application uses TanStack Start and shadcn/ui. The Rust collector samples Linux node/process resources with verified process identity, coverage diagnostics and counter continuity. It persists pending batches locally and retries temporary failures with stable batch IDs. Source credentials bind uploads to enrolled project/source identities and hosts. The Tonic ingestion service validates metrics and waits for Kafka publication before acknowledging them. The storage worker writes complete batches to ClickHouse. Authorized execution pages show fixed-window node context; they do not establish workload attribution or completion. Trace storage and execution associations remain unimplemented. See the [local pipeline](../infra/telemetry/README.md) and [execution semantics](execution-telemetry.md).
 
 ## Component responsibilities
 
@@ -16,7 +16,7 @@ The web application is a TanStack Start scaffold with TanStack Query and shadcn/
 
 TanStack Start provides the web application's server-side functions and endpoints. Collectors export telemetry to the Rust ingestion service. Human sessions and execution access are managed in the web application; collector authentication and durable acceptance are enforced by the ingestion service.
 
-The ingestion and storage worker are separate executables in `apps/server`. The ingestion executable serves telemetry export and health RPCs. The worker owns Parquet publication; analytical queries read published files.
+The ingestion and storage worker are separate executables in `apps/server`. The ingestion executable serves telemetry export and health RPCs. The worker uses a restricted ClickHouse writer; application queries use a separate read-only credential. PostgreSQL owns authorization and execution metadata, not telemetry analytics.
 
 ## Data flow
 
@@ -27,7 +27,7 @@ flowchart LR
     collectors["Collectors on workload nodes"] -->|OTLP/gRPC| ingest["Rust ingestion service"]
     ingest --> broker["Kafka"]
     broker --> worker["Rust storage worker"]
-    worker --> storage["Published Parquet files"]
+    worker --> storage["ClickHouse telemetry batches"]
     web["TanStack Start UI and server functions"] -->|Authorized queries| storage
 ```
 
@@ -37,11 +37,7 @@ See [ingestion server](ingestion-server.md) for the Tonic choice and receiver be
 
 ## Storage and recordings
 
-Rust is used for collection, ingestion and storage processing. DuckDB queries published Parquet measurements. Telemetry transport uses OTLP/gRPC with binary Protobuf; Kafka retains a Protobuf ingestion envelope. Web endpoints will use JSON. Portable exports and the browser query interface are not implemented.
-
-DuckDB's embedded read-write mode uses one writer process, which can have multiple threads. The storage worker and TanStack Start cannot independently open the same writable database file as a shared storage interface. Published Parquet files can provide an analytical boundary; another queryable storage service is an alternative. Adding broker consumers does not make a shared DuckDB file writable from multiple processes. [DuckDB concurrency](https://duckdb.org/docs/current/connect/concurrency)
-
-A hosted platform can retain recordings centrally. Portable exports are an additional way to share a capture, reproduce an analysis, or inspect measurements offline. An export needs units, timestamps, execution and node identifiers, collection settings, and a schema version alongside the samples. Arrow and Parquet are candidate interchange and storage formats; export is independent of broker replay.
+Rust is used for collection, ingestion and storage processing. ClickHouse retains a typed point array and the supported OTLP payload in one atomic batch row. Queries deduplicate whole batches before filtering or aggregating points. The server deduplication window and background merges are not correctness boundaries. Telemetry transport uses OTLP/gRPC with binary Protobuf; Kafka retains a Protobuf ingestion envelope. Application RPCs preserve `Date` values and use decimal strings for exact 64-bit telemetry values. Portable exports remain unimplemented.
 
 Broker retention covers processing recovery. Historical storage has its own retention policy for post-mortem analysis. Expiring a broker record should not delete its archived measurements.
 

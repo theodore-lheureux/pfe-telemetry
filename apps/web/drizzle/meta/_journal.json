@@ -36,6 +36,13 @@
       "when": 1793718618061,
       "tag": "0004_collector_credentials",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793725716771,
+      "tag": "0005_executions",
+      "breakpoints": true
     }
   ]
 }

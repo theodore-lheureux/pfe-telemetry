@@ -2,9 +2,9 @@ mod common;
 use common::*;
 use pfe_server::{
     Result,
+    analytics::{Batch, LogPosition, Store},
     broker::{self, KafkaSink, Sink},
     envelope::Envelope,
-    storage::Store,
 };
 use prost::Message as _;
 use rdkafka::{
@@ -73,8 +73,14 @@ async fn retained_batches_recover_after_worker_restart_and_lost_acknowledgement(
         .insert("pfe-batch-created-unix-nano", created);
     client.export(retry).await.unwrap();
     eprintln!("Accepted original batch and retry");
-    let directory = Directory::new();
-    let store = Arc::new(Store::open(&directory.0).unwrap());
+    let storage = || {
+        Arc::new(Store::new(
+            &std::env::var("TELEMETRY_CLICKHOUSE_URL").unwrap(),
+            "telemetry_writer",
+            &std::env::var("TELEMETRY_CLICKHOUSE_PASSWORD").unwrap(),
+        ))
+    };
+    let store = storage();
     let group = format!("pfe-test-{}", Uuid::now_v7());
     let consumer = broker::consumer(&bootstrap, &topic, &group).unwrap();
     // Simulate a worker dying after durable publication and before offset commit.
@@ -83,7 +89,22 @@ async fn retained_batches_recover_after_worker_restart_and_lost_acknowledgement(
         .unwrap()
         .unwrap();
     let envelope = Envelope::decode(retained.payload().unwrap()).unwrap();
-    assert!(store.publish(&envelope).unwrap());
+    assert!(
+        store
+            .publish_batch(
+                &Batch::from_envelope(
+                    &envelope,
+                    LogPosition {
+                        topic: retained.topic(),
+                        partition: retained.partition(),
+                        offset: retained.offset()
+                    }
+                )
+                .unwrap()
+            )
+            .await
+            .unwrap()
+    );
     eprintln!("Published before offset commit");
     assert_eq!(retained.offset(), 0);
     drop(retained);
@@ -91,9 +112,9 @@ async fn retained_batches_recover_after_worker_restart_and_lost_acknowledgement(
     drop(consumer);
     eprintln!("Closed consumer");
     drop(store);
-    let store = Arc::new(Store::open(&directory.0).unwrap());
+    let store = storage();
     let consumer = broker::consumer(&bootstrap, &topic, &group).unwrap();
-    // Both the original and the client retry resolve to the existing analytical file.
+    // Both the original and the client retry resolve to the complete stored batch.
     for _ in 0..2 {
         assert!(
             !tokio::time::timeout(
@@ -117,7 +138,6 @@ async fn retained_batches_recover_after_worker_restart_and_lost_acknowledgement(
         Some(true)
     );
     eprintln!("Replay was duplicate-safe and processing resumed after an idle interval");
-    assert_eq!(directory.files().len(), 2);
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             // Offset metadata owns native partition references. Release it before awaiting or destroying the consumer.

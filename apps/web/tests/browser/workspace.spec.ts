@@ -36,7 +36,7 @@ test("onboards, creates and renames private projects, switches tenants and signs
 		page.getByRole("heading", { name: "Executions", exact: true }),
 	).toBeVisible();
 	await expect(
-		page.getByText("Execution data is not connected yet"),
+		page.getByText("No executions recorded on this page."),
 	).toBeVisible();
 	const projectURL = page.url().replace(/\/executions\/?$/, "");
 	await page
@@ -287,12 +287,19 @@ test("does not mistake transport failures for empty results and rechecks access 
 	await page.getByLabel("Name", { exact: true }).fill("Unsaved name");
 	await page.getByRole("button", { name: "Save project" }).click();
 	await expect(page.getByRole("status")).toContainText(
-		"We could not complete the request.",
+		"The response was lost; the action may have completed.",
 	);
+	await expect(
+		page.getByRole("button", { name: "Save project" }),
+	).toBeDisabled();
 	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
 		"Unsaved name",
 	);
 	await page.unroute("**/_serverFn/**");
+	await page.reload();
+	await expect(
+		page.getByRole("button", { name: "Save project" }),
+	).toBeEnabled();
 	data(
 		await workspace.operations.removeProjectMember(owner.headers, {
 			organizationId: organization.id,

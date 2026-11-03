@@ -71,7 +71,11 @@ export type OperationResult<T> =
 					| "NOT_FOUND"
 					| "INVALID_INPUT"
 					| "CONFLICT"
-					| "RATE_LIMITED";
+					| "RATE_LIMITED"
+					| "UNAVAILABLE"
+					| "CAPACITY"
+					| "TIMEOUT"
+					| "CANCELLED";
 				message: string;
 				reason?: FailureReason;
 			};

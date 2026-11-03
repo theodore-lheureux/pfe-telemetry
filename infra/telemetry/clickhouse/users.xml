@@ -1,0 +1,28 @@
+<clickhouse>
+  <profiles>
+    <telemetry_read>
+      <readonly>2</readonly>
+      <max_concurrent_queries_for_user>2</max_concurrent_queries_for_user>
+      <max_execution_time>6</max_execution_time>
+      <max_memory_usage>268435456</max_memory_usage>
+      <max_threads>1</max_threads>
+    </telemetry_read>
+  </profiles>
+  <users>
+    <telemetry_writer>
+      <password from_env="CLICKHOUSE_WRITER_PASSWORD"/>
+      <networks><ip>::/0</ip></networks>
+      <grants>
+        <query>GRANT SELECT, INSERT ON telemetry.batches</query>
+      </grants>
+    </telemetry_writer>
+    <telemetry_reader>
+      <profile>telemetry_read</profile>
+      <password from_env="CLICKHOUSE_READER_PASSWORD"/>
+      <networks><ip>::/0</ip></networks>
+      <grants>
+        <query>GRANT SELECT ON telemetry.batches</query>
+      </grants>
+    </telemetry_reader>
+  </users>
+</clickhouse>
