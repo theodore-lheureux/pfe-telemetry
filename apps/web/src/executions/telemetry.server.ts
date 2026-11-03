@@ -15,17 +15,34 @@ export interface TelemetryScope {
 	buckets: number;
 }
 
-// Time and host filtering must follow whole-batch deduplication, including conflicting retries.
+// Project arrays without dropping empty batches, so the earliest whole-batch winner is unchanged.
+// Time and host filtering must still follow deduplication, including conflicting retries.
 const query = `
-WITH logical_batches AS (
-  SELECT storage_key,
-    argMin(tuple(profile, points.series_id, points.host_id, points.collection_scope,
-      points.metric, points.unit, points.kind, points.temporality, points.monotonic,
-      points.time_ns, points.integer_value, points.double_value, points.cpu_mode),
-      tuple(log_offset, record_id)) AS batch,
-    throwIf(uniqExact(tuple(log_topic, log_partition)) != 1, 'Invalid batch provenance') AS invalid
+WITH projected_batches AS (
+  SELECT storage_key, profile, log_topic, log_partition, log_offset, record_id,
+    arrayFilter(i -> points.collection_scope[i] = 'node', arrayEnumerate(points.series_id)) AS node_indices,
+    arrayMap(i -> points.series_id[i], node_indices) AS node_id,
+    arrayMap(i -> points.host_id[i], node_indices) AS node_host,
+    arrayMap(i -> points.collection_scope[i], node_indices) AS node_scope,
+    arrayMap(i -> points.metric[i], node_indices) AS node_metric,
+    arrayMap(i -> points.unit[i], node_indices) AS node_unit,
+    arrayMap(i -> points.kind[i], node_indices) AS node_kind,
+    arrayMap(i -> points.temporality[i], node_indices) AS node_temporality,
+    arrayMap(i -> points.monotonic[i], node_indices) AS node_monotonic,
+    arrayMap(i -> points.time_ns[i], node_indices) AS node_time,
+    arrayMap(i -> points.integer_value[i], node_indices) AS node_integer,
+    arrayMap(i -> points.double_value[i], node_indices) AS node_double,
+    arrayMap(i -> points.cpu_mode[i], node_indices) AS node_cpu_mode
   FROM batches
   WHERE project_id = {project:String} AND source_id = {source:String}
+), logical_batches AS (
+  SELECT storage_key,
+    argMin(tuple(profile, node_id, node_host, node_scope,
+      node_metric, node_unit, node_kind, node_temporality, node_monotonic,
+      node_time, node_integer, node_double, node_cpu_mode),
+      tuple(log_offset, record_id)) AS batch,
+    throwIf(uniqExact(tuple(log_topic, log_partition)) != 1, 'Invalid batch provenance') AS invalid
+  FROM projected_batches
   GROUP BY storage_key
 ), samples AS (
   SELECT storage_key, batch.1 AS profile, id, hostId, metric, unit, time_ns, integer_value, double_value, cpuMode, ordinal,

@@ -100,6 +100,12 @@ test("deduplicates whole batches before exact nanosecond/host filters and preser
 	const insideLoser = batch(project, source, "outside-winner", 5, [
 		point(ns + 5n, "6", "outside"),
 	]);
+	const emptyNodeWinner = batch(project, source, "process-only-winner", 6, [
+		{ ...point(ns, "7", "process-winner"), collection_scope: "process" },
+	]);
+	const nodeLoser = batch(project, source, "process-only-winner", 7, [
+		point(ns, "8", "process-winner"),
+	]);
 	await writer.insert({
 		table: "batches",
 		values: [
@@ -109,6 +115,8 @@ test("deduplicates whole batches before exact nanosecond/host filters and preser
 			wrongHost,
 			outsideWinner,
 			insideLoser,
+			emptyNodeWinner,
+			nodeLoser,
 			batch(randomUUID(), source, "foreign-project", 0, [point(ns, "111")]),
 			batch(project, randomUUID(), "foreign-source", 0, [point(ns, "222")]),
 		],
