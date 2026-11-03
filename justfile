@@ -7,6 +7,8 @@ mod env 'infra/test-environment/justfile'
 # Ingest telemetry through Kafka and query published Parquet files.
 mod telemetry 'infra/telemetry/justfile'
 
+mod app 'infra/application/justfile'
+
 default:
     @just --list
 
@@ -18,7 +20,7 @@ setup: config
 
 # Create missing configuration files
 config:
-    @for directory in apps/web infra/test-environment infra/telemetry; do if [ ! -e "$directory/.env" ]; then cp "$directory/.env.example" "$directory/.env"; fi; done
+    @for directory in apps/web infra/test-environment infra/telemetry infra/application; do if [ ! -e "$directory/.env" ]; then cp "$directory/.env.example" "$directory/.env"; fi; done
 
 dev *args:
     bun run dev "$@"
@@ -28,6 +30,21 @@ build:
 
 typecheck:
     bun run typecheck
+
+test-web:
+    bun run --filter @pfe/web test
+
+db-generate *args:
+    bun run --filter @pfe/web db:generate "$@"
+
+db-check:
+    bun run --filter @pfe/web db:check
+
+db-migrate:
+    bun run --filter @pfe/web db:migrate
+
+test-db:
+    bun run --filter @pfe/web test:db
 
 server:
     cargo run --locked -p pfe-server
@@ -41,12 +58,14 @@ check-docs:
     just --fmt --check
     just --justfile infra/test-environment/justfile --fmt --check
     just --justfile infra/telemetry/justfile --fmt --check
+    just --justfile infra/application/justfile --fmt --check
 
 check-environment:
     ruby -c infra/test-environment/Vagrantfile
     uv run --locked ansible-playbook --syntax-check --inventory compute, infra/test-environment/ansible/*.yml
     docker compose --env-file infra/test-environment/.env.example --file infra/test-environment/compose.yaml config --quiet
     docker compose --env-file infra/telemetry/.env.example --file infra/telemetry/compose.yaml config --quiet
+    POSTGRES_PASSWORD=configuration-check docker compose --env-file infra/application/.env.example --file infra/application/compose.yaml config --quiet
 
 check-rust:
     cargo fmt --all -- --check
@@ -69,6 +88,7 @@ format:
     just --fmt
     just --justfile infra/test-environment/justfile --fmt
     just --justfile infra/telemetry/justfile --fmt
+    just --justfile infra/application/justfile --fmt
 
 format-check: check-docs
     bun --bun run biome format .

@@ -19,6 +19,10 @@ export default defineConfig(({ mode }) => {
 		resolve: {
 			alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
 		},
-		plugins: [tailwindcss(), tanstackStart(), react()],
+		plugins: [
+			tailwindcss(),
+			tanstackStart({ importProtection: { behavior: "error" } }),
+			react(),
+		],
 	};
 });

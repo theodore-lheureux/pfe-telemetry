@@ -13,6 +13,11 @@
 - Do not introduce separate version labels solely to distinguish earlier experiments. Use the current package version for instrumentation metadata.
 - Keep support for current external protocols and integrations distinct from backward compatibility with our own prototypes.
 
+## Comments and tests
+
+- Comment only non-obvious intent, constraints or safety requirements. Do not restate names, standard tool behavior or implementation steps.
+- Retain tests that protect application behavior, security boundaries or failure-prone integration logic. Avoid redundant cases and tests of dependency internals; exploratory checks need not remain in the repository.
+
 ## Rust dependencies
 
 - Check the registry for the latest stable release before adding or updating a dependency. Do not choose versions from memory or use prereleases without an explicit requirement.

@@ -22,6 +22,20 @@ jobs:
     name: Web and shared configuration
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
+        env:
+          POSTGRES_USER: pfe
+          POSTGRES_DB: pfe
+          POSTGRES_PASSWORD: pfe-ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready --username=pfe --dbname=pfe"
+          --health-interval=5s --health-timeout=5s --health-retries=12
+    env:
+      TEST_DATABASE_URL: postgresql://pfe:pfe-ci-only@127.0.0.1:5432/pfe
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -41,7 +55,7 @@ jobs:
           restore-keys: |
             bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bun-version') }}-
       - run: bun install --frozen-lockfile
-      - run: just check-web check-docs build
+      - run: just check-web check-docs build test-web db-check test-db
       - name: Save Bun package downloads
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

@@ -1,0 +1,15 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set positional-arguments
+set dotenv-filename := ".env"
+
+up:
+    docker compose up --detach --wait --wait-timeout 90
+
+status:
+    docker compose ps --all
+
+stop:
+    docker compose stop
+
+compose +args:
+    docker compose "$@"
