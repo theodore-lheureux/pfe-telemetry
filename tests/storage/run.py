@@ -236,7 +236,11 @@ class Reader:
             stdout=subprocess.PIPE, stderr=self.errors, text=True, bufsize=1)
         self.process.stdin.write(".timer on\n")
         self.process.stdin.flush()
-        self.query("SELECT version() AS version", "startup")
+        try:
+            self.query("SELECT version() AS version", "startup")
+        except Exception:
+            self.close()
+            raise
 
     def query(self, sql, label):
         start = time.time_ns()
@@ -259,6 +263,8 @@ class Reader:
         self.experiment.event("query", scenario=self.experiment.project, reader=self.label,
             label=label, sql=sql, start_ns=start, end_ns=end, elapsed_ms=(end-start)/1e6,
             engine_ms=engine_ms, result=result, failed=result is None)
+        if result is None:
+            raise RuntimeError(f"Query failed: {self.name} ({label}); see {self.errors.name}")
         return result
 
     def workload(self, stop, history):
@@ -274,8 +280,6 @@ class Reader:
                 if stop.is_set():
                     break
                 result = self.query(sql, label)
-                if result is None:
-                    continue
                 if label == "range":
                     assert len(result) == 8 and all(
                         row["value"] == (history - 1) * 500 + int(row["host_id"].split("-")[-1]) * 100 + 37
