@@ -1,0 +1,655 @@
+import type { Locale } from "@pfe/i18n";
+import { m } from "@pfe/i18n/messages";
+import { and, eq } from "drizzle-orm";
+import { invitation, member } from "../../src/db/schema";
+import { data, expect, test } from "./fixtures";
+
+test.use({ timezoneId: "America/Toronto" });
+
+test("localized SSR, invalid preferences, concurrent requests, hydration and confirmed persistence", async ({
+	page,
+	workspace,
+}) => {
+	const responses = await Promise.all(
+		Array.from({ length: 12 }, async (_, index) => {
+			const locale = index % 2 ? "fr" : "en";
+			const response = await fetch(`${workspace.origin}/login`, {
+				headers: { cookie: `pfe_locale=${locale}` },
+			});
+			const html = await response.text();
+			expect(html).toContain(`<html lang="${locale}">`);
+			expect(html).toContain(
+				locale === "fr"
+					? "Se connecter avec une clé d’accès"
+					: "Sign in with a passkey",
+			);
+			expect(response.headers.get("cache-control")).toContain("no-store");
+			expect(response.headers.get("vary")).toContain("Cookie");
+			return response.status;
+		}),
+	);
+	expect(responses.every((status) => status === 200)).toBe(true);
+	for (const value of ["invalid", "FR"]) {
+		const response = await fetch(`${workspace.origin}/login`, {
+			headers: { cookie: `pfe_locale=${value}` },
+		});
+		expect(await response.text()).toContain(
+			`<html lang="${value === "FR" ? "fr" : "en"}">`,
+		);
+	}
+	const errors: string[] = [];
+	page.on("pageerror", (error) => errors.push(error.message));
+	page.on("console", (message) => {
+		if (/hydration|did not match/i.test(message.text()))
+			errors.push(message.text());
+	});
+	await page.goto(
+		`${workspace.origin}/login?redirect=%2Finvitations%2Freturn-id#keep`,
+	);
+	await page.getByLabel("Email address").fill("unsaved@example.invalid");
+	await page.getByLabel("Language", { exact: true }).selectOption("fr");
+	await expect(page.getByRole("alertdialog")).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Cancel", exact: true }),
+	).toBeFocused();
+	await page.keyboard.press("Escape");
+	await expect(page.getByLabel("Email address")).toHaveValue(
+		"unsaved@example.invalid",
+	);
+	expect(
+		(await page.context().cookies()).find(
+			(cookie) => cookie.name === "pfe_locale",
+		)?.value ?? "en",
+	).toBe("en");
+	await page.getByLabel("Language", { exact: true }).selectOption("fr");
+	await page
+		.getByRole("button", { name: "Change language", exact: true })
+		.click();
+	await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+	await expect(
+		page.getByRole("heading", { name: "Se connecter", exact: true }),
+	).toBeVisible();
+	expect(new URL(page.url()).searchParams.get("redirect")).toBe(
+		"/invitations/return-id",
+	);
+	expect(new URL(page.url()).hash).toBe("#keep");
+	const cookie = (await page.context().cookies()).find(
+		(entry) => entry.name === "pfe_locale",
+	);
+	expect(cookie).toMatchObject({ value: "fr", path: "/", sameSite: "Lax" });
+	expect(cookie?.expires).toBeGreaterThan(Date.now() / 1000 + 30_000_000);
+	await page
+		.getByRole("button", { name: "Recevoir un lien de connexion" })
+		.click();
+	expect(
+		await page
+			.getByLabel("Adresse e-mail")
+			.evaluate((element: HTMLInputElement) => element.validationMessage),
+	).toBe("Renseignez ce champ.");
+	await page.reload();
+	await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+	const missing = await page.goto(`${workspace.origin}/not-a-page`);
+	expect(missing?.status()).toBe(404);
+	await expect(
+		page.getByRole("heading", { name: "Page introuvable" }),
+	).toBeVisible();
+	expect(errors).toEqual([]);
+});
+
+for (const locale of ["en", "fr"] as const) {
+	test(`failed owner confirmation remains open and blocks locale switching while pending in ${locale}`, async ({
+		page,
+		workspace,
+	}) => {
+		const owner = await workspace.signIn(page, "owner@example.invalid");
+		const organization = data(
+			await workspace.operations.createOrganization(owner.headers, {
+				name: "Owner safety",
+				slug: "owner-safety",
+			}),
+		);
+		const replacement = await workspace.signIn(
+			page,
+			"replacement@example.invalid",
+		);
+		const replacementMember = await workspace.auth.api.addMember({
+			body: {
+				organizationId: organization.id,
+				userId: replacement.userId,
+				role: "owner",
+			},
+		});
+		await workspace.signIn(page, "owner@example.invalid");
+		await page
+			.context()
+			.addCookies([
+				{ name: "pfe_locale", value: locale, url: workspace.origin },
+			]);
+		await page.goto(
+			`${workspace.origin}/organizations/${organization.id}/members`,
+		);
+		const options = { locale };
+		const leave = page.getByRole("button", {
+			name: m.leave_member_named({ email: "owner@example.invalid" }, options),
+			exact: true,
+		});
+		await leave.click();
+		const dialog = page.getByRole("alertdialog");
+		await expect(
+			dialog.getByRole("button", { name: m.keep_membership({}, options) }),
+		).toBeFocused();
+		data(
+			await workspace.operations.updateOrganizationMemberRole(owner.headers, {
+				organizationId: organization.id,
+				memberId: replacementMember.id,
+				role: "member",
+			}),
+		);
+		let ready: () => void = () => {};
+		const received = new Promise<void>((resolve) => {
+			ready = resolve;
+		});
+		let release: () => void = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		await page.route("**/_serverFn/**", async (route) => {
+			if (route.request().method() !== "POST") return route.continue();
+			const response = await route.fetch();
+			ready();
+			await gate;
+			await route.fulfill({ response });
+		});
+		await dialog
+			.getByRole("button", { name: m.confirm_leave({}, options), exact: true })
+			.click();
+		await received;
+		await expect(
+			page.getByLabel(m.language({}, options), { exact: true }),
+		).toBeDisabled();
+		await expect(
+			dialog.getByRole("button", {
+				name: m.confirm_leave({}, options),
+				exact: true,
+			}),
+		).toBeDisabled();
+		await page.keyboard.press("Escape");
+		await expect(dialog).toBeVisible();
+		release();
+		await expect(dialog.getByRole("alert")).toContainText(
+			locale === "fr" ? "conserver un propriétaire" : "retain an owner",
+		);
+		await expect(dialog).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(leave).toBeFocused();
+		await expect(
+			page.getByLabel(m.language({}, options), { exact: true }),
+		).toBeEnabled();
+	});
+	test(`all application features render and mutate in ${locale}`, async ({
+		page,
+		browser,
+		workspace,
+	}) => {
+		test.setTimeout(90_000);
+		const options = { locale };
+		const text = (
+			message: (
+				inputs?: Record<never, never>,
+				options?: { locale?: Locale },
+			) => string,
+		) => message({}, options);
+		const owner = await workspace.signIn(page, "owner@example.invalid");
+		await page
+			.context()
+			.addCookies([
+				{ name: "pfe_locale", value: locale, url: workspace.origin },
+			]);
+		const errors: string[] = [];
+		let mutationURL = "";
+		page.on("request", (request) => {
+			if (
+				!mutationURL &&
+				request.method() === "POST" &&
+				request.url().includes("/_serverFn/")
+			)
+				mutationURL = request.url();
+		});
+		page.on("pageerror", (error) => errors.push(error.message));
+		page.on("console", (message) => {
+			if (/hydration|did not match/i.test(message.text()))
+				errors.push(message.text());
+		});
+		await page.goto(workspace.origin);
+		await expect(
+			page.getByRole("heading", {
+				name: text(m.create_your_first_organization),
+			}),
+		).toBeVisible();
+		await page
+			.getByRole("link", { name: text(m.create_organization), exact: true })
+			.click();
+		await page.getByLabel(text(m.name), { exact: true }).fill("Locale lab");
+		await page.getByLabel(text(m.slug), { exact: true }).fill("locale-lab");
+		await page
+			.getByRole("button", { name: text(m.create_organization), exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", { name: "Locale lab", exact: true }),
+		).toBeVisible();
+		const orgURL = page.url().replace(/\/$/, "");
+		const organizationId = orgURL.split("/").at(-1) ?? "";
+		const csrf = await fetch(mutationURL, {
+			method: "POST",
+			headers: {
+				origin: "https://attacker.example.invalid",
+				"sec-fetch-site": "cross-site",
+				"content-type": "application/json",
+				cookie: owner.headers.get("cookie") ?? "",
+			},
+			body: JSON.stringify({
+				data: { name: "Cross-site attempt", slug: "cross-site-attempt" },
+			}),
+		});
+		expect(csrf.status).toBe(403);
+		expect(
+			data(await workspace.operations.listOrganizations(owner.headers)).map(
+				(organization) => organization.name,
+			),
+		).toEqual(["Locale lab"]);
+		await page
+			.getByRole("link", { name: text(m.organization_settings), exact: true })
+			.click();
+		await expect(
+			page.getByText(text(m.role_owner), { exact: true }),
+		).toBeVisible();
+		await page.goto(orgURL);
+		await page
+			.getByRole("link", { name: text(m.create_project), exact: true })
+			.click();
+		await page.getByLabel(text(m.name), { exact: true }).fill("Locale project");
+		await page.getByLabel(text(m.slug), { exact: true }).fill("locale-project");
+		await page
+			.getByRole("button", { name: text(m.create_project), exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", { name: text(m.executions), exact: true }),
+		).toBeVisible();
+		const projectURL = page.url().replace(/\/executions\/?$/, "");
+		await page
+			.getByRole("link", { name: text(m.project_settings), exact: true })
+			.click();
+		await page.getByLabel(text(m.name), { exact: true }).fill("   ");
+		await page.getByRole("button", { name: text(m.save_project) }).click();
+		await expect(
+			page.getByLabel(text(m.name), { exact: true }),
+		).toHaveAttribute("aria-invalid", "true");
+		await expect(page.locator("#entity-name-error")).toHaveText(
+			text(m.enter_a_name_not_just_spaces),
+		);
+		await page
+			.getByLabel(text(m.name), { exact: true })
+			.fill("Locale project renamed");
+		await page.getByRole("button", { name: text(m.save_project) }).click();
+		await expect(
+			page.getByText(text(m.changes_saved), { exact: true }),
+		).toBeVisible();
+
+		const otherContext = await browser.newContext();
+		try {
+			const otherPage = await otherContext.newPage();
+			const collaborator = await workspace.signIn(
+				otherPage,
+				"collaborator@example.invalid",
+			);
+			const collaboratorMember = await workspace.auth.api.addMember({
+				body: { organizationId, userId: collaborator.userId, role: "member" },
+			});
+			await page.goto(`${orgURL}/members`);
+			const role = page.getByLabel(
+				m.role_for({ email: "collaborator@example.invalid" }, options),
+				{ exact: true },
+			);
+			await expect(role).toHaveValue("member");
+			await role.focus();
+			await page.keyboard.press("ArrowUp");
+			await page.keyboard.press("ArrowDown");
+			await role.selectOption("admin");
+			await page
+				.getByRole("button", {
+					name: m.save_role_for(
+						{ email: "collaborator@example.invalid" },
+						options,
+					),
+					exact: true,
+				})
+				.click();
+			await expect(
+				page.getByText(text(m.member_role_updated), { exact: true }),
+			).toBeVisible();
+			await workspace.operations.updateOrganizationMemberRole(owner.headers, {
+				organizationId,
+				memberId: collaboratorMember.id,
+				role: "member",
+			});
+			await page.goto(`${projectURL}/settings/members`);
+			await page
+				.getByLabel(
+					m.project_role_for(
+						{ email: "collaborator@example.invalid" },
+						options,
+					),
+					{ exact: true },
+				)
+				.selectOption("viewer");
+			await page
+				.getByRole("button", {
+					name: m.save_grant_for(
+						{ email: "collaborator@example.invalid" },
+						options,
+					),
+					exact: true,
+				})
+				.click();
+			await expect(
+				page.getByText(text(m.project_grant_saved), { exact: true }),
+			).toBeVisible();
+			const removeGrant = page.getByRole("button", {
+				name: m.remove_grant_named(
+					{ email: "collaborator@example.invalid" },
+					options,
+				),
+				exact: true,
+			});
+			await removeGrant.click();
+			await expect(
+				page.getByRole("button", { name: text(m.keep_current_access) }),
+			).toBeFocused();
+			await page.keyboard.press("Escape");
+			await expect(removeGrant).toBeFocused();
+			await page.goto(`${orgURL}/members`);
+			await page
+				.getByLabel(text(m.email_address), { exact: true })
+				.fill("recipient@example.invalid");
+			await page
+				.getByLabel(text(m.organization_role), { exact: true })
+				.selectOption("member");
+			await page
+				.getByRole("button", { name: text(m.send_invitation), exact: true })
+				.click();
+			await expect(
+				page.getByText(
+					text(m.invitation_created_ask_the_recipient_to_check_their),
+					{ exact: true },
+				),
+			).toBeVisible();
+			const [created] = await workspace.database.db
+				.select()
+				.from(invitation)
+				.where(
+					and(
+						eq(invitation.organizationId, organizationId),
+						eq(invitation.email, "recipient@example.invalid"),
+					),
+				);
+			await page
+				.getByRole("button", {
+					name: m.resend_invitation_named(
+						{ email: "recipient@example.invalid" },
+						options,
+					),
+					exact: true,
+				})
+				.click();
+			await expect(
+				page.getByText(
+					text(m.invitation_delivery_requested_again_ask_the_recipient_to),
+					{ exact: true },
+				),
+			).toBeVisible();
+			await page.reload();
+			await expect(
+				page.getByText("recipient@example.invalid", { exact: true }),
+			).toBeVisible();
+			await page
+				.getByRole("button", {
+					name: m.cancel_invitation_named(
+						{ email: "recipient@example.invalid" },
+						options,
+					),
+					exact: true,
+				})
+				.click();
+			await expect(page.getByRole("alertdialog")).toContainText(
+				text(m.cancel_this_invitation_its_link_will_no_longer),
+			);
+			await page.keyboard.press("Escape");
+			await otherContext.clearCookies();
+			await otherContext.addCookies([
+				{ name: "pfe_locale", value: locale, url: workspace.origin },
+			]);
+			await otherPage.goto(`${workspace.origin}/invitations/${created.id}`);
+			await expect(otherPage).toHaveURL(/\/login\?redirect=/);
+			expect(new URL(otherPage.url()).searchParams.get("redirect")).toBe(
+				`/invitations/${created.id}`,
+			);
+			const recipient = await workspace.signIn(
+				otherPage,
+				"recipient@example.invalid",
+			);
+			await otherContext.addCookies([
+				{ name: "pfe_locale", value: locale, url: workspace.origin },
+			]);
+			await otherPage.goto(`${workspace.origin}/invitations/${created.id}`);
+			await expect(
+				otherPage.getByRole("button", { name: text(m.accept_invitation) }),
+			).toBeVisible();
+			expect(
+				await workspace.database.db
+					.select()
+					.from(member)
+					.where(eq(member.userId, recipient.userId)),
+			).toHaveLength(0);
+			await otherPage
+				.getByRole("button", { name: text(m.reject_invitation) })
+				.click();
+			await expect(otherPage.getByRole("alertdialog")).toBeVisible();
+			await otherPage.keyboard.press("Escape");
+			await otherPage
+				.getByRole("button", { name: text(m.accept_invitation) })
+				.click();
+			await expect(
+				otherPage.getByRole("heading", { name: "Locale lab", exact: true }),
+			).toBeVisible();
+			expect(
+				(
+					await workspace.database.db
+						.select()
+						.from(invitation)
+						.where(eq(invitation.id, created.id))
+				)[0].status,
+			).toBe("accepted");
+		} finally {
+			await otherContext.close();
+		}
+
+		await page.goto(`${projectURL}/settings/credentials`);
+		await expect(
+			page.getByRole("heading", { name: text(m.run_a_linux_collector) }),
+		).toBeVisible();
+		await expect(page.locator("pre").first()).toContainText(
+			"cargo build --locked",
+		);
+		await page
+			.getByLabel(text(m.credential_name), { exact: true })
+			.fill("Locale credential");
+		await page
+			.getByLabel(text(m.source_id), { exact: true })
+			.fill("chart-source");
+		await page
+			.getByLabel(text(m.allowed_host_ids_one_per_line), { exact: true })
+			.fill("node1");
+		await page
+			.getByRole("button", { name: text(m.create_credential), exact: true })
+			.click();
+		const token = page.getByLabel(text(m.onetime_collector_token), {
+			exact: true,
+		});
+		await expect(token).toBeVisible();
+		const secret = await token.inputValue();
+		await expect(
+			page.getByLabel(text(m.language), { exact: true }),
+		).toBeDisabled();
+		await page
+			.getByRole("button", {
+				name: text(m.i_saved_the_token_hide_it),
+				exact: true,
+			})
+			.click();
+		await expect(token).toHaveCount(0);
+		expect((await page.content()).includes(secret)).toBe(false);
+		const credentialSSR = await page.reload();
+		expect((await credentialSSR?.text())?.includes(secret)).toBe(false);
+		await expect(token).toHaveCount(0);
+		await expect(
+			page.getByLabel(text(m.language), { exact: true }),
+		).toBeEnabled();
+		const rotate = page.getByRole("button", {
+			name: m.rotate_named({ name: "Locale credential" }, options),
+			exact: true,
+		});
+		await rotate.click();
+		await expect(page.getByRole("alertdialog")).toContainText(
+			locale === "fr"
+				? "invalide immédiatement"
+				: "invalidates the old token immediately",
+		);
+		await page.keyboard.press("Escape");
+		await expect(rotate).toBeFocused();
+		if (locale === "fr") {
+			await page.setViewportSize({ width: 360, height: 420 });
+			await rotate.click();
+			await page.route("**/_serverFn/**", async (route) => {
+				if (route.request().method() !== "POST") return route.continue();
+				await route.fetch();
+				await route.abort("failed");
+			});
+			await page
+				.getByRole("button", { name: text(m.confirm_rotation), exact: true })
+				.click();
+			const dialog = page.getByRole("alertdialog");
+			await expect(dialog.getByRole("alert")).toContainText(
+				"La réponse a été perdue",
+			);
+			const cancel = dialog.getByRole("button", {
+				name: text(m.cancel),
+				exact: true,
+			});
+			await cancel.scrollIntoViewIfNeeded();
+			const bounds = await cancel.boundingBox();
+			expect(bounds && bounds.y >= 0 && bounds.y + bounds.height <= 420).toBe(
+				true,
+			);
+			await cancel.click();
+			await expect(dialog).toHaveCount(0);
+			await expect(token).toHaveCount(0);
+			await page.unroute("**/_serverFn/**");
+			await page.setViewportSize({ width: 1280, height: 720 });
+			await page
+				.getByRole("button", {
+					name: text(m.refresh_credential_list),
+					exact: true,
+				})
+				.click();
+			await expect(rotate).toBeEnabled();
+		}
+		await page.goto(`${workspace.origin}/account`);
+		await expect(
+			page.getByRole("heading", {
+				name: text(m.account_security),
+				exact: true,
+			}),
+		).toBeVisible();
+		const cdp = await page.context().newCDPSession(page);
+		await cdp.send("WebAuthn.enable");
+		await cdp.send("WebAuthn.addVirtualAuthenticator", {
+			options: {
+				protocol: "ctap2",
+				transport: "internal",
+				hasResidentKey: true,
+				hasUserVerification: true,
+				isUserVerified: true,
+				automaticPresenceSimulation: true,
+			},
+		});
+		await page
+			.getByLabel(text(m.passkey_name), { exact: true })
+			.fill("Test device");
+		await page
+			.getByRole("button", { name: text(m.add_a_passkey), exact: true })
+			.click();
+		await expect(page.getByText("Test device", { exact: true })).toBeVisible();
+		await page
+			.getByRole("button", { name: text(m.remove), exact: true })
+			.click();
+		await expect(page.getByRole("alertdialog")).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(
+			page.getByRole("button", { name: text(m.remove), exact: true }),
+		).toBeFocused();
+		let listReady: () => void = () => {};
+		const listRequested = new Promise<void>((resolve) => {
+			listReady = resolve;
+		});
+		let releaseList: () => void = () => {};
+		const listGate = new Promise<void>((resolve) => {
+			releaseList = resolve;
+		});
+		await page.route(
+			"**/api/auth/passkey/list-user-passkeys**",
+			async (route) => {
+				await route.fetch();
+				listReady();
+				await listGate;
+				await route.abort("failed");
+			},
+		);
+		await page
+			.getByRole("button", { name: text(m.remove), exact: true })
+			.click();
+		await page
+			.getByRole("button", { name: text(m.confirm_removal), exact: true })
+			.click();
+		await listRequested;
+		await expect(
+			page.getByRole("heading", {
+				name: text(m.account_security),
+				exact: true,
+			}),
+		).toBeFocused();
+		releaseList();
+		await expect(page.getByRole("alert")).toContainText(
+			text(m.could_not_load_passkeys_try_refreshing_the_page),
+		);
+		await expect(
+			page.getByRole("heading", {
+				name: text(m.account_security),
+				exact: true,
+			}),
+		).toBeFocused();
+		await page.unroute("**/api/auth/passkey/list-user-passkeys**");
+		await page.reload();
+		await expect(
+			page.getByText(text(m.no_passkeys_registered_yet), { exact: true }),
+		).toBeVisible();
+		await page
+			.getByRole("button", { name: text(m.sign_out), exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", { name: text(m.sign_in), exact: true }),
+		).toBeVisible();
+		await expect(page.locator("html")).toHaveAttribute("lang", locale);
+		expect((await page.content()).includes(secret)).toBe(false);
+		expect(errors).toEqual([]);
+	});
+}
