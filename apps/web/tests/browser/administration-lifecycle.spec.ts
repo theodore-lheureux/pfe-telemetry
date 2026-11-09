@@ -255,6 +255,13 @@ for (const child of [
 			.getByRole("button", { name: "Continue with email", exact: true })
 			.click();
 		await workspace.submitReceivedCode(page, "owner@example.invalid");
+		await page
+			.getByRole("dialog", {
+				name: "Make your next sign-in easier",
+				exact: true,
+			})
+			.getByRole("button", { name: "Not now", exact: true })
+			.click();
 		await expect(page).toHaveURL(`${workspace.origin}${destination}`);
 		await expect(
 			page.getByRole("heading", {

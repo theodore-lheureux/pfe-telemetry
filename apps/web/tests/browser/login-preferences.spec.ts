@@ -63,9 +63,7 @@ test("email-first login exposes localized errors and quiet footer preferences", 
 			).toBeVisible();
 			await expect(
 				page.getByRole("contentinfo").getByRole("button", {
-					name: dark
-						? m.theme_switch_light({}, options)
-						: m.theme_switch_dark({}, options),
+					name: m.theme({}, options),
 				}),
 			).toBeVisible();
 			await email.fill("preview@example.invalid");

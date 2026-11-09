@@ -1,4 +1,62 @@
-import { expect, test } from "./fixtures";
+import { chooseTheme, expect, test } from "./fixtures";
+
+test("theme dropdown persists light, dark and CSS-native system mode without losing form state", async ({
+	page,
+	browser,
+	workspace,
+}) => {
+	await page.emulateMedia({ colorScheme: "dark" });
+	await page.goto(`${workspace.origin}/login`);
+	const email = page.getByLabel("Email address", { exact: true });
+	await email.fill("unsaved-theme@example.invalid");
+	await chooseTheme(page, "system");
+	await expect(page.locator("html")).toHaveAttribute("data-theme", "system");
+	await expect(page.locator("body")).toHaveCSS(
+		"background-color",
+		"rgb(12, 24, 28)",
+	);
+	await page.emulateMedia({ colorScheme: "light" });
+	await expect(page.locator("body")).toHaveCSS(
+		"background-color",
+		"rgb(245, 247, 248)",
+	);
+	await expect(email).toHaveValue("unsaved-theme@example.invalid");
+	await page.reload();
+	await expect(page.locator("html")).toHaveAttribute("data-theme", "system");
+	await chooseTheme(page, "dark");
+	await expect(page.locator("body")).toHaveCSS(
+		"background-color",
+		"rgb(12, 24, 28)",
+	);
+	await page.emulateMedia({ colorScheme: "dark" });
+	await chooseTheme(page, "light");
+	await expect(page.locator("body")).toHaveCSS(
+		"background-color",
+		"rgb(245, 247, 248)",
+	);
+	const plain = await browser.newContext({
+		javaScriptEnabled: false,
+		colorScheme: "dark",
+	});
+	try {
+		await plain.addCookies([
+			{ name: "recount_theme", value: "system", url: workspace.origin },
+		]);
+		const plainPage = await plain.newPage();
+		await plainPage.goto(`${workspace.origin}/login`);
+		await expect(plainPage.locator("html")).toHaveAttribute(
+			"data-theme",
+			"system",
+		);
+		await expect(plainPage.locator("body")).toHaveCSS(
+			"background-color",
+			"rgb(12, 24, 28)",
+		);
+		await expect(plainPage.locator('img[src$="on-dark.svg"]')).toBeVisible();
+	} finally {
+		await plain.close();
+	}
+});
 
 test("form borders are softer in both themes without losing focus or invalid-field styling", async ({
 	page,
@@ -66,14 +124,22 @@ test("email sign-in offers optional passkey enrollment and records the actual si
 			.getByRole("button", { name: "Continue with email", exact: true })
 			.click();
 		await workspace.submitReceivedCode(page, email);
-		await expect(
-			page.getByRole("heading", { name: "Your organizations", exact: true }),
-		).toBeVisible();
-		const prompt = page.getByRole("region", {
+		const prompt = page.getByRole("dialog", {
 			name: "Make your next sign-in easier",
 			exact: true,
 		});
 		await expect(prompt).toBeVisible();
+		await expect(
+			prompt.getByRole("button", { name: "Not now", exact: true }),
+		).toBeFocused();
+		for (let index = 0; index < 4; index++) {
+			await page.keyboard.press("Tab");
+			expect(
+				await prompt.evaluate((element) =>
+					element.contains(document.activeElement),
+				),
+			).toBe(true);
+		}
 		expect(
 			(
 				await (

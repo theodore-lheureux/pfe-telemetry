@@ -13,6 +13,7 @@ import * as organizationDomain from "../../src/organizations/organizations.serve
 import * as projectDomain from "../../src/organizations/projects.server";
 import {
 	chooseProject,
+	chooseTheme,
 	data,
 	expect,
 	openWorkspaceMenu,
@@ -182,6 +183,13 @@ test("profile name, Gravatar refresh, passkey rename and session revocation use 
 		await expect(
 			sessions.getByText("This device", { exact: true }),
 		).toHaveCount(1);
+		const rowHeights = await sessions
+			.locator("tbody tr")
+			.evaluateAll((rows) =>
+				rows.map((row) => row.getBoundingClientRect().height),
+			);
+		expect(rowHeights).toHaveLength(2);
+		expect(new Set(rowHeights).size).toBe(1);
 		await sessions
 			.getByRole("button", { name: "Log out of this device", exact: true })
 			.click();
@@ -561,26 +569,12 @@ for (const locale of ["en", "fr"] as const) {
 			}),
 		).toBeVisible();
 		const language = page.getByLabel(m.language({}, options), { exact: true });
-		await page
-			.getByRole("button", {
-				name: mobile
-					? m.theme_switch_light({}, options)
-					: m.theme_switch_dark({}, options),
-				exact: true,
-			})
-			.click();
+		await chooseTheme(page, mobile ? "light" : "dark", locale);
 		await expect(page.locator("html")).toHaveAttribute(
 			"data-theme",
 			mobile ? "tide" : "tide-dark",
 		);
-		await page
-			.getByRole("button", {
-				name: mobile
-					? m.theme_switch_dark({}, options)
-					: m.theme_switch_light({}, options),
-				exact: true,
-			})
-			.click();
+		await chooseTheme(page, mobile ? "dark" : "light", locale);
 		await language.selectOption(locale === "en" ? "fr" : "en");
 		await expect(
 			page.getByRole("button", { name: m.cancel({}, options), exact: true }),

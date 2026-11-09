@@ -1,9 +1,16 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@custom-variant dark (
-	&:where([data-theme="tide-dark"], [data-theme="tide-dark"] *)
-);
+@custom-variant dark {
+	&:where([data-theme="tide-dark"], [data-theme="tide-dark"] *) {
+		@slot;
+	}
+	@media (prefers-color-scheme: dark) {
+		&:where([data-theme="system"], [data-theme="system"] *) {
+			@slot;
+		}
+	}
+}
 
 @theme inline {
 	--font-sans: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
@@ -48,83 +55,53 @@
 	--radius-4xl: var(--radius);
 }
 
-:root,
-[data-theme="tide"] {
+:root {
 	--radius: 4px;
 	color-scheme: light;
-	--background: #f5f7f8;
-	--foreground: #0f1b1f;
-	--card: #ffffff;
-	--card-foreground: #0f1b1f;
-	--popover: #ffffff;
-	--popover-foreground: #0f1b1f;
-	--primary: #0f766e;
-	--primary-foreground: #ffffff;
-	--secondary: #e8eef0;
-	--secondary-foreground: #0f1b1f;
-	--muted: #e8eef0;
-	--muted-foreground: #475a62;
-	--accent: #dcefec;
-	--accent-foreground: #0b4f4a;
-	--destructive: #b91c1c;
-	--border: #d9e2e5;
-	--input: #839196;
-	--ring: #0f766e;
-	--chart-1: #0f766e;
-	--chart-2: #2563eb;
-	--chart-3: #475a62;
-	--chart-4: #5eead4;
-	--chart-5: #c3cfd3;
-	--status-active: #166534;
-	--status-idle: #475a62;
-	--status-throttled: #92400e;
-	--status-offline: #b91c1c;
-	--sidebar: #ffffff;
-	--sidebar-foreground: #0f1b1f;
-	--sidebar-primary: #0f766e;
-	--sidebar-primary-foreground: #ffffff;
-	--sidebar-accent: #dcefec;
-	--sidebar-accent-foreground: #0b4f4a;
-	--sidebar-border: #d9e2e5;
-	--sidebar-ring: #0f766e;
+	--background: light-dark(#f5f7f8, #0c181c);
+	--foreground: light-dark(#0f1b1f, #e3eef0);
+	--card: light-dark(#ffffff, #132429);
+	--card-foreground: var(--foreground);
+	--popover: var(--card);
+	--popover-foreground: var(--foreground);
+	--primary: light-dark(#0f766e, #65d6c5);
+	--primary-foreground: light-dark(#ffffff, #102724);
+	--secondary: light-dark(#e8eef0, #1b3036);
+	--secondary-foreground: var(--foreground);
+	--muted: light-dark(#e8eef0, #17272c);
+	--muted-foreground: light-dark(#475a62, #9db2b9);
+	--accent: light-dark(#dcefec, #193e3a);
+	--accent-foreground: light-dark(#0b4f4a, #b9ece3);
+	--destructive: light-dark(#b91c1c, #f28b82);
+	--border: light-dark(#d9e2e5, #294047);
+	--input: light-dark(#839196, #58717a);
+	--ring: var(--primary);
+	--chart-1: var(--primary);
+	--chart-2: light-dark(#2563eb, #82b6f5);
+	--chart-3: var(--muted-foreground);
+	--chart-4: light-dark(#5eead4, #2f8f84);
+	--chart-5: light-dark(#c3cfd3, #3a565e);
+	--status-active: light-dark(#166534, #5fd98f);
+	--status-idle: var(--muted-foreground);
+	--status-throttled: light-dark(#92400e, #f2c14e);
+	--status-offline: var(--destructive);
+	--sidebar: light-dark(#ffffff, #0f1f23);
+	--sidebar-foreground: var(--foreground);
+	--sidebar-primary: var(--primary);
+	--sidebar-primary-foreground: var(--primary-foreground);
+	--sidebar-accent: var(--accent);
+	--sidebar-accent-foreground: var(--accent-foreground);
+	--sidebar-border: var(--border);
+	--sidebar-ring: var(--primary);
 }
 [data-theme="tide-dark"] {
 	color-scheme: dark;
-	--background: #0c181c;
-	--foreground: #e3eef0;
-	--card: #132429;
-	--card-foreground: #e3eef0;
-	--popover: #132429;
-	--popover-foreground: #e3eef0;
-	--primary: #65d6c5;
-	--primary-foreground: #102724;
-	--secondary: #1b3036;
-	--secondary-foreground: #e3eef0;
-	--muted: #17272c;
-	--muted-foreground: #9db2b9;
-	--accent: #193e3a;
-	--accent-foreground: #b9ece3;
-	--destructive: #f28b82;
-	--border: #294047;
-	--input: #58717a;
-	--ring: #65d6c5;
-	--chart-1: #65d6c5;
-	--chart-2: #82b6f5;
-	--chart-3: #9db2b9;
-	--chart-4: #2f8f84;
-	--chart-5: #3a565e;
-	--status-active: #5fd98f;
-	--status-idle: #9db2b9;
-	--status-throttled: #f2c14e;
-	--status-offline: #f28b82;
-	--sidebar: #0f1f23;
-	--sidebar-foreground: #e3eef0;
-	--sidebar-primary: #65d6c5;
-	--sidebar-primary-foreground: #102724;
-	--sidebar-accent: #193e3a;
-	--sidebar-accent-foreground: #b9ece3;
-	--sidebar-border: #294047;
-	--sidebar-ring: #65d6c5;
+}
+[data-theme="tide"] {
+	color-scheme: light;
+}
+[data-theme="system"] {
+	color-scheme: light dark;
 }
 
 @layer base {

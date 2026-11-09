@@ -6,6 +6,7 @@ import * as organizationDomain from "../../src/organizations/organizations.serve
 import * as projectDomain from "../../src/organizations/projects.server";
 import tokens from "../fixtures/recount-tokens.json" with { type: "json" };
 import {
+	chooseTheme,
 	closePreferences,
 	data,
 	expect,
@@ -69,9 +70,19 @@ async function exactTokens(page: Page, dark: boolean) {
 	};
 	const actual = await page.locator("html").evaluate((element, names) => {
 		const style = getComputedStyle(element);
-		return Object.fromEntries(
+		const probe = document.createElement("span");
+		probe.style.display = "none";
+		element.append(probe);
+		const canvas = document.createElement("canvas").getContext("2d");
+		if (!canvas) throw new Error("Color normalization unavailable");
+		const values = Object.fromEntries(
 			names.map((name) => {
 				const value = style.getPropertyValue(name).trim();
+				if (CSS.supports("color", value)) {
+					probe.style.color = `var(${name})`;
+					canvas.fillStyle = getComputedStyle(probe).color;
+					return [name, canvas.fillStyle];
+				}
 				return [
 					name,
 					/^#[0-9a-f]{3}$/i.test(value)
@@ -80,6 +91,8 @@ async function exactTokens(page: Page, dark: boolean) {
 				];
 			}),
 		);
+		probe.remove();
+		return values;
 	}, Object.keys(expected));
 	expect(actual).toEqual(expected);
 }
@@ -129,15 +142,17 @@ test("cookie SSR, hydration, translated toggle and form state stay consistent", 
 			exact: true,
 		});
 		await email.fill("unsaved@example.invalid");
-		await page
-			.getByRole("button", { name: m.theme_switch_light({}, options) })
-			.click();
+		await chooseTheme(page, "light", locale);
 		await expect(page.locator("html")).toHaveAttribute("data-theme", "tide");
 		await expect(email).toHaveValue("unsaved@example.invalid");
-		await page
-			.getByRole("button", { name: m.theme_switch_dark({}, options) })
-			.focus();
+		await page.getByRole("button", { name: m.theme({}, options) }).focus();
 		await page.keyboard.press("Enter");
+		await page
+			.getByRole("menuitemradio", {
+				name: m.theme_dark({}, options),
+				exact: true,
+			})
+			.click();
 		await expect(page.locator("html")).toHaveAttribute(
 			"data-theme",
 			"tide-dark",
@@ -159,7 +174,7 @@ test("cookie SSR, hydration, translated toggle and form state stay consistent", 
 			}),
 		).toBeVisible();
 		await expect(
-			page.getByRole("button", { name: m.theme_switch_light({}, options) }),
+			page.getByRole("button", { name: m.theme({}, options) }),
 		).toBeEnabled();
 		await expect(page.locator("html")).toHaveAttribute(
 			"data-theme",
@@ -230,7 +245,7 @@ test("real workspace, credentials and administration retain Core geometry and ke
 				if (screen !== "auth") await openPreferences(page);
 				await expect(
 					page.getByRole("button", {
-						name: dark ? "Switch to light" : "Switch to dark",
+						name: "Theme",
 					}),
 				).toBeEnabled();
 				if (screen !== "auth") await closePreferences(page);
@@ -418,9 +433,7 @@ test("real workspace, credentials and administration retain Core geometry and ke
 	await expect(token).toBeVisible();
 	const initialToken = await token.inputValue();
 	await openPreferences(page);
-	await page
-		.getByRole("button", { name: "Switch to light", exact: true })
-		.click();
+	await chooseTheme(page, "light");
 	await expect(page.getByLabel("Language", { exact: true })).toBeEnabled();
 	await closePreferences(page);
 	await expect(token).toHaveCount(0);
@@ -464,9 +477,7 @@ test("real workspace, credentials and administration retain Core geometry and ke
 	expect(focus.shadow).not.toBe("none");
 	expect(focus.border).toBe("rgb(15, 118, 110)");
 	await openPreferences(page);
-	await page
-		.getByRole("button", { name: "Switch to dark", exact: true })
-		.click();
+	await chooseTheme(page, "dark");
 	await closePreferences(page);
 	await rotate.click();
 	await expect(dialog).toHaveCSS("background-color", "rgb(19, 36, 41)");

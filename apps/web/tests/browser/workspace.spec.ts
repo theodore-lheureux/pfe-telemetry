@@ -435,6 +435,10 @@ test("preserves a local destination through email-code sign-in without SMTP deli
 		.getByRole("button", { name: "Continue with email", exact: true })
 		.click();
 	await workspace.submitReceivedCode(page, "return@example.invalid");
+	await page
+		.getByRole("dialog", { name: "Make your next sign-in easier", exact: true })
+		.getByRole("button", { name: "Not now", exact: true })
+		.click();
 	await expect(page).toHaveURL(`${workspace.origin}${destination}`);
 	await expect(
 		page.getByRole("heading", { name: "Profile", exact: true }),

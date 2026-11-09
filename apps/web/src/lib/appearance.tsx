@@ -1,10 +1,10 @@
 import { createContext, useContext } from "react";
-import type { TideMode } from "../components/recount/tide-mode-toggle";
+import type { ThemeMode } from "./theme";
 
 export const AppearanceContext = createContext<{
-	mode: TideMode;
+	mode: ThemeMode;
 	disabled: boolean;
-	onModeChange: (mode: TideMode) => void;
+	onModeChange: (mode: ThemeMode) => void;
 } | null>(null);
 
 export function useAppearance() {

@@ -70,10 +70,20 @@ function RootDocument({ children }: { children: ReactNode }) {
 				<LocaleSafety>
 					<AppearanceContext
 						value={{
-							mode: theme === "tide-dark" ? "dark" : "light",
+							mode:
+								theme === "system"
+									? "system"
+									: theme === "tide-dark"
+										? "dark"
+										: "light",
 							disabled: !hydrated,
 							onModeChange: (mode) => {
-								const next = mode === "dark" ? "tide-dark" : "tide";
+								const next =
+									mode === "system"
+										? "system"
+										: mode === "dark"
+											? "tide-dark"
+											: "tide";
 								// biome-ignore lint/suspicious/noDocumentCookie: Cookie Store is not available in every supported browser.
 								document.cookie = `${themeCookie}=${next}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
 								setTheme(next);

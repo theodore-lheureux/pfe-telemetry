@@ -117,9 +117,9 @@ const catalog = {
 		label: m.appearance_language,
 		settings: [
 			{
-				id: "appearance",
-				label: m.appearance,
-				keywords: [m.theme_switch_light, m.theme_switch_dark],
+				id: "theme",
+				label: m.theme,
+				keywords: [m.theme_light, m.theme_dark, m.theme_system],
 			},
 			{ id: "language", label: m.language },
 		],

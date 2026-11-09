@@ -1,4 +1,8 @@
 {
+  "theme": "Thème",
+  "theme_light": "Mode clair",
+  "theme_dark": "Mode sombre",
+  "theme_system": "Synchroniser avec le système",
   "session_location": "Localisation",
   "signed_in_with": "Méthode de connexion",
   "email_code_method": "Code par e-mail",

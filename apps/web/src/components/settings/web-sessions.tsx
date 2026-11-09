@@ -116,14 +116,14 @@ export function WebSessions() {
 						</TableHeader>
 						<TableBody>
 							{sessions.data.map((session) => (
-								<TableRow key={session.id}>
-									<TableCell className="max-w-xs whitespace-normal">
-										<span>{session.device || m.unknown_device()}</span>
-										{session.current && (
-											<Badge variant="outline" className="ml-2">
-												{m.this_device()}
-											</Badge>
-										)}
+								<TableRow key={session.id} className="h-12">
+									<TableCell className="whitespace-nowrap">
+										<div className="flex items-center gap-2">
+											<span>{session.device || m.unknown_device()}</span>
+											{session.current && (
+												<Badge variant="outline">{m.this_device()}</Badge>
+											)}
+										</div>
 									</TableCell>
 									<TableCell
 										title={
@@ -157,8 +157,8 @@ export function WebSessions() {
 											relative
 										/>
 									</TableCell>
-									<TableCell>
-										{!session.current && (
+									<TableCell className="w-12">
+										{!session.current ? (
 											<Button
 												variant="ghost"
 												size="icon"
@@ -175,6 +175,8 @@ export function WebSessions() {
 											>
 												<LogOutIcon aria-hidden="true" />
 											</Button>
+										) : (
+											<span aria-hidden="true" className="block size-8" />
 										)}
 									</TableCell>
 								</TableRow>

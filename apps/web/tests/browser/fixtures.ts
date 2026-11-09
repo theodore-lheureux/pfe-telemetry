@@ -36,6 +36,39 @@ export function data<T>(result: OperationResult<T>): T {
 
 const preferencesHistory = new WeakMap<Page, number>();
 
+export async function chooseTheme(
+	page: Page,
+	mode: "light" | "dark" | "system",
+	locale: Locale = "en",
+) {
+	await page
+		.getByRole("button", { name: m.theme({}, { locale }), exact: true })
+		.click();
+	const label =
+		mode === "light"
+			? m.theme_light
+			: mode === "dark"
+				? m.theme_dark
+				: m.theme_system;
+	await page
+		.getByRole("menuitemradio", { name: label({}, { locale }), exact: true })
+		.click();
+}
+
+export async function dismissPasskeySetup(page: Page, locale: Locale = "en") {
+	const prompt = page.getByRole("dialog", {
+		name: m.passkey_prompt_title({}, { locale }),
+		exact: true,
+	});
+	await prompt
+		.getByRole("button", {
+			name: m.passkey_prompt_later({}, { locale }),
+			exact: true,
+		})
+		.click();
+	await expect(prompt).toHaveCount(0);
+}
+
 async function expandSettingsNavigation(page: Page, locale: Locale) {
 	const summary = page
 		.getByRole("navigation", {

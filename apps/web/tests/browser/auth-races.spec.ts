@@ -1,7 +1,13 @@
 import type { Page } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { passkey } from "../../src/db/schema";
-import { expect, openSettingsSection, settingsUrl, test } from "./fixtures";
+import {
+	dismissPasskeySetup,
+	expect,
+	openSettingsSection,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 const gates = new Set<() => void>();
 test.afterEach(async () => {
@@ -119,6 +125,7 @@ for (const committed of [false, true]) {
 			.getByRole("button", { name: "Continue with email", exact: true })
 			.click();
 		await workspace.submitReceivedCode(page, "deadline-b@example.invalid");
+		await dismissPasskeySetup(page);
 		await expect(
 			page.getByRole("heading", { name: "Your organizations", exact: true }),
 		).toBeVisible({ timeout: 30_000 });
@@ -186,6 +193,7 @@ test("a committed OTP settles and reconciles identity after Login navigates away
 		.getByRole("link", { name: "Recount · Go home", exact: true })
 		.click();
 	release.resolve();
+	await dismissPasskeySetup(page);
 	await expect(
 		page.getByRole("heading", { name: "Your organizations", exact: true }),
 	).toBeVisible({ timeout: 30_000 });
@@ -432,6 +440,7 @@ test("pagehide does not abort submitted verification and identity is reconciled 
 	await page
 		.getByRole("link", { name: "Recount · Go home", exact: true })
 		.click();
+	await dismissPasskeySetup(page);
 	await expect(
 		page.getByRole("heading", { name: "Your organizations", exact: true }),
 	).toBeVisible();

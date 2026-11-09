@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import type { Locale } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
-import { expect, test } from "./fixtures";
+import { dismissPasskeySetup, expect, test } from "./fixtures";
 
 async function enterCode(page: Page, code: string, locale: Locale = "en") {
 	await page
@@ -37,6 +37,7 @@ test("email code signup moves to a focused code form and establishes a verified 
 	await page
 		.getByRole("button", { name: "Verify and continue", exact: true })
 		.click();
+	await dismissPasskeySetup(page);
 	await expect(
 		page.getByRole("heading", { name: "Your organizations", exact: true }),
 	).toBeVisible();
