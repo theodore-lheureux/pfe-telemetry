@@ -1,10 +1,10 @@
-# PFE Telemetry
+# Recount
 
 Monorepo for the distributed execution telemetry project.
 
 The [Final project plan](https://app.notion.com/p/3df859f630f78055b042e69a3ad6558b) defines the requirements.
 
-See [architecture](docs/architecture.md), [ingestion server](docs/ingestion-server.md), [broker options](docs/broker-options.md), [serialization](docs/serialization.md), and [ingestion and reliability](docs/ingestion-and-reliability.md) for the design and validation scenarios.
+See [architecture](docs/architecture.md), the [telemetry point contract](docs/telemetry-point-contract.md), [ingestion API design](docs/ingestion-server.md), [broker options](docs/broker-options.md), [serialization](docs/serialization.md), and [ingestion and reliability](docs/ingestion-and-reliability.md) for the design and validation scenarios.
 
 ## Repository layout
 
@@ -13,20 +13,24 @@ apps/
   web/                  TanStack Start web application with SSR
   landing/              Astro landing site and Starlight documentation for recount.cloud
   collector/            Linux procfs collector with persistent OTLP export
-  server/               Tonic ingestion and Kafka-to-ClickHouse storage worker
+  ingestion-api/        Authenticated OTLP/gRPC admission and raw Kafka publication
+  normalizer/           Raw Kafka to analytical Protobuf normalization
 packages/
+  i18n/                 Shared English/French catalogs and locale helpers
   transactional/        React Email templates, rendering, and previews
 crates/                 Shared Rust libraries
 docs/                   Architecture, serialization, and reliability considerations
 infra/
-  test-environment/     Vagrant VMs, ingestion server, Grafana, and workload playbooks
-  telemetry/            Kafka pipeline and ClickHouse provisioning
+  local/                Reusable backends and optional packaged applications
+  clickhouse/           Native Kafka source, materialized view and point-table DDL
+  kafka/                Current topic initialization
+  lab/                  Optional Vagrant VMs, Grafana, and workload playbooks
 tests/                  Cross-component validation scenarios
 ```
 
 ## Development setup
 
-All contributors need [Bun](https://bun.sh/) 1.4.2 (pinned in `.bun-version`), [just](https://just.systems/) 1.58.0, [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.12.23, and [Rust through rustup](https://www.rust-lang.org/tools/install). The Rust toolchain is pinned in `rust-toolchain.toml`. uv installs the Python version pinned in `.python-version` for Ansible. Native ingestion builds also require Make and a C/C++ compiler for librdkafka; the container build supplies them.
+Application development needs [Bun](https://bun.sh/) 1.4.2 (pinned in `.bun-version`), [just](https://just.systems/) 1.58.0 and [Rust through rustup](https://www.rust-lang.org/tools/install), pinned in `rust-toolchain.toml`. Host builds of the ingestion API and normalizer also need Make and a C/C++ compiler for librdkafka. Docker Compose supplies reusable PostgreSQL/Kafka/ClickHouse backends. Host Node runs Playwright. Optional lab work additionally needs uv 0.12.23, Vagrant and VirtualBox; `just lab setup` installs its locked Ansible dependencies. See [runtime preparation](infra/README.md#prepare-runtime-artifacts).
 
 On Windows, follow the [Windows setup guide](docs/windows-setup.md) instead. The test environment runs from Ubuntu on WSL2 because Ansible does not run on native Windows.
 
@@ -34,30 +38,37 @@ On Windows, follow the [Windows setup guide](docs/windows-setup.md) instead. The
 just setup
 ```
 
-This installs locked dependencies, installs Lefthook's Git hooks, checks the Rust workspace, and copies missing `.env` files from the component examples. It preserves existing `.env` files. Hooks use the locked Lefthook dependency through Bun. Use `just hooks-install` to reinstall hooks in a checkout.
+This installs locked Bun dependencies and Lefthook's Git hooks, fetches locked Cargo dependencies, and copies missing `.env` files for the web application and local backends. It preserves existing files and does not compile applications, initialize data or install VM tooling. Use `just hooks-install` to reinstall hooks in a checkout.
 
-Bun manages the TypeScript workspaces and shared web tooling. Cargo manages Rust packages. uv manages Ansible for the test environment. Use the root lockfiles; do not create component lockfiles.
+Bun manages TypeScript workspaces and shared web tooling; Cargo manages Rust packages. uv manages Ansible for the optional lab. Use the root lockfiles; do not create component lockfiles.
 
 ## Run components
 
 ```sh
-just dev
 just build
 just typecheck
-just server
 ```
 
-See [the web README](apps/web/README.md) for development and configuration and [the server README](apps/server/README.md) for the OTLP receiver and health checks.
+See [the web README](apps/web/README.md) for SSR, email-code/passkey authentication, EN/FR development and configuration. The [ingestion API reference](apps/ingestion-api/README.md) covers authenticated OTLP and health checks; the [normalizer reference](apps/normalizer/README.md) covers Kafka processing and recovery.
+
+For daily iteration, reuse one PostgreSQL/Kafka/ClickHouse Compose instance and run Playwright with host Node, the web application with native Bun, and ingestion/normalization natively where supported. Keep Linux collectors in containers or existing VMs. Docker packaging and Linux checks are final validation gates, not the default test retry loop. Follow the [local stack guide](infra/README.md), including its identity, mount and image/schema checks. Normal startup must not reset consumer offsets or incompatible state. Once that instance is prepared:
 
 ```sh
-just env up
-just env verify
-just env stop
+just local up
+just local status
+just local stop
 ```
 
-`just env` lists the environment commands and loads the optional, ignored `infra/test-environment/.env`. Use that file for VM resource settings and ports. VirtualBox preferences control VM storage. `apps/web/.env` controls the web development port (3001 by default). See [the test environment README](infra/test-environment/README.md) for VM prerequisites, networking, and cleanup. The [local telemetry pipeline](infra/telemetry/README.md) provides ingestion and ClickHouse analytics. The web application authorizes [execution recordings and node-context queries](docs/execution-telemetry.md).
+```sh
+just lab setup
+just lab up
+just lab verify
+just lab stop
+```
 
-After `just env up`, [Grafana](http://localhost:3003/d/node-exporter-full/node-exporter-full) displays live Linux metrics from both VMs using Alloy, Prometheus, and the prebuilt Node Exporter Full dashboard.
+`just lab` lists optional lab commands. Its ignored `infra/lab/.env` selects VM resources, ports and any existing `VAGRANT_DOTFILE_PATH`. Inspect existing VM UUIDs, metadata and collector bindings before any lifecycle operation; the source rename does not move or recreate them. VirtualBox preferences control new VM storage. See [the lab guide](infra/lab/README.md). Start an ingestion API separately before lab connectivity verification; monitoring does not provide one. The web application authorizes [execution recordings and node-context queries](docs/execution-telemetry.md).
+
+After `just lab up`, [Grafana](http://localhost:3003/d/node-exporter-full/node-exporter-full) displays Linux metrics from the VMs using Alloy, Prometheus and the prebuilt Node Exporter Full dashboard.
 
 ## Checks and formatting
 
@@ -76,17 +87,16 @@ The push hook runs TypeScript checking when web or shared package files change a
 
 ```sh
 just check
-just test
 just format
 just lint-fix
 ```
 
-`format` formats repository files. `lint-fix` applies safe Biome fixes. Format the Vagrantfile manually. Repository lint and format commands are defined in the justfile; the root Bun scripts delegate to them. Use `just --list` for component checks and commands.
+`format` formats repository files; `lint-fix` applies safe Biome fixes. Format the Vagrantfile manually. Just delegates to native tools and canonical package scripts, without Bun-to-Just wrapper loops. `just check` does not require Ansible or Vagrant; use `just lab syntax` for those checks. Use `just --list` for component commands.
 
-CI checks formatting, linting, the web build, Rust tests, Kafka recovery, Ansible syntax, and Compose configuration. It caches Bun downloads, Cargo dependencies, and uv packages. VM provisioning and connectivity checks run locally.
+`just test` runs ordinary native Cargo/Bun tests without live-service setup. Select real-service leaves with `just test-integration db`, `telemetry`, `authority` or `normalizer`, forwarding their native selectors. `just test-browser` uses standard host Node and native Bun fixtures. Linux-artifact, packaged-runtime and destructive recovery gates are separately named `test-linux`, `test-runtime` and `test-recovery`; inspect `tests/justfile` for their required allocations. Native browser tests reuse backends while isolating private databases and contexts. Compile artifacts on the host, never inside Docker. The [point contract](docs/telemetry-point-contract.md) and [native-ingestion guide](infra/README.md#validate-native-ingestion) distinguish fixtures from actual Kafka/ClickHouse failure checks. No fixture pass establishes fleet capacity; Linux collector, VM and Windows behavior need their own platform checks.
 
 ## Adding components
 
 Add TypeScript applications or packages to the root Bun workspace. Add Rust packages to the root Cargo workspace and inherit the workspace edition, version, and lint settings. Put shared Rust libraries under `crates`.
 
-Unit tests belong to the component they exercise. Cross-component tests and performance experiments belong under `tests`; machine provisioning belongs under `infra/test-environment`.
+Unit tests belong to the component they exercise. Cross-component tests and performance experiments belong under `tests`; optional machine provisioning belongs under `infra/lab`.

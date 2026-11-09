@@ -11,12 +11,12 @@ Apply these conventions to repository Markdown, including README files. Keep min
 
 Read related documentation and source before editing. Create a page only when it answers a concrete reader question. Choose its main purpose using [Diátaxis](https://diataxis.fr/); combine short supporting sections when they help the reader, without forcing a template or adding empty headings.
 
-| Purpose     | Content                                                                             | Repository example                                            |
-| ----------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| Reference   | Definitions, fields, rules and examples needed to implement or configure something. | [Telemetry contract](../../../docs/telemetry-contract.md)     |
-| How-to      | Prerequisites, steps and the expected result of a specific task.                    | [Test environment](../../../infra/test-environment/README.md) |
-| Explanation | Mechanism, component relationships and constraints.                                 | [Architecture](../../../docs/architecture.md)                 |
-| Decision    | Chosen approach, reasons, alternatives and consequences.                            | [Broker choice](../../../docs/broker-options.md)              |
+| Purpose     | Content                                                                             | Repository example                                        |
+| ----------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Reference   | Definitions, fields, rules and examples needed to implement or configure something. | [Telemetry contract](../../../docs/telemetry-contract.md) |
+| How-to      | Prerequisites, steps and the expected result of a specific task.                    | [Linux lab](../../../infra/lab/README.md)                 |
+| Explanation | Mechanism, component relationships and constraints.                                 | [Architecture](../../../docs/architecture.md)             |
+| Decision    | Chosen approach, reasons, alternatives and consequences.                            | [Broker choice](../../../docs/broker-options.md)          |
 
 README navigation can link these pages without adopting another pattern. Keep existing paths unless moving a page solves a navigation problem.
 

@@ -7,21 +7,36 @@
 
 ## Development stage
 
-- The project is in early development and prototyping, with no production deployments.
+- The project is in early development and prototyping, with no production deployments or real customers.
 - Make breaking changes directly. Do not keep old APIs, configuration aliases, schema readers or migration code for previous prototypes.
-- Update affected callers, fixtures and documentation together. Recreate disposable test state when a format change requires it.
+- Every collector, ingestion, broker, storage and application boundary supports only its current data schema. Change affected producers, consumers, fixtures and documentation together; do not add dual reads/writes, format negotiation, backfills or conversion tools for discarded prototype schemas.
+- Recreate incompatible disposable databases, broker topics, collector queues and fixtures instead of migrating their contents. Scope any cleanup to explicitly identified project/test state; never silently reset data on startup or delete unrelated state.
 - Do not introduce separate version labels solely to distinguish earlier experiments. Use the current package version for instrumentation metadata.
 - Keep support for current external protocols and integrations distinct from backward compatibility with our own prototypes.
+
+## Iteration and test strategy
+
+- Reuse one initialized Compose stack for PostgreSQL, Kafka and ClickHouse across development and test runs. Do not rebuild or recreate infrastructure for each retry.
+- Run Playwright with the host's standard Node runner and the web application natively with Bun. Run the ingestion API and normalizer natively where supported; keep Linux collector sampling in reused Linux containers or existing VMs.
+- Isolate tests with disposable databases, browser contexts, projects and explicit topic/group namespaces as needed. Preserve tenant/session isolation; do not reset shared checkpoints or data to make a test pass.
+- Build artifacts on the host. Treat Docker packaging, production-image smoke checks and Linux-specific collector/export tests as final validation gates rather than the default iteration loop. Do not compile application sources inside Docker.
+- Optimize measured setup/teardown and parsing overhead, not coverage. Cache only immutable build metadata, close browser contexts and owned application resources, and keep security assertions and functional timeouts intact. Increase parallelism only after checking ports and resource pressure.
+- Remove only identified obsolete project containers when cleanup is authorized. Preserve volumes, images, networks, unrelated services and user state unless their removal is explicitly requested; never use a global prune as test cleanup.
+- Keep shared tooling, CI and documentation independent of a contributor's machine. Put absolute paths, disk/mount layouts, local network allocations and tool installation paths in ignored local configuration. Use Docker named volumes by default and select artifact architecture from the build target, not the developer's CPU.
 
 ## Frontend
 
 - Prefer appropriate shadcn/ui components using the existing `apps/web/components.json` configuration. Keep native form semantics, typed Router links and accessible async confirmation behavior.
 - Support English and French throughout the UI and transactional emails with shared compiled catalogs and locale-aware formatting. Resolve locale per request; pass email locale explicitly. Keep technical identifiers, commands and protocol values unchanged.
 
+## Naming
+
+- Use Recount for product names, `recount` for owned package/binary/protocol namespaces and `RECOUNT_` for product-specific environment controls. Prefer descriptive role names such as ingestion API, normalizer, collector and web application over generic server or storage worker.
+- Rename owned identifiers and their producers, consumers, fixtures, configuration and documentation together. Keep no old-name aliases. Preserve standard external protocol identifiers, valid external issue/repository references and Git history; do not invent replacement URLs or rename external resources as a source-code cleanup.
+
 ## Agent coordination
 
-- Create implementation agents through Herdr in separate linked worktrees of the `pfe-telemetry` workspace. Discover its current workspace ID instead of hardcoding it, and use `herdr worktree create --workspace <id>` with an explicit base commit or branch.
-- Start each agent in its new worktree's pane and preserve the user's focus with `--no-focus`. Do not use Herdr panes for routine commands or development servers.
+- Use separate linked worktrees for implementation agents so their changes remain isolated. Keep personal launcher and pane-management preferences in local instructions.
 - Use regular subagents for reviews when needed. Present each ticket's changes in Plannotator for approval before committing; do not push or merge without authorization.
 
 ## Comments and tests
@@ -43,6 +58,7 @@
 ## Database schemas
 
 - Auth and application Drizzle schemas are application-maintained. Update auth configuration and tables together; Drizzle owns the generate → review → migrate workflow and committed migration history.
+- Drizzle schema initialization and committed migration history are not prototype compatibility layers. Do not add data-preserving upgrade/backfill paths for discarded prototypes; unpublished experimental migrations may be regenerated before commit, with affected disposable databases recreated.
 - Preserve application constraints when adding or upgrading Better Auth plugins; do not automatically regenerate the auth schema or introduce a second migration runner.
 
 ## Access control
@@ -57,3 +73,9 @@
 - Preserve the required feature flags and target-specific dependency sections. Commit the generated `Cargo.lock` with dependency changes.
 - Check existing dependencies for outdated versions during a dependency audit, including releases outside their current manifest requirements.
 - Validate collector changes on Linux; macOS builds do not compile its Linux sampling and export paths.
+
+## Local build configuration
+
+- Preserve ignored `.cargo/config.toml` and explicit `CARGO_TARGET_DIR` settings. Shared code and CI must not prescribe or overwrite a machine-local cache path.
+- Use `cargo metadata --no-deps --format-version 1` or Cargo's compiler-artifact JSON to discover outputs rather than assuming `target/`. Cross-build configuration belongs to the invoking environment.
+- Do not run `cargo clean` or delete build caches without permission; other checkouts may use them.
