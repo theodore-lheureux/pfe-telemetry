@@ -53,7 +53,7 @@ Without a saved choice, visitors whose browser prefers French are redirected fro
 
 ### Early access list
 
-The coming soon page posts to `POST /api/notify`. The Worker checks the request origin and the email address, verifies the Cloudflare Turnstile token (site key in `src/lib/site.ts`, secret in the `TURNSTILE_SECRET` Worker secret), and stores the address and language in the `signups` table of the `recount-landing` D1 database. A repeated address succeeds without changing the list. On other hosts, such as pull request previews and `preview:worker`, the endpoint accepts valid addresses without verifying or storing them.
+The coming soon page posts to `POST /api/notify`. The Worker checks the request origin and the email address, verifies the Cloudflare Turnstile token (site key in `src/lib/site.ts`, secret in the `TURNSTILE_SECRET` Worker secret), and stores the address and language in the `signups` table of the `recount-landing` D1 database. A repeated address succeeds without changing the list. Each new address also sends a short notice from `notify@recount.cloud` to the verified Email Routing address in the `NOTIFY_TO` Worker secret; without that secret, no notice is sent. On other hosts, such as pull request previews and `preview:worker`, the endpoint accepts valid addresses without verifying or storing them.
 
 Schema changes are SQL files in `migrations/`. `deploy` and the workflow apply pending migrations before deploying; `bun run --cwd apps/landing db:migrate` applies them on their own. To read the list:
 

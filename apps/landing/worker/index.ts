@@ -1,15 +1,28 @@
 // Worker for recount.cloud. Static pages never reach this code; only /api/* does (see
 // `run_worker_first` in wrangler.jsonc).
 
+import { EmailMessage } from "cloudflare:email";
+
 interface Env {
 	ASSETS: { fetch(request: Request): Promise<Response> };
 	DB: {
 		prepare(query: string): {
-			bind(...values: unknown[]): { run(): Promise<unknown> };
+			bind(...values: unknown[]): {
+				run(): Promise<{ meta: { changes: number } }>;
+			};
 		};
 	};
+	NOTIFY: { send(message: EmailMessage): Promise<void> };
 	TURNSTILE_SECRET: string;
+	/** Verified Email Routing address that receives new signup notices; optional. */
+	NOTIFY_TO?: string;
 }
+
+interface Context {
+	waitUntil(promise: Promise<unknown>): void;
+}
+
+const NOTIFY_FROM = "notify@recount.cloud";
 
 const PRODUCTION_HOST = "recount.cloud";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -47,7 +60,24 @@ async function passedTurnstile(
 	);
 }
 
-async function notify(request: Request, env: Env) {
+// Plain-text notice for a new signup. The address passed EMAIL, so it holds no line breaks.
+function signupNotice(to: string, email: string, locale: string) {
+	const raw = [
+		`From: Recount <${NOTIFY_FROM}>`,
+		`To: <${to}>`,
+		`Subject: New early access signup: ${email}`,
+		`Date: ${new Date().toUTCString()}`,
+		`Message-ID: <${crypto.randomUUID()}@recount.cloud>`,
+		"MIME-Version: 1.0",
+		"Content-Type: text/plain; charset=utf-8",
+		"",
+		`${email} joined the early access list (language: ${locale}).`,
+		"",
+	].join("\r\n");
+	return new EmailMessage(NOTIFY_FROM, to, raw);
+}
+
+async function notify(request: Request, env: Env, context: Context) {
 	if (request.method !== "POST")
 		return json({ error: "method_not_allowed" }, 405);
 	const url = new URL(request.url);
@@ -78,18 +108,27 @@ async function notify(request: Request, env: Env) {
 		return json({ error: "challenge_failed" }, 403);
 
 	// A repeated address succeeds without revealing that it was already on the list.
-	await env.DB.prepare(
+	const result = await env.DB.prepare(
 		"INSERT INTO signups (email, locale) VALUES (?, ?) ON CONFLICT (email) DO NOTHING",
 	)
 		.bind(email, locale)
 		.run();
+
+	// Notify only for new addresses, after responding; a failed notice never fails the signup.
+	if (result.meta.changes > 0 && env.NOTIFY_TO) {
+		context.waitUntil(
+			env.NOTIFY.send(signupNotice(env.NOTIFY_TO, email, locale)).catch(
+				(error) => console.error("Signup notice failed", error),
+			),
+		);
+	}
 	return json({ ok: true });
 }
 
 export default {
-	fetch(request: Request, env: Env) {
+	fetch(request: Request, env: Env, context: Context) {
 		if (new URL(request.url).pathname === "/api/notify")
-			return notify(request, env);
+			return notify(request, env, context);
 		return env.ASSETS.fetch(request);
 	},
 };
