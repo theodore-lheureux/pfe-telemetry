@@ -22,7 +22,11 @@
       "migrations_dir": "migrations"
     }
   ],
-  // TURNSTILE_SECRET is a Worker secret (`wrangler secret put TURNSTILE_SECRET`).
+  // Notices for new signups, sent to the verified address in the NOTIFY_TO Worker secret.
+  "send_email": [
+    { "name": "NOTIFY", "allowed_sender_addresses": ["notify@recount.cloud"] }
+  ],
+  // TURNSTILE_SECRET and NOTIFY_TO are Worker secrets (`wrangler secret put <name>`).
   // Production is only served on the custom domain.
   "routes": [{ "pattern": "recount.cloud", "custom_domain": true }],
   "workers_dev": false,
