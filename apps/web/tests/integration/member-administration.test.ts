@@ -112,12 +112,17 @@ test("lists canonical safe member DTOs, excluding outsiders and unverified users
 		),
 	);
 	expect(entries).toHaveLength(2);
-	expect(entries.find((entry) => entry.id === membership.id)).toEqual({
+	expect(entries.find((entry) => entry.id === membership.id)).toMatchObject({
 		id: membership.id,
 		userId: collaborator.userId,
 		name: "",
 		email: collaborator.email,
 		role: "member",
+		image: null,
+		gravatarUrl: expect.stringMatching(
+			/^https:\/\/gravatar.com\/avatar\/[a-f0-9]{64}\?d=404&s=64$/,
+		),
+		joinedAt: expect.any(Date),
 	});
 	expect(
 		(

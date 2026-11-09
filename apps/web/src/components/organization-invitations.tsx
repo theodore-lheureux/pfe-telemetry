@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { UserPlusIcon } from "lucide-react";
 import type { OrganizationSummary } from "../organizations/contracts";
 import { FormFeedback } from "./form-feedback";
 import { InvitationForm } from "./member-administration/invitation-form";
@@ -7,6 +8,13 @@ import {
 	type Invitation,
 	useOrganizationInvitations,
 } from "./member-administration/use-organization-invitations";
+import { SettingsSection } from "./settings/settings-section";
+import { Button } from "./ui/button";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "./ui/collapsible";
 
 export function OrganizationInvitations({
 	organization,
@@ -21,19 +29,12 @@ export function OrganizationInvitations({
 }) {
 	const state = useOrganizationInvitations(organization, userId);
 	return (
-		<section
-			aria-labelledby="invitations-heading"
-			className="flex flex-col gap-4"
+		<SettingsSection
+			id="invitations-heading"
+			title={m.settings_pending_invites()}
+			description={m.settings_invites_description()}
+			headingRef={state.heading}
 		>
-			<h2
-				ref={state.heading}
-				tabIndex={-1}
-				id="invitations-heading"
-				className="text-xl font-semibold"
-			>
-				{m.invitations()}
-			</h2>
-			<InvitationForm state={state} organizationRole={organization.role} />
 			<FormFeedback
 				message={state.cancelId ? "" : state.message}
 				kind={state.failed ? "error" : "success"}
@@ -46,10 +47,23 @@ export function OrganizationInvitations({
 			/>
 			<InvitationList
 				state={state}
-				invitations={invitations}
+				invitations={invitations.filter(
+					(invitation) => invitation.status === "pending",
+				)}
 				asOf={asOf}
 				organizationRole={organization.role}
 			/>
-		</section>
+			<Collapsible>
+				<CollapsibleTrigger asChild>
+					<Button variant="outline" disabled={state.disabled}>
+						<UserPlusIcon aria-hidden="true" />
+						{m.settings_invite_member()}
+					</Button>
+				</CollapsibleTrigger>
+				<CollapsibleContent className="pt-4">
+					<InvitationForm state={state} organizationRole={organization.role} />
+				</CollapsibleContent>
+			</Collapsible>
+		</SettingsSection>
 	);
 }

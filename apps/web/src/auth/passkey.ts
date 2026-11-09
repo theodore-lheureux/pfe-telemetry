@@ -1,9 +1,36 @@
 import type { AuthenticationResponseJSON } from "@better-auth/passkey/client";
 import {
 	startAuthentication,
+	startRegistration,
 	WebAuthnAbortService,
 } from "@simplewebauthn/browser";
 import { authClient } from "./client";
+
+export async function registerPasskey(signal: AbortSignal) {
+	if (
+		!window.isSecureContext ||
+		typeof PublicKeyCredential !== "function" ||
+		typeof navigator.credentials?.create !== "function"
+	)
+		throw new Error("Passkey registration is unavailable");
+	const options = await authClient.passkey.generateRegisterOptions({
+		fetchOptions: { signal },
+	});
+	if (signal.aborted) throw new Error("Registration retired");
+	if (options.error) return options;
+	const cancel = () => WebAuthnAbortService.cancelCeremony();
+	signal.addEventListener("abort", cancel, { once: true });
+	try {
+		const response = await startRegistration({ optionsJSON: options.data });
+		if (signal.aborted) throw new Error("Registration retired");
+		return await authClient.passkey.verifyRegistration({
+			response,
+			fetchOptions: { signal },
+		});
+	} finally {
+		signal.removeEventListener("abort", cancel);
+	}
+}
 
 export function passkeyAuthenticationSupported() {
 	return (

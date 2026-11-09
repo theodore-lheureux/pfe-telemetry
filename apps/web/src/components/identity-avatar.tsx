@@ -59,14 +59,23 @@ export function OrganizationAvatar({
 	);
 }
 
-export function ProjectAvatar({ name }: { name: string }) {
+export function ProjectAvatar({
+	name,
+	className,
+}: {
+	name: string;
+	className?: string;
+}) {
 	return (
 		<Avatar
 			data-identity="project"
 			aria-hidden="true"
-			className="size-4 shrink-0 overflow-hidden rounded-xs after:rounded-xs"
+			className={cn(
+				"size-4 shrink-0 overflow-hidden rounded-xs text-[8px] after:rounded-xs",
+				className,
+			)}
 		>
-			<AvatarFallback className="rounded-none text-[8px] leading-none">
+			<AvatarFallback className="rounded-none text-[length:inherit] leading-none">
 				{Array.from(initials(name))[0]}
 			</AvatarFallback>
 		</Avatar>
@@ -79,7 +88,7 @@ export function UserAvatar({
 	refresh = 0,
 	imageSize = 64,
 }: {
-	user: ApplicationUser;
+	user: Pick<ApplicationUser, "name" | "email" | "image" | "gravatarUrl">;
 	className?: string;
 	refresh?: number;
 	imageSize?: number;

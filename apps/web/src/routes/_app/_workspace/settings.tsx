@@ -12,12 +12,23 @@ import { AppearancePreferences } from "@/components/appearance-settings";
 import { OrganizationInvitations } from "@/components/organization-invitations";
 import { OrganizationMembers } from "@/components/organization-members";
 import { ProjectGrants } from "@/components/project-grants";
+import { twoFactorFeature } from "@/components/settings/authentication-features";
 import { CredentialsSettings } from "@/components/settings/credentials-settings";
+import {
+	OrganizationDeletion,
+	ProjectDangerZone,
+} from "@/components/settings/danger-settings";
+import { OrganizationAuthentication } from "@/components/settings/organization-authentication";
 import { OrganizationSettings } from "@/components/settings/organization-settings";
-import { ProjectSettings } from "@/components/settings/project-settings";
+import { PlannedSetting } from "@/components/settings/planned-setting";
+import {
+	ProjectCustomization,
+	ProjectSettings,
+} from "@/components/settings/project-settings";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { UserProfile } from "@/components/settings/user-profile";
 import { parseSettingsSearch } from "@/components/settings-links";
+import { PageHeading } from "@/components/workspace";
 import { listCollectorCredentials } from "@/credentials/credential.functions";
 import type {
 	OrganizationSummary,
@@ -57,12 +68,23 @@ export const Route = createFileRoute("/_app/_workspace/settings")({
 				);
 		}
 		if (
-			["project", "project-members", "credentials"].includes(search.section) &&
+			[
+				"project",
+				"project-customization",
+				"project-danger",
+				"project-members",
+				"credentials",
+			].includes(search.section) &&
 			!project
 		)
 			throw notFound();
 		if (
-			["organization", "organization-members"].includes(search.section) &&
+			[
+				"organization",
+				"organization-authentication",
+				"organization-delete",
+				"organization-members",
+			].includes(search.section) &&
 			!organization
 		)
 			throw notFound();
@@ -179,6 +201,18 @@ function Settings() {
 				{search.section === "project" && project && (
 					<ProjectSettings project={project} />
 				)}
+				{search.section === "project-customization" && project && (
+					<ProjectCustomization project={project} />
+				)}
+				{search.section === "project-danger" && project && (
+					<ProjectDangerZone project={project} />
+				)}
+				{search.section === "organization-authentication" && organization && (
+					<OrganizationAuthentication />
+				)}
+				{search.section === "organization-delete" && organization && (
+					<OrganizationDeletion organization={organization} />
+				)}
 				{search.section === "organization" && organization && (
 					<OrganizationSettings organization={organization} />
 				)}
@@ -215,12 +249,7 @@ function Settings() {
 					organization &&
 					loaded.kind === "organization-members" && (
 						<>
-							<OrganizationMembers
-								key={`members:${organization.id}:${user.id}`}
-								organization={organization}
-								members={loaded.members}
-								userId={user.id}
-							/>
+							<PageHeading title={m.settings_page({ page: m.members() })} />
 							{loaded.invitations && (
 								<OrganizationInvitations
 									key={`invitations:${organization.id}:${user.id}`}
@@ -230,6 +259,13 @@ function Settings() {
 									userId={user.id}
 								/>
 							)}
+							<OrganizationMembers
+								key={`members:${organization.id}:${user.id}`}
+								organization={organization}
+								members={loaded.members}
+								userId={user.id}
+							/>
+							<PlannedSetting feature={twoFactorFeature} />
 						</>
 					)}
 			</div>

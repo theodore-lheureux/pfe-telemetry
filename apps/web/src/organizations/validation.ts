@@ -46,6 +46,13 @@ export function parseOrganizationReference(value: unknown) {
 	return { organizationId: parseIdentifier(record(value).organizationId) };
 }
 
+export function parseUpdateOrganizationInput(value: unknown) {
+	return {
+		...parseOrganizationReference(value),
+		name: parseName(record(value).name),
+	};
+}
+
 export function parseCreateProjectInput(value: unknown): CreateProjectInput {
 	return {
 		requestId: parseRequestId(record(value).requestId),

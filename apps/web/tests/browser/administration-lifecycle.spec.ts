@@ -10,7 +10,9 @@ import {
 	chooseOrganization,
 	chooseProject,
 	data,
+	editMemberRole,
 	expect,
+	openInvitationForm,
 	openSettingsSection,
 	settingsUrl,
 	test,
@@ -512,6 +514,7 @@ test("an old invitation response stays retired after navigating away and back", 
 		"organization-members",
 	);
 	await page.goto(path);
+	await openInvitationForm(page);
 	const held = await holdSuccessfulWrite(page);
 	await page
 		.getByLabel("Email address", { exact: true })
@@ -595,6 +598,7 @@ for (const kind of ["invitation", "grant"] as const) {
 			route.request().method() === "GET" ? route.abort() : route.continue(),
 		);
 		if (kind === "invitation") {
+			await openInvitationForm(page);
 			await page
 				.getByLabel("Email address", { exact: true })
 				.fill("new@example.invalid");
@@ -696,6 +700,7 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 					"organization-members",
 				),
 			);
+			await editMemberRole(page, "target@example.invalid");
 			await expect(
 				page.getByRole("button", {
 					name: "Save role for target@example.invalid",
@@ -869,6 +874,7 @@ test("a saved membership write is acknowledged when its refresh becomes not-foun
 			.where(eq(member.id, ownerMember.id));
 		await route.fulfill({ response });
 	});
+	await editMemberRole(page, "target@example.invalid");
 	await page
 		.getByLabel("Role for target@example.invalid", { exact: true })
 		.selectOption("admin");
@@ -915,6 +921,7 @@ test("fragment navigation retires the old response without leaving retained invi
 		"organization-members",
 	);
 	await page.goto(path);
+	await openInvitationForm(page);
 	const held = await holdSuccessfulWrite(page);
 	await page
 		.getByLabel("Email address", { exact: true })
@@ -995,6 +1002,7 @@ test.describe("composed collector credential lifetime", () => {
 				),
 			);
 			const held = await holdSuccessfulWrite(page);
+			await openInvitationForm(page);
 			await page
 				.getByLabel("Email address", { exact: true })
 				.fill("recipient@example.invalid");

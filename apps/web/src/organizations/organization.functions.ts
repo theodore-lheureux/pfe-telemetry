@@ -10,6 +10,7 @@ import {
 	parseProjectMembershipInput,
 	parseProjectMembershipReference,
 	parseProjectReference,
+	parseUpdateOrganizationInput,
 	parseUpdateProjectInput,
 } from "./validation";
 
@@ -34,6 +35,14 @@ export const createOrganization = createServerFn({ method: "POST" })
 	.handler(({ data, context: { identity, auth, headers } }) =>
 		withActor(identity, () =>
 			organizations.createOrganization(auth, headers, data),
+		),
+	);
+export const updateOrganization = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
+	.validator(parseUpdateOrganizationInput)
+	.handler(({ data, context: { identity, database, auth, headers } }) =>
+		withActor(identity, (actor) =>
+			organizations.updateOrganization(database, auth, headers, actor, data),
 		),
 	);
 export const listProjects = createServerFn({ method: "GET" })

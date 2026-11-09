@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { SendIcon } from "lucide-react";
 import type { OrganizationRole } from "../../organizations/contracts";
 import { Button } from "../ui/button";
 import { NativeSelectOption } from "../ui/native-select";
@@ -20,7 +21,7 @@ export function InvitationForm({
 				event.stopPropagation();
 				if (!disabled) void form.handleSubmit();
 			}}
-			className="flex flex-wrap items-end gap-3 rounded-md border p-4"
+			className="flex flex-wrap items-end gap-3"
 		>
 			<form.AppField name="email">
 				{(field) => (
@@ -62,6 +63,7 @@ export function InvitationForm({
 				pending={state.sending}
 				pendingLabel={m.sending_invitation()}
 			>
+				<SendIcon aria-hidden="true" />
 				{m.send_invitation()}
 			</Button>
 		</form>

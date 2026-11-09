@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { createAuth } from "../auth/create-auth.server";
+import { gravatarUrl } from "../components/avatar.server";
 import type { getDatabase } from "../db/client.server";
 import { member } from "../db/schema";
 import {
@@ -62,6 +63,9 @@ export async function listMembers(
 				name: entry.user.name,
 				email: entry.user.email,
 				role,
+				image: entry.user.image ?? null,
+				gravatarUrl: gravatarUrl(entry.user.email),
+				joinedAt: entry.createdAt,
 			});
 		}
 		if (!page.members.length) break;

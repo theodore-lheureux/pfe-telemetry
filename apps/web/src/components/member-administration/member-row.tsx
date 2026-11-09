@@ -1,8 +1,17 @@
 import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
+import {
+	MoreHorizontalIcon,
+	ShieldIcon,
+	UserMinusIcon,
+	XIcon,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { OrganizationRole } from "../../organizations/contracts";
 import type { MemberSummary } from "../../organizations/member-contracts";
 import { FormFeedback } from "../form-feedback";
+import { UserAvatar } from "../identity-avatar";
+import { SessionTime } from "../settings/session-time";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -10,9 +19,16 @@ import {
 	AlertDialogDescription,
 	AlertDialogFooter,
 	AlertDialogTitle,
-	AlertDialogTrigger,
 } from "../ui/alert-dialog";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { TableCell, TableRow } from "../ui/table";
 import { MemberRoleForm } from "./role-forms";
 import type { useOrganizationMembers } from "./use-organization-members";
 
@@ -33,110 +49,179 @@ export function MemberRow({
 	const protectedOwner =
 		member.role === "owner" && (organizationRole !== "owner" || owners <= 1);
 	const { pending, disabled, confirm, failed, message, heading } = state;
+	const [editing, setEditing] = useState(false);
+	const actions = useRef<HTMLButtonElement>(null);
+	const editor = useRef<HTMLFieldSetElement>(null);
+	const previousRole = useRef(member.role);
+	useEffect(() => {
+		if (previousRole.current !== member.role) {
+			previousRole.current = member.role;
+			setEditing(false);
+		}
+	}, [member.role]);
 	return (
-		<li className="flex flex-wrap items-center justify-between gap-4 p-4">
-			<AlertDialog
-				open={confirm === member.id}
-				onOpenChange={(open) => {
-					if (!pending) state.setConfirm(open ? member.id : null);
-				}}
-			>
-				<div>
-					<p className="font-medium">
-						{self
-							? m.you_suffix({ name: member.name || member.email })
-							: member.name || member.email}
-					</p>
-					<p className="text-sm text-muted-foreground">
-						{member.email} · {roleLabel(member.role)}
-					</p>
-				</div>
-				{canManage && !protectedOwner && (
-					<MemberRoleForm
-						key={`${member.role}:${organizationRole}`}
-						member={member}
-						allowOwner={organizationRole === "owner"}
-						disabled={disabled}
-						onSave={(role) =>
-							state.change({ action: "role", memberId: member.id, role })
-						}
-					/>
-				)}
-				{!protectedOwner && (self || canManage) && (
-					<AlertDialogTrigger asChild>
-						<Button
-							variant="outline"
-							disabled={disabled}
-							aria-label={
-								self
-									? m.leave_member_named({ email: member.email })
-									: m.remove_member_named({ email: member.email })
-							}
-							onClick={() => state.requestRemoval(member.id)}
-						>
-							{self ? m.leave_organization() : m.remove_member()}
-							<span className="sr-only">: {member.email}</span>
-						</Button>
-					</AlertDialogTrigger>
-				)}
-				{protectedOwner && self && (
-					<p className="text-sm">
-						{m.promote_a_replacement_owner_before_leaving_or_changing()}
-					</p>
-				)}
-				{confirm === member.id && !protectedOwner && (self || canManage) && (
-					<AlertDialogContent
-						onCloseAutoFocus={(event) => {
-							if (pending) {
-								event.preventDefault();
-								heading.current?.focus();
-							}
-						}}
-						onEscapeKeyDown={(event) => {
-							if (pending) event.preventDefault();
-						}}
-					>
-						<AlertDialogTitle>
-							{m.confirm_removal_named({ email: member.email })}
-						</AlertDialogTitle>
-						<AlertDialogDescription>
-							{self
-								? m.leave_this_organization()
-								: m.remove_member_question({ email: member.email })}{" "}
-							{m.this_removes_their_organization_membership_and_all_explicit()}
-						</AlertDialogDescription>
-						<FormFeedback
-							message={failed ? message : ""}
-							kind="error"
-							pending={pending}
-						/>
-						<AlertDialogFooter>
-							<Button
-								variant="destructive"
-								disabled={pending}
-								pending={pending}
-								pendingLabel={m.saving()}
-								onClick={() =>
-									void state.change(
+		<AlertDialog
+			open={confirm === member.id}
+			onOpenChange={(open) => {
+				if (!pending) state.setConfirm(open ? member.id : null);
+			}}
+		>
+			<TableRow className="h-16">
+				<TableCell>
+					<div className="flex items-center gap-3">
+						<UserAvatar user={member} className="size-8 shrink-0" />
+						<div>
+							<p className="font-medium">
+								{self
+									? m.you_suffix({ name: member.name || member.email })
+									: member.name || member.email}
+							</p>
+							<p className="text-sm text-muted-foreground">{member.email}</p>
+						</div>
+					</div>
+				</TableCell>
+				<TableCell>
+					<Badge variant="outline">{roleLabel(member.role)}</Badge>
+				</TableCell>
+				<TableCell>
+					<SessionTime value={member.joinedAt} />
+				</TableCell>
+				<TableCell className="text-right">
+					{!protectedOwner && (self || canManage) && (
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									ref={actions}
+									variant="ghost"
+									size="icon-sm"
+									disabled={disabled}
+									aria-label={m.settings_member_actions({
+										email: member.email,
+									})}
+								>
+									<MoreHorizontalIcon aria-hidden="true" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent
+								align="end"
+								className="w-56"
+								onCloseAutoFocus={(event) => {
+									if (editing) {
+										event.preventDefault();
+										editor.current?.querySelector("select")?.focus();
+									}
+								}}
+							>
+								{canManage && (
+									<DropdownMenuItem onSelect={() => setEditing(true)}>
+										<ShieldIcon aria-hidden="true" />
+										{m.settings_change_role()}
+									</DropdownMenuItem>
+								)}
+								<DropdownMenuItem
+									variant="destructive"
+									aria-label={
 										self
-											? { action: "leave" }
-											: { action: "remove", memberId: member.id },
-									)
+											? m.leave_member_named({ email: member.email })
+											: m.remove_member_named({ email: member.email })
+									}
+									onSelect={() => state.requestRemoval(member.id)}
+								>
+									<UserMinusIcon aria-hidden="true" />
+									{self ? m.leave_organization() : m.remove_member()}
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					)}
+				</TableCell>
+			</TableRow>
+			{editing && canManage && !protectedOwner && (
+				<TableRow>
+					<TableCell colSpan={4} className="bg-muted/30 whitespace-normal">
+						<fieldset ref={editor} className="flex min-w-0 flex-col gap-3 py-2">
+							<legend className="sr-only">{m.settings_change_role()}</legend>
+							<div className="flex items-start justify-between gap-4">
+								<p className="max-w-2xl text-sm text-muted-foreground">
+									{m.settings_member_role_description()}
+								</p>
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									disabled={pending}
+									aria-label={m.close()}
+									onClick={() => {
+										setEditing(false);
+										actions.current?.focus();
+									}}
+								>
+									<XIcon aria-hidden="true" />
+								</Button>
+							</div>
+							<MemberRoleForm
+								key={`${member.role}:${organizationRole}`}
+								member={member}
+								allowOwner={organizationRole === "owner"}
+								disabled={disabled}
+								onSave={(role) =>
+									state.change({ action: "role", memberId: member.id, role })
 								}
-							>
-								{self ? m.confirm_leave() : m.confirm_removal()}
-							</Button>
-							<AlertDialogCancel
-								variant="outline"
-								disabled={pending}
-								onClick={() => state.setConfirm(null)}
-							>
-								{m.keep_membership()}
-							</AlertDialogCancel>
-						</AlertDialogFooter>
-					</AlertDialogContent>
-				)}
-			</AlertDialog>
-		</li>
+							/>
+						</fieldset>
+					</TableCell>
+				</TableRow>
+			)}
+			{confirm === member.id && !protectedOwner && (self || canManage) && (
+				<AlertDialogContent
+					onCloseAutoFocus={(event) => {
+						event.preventDefault();
+						if (pending) {
+							heading.current?.focus();
+						} else actions.current?.focus();
+					}}
+					onEscapeKeyDown={(event) => {
+						if (pending) event.preventDefault();
+					}}
+				>
+					<AlertDialogTitle>
+						{m.confirm_removal_named({ email: member.email })}
+					</AlertDialogTitle>
+					<AlertDialogDescription>
+						{self
+							? m.leave_this_organization()
+							: m.remove_member_question({ email: member.email })}{" "}
+						{m.this_removes_their_organization_membership_and_all_explicit()}
+					</AlertDialogDescription>
+					<FormFeedback
+						message={failed ? message : ""}
+						kind="error"
+						pending={pending}
+					/>
+					<AlertDialogFooter>
+						<Button
+							variant="destructive"
+							disabled={pending}
+							pending={pending}
+							pendingLabel={m.saving()}
+							onClick={() =>
+								void state.change(
+									self
+										? { action: "leave" }
+										: { action: "remove", memberId: member.id },
+								)
+							}
+						>
+							{self ? m.confirm_leave() : m.confirm_removal()}
+						</Button>
+						<AlertDialogCancel
+							variant="outline"
+							disabled={pending}
+							onClick={() => state.setConfirm(null)}
+						>
+							{m.keep_membership()}
+						</AlertDialogCancel>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			)}
+		</AlertDialog>
 	);
 }

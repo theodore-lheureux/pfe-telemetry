@@ -12,6 +12,7 @@ import * as organizationDomain from "../../src/organizations/organizations.serve
 import {
 	closePreferences,
 	data,
+	editMemberRole,
 	expect,
 	openPreferences,
 	openSettingsSection,
@@ -306,6 +307,7 @@ for (const locale of ["en", "fr"] as const) {
 		).toBeVisible();
 		const projectURL = page.url().replace(/\/executions\/?$/, "");
 		await openSettingsSection(page, text(m.project_settings), locale);
+		await openSettingsSection(page, text(m.settings_customization), locale);
 		await page.getByLabel(text(m.name), { exact: true }).fill("   ");
 		await page.getByRole("button", { name: text(m.save_project) }).click();
 		await expect(
@@ -333,6 +335,7 @@ for (const locale of ["en", "fr"] as const) {
 				body: { organizationId, userId: collaborator.userId, role: "member" },
 			});
 			await page.goto(settingsUrl(orgURL, "organization-members"));
+			await editMemberRole(page, "collaborator@example.invalid", locale);
 			const role = page.getByLabel(
 				m.role_for({ email: "collaborator@example.invalid" }, options),
 				{ exact: true },

@@ -1,5 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
+import { SaveIcon } from "lucide-react";
 import { useRef } from "react";
 import type {
 	OrganizationRole,
@@ -81,6 +82,7 @@ export function MemberRoleForm({
 				pending={submitting}
 				pendingLabel={m.saving()}
 			>
+				<SaveIcon aria-hidden="true" />
 				{m.save_role()}
 			</Button>
 		</form>
@@ -160,6 +162,7 @@ export function ProjectGrantForm({
 				pending={submitting}
 				pendingLabel={m.saving()}
 			>
+				<SaveIcon aria-hidden="true" />
 				{role ? m.save_grant() : m.grant_access()}
 			</Button>
 		</form>

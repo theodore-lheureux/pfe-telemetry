@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { UserRoundIcon } from "lucide-react";
 import {
 	getSettingsGroups,
 	searchSettings,
@@ -53,6 +54,7 @@ test("setting search normalizes French accents without indexing DOM or values", 
 			pages: [
 				{
 					section: "user",
+					icon: UserRoundIcon,
 					label: "Profil",
 					settings: [
 						{ id: "passkeys", label: "Clés d’accès", keywords: "Renommer" },

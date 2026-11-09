@@ -8,7 +8,7 @@ import {
 import { createIsomorphicFn } from "@tanstack/react-start";
 import { getRequestUrl } from "@tanstack/react-start/server";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
-import { ArrowLeftIcon, KeyRoundIcon } from "lucide-react";
+import { ArrowLeftIcon, FingerprintPatternIcon } from "lucide-react";
 import {
 	useEffect,
 	useEffectEvent,
@@ -647,7 +647,7 @@ function Login() {
 						pendingLabel={m.signing_in()}
 						onClick={() => void signInWithPasskey()}
 					>
-						<KeyRoundIcon aria-hidden="true" />
+						<FingerprintPatternIcon aria-hidden="true" />
 						{identity.recovery?.method === "passkey"
 							? m.check_signin()
 							: m.sign_in_with_a_passkey()}

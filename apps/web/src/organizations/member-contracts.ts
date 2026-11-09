@@ -7,6 +7,9 @@ export interface MemberSummary {
 	name: string;
 	email: string;
 	role: OrganizationRole;
+	image: string | null;
+	gravatarUrl: string;
+	joinedAt: Date;
 }
 
 export interface MemberReference {

@@ -3,10 +3,14 @@ import { organizationParams, projectParams } from "../organizations/route-data";
 
 export const settingsSections = [
 	"project",
+	"project-customization",
 	"project-members",
 	"credentials",
+	"project-danger",
 	"organization",
+	"organization-authentication",
 	"organization-members",
+	"organization-delete",
 	"user",
 	"appearance",
 ] as const;

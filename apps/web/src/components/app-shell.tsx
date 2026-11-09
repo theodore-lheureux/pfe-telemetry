@@ -245,7 +245,7 @@ function AppShellContent({
 						/>
 					)}
 					<div className="flex min-w-0 flex-col gap-6 p-4 pt-14 md:p-6">
-						<PasskeyEnrollmentPrompt selection={selection} />
+						<PasskeyEnrollmentPrompt />
 						{children}
 					</div>
 				</SidebarInset>

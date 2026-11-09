@@ -401,7 +401,7 @@ test("viewers cannot list or mutate, while an explicit project admin can manage"
 		).toBeVisible();
 		await openSettingsSection(admin, "Project settings");
 		await expect(
-			admin.getByRole("heading", { name: "Project settings", exact: true }),
+			admin.getByRole("heading", { name: "Settings - General", exact: true }),
 		).toBeVisible();
 		const credentialsLink = admin.getByRole("link", {
 			name: "Collector credentials",

@@ -156,6 +156,13 @@ export function SettingsNavigation({
 													>
 														<Link
 															to="/settings"
+															aria-label={
+																item.section === "project"
+																	? m.project_settings()
+																	: item.section === "organization"
+																		? m.organization_settings()
+																		: undefined
+															}
 															search={settingsSearch(item.section, selection)}
 															activeOptions={{ exact: true }}
 															activeProps={{
@@ -163,7 +170,11 @@ export function SettingsNavigation({
 																	"active bg-accent text-accent-foreground",
 															}}
 														>
-															{item.label}
+															<item.icon
+																aria-hidden="true"
+																className="size-3.5 shrink-0 text-muted-foreground"
+															/>
+															<span>{item.label}</span>
 														</Link>
 													</SidebarMenuButton>
 												))}

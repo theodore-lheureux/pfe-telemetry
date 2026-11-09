@@ -3,7 +3,15 @@ import { invitation, member } from "../../src/db/schema";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-import { data, expect, settingsUrl, test } from "./fixtures";
+import {
+	data,
+	editMemberRole,
+	expect,
+	openInvitationForm,
+	openMemberActions,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 test("manages native memberships and restricts administrator owner controls", async ({
 	page,
@@ -48,6 +56,7 @@ test("manages native memberships and restricts administrator owner controls", as
 			"Promote a replacement owner before leaving or changing your role.",
 		),
 	).toBeVisible();
+	await editMemberRole(page, "collaborator@example.invalid");
 	await page
 		.getByLabel("Role for collaborator@example.invalid", { exact: true })
 		.selectOption("admin");
@@ -88,8 +97,9 @@ test("manages native memberships and restricts administrator owner controls", as
 			exact: true,
 		}),
 	).toHaveCount(0);
+	await openMemberActions(page, "collaborator@example.invalid");
 	await page
-		.getByRole("button", {
+		.getByRole("menuitem", {
 			name: "Remove member: collaborator@example.invalid",
 			exact: true,
 		})
@@ -461,11 +471,9 @@ test("stale organization administration is rejected and the controls are refresh
 			"organization-members",
 		),
 	);
-	await expect(
-		page.getByLabel("Role for target@example.invalid", { exact: true }),
-	).toBeVisible();
+	await openMemberActions(page, "target@example.invalid");
 	await page
-		.getByRole("button", {
+		.getByRole("menuitem", {
 			name: "Remove member: target@example.invalid",
 			exact: true,
 		})
@@ -495,7 +503,7 @@ test("stale organization administration is rejected and the controls are refresh
 		page.getByLabel("Role for target@example.invalid", { exact: true }),
 	).toHaveCount(0);
 	await expect(
-		page.getByRole("heading", { name: "Invitations", exact: true }),
+		page.getByRole("heading", { name: "Pending invites", exact: true }),
 	).toHaveCount(0);
 	await expect(
 		page.getByRole("button", { name: "Confirm removal", exact: true }),
@@ -545,6 +553,7 @@ test("a successful membership write survives a failed loader refresh", async ({
 	await page.route("**/_serverFn/**", (route) =>
 		route.request().method() === "GET" ? route.abort() : route.continue(),
 	);
+	await editMemberRole(page, "target@example.invalid");
 	await page
 		.getByLabel("Role for target@example.invalid", { exact: true })
 		.selectOption("admin");
@@ -574,6 +583,7 @@ test("a successful membership write survives a failed loader refresh", async ({
 	).toBe("admin");
 	await page.unroute("**/_serverFn/**");
 	await page.getByRole("button", { name: "Try again", exact: true }).click();
+	await editMemberRole(page, "target@example.invalid");
 	await expect(
 		page.getByLabel("Role for target@example.invalid", { exact: true }),
 	).toHaveValue("admin");
@@ -602,6 +612,7 @@ test("recovers pending invitation delivery with native resend and renews expired
 			"organization-members",
 		),
 	);
+	await openInvitationForm(page);
 	await page
 		.getByLabel("Email address", { exact: true })
 		.fill("delivery@example.invalid");

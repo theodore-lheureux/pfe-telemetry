@@ -36,6 +36,42 @@ export function data<T>(result: OperationResult<T>): T {
 
 const preferencesHistory = new WeakMap<Page, number>();
 
+export async function openMemberActions(
+	page: Page,
+	email: string,
+	locale: Locale = "en",
+) {
+	await page
+		.getByRole("button", {
+			name: m.settings_member_actions({ email }, { locale }),
+			exact: true,
+		})
+		.click();
+}
+
+export async function editMemberRole(
+	page: Page,
+	email: string,
+	locale: Locale = "en",
+) {
+	await openMemberActions(page, email, locale);
+	await page
+		.getByRole("menuitem", {
+			name: m.settings_change_role({}, { locale }),
+			exact: true,
+		})
+		.click();
+}
+
+export async function openInvitationForm(page: Page, locale: Locale = "en") {
+	await page
+		.getByRole("button", {
+			name: m.settings_invite_member({}, { locale }),
+			exact: true,
+		})
+		.click();
+}
+
 export async function chooseTheme(
 	page: Page,
 	mode: "light" | "dark" | "system",

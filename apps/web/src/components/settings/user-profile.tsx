@@ -2,7 +2,12 @@ import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useHydrated, useRouter } from "@tanstack/react-router";
-import { LogOutIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import {
+	FingerprintPatternIcon,
+	LogOutIcon,
+	PencilIcon,
+	Trash2Icon,
+} from "lucide-react";
 import { useRef, useState } from "react";
 import { authClient } from "@/auth/client";
 import { useAccountPasskeys } from "@/auth/use-account-passkeys";
@@ -204,6 +209,7 @@ export function UserProfile() {
 						pending={addingPasskey}
 						pendingLabel={m.adding_passkey()}
 					>
+						<FingerprintPatternIcon aria-hidden="true" />
 						{m.add_a_passkey()}
 					</Button>
 				</form>

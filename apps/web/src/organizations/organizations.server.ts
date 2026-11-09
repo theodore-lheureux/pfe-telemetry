@@ -8,9 +8,31 @@ import {
 	resolveOrganizationRole,
 } from "./access.server";
 import type { OrganizationInput, OrganizationSummary } from "./contracts";
+import { OperationError } from "./errors";
 
 type Database = ReturnType<typeof getDatabase>;
 type Auth = ReturnType<typeof createAuth>;
+
+export async function updateOrganization(
+	database: Database,
+	auth: Auth,
+	headers: Headers,
+	actor: Actor,
+	input: { organizationId: string; name: string },
+) {
+	const entry = await requireOrganization(
+		database,
+		actor,
+		input.organizationId,
+	);
+	if (entry.role === "member")
+		throw new OperationError("FORBIDDEN", "Administrator access required");
+	await auth.api.updateOrganization({
+		headers,
+		body: { organizationId: input.organizationId, data: { name: input.name } },
+	});
+	return getOrganization(database, actor, input.organizationId);
+}
 
 export async function listOrganizations(database: Database, actor: Actor) {
 	const entries = await database

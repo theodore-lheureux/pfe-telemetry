@@ -7,6 +7,7 @@ import * as projectDomain from "../../src/organizations/projects.server";
 import {
 	data,
 	expect,
+	openInvitationForm,
 	openSettingsSection,
 	settingsUrl,
 	test,
@@ -587,6 +588,7 @@ test("invitation controls stay pending until acknowledged-write reads finish", a
 		await readsReleased;
 		await route.continue();
 	});
+	await openInvitationForm(page);
 	await page
 		.getByLabel("Email address", { exact: true })
 		.fill("pending@example.invalid");
@@ -664,6 +666,7 @@ test("internal Dates survive SSR hydration and client RPC navigation", async ({
 		page.getByRole("button", { name: "Create credential", exact: true }),
 	).toBeEnabled();
 	await openSettingsSection(page, "Project settings");
+	await openSettingsSection(page, "Customization");
 	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
 		"Dates project",
 	);

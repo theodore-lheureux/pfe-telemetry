@@ -50,6 +50,7 @@ test("onboards, creates and renames private projects, switches tenants and signs
 	).toBeVisible();
 	const projectURL = page.url().replace(/\/executions\/?$/, "");
 	await openSettingsSection(page, "Project settings");
+	await openSettingsSection(page, "Customization");
 	await page.getByLabel("Name", { exact: true }).fill("GPU comparison");
 	await page.getByRole("button", { name: "Save project" }).click();
 	await expect(page.getByText("Changes saved.", { exact: true })).toBeVisible();

@@ -2,6 +2,7 @@ import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
 import { useLocation, useRouteContext } from "@tanstack/react-router";
 import { cn } from "cn";
+import { PlusIcon, SaveIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { operationMessage } from "../lib/operation-message";
 import type {
@@ -163,6 +164,11 @@ function EntityFields<T>({
 					pending={pending}
 					pendingLabel={m.saving()}
 				>
+					{slug ? (
+						<PlusIcon aria-hidden="true" />
+					) : (
+						<SaveIcon aria-hidden="true" />
+					)}
 					{submitLabel}
 				</Button>
 			</div>

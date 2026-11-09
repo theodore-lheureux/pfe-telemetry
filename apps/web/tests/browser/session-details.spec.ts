@@ -147,20 +147,49 @@ test("email sign-in offers optional passkey enrollment and records the actual si
 				).json()
 			).session.signInMethod,
 		).toBe("email-otp");
+		const landing = page.url();
+		const keysBeforeSetup = await page.request.get(
+			`${workspace.origin}/api/auth/passkey/list-user-passkeys`,
+		);
+		expect(await keysBeforeSetup.json()).toEqual([]);
+		await page.route("**/api/auth/passkey/generate-register-options", (route) =>
+			route.fulfill({
+				status: 400,
+				contentType: "application/json",
+				body: JSON.stringify({
+					code: "REGISTRATION_CANCELLED",
+					message: "Registration canceled",
+				}),
+			}),
+		);
 		await prompt
-			.getByRole("link", { name: "Set up a passkey", exact: true })
+			.getByRole("button", { name: "Set up a passkey", exact: true })
+			.click();
+		await expect(prompt.getByRole("alert")).toContainText(
+			"The action was not completed",
+		);
+		await expect(page).toHaveURL(landing);
+		await expect(
+			prompt.getByRole("button", { name: "Set up a passkey", exact: true }),
+		).toBeEnabled();
+		await page.unroute("**/api/auth/passkey/generate-register-options");
+		await prompt
+			.getByRole("button", { name: "Set up a passkey", exact: true })
 			.click();
 		await expect(prompt).toHaveCount(0);
-		await page
-			.getByLabel("Passkey name", { exact: true })
-			.fill("Fixture device");
-		await page
-			.getByRole("button", { name: "Add a passkey", exact: true })
-			.click();
-		await expect(
-			page.getByRole("cell", { name: "Fixture device", exact: true }),
-		).toBeVisible();
-		await page.getByRole("button", { name: "Sign out", exact: true }).click();
+		await expect(page).toHaveURL(landing);
+		expect(
+			await (
+				await page.request.get(
+					`${workspace.origin}/api/auth/passkey/list-user-passkeys`,
+				)
+			).json(),
+		).toHaveLength(1);
+		await page.request.post(`${workspace.origin}/api/auth/sign-out`, {
+			data: {},
+			headers: { origin: workspace.origin },
+		});
+		await page.goto(`${workspace.origin}/login`);
 		await page
 			.getByRole("button", { name: "Sign in with a passkey", exact: true })
 			.click();
