@@ -1,0 +1,49 @@
+---
+import { type Lang, localePath } from "../i18n";
+import { strings } from "../i18n/strings";
+import { icons } from "../lib/site";
+import Container from "./Container.astro";
+import Icon from "./Icon.astro";
+
+interface Props {
+	lang: Lang;
+	/** Defaults to the home page questions. */
+	title?: string;
+	items?: { q: string; a: string }[];
+	id?: string;
+	class?: string;
+}
+
+const { lang, id = "faq", class: className } = Astro.props;
+const t = strings[lang].faq;
+const title = Astro.props.title ?? t.title;
+const items = Astro.props.items ?? t.items;
+---
+
+<section aria-labelledby={id} class:list={["scroll-mt-14", className]}>
+	<Container class="grid gap-12 py-24 lg:grid-cols-[1fr_2fr]">
+		<div>
+			<h2 id={id} class="font-medium text-[28px] tracking-tight">{title}</h2>
+			<p class="mt-3 text-base text-muted-foreground leading-relaxed">
+				{t.intro}{" "}
+				<a href={localePath(lang, "/contact/")} class="text-primary underline underline-offset-2">{t.contact}</a>
+			</p>
+		</div>
+		<div class="border-t">
+			{
+				items.map((item) => (
+					<details class="group border-b">
+						<summary class="flex cursor-pointer list-none items-center justify-between gap-4 py-4 font-medium text-base [&::-webkit-details-marker]:hidden">
+							{item.q}
+							<Icon svg={icons.chevron} class="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+						</summary>
+						<p
+							class="max-w-[60ch] pb-5 text-muted-foreground leading-relaxed [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2"
+							set:html={item.a}
+						/>
+					</details>
+				))
+			}
+		</div>
+	</Container>
+</section>

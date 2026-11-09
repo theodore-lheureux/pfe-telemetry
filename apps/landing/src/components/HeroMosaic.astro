@@ -1,0 +1,413 @@
+---
+// A mosaic of tiles on an inclined plane, rendered with WebGL2. Tiles use four quiet
+// shades of the theme; about a third carry the Lattice mark. Tile heights come from a
+// smooth, slowly drifting noise field, so pillars form soft hills that travel across
+// the plane; valleys are low pillars. The view tilts very slightly with the mouse.
+// Decorative only.
+import { MARK_PATHS } from "../lib/mark";
+---
+
+<canvas
+	class="size-full opacity-0 transition-opacity duration-1000"
+	data-hero-mosaic
+	data-mark={JSON.stringify(MARK_PATHS)}
+></canvas>
+
+<script>
+	/** Tile pitch and gap in world units, and the radius where the plane fades out. */
+	const CELL = 34;
+	const GAP = 2.5;
+	// A smaller grid on narrow screens looks the same there and costs far less to draw.
+	const SMALL = window.matchMedia("(max-width: 767px)").matches;
+	const COLS = SMALL ? 40 : 84;
+	const ROWS = SMALL ? 84 : 96;
+	// Large enough that the plane runs past the top of the view at any width; only the
+	// far distance fades.
+	const FADE_RADIUS = 1700;
+	/** Horizontal screen-space offset of the scene, in clip units (canvas width = 2). */
+	const SHIFT_X = 0.55;
+
+	type Rgb = [number, number, number];
+	type Mat4 = Float32Array;
+
+	const VERTEX = `#version 300 es
+		in vec2 corner;
+		in vec2 uv;
+		in vec2 center;
+		in vec2 tile;
+		// x: 0 at the base, 1 at the top. y: 0 for the top face, 1–4 for the sides.
+		in vec2 part;
+		// Per-tile variation in [0, 1), so hills still read as separate pillars.
+		in float jitter;
+		uniform float time;
+		uniform mat4 matrix;
+		uniform float fadeRadius;
+		out vec2 vUv;
+		flat out int vShade;
+		flat out float vLogo;
+		flat out float vFace;
+		out float vGlow;
+		out float vLight;
+		out float vFade;
+
+		float hash(vec2 p) {
+			return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+		}
+
+		// Smooth value noise in [0, 1].
+		float noise(vec2 p) {
+			vec2 i = floor(p);
+			vec2 f = fract(p);
+			vec2 u = f * f * (3.0 - 2.0 * f);
+			return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+		}
+
+		void main() {
+			// Smooth hills from layered noise drifting slowly across the plane.
+			vec2 q = center * 0.0085;
+			float n = 0.6 * noise(q + vec2(time * 0.05, time * 0.03))
+				+ 0.3 * noise(q * 2.1 + vec2(-time * 0.04, time * 0.06) + 7.3)
+				+ 0.1 * noise(q * 4.3 + 3.1);
+			float level = smoothstep(0.22, 0.8, n);
+			// Every tile stands at least a little; hills add height on top. About 5% of tiles
+			// stay flush to keep the grid readable.
+			float base = 3.0 + 6.0 * jitter;
+			float lift = (base + level * (22.0 + 16.0 * jitter)) * step(0.05, jitter);
+			vGlow = 0.28 * level;
+			vFace = part.y;
+			// Sides are shaded by the direction they face: front, right, back, left.
+			float side = part.y < 0.5 ? 1.0 : part.y < 1.5 ? 0.62 : part.y < 2.5 ? 0.78 : part.y < 3.5 ? 0.9 : 0.7;
+			vLight = 0.95 * side;
+			vFade = smoothstep(1.0, 0.55, length(center) / fadeRadius);
+			vUv = uv;
+			vShade = int(tile.x);
+			vLogo = tile.y;
+			gl_Position = matrix * vec4(corner, part.x * lift, 1.0);
+		}`;
+
+	const FRAGMENT = `#version 300 es
+		precision mediump float;
+		uniform vec3 fills[4];
+		uniform vec3 logoTint;
+		uniform vec3 glow;
+		uniform sampler2D mark;
+		in vec2 vUv;
+		flat in int vShade;
+		flat in float vLogo;
+		flat in float vFace;
+		in float vGlow;
+		in float vLight;
+		in float vFade;
+		out vec4 color;
+
+		void main() {
+			// Rounded square: signed distance to the tile edge, antialiased.
+			float radius = 0.03;
+			vec2 q = abs(vUv - 0.5) - (0.5 - radius);
+			float dist = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+			float edge = fwidth(dist);
+			// Sides are solid; only the top face gets rounded corners and the mark.
+			float alpha = (vFace > 0.5 ? 1.0 : 1.0 - smoothstep(-edge, edge, dist)) * vFade;
+			if (alpha < 0.01) discard;
+			vec3 fill = fills[vShade];
+			if (vLogo > 0.5 && vFace < 0.5) {
+				float m = texture(mark, (vUv - 0.5) / 0.78 + 0.5).a;
+				fill = mix(fill, logoTint, m * 0.9);
+			}
+			vec3 rgb = mix(fill, glow, vGlow) * vLight;
+			color = vec4(rgb * alpha, alpha);
+		}`;
+
+	function parse(value: string): Rgb {
+		let hex = value.trim().replace("#", "");
+		// The CSS minifier can shorten tokens such as #ffffff to #fff.
+		if (hex.length === 3) hex = [...hex].map((c) => c + c).join("");
+		return [0, 2, 4].map((i) => Number.parseInt(hex.slice(i, i + 2), 16) / 255) as Rgb;
+	}
+
+	const mix = (a: Rgb, b: Rgb, t: number): Rgb => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+	// A fixed pseudo-random value per tile and channel, so the layout is the same on every visit.
+	function random(c: number, r: number, channel: number) {
+		const h = Math.sin(c * 127.1 + r * 311.7 + channel * 74.7) * 43758.5453;
+		return h - Math.floor(h);
+	}
+
+	/** Relative frequency of each shade: two light greys, mint and a soft teal. */
+	const WEIGHTS = [5, 4, 4, 2];
+	function pick(value: number) {
+		const total = WEIGHTS.reduce((sum, w) => sum + w, 0);
+		let rest = value * total;
+		for (let i = 0; i < WEIGHTS.length; i++) if ((rest -= WEIGHTS[i]) < 0) return i;
+		return 0;
+	}
+
+	function multiply(a: Mat4, b: Mat4): Mat4 {
+		const out = new Float32Array(16);
+		for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) for (let k = 0; k < 4; k++) out[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
+		return out;
+	}
+
+	function perspective(fovy: number, aspect: number, near: number, far: number): Mat4 {
+		const f = 1 / Math.tan(fovy / 2);
+		const nf = 1 / (near - far);
+		return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]);
+	}
+
+	function lookAt(eye: number[], target: number[], up: number[]): Mat4 {
+		const sub = (a: number[], b: number[]) => a.map((v, i) => v - b[i]);
+		const norm = (a: number[]) => a.map((v) => v / Math.hypot(...a));
+		const cross = (a: number[], b: number[]) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+		const dot = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * b[i], 0);
+		const z = norm(sub(eye, target));
+		const x = norm(cross(up, z));
+		const y = cross(z, x);
+		return new Float32Array([x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, eye), -dot(y, eye), -dot(z, eye), 1]);
+	}
+
+	function rotateZ(angle: number): Mat4 {
+		const c = Math.cos(angle);
+		const s = Math.sin(angle);
+		return new Float32Array([c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+	}
+
+	// Each tile is a box: a top face plus four sides. Sides have zero height until the
+	// vertex shader raises the top edge to the tile's current pillar height.
+	function buildTiles() {
+		const corners: number[] = [];
+		const uvs: number[] = [];
+		const centers: number[] = [];
+		const tiles: number[] = [];
+		const parts: number[] = [];
+		const jitters: number[] = [];
+		const indices: number[] = [];
+		const half = (CELL - GAP) / 2;
+		const quad = (points: number[][], cx: number, cy: number, shade: number, logo: number, face: number, jitter: number) => {
+			const start = corners.length / 2;
+			for (const [x, y, level, u, v] of points) {
+				corners.push(x, y);
+				uvs.push(u, v);
+				centers.push(cx, cy);
+				tiles.push(shade, logo);
+				parts.push(level, face);
+				jitters.push(jitter);
+			}
+			indices.push(start, start + 1, start + 2, start, start + 2, start + 3);
+		};
+		for (let r = 0; r < ROWS; r++) {
+			for (let c = 0; c < COLS; c++) {
+				const cx = (c - (COLS - 1) / 2) * CELL;
+				const cy = (r - (ROWS - 1) / 2) * CELL;
+				const shade = pick(random(c, r, 1));
+				const logo = random(c, r, 2) < 0.33 ? 1 : 0;
+				const jitter = random(c, r, 5);
+				const x0 = cx - half;
+				const x1 = cx + half;
+				const y0 = cy - half;
+				const y1 = cy + half;
+				// uv v runs top to bottom so the mark texture (drawn y-down) reads upright.
+				quad([[x0, y0, 1, 0, 1], [x1, y0, 1, 1, 1], [x1, y1, 1, 1, 0], [x0, y1, 1, 0, 0]], cx, cy, shade, logo, 0, jitter);
+				quad([[x0, y0, 0, 0, 0], [x1, y0, 0, 0, 0], [x1, y0, 1, 0, 0], [x0, y0, 1, 0, 0]], cx, cy, shade, logo, 1, jitter);
+				quad([[x1, y0, 0, 0, 0], [x1, y1, 0, 0, 0], [x1, y1, 1, 0, 0], [x1, y0, 1, 0, 0]], cx, cy, shade, logo, 2, jitter);
+				quad([[x1, y1, 0, 0, 0], [x0, y1, 0, 0, 0], [x0, y1, 1, 0, 0], [x1, y1, 1, 0, 0]], cx, cy, shade, logo, 3, jitter);
+				quad([[x0, y1, 0, 0, 0], [x0, y0, 0, 0, 0], [x0, y0, 1, 0, 0], [x0, y1, 1, 0, 0]], cx, cy, shade, logo, 4, jitter);
+			}
+		}
+		return {
+			corners: new Float32Array(corners),
+			uvs: new Float32Array(uvs),
+			centers: new Float32Array(centers),
+			tiles: new Float32Array(tiles),
+			parts: new Float32Array(parts),
+			jitters: new Float32Array(jitters),
+			indices: new Uint32Array(indices),
+		};
+	}
+
+	// The Lattice mark as an alpha texture, drawn from the logo package's paths.
+	function markTexture(gl: WebGL2RenderingContext, paths: string[]) {
+		const size = 128;
+		const canvas = document.createElement("canvas");
+		canvas.width = size;
+		canvas.height = size;
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return null;
+		ctx.scale(size / 24, size / 24);
+		ctx.fillStyle = "#fff";
+		for (const d of paths) ctx.fill(new Path2D(d));
+		const texture = gl.createTexture();
+		gl.bindTexture(gl.TEXTURE_2D, texture);
+		gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+		gl.generateMipmap(gl.TEXTURE_2D);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+		gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+		return texture;
+	}
+
+	function compile(gl: WebGL2RenderingContext, type: number, source: string) {
+		const shader = gl.createShader(type);
+		if (!shader) throw new Error("shader");
+		gl.shaderSource(shader, source);
+		gl.compileShader(shader);
+		if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(shader) ?? "shader");
+		return shader;
+	}
+
+	function start(canvas: HTMLCanvasElement) {
+		// Phones cap the pixel ratio and skip multisampling on dense screens, where it isn't visible.
+		const maxRatio = SMALL ? 1.5 : 2;
+		const gl = canvas.getContext("webgl2", {
+			antialias: (window.devicePixelRatio || 1) < 2,
+			alpha: true,
+			premultipliedAlpha: true,
+		});
+		if (!gl) return;
+
+		const program = gl.createProgram();
+		gl.attachShader(program, compile(gl, gl.VERTEX_SHADER, VERTEX));
+		gl.attachShader(program, compile(gl, gl.FRAGMENT_SHADER, FRAGMENT));
+		gl.linkProgram(program);
+		if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return;
+		gl.useProgram(program);
+
+		const mesh = buildTiles();
+		const attribute = (name: string, data: Float32Array, size = 2) => {
+			gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+			gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+			const location = gl.getAttribLocation(program, name);
+			gl.enableVertexAttribArray(location);
+			gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+		};
+		attribute("corner", mesh.corners);
+		attribute("uv", mesh.uvs);
+		attribute("center", mesh.centers);
+		attribute("tile", mesh.tiles);
+		attribute("part", mesh.parts);
+		attribute("jitter", mesh.jitters, 1);
+		gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
+		gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
+
+		markTexture(gl, JSON.parse(canvas.dataset.mark ?? "[]"));
+		const uniform = (name: string) => gl.getUniformLocation(program, name);
+		gl.uniform1i(uniform("mark"), 0);
+		gl.uniform1f(uniform("fadeRadius"), FADE_RADIUS);
+		const matrixLocation = uniform("matrix");
+
+		function readTheme() {
+			const style = getComputedStyle(document.documentElement);
+			const token = (name: string) => parse(style.getPropertyValue(name));
+			const background = token("--background");
+			const primary = token("--primary");
+			const fills = [token("--muted"), token("--border"), token("--accent"), mix(background, primary, 0.28)];
+			gl!.uniform3fv(uniform("fills"), fills.flat());
+			gl!.uniform3fv(uniform("logoTint"), mix(background, primary, 0.5));
+			gl!.uniform3fv(uniform("glow"), mix(background, primary, 0.55));
+		}
+
+		gl.enable(gl.DEPTH_TEST);
+		gl.clearColor(0, 0, 0, 0);
+		gl.enable(gl.BLEND);
+		gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+		const model = rotateZ(-0.32);
+		let matrix: Mat4 = new Float32Array(16);
+		// Parallax: the eye shifts very slightly with the pointer, eased.
+		const view = { x: 0, y: 0, tx: 0, ty: 0 };
+		function resize() {
+			const ratio = Math.min(window.devicePixelRatio || 1, maxRatio);
+			const width = Math.round(canvas.clientWidth * ratio);
+			const height = Math.round(canvas.clientHeight * ratio);
+			if (canvas.width !== width || canvas.height !== height) {
+				canvas.width = width;
+				canvas.height = height;
+				gl!.viewport(0, 0, width, height);
+			}
+			const eye = [60 + view.x * 30, -620, 430 + view.y * 18];
+			const camera = lookAt(eye, [60, 40, 0], [0, 0, 1]);
+			// Shift the scene right in screen space so the plane sits beside the headline; the
+			// canvas spans the whole hero so the fade can curve around the text.
+			const shift = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, SHIFT_X, 0, 0, 1]);
+			matrix = multiply(shift, multiply(perspective(0.75, canvas.width / canvas.height, 10, 4000), multiply(camera, model)));
+		}
+
+		const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+		let frame = 0;
+		let visible = true;
+
+		const timeLocation = uniform("time");
+		const startTime = performance.now();
+
+		function draw(now: number) {
+			resize();
+			view.x += (view.tx - view.x) * 0.04;
+			view.y += (view.ty - view.y) * 0.04;
+			gl!.clear(gl!.COLOR_BUFFER_BIT | gl!.DEPTH_BUFFER_BIT);
+			gl!.uniformMatrix4fv(matrixLocation, false, matrix);
+			gl!.uniform1f(timeLocation, reduced ? 0 : (now - startTime) / 1000);
+			gl!.drawElements(gl!.TRIANGLES, mesh.indices.length, gl!.UNSIGNED_INT, 0);
+		}
+
+		// The drift is slow, so phones draw every other frame.
+		const frameInterval = SMALL ? 1000 / 30 - 2 : 0;
+		let lastDraw = 0;
+		function loop(now: number) {
+			if (now - lastDraw >= frameInterval) {
+				lastDraw = now;
+				draw(now);
+			}
+			frame = visible && !document.hidden ? requestAnimationFrame(loop) : 0;
+		}
+
+		function resume() {
+			if (!frame && visible && !document.hidden && !reduced) {
+				frame = requestAnimationFrame(loop);
+			}
+		}
+
+		readTheme();
+		draw(performance.now());
+		canvas.classList.remove("opacity-0");
+		new MutationObserver(() => {
+			readTheme();
+			draw(performance.now());
+		}).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+		if (reduced) {
+			new ResizeObserver(() => draw(performance.now())).observe(canvas);
+			return;
+		}
+		window.addEventListener(
+			"pointermove",
+			(event) => {
+				view.tx = (event.clientX / window.innerWidth - 0.5) * 2;
+				view.ty = (event.clientY / window.innerHeight - 0.5) * 2;
+			},
+			{ passive: true },
+		);
+		new IntersectionObserver(([entry]) => {
+			visible = entry.isIntersecting;
+			resume();
+		}).observe(canvas);
+		document.addEventListener("visibilitychange", resume);
+		resume();
+	}
+
+	// Decorative: set up after the page has loaded and the browser is idle, so building the
+	// mesh and compiling shaders never delays the content. The canvas fades in once drawn.
+	function startAll() {
+		for (const canvas of document.querySelectorAll<HTMLCanvasElement>("[data-hero-mosaic]")) {
+			try {
+				start(canvas);
+			} catch {
+				// Leave the canvas hidden.
+			}
+		}
+	}
+	function whenIdle() {
+		if ("requestIdleCallback" in window) requestIdleCallback(startAll, { timeout: 2000 });
+		else setTimeout(startAll, 200);
+	}
+	if (document.readyState === "complete") whenIdle();
+	else window.addEventListener("load", whenIdle, { once: true });
+</script>

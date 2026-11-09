@@ -1,0 +1,60 @@
+---
+import { buttonClass, icons } from "../lib/site";
+import Icon from "./Icon.astro";
+
+// One option card, used for cloud or self-hosted on the home and pricing pages.
+interface Props {
+	icon: string;
+	title: string;
+	text?: string;
+	badge?: string;
+	price?: string;
+	note?: string;
+	points: string[];
+	cta: {
+		label: string;
+		href: string;
+		variant: "primary" | "outline";
+		signedInLabel?: string;
+	};
+}
+
+const { icon, title, text, badge, price, note, points, cta } = Astro.props;
+---
+
+<div class="flex flex-col rounded-md border bg-card p-6">
+	<div class="flex items-start justify-between gap-4">
+		<span class="flex size-9 items-center justify-center rounded-md bg-accent text-accent-foreground">
+			<Icon svg={icon} class="size-[18px]" />
+		</span>
+		{badge && <span class="rounded-full border px-2 py-0.5 font-medium text-[12px] text-primary">{badge}</span>}
+	</div>
+	<h3 class="mt-5 font-medium text-lg">{title}</h3>
+	{text && <p class="mt-1 text-muted-foreground leading-relaxed">{text}</p>}
+	{
+		price && (
+			<p class="mt-3">
+				<span class="font-medium text-[28px] tracking-tight">{price}</span>
+				{note && <span class="ml-2 text-muted-foreground">{note}</span>}
+			</p>
+		)
+	}
+	<ul class="mt-5 flex flex-col gap-2 border-t pt-5">
+		{
+			points.map((point) => (
+				<li class="flex items-center gap-2.5">
+					<Icon svg={icons.check} class="size-4 shrink-0 text-primary" />
+					{point}
+				</li>
+			))
+		}
+	</ul>
+	<a
+	href={cta.href}
+	data-app-link={cta.signedInLabel ? "" : undefined}
+	data-signed-in-label={cta.signedInLabel}
+	class={buttonClass(cta.variant, "mt-6 self-start")}
+>
+	{cta.label}
+</a>
+</div>

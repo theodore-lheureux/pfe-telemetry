@@ -1,0 +1,132 @@
+---
+import type { Lang } from "../i18n";
+import { strings } from "../i18n/strings";
+import Container from "./Container.astro";
+
+// Abstract step drawings built from the Tide Core reference components: unit tiles with
+// 4px corners and a 4px usage meter, line charts with 1.5px smooth lines, horizontal
+// gridlines only, muted series, and teal reserved for the selection.
+interface Props {
+	lang: Lang;
+}
+
+const t = strings[Astro.props.lang].how;
+const W = 240;
+const H = 140;
+
+// One activity series over the whole timeline, with a change inside the selected window.
+const series = [
+	22, 24, 23, 26, 25, 24, 27, 26, 25, 27, 26, 30, 44, 58, 52, 61, 47, 33, 28,
+	26, 27, 25, 26, 24,
+];
+const win = { from: 10.5, to: 17.5 };
+
+// Smooth line through points (Catmull-Rom to Bézier), like the kit's monotone lines.
+function smooth(points: [number, number][]) {
+	let d = `M${points[0][0].toFixed(1)} ${points[0][1].toFixed(1)}`;
+	for (let i = 0; i < points.length - 1; i++) {
+		const [p0, p1, p2, p3] = [
+			points[i - 1] ?? points[i],
+			points[i],
+			points[i + 1],
+			points[i + 2] ?? points[i + 1],
+		];
+		const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+		const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+		d += `C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+	}
+	return d;
+}
+
+const plot = { left: 20, right: W - 20, top: 24, bottom: H - 24 };
+const yOf = (v: number) => plot.bottom - (v / 70) * (plot.bottom - plot.top);
+const gridlines = [0, 1, 2, 3].map(
+	(k) => plot.top + (k * (plot.bottom - plot.top)) / 3,
+);
+
+// Step two: the full timeline.
+const xFull = (i: number) =>
+	plot.left + (i / (series.length - 1)) * (plot.right - plot.left);
+const fullLine = smooth(series.map((v, i) => [xFull(i), yOf(v)]));
+const selX0 = xFull(win.from);
+const selX1 = xFull(win.to);
+
+// Step three: the selected window, zoomed to fill the plot.
+const zoomIndices = series
+	.map((_, i) => i)
+	.filter((i) => i >= Math.floor(win.from) && i <= Math.ceil(win.to));
+const xZoom = (i: number) =>
+	plot.left + ((i - win.from) / (win.to - win.from)) * (plot.right - plot.left);
+const zoomLine = smooth(zoomIndices.map((i) => [xZoom(i), yOf(series[i])]));
+
+// Step one: a 3×2 grid of unit tiles with usage meters.
+const tiles = [0.62, 0.38, 0.81, 0.27, 0.55, 0.7].map((fill, k) => ({
+	x: 24 + (k % 3) * 68,
+	y: 26 + Math.floor(k / 3) * 48,
+	fill,
+	label: 22 + ((k * 7) % 3) * 6,
+}));
+---
+
+<section aria-labelledby="how-it-works" class="scroll-mt-14 border-b bg-card">
+	<Container class="py-24">
+		<div class="mx-auto max-w-[52ch] text-center">
+			<h2 id="how-it-works" class="font-medium text-[28px] tracking-tight">{t.title}</h2>
+			<p class="mt-3 text-base text-muted-foreground leading-relaxed">
+				{t.intro}
+			</p>
+		</div>
+		<ol class="mt-16 grid gap-10 md:grid-cols-3 md:gap-6">
+			{
+				t.steps.map((step, i) => (
+					<li class="flex flex-col">
+						<div aria-hidden="true" class="step-panel relative aspect-[12/7] overflow-hidden rounded-md border bg-background">
+							<svg viewBox={`0 0 ${W} ${H}`} class="absolute inset-0 size-full" fill="none">
+								{i === 0 &&
+									tiles.map((t) => (
+										<g>
+											<rect x={t.x + 0.5} y={t.y + 0.5} width="59" height="39" rx="4" class="fill-card stroke-border" />
+											<rect x={t.x + 8} y={t.y + 9} width={t.label} height="4" rx="2" class="fill-input" />
+											<rect x={t.x + 8} y={t.y + 27} width="44" height="4" rx="2" class="fill-border" />
+											<rect x={t.x + 8} y={t.y + 27} width={44 * t.fill} height="4" rx="2" class="fill-muted-foreground" />
+										</g>
+									))}
+								{i > 0 &&
+									gridlines.map((y) => <line x1={plot.left} x2={plot.right} y1={y + 0.5} y2={y + 0.5} class="stroke-border" />)}
+								{i === 1 && (
+									<>
+										<rect x={selX0} y={plot.top - 8} width={selX1 - selX0} height={plot.bottom - plot.top + 16} rx="2" class="fill-accent" fill-opacity="0.7" />
+										<path d={fullLine} class="stroke-muted-foreground" stroke-width="1.5" stroke-linejoin="round" />
+										<rect x={selX0 + 0.5} y={plot.top - 7.5} width={selX1 - selX0 - 1} height={plot.bottom - plot.top + 15} rx="2" class="stroke-primary" />
+									</>
+								)}
+								{i === 2 && (
+									<>
+										<rect x={plot.left - 8.5} y={plot.top - 8.5} width={plot.right - plot.left + 17} height={plot.bottom - plot.top + 17} rx="4" class="stroke-primary" />
+										<clipPath id="zoom-frame">
+											<rect x={plot.left - 8} y={plot.top - 8} width={plot.right - plot.left + 16} height={plot.bottom - plot.top + 16} rx="4" />
+										</clipPath>
+										<path d={zoomLine} clip-path="url(#zoom-frame)" class="stroke-primary" stroke-width="1.5" stroke-linejoin="round" />
+									</>
+								)}
+							</svg>
+						</div>
+						<span class="mt-6 font-medium text-[13px] text-primary">
+							{t.step} {i + 1}
+						</span>
+						<h3 class="mt-1 font-medium text-base">{step.name}</h3>
+						<p class="mt-2 max-w-[36ch] text-muted-foreground leading-relaxed">{step.text}</p>
+					</li>
+				))
+			}
+		</ol>
+	</Container>
+</section>
+
+<style>
+	.step-panel {
+		background-image: radial-gradient(circle, var(--border) 1px, transparent 1.2px);
+		background-size: 12px 12px;
+		background-position: center;
+	}
+</style>

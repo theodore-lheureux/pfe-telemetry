@@ -1,0 +1,58 @@
+---
+import Deployment from "../../components/Deployment.astro";
+import Faq from "../../components/Faq.astro";
+import Features from "../../components/Features.astro";
+import Footer from "../../components/Footer.astro";
+import GetStarted from "../../components/GetStarted.astro";
+import Header from "../../components/Header.astro";
+import Hero from "../../components/Hero.astro";
+import HowItWorks from "../../components/HowItWorks.astro";
+import { type Lang, langPaths } from "../../i18n";
+import { strings } from "../../i18n/strings";
+import Layout from "../../layouts/Layout.astro";
+
+export const getStaticPaths = langPaths;
+
+const lang = Astro.props.lang as Lang;
+const t = strings[lang];
+const home = new URL(lang === "fr" ? "/fr/" : "/", Astro.site).href;
+const structuredData = {
+	"@context": "https://schema.org",
+	"@graph": [
+		{
+			"@type": "Organization",
+			"@id": "https://recount.cloud/#organization",
+			name: "Recount",
+			url: "https://recount.cloud/",
+			logo: "https://recount.cloud/icon-512.png",
+		},
+		{
+			"@type": "WebSite",
+			"@id": `${home}#website`,
+			name: "Recount",
+			url: home,
+			inLanguage: lang === "fr" ? "fr-CA" : "en",
+			publisher: { "@id": "https://recount.cloud/#organization" },
+		},
+	],
+};
+---
+
+<Layout title={t.meta.homeTitle} description={t.meta.homeDescription} lang={lang} structuredData={structuredData}>
+	<a
+		href="#main"
+		class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2"
+	>
+		{t.nav.skip}
+	</a>
+	<Header lang={lang} />
+	<main id="main">
+		<Hero lang={lang} />
+		<HowItWorks lang={lang} />
+		<Features lang={lang} />
+		<Deployment lang={lang} />
+		<Faq lang={lang} />
+		<GetStarted lang={lang} />
+	</main>
+	<Footer lang={lang} />
+</Layout>

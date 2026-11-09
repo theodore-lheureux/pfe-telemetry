@@ -1,0 +1,169 @@
+---
+import { type Lang, LOCALE_KEY, switchPath } from "../i18n";
+import { analyticsScript } from "../lib/analytics.mjs";
+import "../styles/global.css";
+
+interface Props {
+	title: string;
+	description: string;
+	lang: Lang;
+	/** False for pages that only exist in one language, such as the 404 page. */
+	translated?: boolean;
+	/** Keep the page out of search results. */
+	noindex?: boolean;
+	/** schema.org data for the page, rendered as JSON-LD. */
+	structuredData?: Record<string, unknown>;
+}
+
+const {
+	title,
+	description,
+	lang,
+	translated = true,
+	noindex = false,
+	structuredData,
+} = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const image = new URL(lang === "fr" ? "/og-fr.png" : "/og.png", Astro.site);
+const imageAlt =
+	lang === "fr"
+		? "Recount : voyez ce que faisaient vos machines au moment qui compte"
+		: "Recount: see what your machines were doing, when it mattered";
+const locale = lang === "fr" ? "fr_CA" : "en_CA";
+const other: Lang = lang === "en" ? "fr" : "en";
+const alternate = translated ? switchPath(Astro.url.pathname, other) : null;
+---
+
+<!doctype html>
+<html lang={lang === "fr" ? "fr-CA" : "en"} data-theme="tide" data-variant="core">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>{title}</title>
+		<meta name="description" content={description} />
+		{noindex && <meta name="robots" content="noindex, follow" />}
+		<link rel="canonical" href={canonical} />
+		{
+			alternate && (
+				<>
+					<link rel="alternate" hreflang={lang} href={canonical} />
+					<link rel="alternate" hreflang={other} href={new URL(alternate, Astro.site)} />
+					<link rel="alternate" hreflang="x-default" href={new URL(switchPath(Astro.url.pathname, "en"), Astro.site)} />
+				</>
+			)
+		}
+		<link rel="sitemap" href="/sitemap-index.xml" />
+
+		<link rel="icon" href="/favicon.ico" sizes="48x48" />
+		<link rel="icon" type="image/svg+xml" href="/brand/recount-app-icon.svg" />
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+		<link rel="manifest" href="/site.webmanifest" />
+		<meta name="color-scheme" content="light dark" />
+		<meta name="theme-color" content="#f5f7f8" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#0c181c" media="(prefers-color-scheme: dark)" />
+
+		<meta property="og:type" content="website" />
+		<meta property="og:site_name" content="Recount" />
+		<meta property="og:locale" content={locale} />
+		{alternate && <meta property="og:locale:alternate" content={lang === "fr" ? "en_CA" : "fr_CA"} />}
+		<meta property="og:title" content={title} />
+		<meta property="og:description" content={description} />
+		<meta property="og:url" content={canonical} />
+		<meta property="og:image" content={image} />
+		<meta property="og:image:type" content="image/png" />
+		<meta property="og:image:width" content="1200" />
+		<meta property="og:image:height" content="630" />
+		<meta property="og:image:alt" content={imageAlt} />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content={title} />
+		<meta name="twitter:description" content={description} />
+		<meta name="twitter:image" content={image} />
+		<meta name="twitter:image:alt" content={imageAlt} />
+		{structuredData && <script type="application/ld+json" is:inline set:html={JSON.stringify(structuredData)} />}
+		{
+			alternate && (
+				<script is:inline define:vars={{ lang, alternate, key: LOCALE_KEY }}>
+					// A saved choice wins. Without one, French systems landing on the English site
+					// go to the French version; a French URL opened on purpose is left alone.
+					let saved = null;
+					try {
+						saved = localStorage.getItem(key);
+					} catch {}
+					const system = (navigator.languages?.[0] ?? navigator.language ?? "").toLowerCase().startsWith("fr") ? "fr" : "en";
+					const wanted = saved === "en" || saved === "fr" ? saved : lang === "en" ? system : lang;
+					if (wanted !== lang) location.replace(alternate + location.search + location.hash);
+				</script>
+			)
+		}
+		<script is:inline>
+			(() => {
+				// "light" or "dark" when chosen; anything else follows the system.
+				let mode = null;
+				try {
+					mode = localStorage.getItem("starlight-theme");
+				} catch {}
+				if (mode !== "light" && mode !== "dark") {
+					mode = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+				}
+				document.documentElement.dataset.theme = mode === "dark" ? "tide-dark" : "tide";
+			})();
+		</script>
+	</head>
+	<body>
+		<slot />
+		<script>
+			import { APP_URL } from "../lib/site";
+
+			// Links into the app say "Open Recount" for people who are signed in. The app's session
+			// cookie isn't readable here, so ask the app; the last answer is reused to avoid a flash.
+			const appLinks = document.querySelectorAll<HTMLElement>("[data-app-link]");
+			const STATUS_KEY = "recount-signed-in";
+
+			function showSignedIn(signedIn: boolean) {
+				for (const link of appLinks) {
+					link.dataset.signedOutLabel ??= link.textContent?.trim() ?? "";
+					link.textContent = signedIn ? (link.dataset.signedInLabel ?? "") : link.dataset.signedOutLabel;
+				}
+			}
+
+			// Without an app URL the links go to the coming soon page and keep their labels.
+			if (APP_URL && appLinks.length) {
+				try {
+					if (localStorage.getItem(STATUS_KEY) === "1") showSignedIn(true);
+				} catch {}
+				fetch(new URL("/api/auth/get-session", APP_URL), {
+					credentials: "include",
+					signal: AbortSignal.timeout(4000),
+				})
+					.then((response) => (response.ok ? response.json() : null))
+					.then((data) => {
+						const signedIn = Boolean(data?.session);
+						try {
+							localStorage.setItem(STATUS_KEY, signedIn ? "1" : "0");
+						} catch {}
+						showSignedIn(signedIn);
+					})
+					.catch(() => {
+						// App unreachable or not allowing this origin: keep the signed-out labels.
+					});
+			}
+
+			// Smooth-scroll only for in-page link clicks. A global `scroll-behavior: smooth`
+			// would also animate the browser's scroll restoration on reload.
+			const smooth = !matchMedia("(prefers-reduced-motion: reduce)").matches;
+			document.addEventListener("click", (event) => {
+				if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+				const link = (event.target as Element).closest<HTMLAnchorElement>('a[href^="#"]');
+				const id = link?.getAttribute("href")?.slice(1);
+				const target = id ? document.getElementById(id) : null;
+				if (!target) return;
+				event.preventDefault();
+				target.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+				history.pushState(null, "", `#${id}`);
+				if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+				target.focus({ preventScroll: true });
+			});
+		</script>
+		<script is:inline set:html={analyticsScript} />
+	</body>
+</html>

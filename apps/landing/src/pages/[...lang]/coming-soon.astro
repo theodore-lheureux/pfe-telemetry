@@ -1,0 +1,201 @@
+---
+import Container from "../../components/Container.astro";
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import HeroMosaic from "../../components/HeroMosaic.astro";
+import { type Lang, langPaths, localePath } from "../../i18n";
+import { strings } from "../../i18n/strings";
+import Layout from "../../layouts/Layout.astro";
+import {
+	buttonClass,
+	TURNSTILE_SITE_KEY,
+	TURNSTILE_TEST_SITE_KEY,
+} from "../../lib/site";
+
+export const getStaticPaths = langPaths;
+
+const lang = Astro.props.lang as Lang;
+const s = strings[lang];
+const t = s.comingSoon;
+const f = t.form;
+const link =
+	"font-medium text-foreground underline underline-offset-2 hover:text-primary";
+---
+
+<Layout title={`${t.title} · Recount`} description={t.description} lang={lang} noindex>
+	<a
+		href="#main"
+		class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2"
+	>
+		{s.nav.skip}
+	</a>
+	<Header lang={lang} />
+	<main id="main" class="relative isolate flex min-h-[calc(100svh-3.5rem)] items-center overflow-hidden border-b">
+		<div aria-hidden="true" class="soon-art absolute inset-0 -z-10 max-lg:opacity-50">
+			<HeroMosaic />
+		</div>
+		<Container class="py-20">
+			<div class="max-w-[560px]">
+				<p class="mb-4 font-medium text-primary">{t.eyebrow}</p>
+				<h1 class="text-balance font-medium text-4xl leading-[1.08] tracking-tight sm:text-[44px]">{t.heading}</h1>
+				<p class="mt-6 max-w-[50ch] text-base text-muted-foreground leading-relaxed">{t.text}</p>
+
+				<form
+					data-notify
+					data-site-key={TURNSTILE_SITE_KEY}
+					data-test-site-key={TURNSTILE_TEST_SITE_KEY}
+					data-lang={lang}
+					data-sending={f.sending}
+					data-success={f.success}
+					data-invalid={f.invalid}
+					data-failed={f.failed}
+					class="mt-8 max-w-[460px]"
+					novalidate
+				>
+					<label for="notify-email" class="font-medium">{f.label}</label>
+					<div class="mt-2 flex gap-2">
+						<input
+							id="notify-email"
+							name="email"
+							type="email"
+							required
+							maxlength="254"
+							autocomplete="email"
+							placeholder={f.placeholder}
+							aria-describedby="notify-status notify-note"
+							class="h-8 min-w-0 flex-1 rounded-md border bg-card px-3 text-foreground placeholder:text-muted-foreground aria-invalid:border-destructive"
+						/>
+						<button type="submit" class={buttonClass("primary")}>{f.submit}</button>
+					</div>
+					<input type="hidden" name="locale" value={lang} />
+					<div data-turnstile class="mt-3 empty:hidden"></div>
+					<p id="notify-status" data-status role="status" class="mt-3 empty:hidden"></p>
+					<p id="notify-note" class="mt-2 text-[13px] text-muted-foreground">
+						{f.note}{" "}
+						<a href={localePath(lang, "/privacy/")} class={link}>{f.privacy}</a>
+					</p>
+				</form>
+
+				<p class="mt-10 flex flex-wrap items-center gap-x-4 gap-y-2 text-muted-foreground">
+					<span>{f.or}</span>
+					<a href={localePath(lang, "/docs/")} class={link}>{t.docs}</a>
+					<a href={localePath(lang, "/changelog/")} class={link}>{t.changelog}</a>
+					<a href={localePath(lang, "/contact/")} class={link}>{t.contact}</a>
+				</p>
+			</div>
+		</Container>
+	</main>
+	<Footer lang={lang} />
+</Layout>
+
+<style>
+	.soon-art {
+		mask-image:
+			radial-gradient(ellipse 48% 62% at 20% 52%, transparent 55%, black 100%),
+			linear-gradient(to right, transparent 40%, black 60%);
+		mask-composite: intersect;
+	}
+</style>
+
+<script>
+	type Turnstile = {
+		render(element: HTMLElement, options: Record<string, unknown>): string;
+		execute(widget: string): void;
+		reset(widget: string): void;
+	};
+
+	const form = document.querySelector<HTMLFormElement>("[data-notify]");
+	const status = form?.querySelector<HTMLElement>("[data-status]");
+	const email = form?.querySelector<HTMLInputElement>('input[name="email"]');
+	const button = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+
+	if (form && status && email && button) {
+		const text = form.dataset as Record<string, string>;
+		let widget: string | undefined;
+		let resolveToken: ((token: string) => void) | undefined;
+		let rejectToken: (() => void) | undefined;
+
+		function show(message: string, error = false) {
+			status!.textContent = message;
+			status!.classList.toggle("text-destructive", error);
+			status!.classList.toggle("text-muted-foreground", !error);
+		}
+
+		// Loads Turnstile once, the first time the visitor focuses the form, and renders an
+		// invisible-unless-needed widget that runs only on submit.
+		let loading: Promise<Turnstile> | undefined;
+		function turnstile() {
+			loading ??= new Promise<Turnstile>((resolve, reject) => {
+				const callback = "onRecountTurnstile";
+				(window as unknown as Record<string, unknown>)[callback] = () => {
+					const api = (window as unknown as { turnstile: Turnstile }).turnstile;
+					widget = api.render(form!.querySelector<HTMLElement>("[data-turnstile]")!, {
+						sitekey: location.hostname === "recount.cloud" ? text.siteKey : text.testSiteKey,
+						action: "notify",
+						execution: "execute",
+						appearance: "interaction-only",
+						language: text.lang,
+						theme: document.documentElement.dataset.theme === "tide-dark" ? "dark" : "light",
+						callback: (token: string) => resolveToken?.(token),
+						"error-callback": () => rejectToken?.(),
+						"expired-callback": () => rejectToken?.(),
+					});
+					resolve(api);
+				};
+				const script = document.createElement("script");
+				script.src = `https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=${callback}`;
+				script.async = true;
+				script.onerror = () => reject(new Error("turnstile"));
+				document.head.append(script);
+			});
+			return loading;
+		}
+
+		async function token() {
+			const api = await turnstile();
+			return new Promise<string>((resolve, reject) => {
+				resolveToken = resolve;
+				rejectToken = reject;
+				api.reset(widget!);
+				api.execute(widget!);
+			});
+		}
+
+		email.addEventListener("focus", () => void turnstile().catch(() => {}), { once: true });
+		email.addEventListener("input", () => email.removeAttribute("aria-invalid"));
+
+		form.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			if (!email.checkValidity()) {
+				email.setAttribute("aria-invalid", "true");
+				show(text.invalid, true);
+				email.focus();
+				return;
+			}
+			button.disabled = true;
+			show(text.sending);
+			try {
+				const body = new FormData(form);
+				body.set("cf-turnstile-response", await token());
+				const response = await fetch("/api/notify", { method: "POST", body });
+				const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+				if (result.ok) {
+					form.reset();
+					show(text.success);
+					return;
+				}
+				if (result.error === "invalid_email") {
+					email.setAttribute("aria-invalid", "true");
+					show(text.invalid, true);
+					email.focus();
+					return;
+				}
+				show(text.failed, true);
+			} catch {
+				show(text.failed, true);
+			} finally {
+				button.disabled = false;
+			}
+		});
+	}
+</script>

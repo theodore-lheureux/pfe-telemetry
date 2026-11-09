@@ -1,0 +1,159 @@
+@import "tailwindcss";
+/* Tailwind's automatic detection skips `lib` folders; site.ts holds the button classes. */
+@source "../lib/site.ts";
+@custom-variant dark (
+	&:where([data-theme="tide-dark"], [data-theme="tide-dark"] *)
+);
+
+/* Tide Core tokens, copied unchanged from the Recount integration kit. */
+@theme inline {
+	--font-sans: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+	--font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	--color-chart-2: var(--chart-2);
+	--color-chart-1: var(--chart-1);
+	--color-ring: var(--ring);
+	--color-input: var(--input);
+	--color-border: var(--border);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-accent: var(--accent);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-muted: var(--muted);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-secondary: var(--secondary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-primary: var(--primary);
+	--color-destructive: var(--destructive);
+	--color-card-foreground: var(--card-foreground);
+	--color-card: var(--card);
+	--color-foreground: var(--foreground);
+	--color-background: var(--background);
+	--radius-sm: calc(var(--radius) * 0.5);
+	--radius-md: var(--radius);
+	--radius-lg: var(--radius);
+	--radius-xl: var(--radius);
+}
+
+:root,
+[data-theme="tide"] {
+	--radius: 4px;
+	color-scheme: light;
+	--background: #f5f7f8;
+	--foreground: #0f1b1f;
+	--card: #ffffff;
+	--card-foreground: #0f1b1f;
+	--primary: #0f766e;
+	--destructive: #b91c1c;
+	--primary-foreground: #ffffff;
+	--secondary: #e8eef0;
+	--secondary-foreground: #0f1b1f;
+	--muted: #e8eef0;
+	--muted-foreground: #475a62;
+	--accent: #dcefec;
+	--accent-foreground: #0b4f4a;
+	--border: #d9e2e5;
+	--input: #c3cfd3;
+	--ring: #0f766e;
+	--chart-1: #0f766e;
+	--chart-2: #2563eb;
+}
+[data-theme="tide-dark"] {
+	color-scheme: dark;
+	--background: #0c181c;
+	--foreground: #e3eef0;
+	--card: #132429;
+	--card-foreground: #e3eef0;
+	--primary: #65d6c5;
+	--destructive: #f28b82;
+	--primary-foreground: #102724;
+	--secondary: #1b3036;
+	--secondary-foreground: #e3eef0;
+	--muted: #17272c;
+	--muted-foreground: #9db2b9;
+	--accent: #193e3a;
+	--accent-foreground: #b9ece3;
+	--border: #294047;
+	--input: #3a565e;
+	--ring: #65d6c5;
+	--chart-1: #65d6c5;
+	--chart-2: #82b6f5;
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	html {
+		@apply font-sans;
+	}
+	body {
+		@apply bg-background text-foreground antialiased;
+		font-size: 14px;
+		font-variant-numeric: tabular-nums;
+	}
+	b,
+	strong {
+		font-weight: 500;
+	}
+	:focus-visible {
+		@apply outline-2 outline-offset-2 outline-ring;
+	}
+	/* Sections focused after an in-page link click shouldn't show a ring. */
+	[tabindex="-1"]:focus {
+		outline: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms;
+		animation-iteration-count: 1;
+		transition-duration: 0.01ms;
+	}
+}
+
+/* Long-form text on the changelog and legal pages. */
+@layer components {
+	.prose {
+		line-height: 1.7;
+		color: var(--foreground);
+	}
+	.prose > * + * {
+		margin-top: 1em;
+	}
+	.prose h2 {
+		font-size: 20px;
+		font-weight: 500;
+		letter-spacing: -0.01em;
+	}
+	.prose h3 {
+		font-weight: 500;
+	}
+	.prose * + h3 {
+		margin-top: 1.75em;
+	}
+	.prose * + h2 {
+		margin-top: 2.25em;
+	}
+	.prose p,
+	.prose li {
+		color: var(--muted-foreground);
+	}
+	.prose ul {
+		list-style: disc;
+		padding-left: 1.25em;
+	}
+	.prose li + li {
+		margin-top: 0.4em;
+	}
+	.prose a {
+		color: var(--primary);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+	.prose strong {
+		color: var(--foreground);
+		font-weight: 500;
+	}
+}

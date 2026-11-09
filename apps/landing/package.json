@@ -1,0 +1,25 @@
+{
+  "name": "@recount/landing",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro sync && node scripts/check.mjs",
+    "preview:worker": "astro build && wrangler dev --port 8787 --local-upstream localhost:8787",
+    "deploy": "bun run check && astro build && wrangler d1 migrations apply DB --remote && wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply DB --remote"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.7",
+    "astro": "7.4.2"
+  },
+  "devDependencies": {
+    "@astrojs/language-server": "2.17.3",
+    "@tailwindcss/vite": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "wrangler": "4.158.0"
+  }
+}

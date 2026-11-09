@@ -1,0 +1,46 @@
+---
+import type { Lang } from "../i18n";
+import { strings } from "../i18n/strings";
+import { buttonClass } from "../lib/site";
+import Container from "./Container.astro";
+import HeroMosaic from "./HeroMosaic.astro";
+
+interface Props {
+	lang: Lang;
+}
+
+const t = strings[Astro.props.lang].hero;
+---
+
+<section id="top" class="relative isolate flex min-h-[calc(100svh-3.5rem)] items-center overflow-hidden border-b">
+	<!-- Mosaic across the hero, faded along a curve around the text. -->
+	<div aria-hidden="true" class="hero-art absolute inset-0 -z-10 max-lg:opacity-50">
+		<HeroMosaic />
+	</div>
+	<Container class="py-20">
+		<div class="max-w-[600px]">
+			<p class="mb-4 font-medium text-primary">{t.eyebrow}</p>
+			<h1 class="max-w-[20ch] text-balance font-medium text-4xl leading-[1.08] tracking-tight sm:text-[44px] lg:text-[50px]">
+				{t.title}
+			</h1>
+			<p class="mt-6 max-w-[52ch] text-base text-muted-foreground leading-relaxed">
+				{t.text}
+			</p>
+			<div class="mt-8 flex flex-wrap gap-2">
+				<a href="#get-started" class={buttonClass("primary")}>{t.getStarted}</a>
+				<a href="#how-it-works" class={buttonClass("outline")}>{t.howItWorks}</a>
+			</div>
+		</div>
+	</Container>
+</section>
+
+<style>
+	.hero-art {
+		/* The left side is solid page background; the tiles start along a curve that bows
+		   around the headline. Both layers must be visible for a tile to show. */
+		mask-image:
+			radial-gradient(ellipse 48% 62% at 20% 52%, transparent 55%, black 100%),
+			linear-gradient(to right, transparent 40%, black 60%);
+		mask-composite: intersect;
+	}
+</style>
