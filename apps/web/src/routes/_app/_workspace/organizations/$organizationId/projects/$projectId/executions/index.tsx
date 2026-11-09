@@ -1,5 +1,5 @@
-import { formatDate } from "@pfe/i18n";
-import { m } from "@pfe/i18n/messages";
+import { formatDate } from "@recount/i18n";
+import { m } from "@recount/i18n/messages";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { EmptyState, PageHeading } from "@/components/workspace";
 import { CreateExecutionForm } from "@/executions/create-execution-form";
@@ -42,13 +42,10 @@ function Executions() {
 	return (
 		<>
 			<PageHeading title={m.executions()} />
-			<p>{m.all_project_readers_can_see_every_execution_source()}</p>
 			{page.executions.length === 0 ? (
-				<EmptyState title={m.no_executions_recorded_on_this_page()}>
-					{null}
-				</EmptyState>
+				<EmptyState title={m.no_executions_recorded_on_this_page()} />
 			) : (
-				<ul className="divide-y rounded-xl border">
+				<ul className="divide-y rounded-md border bg-card text-card-foreground">
 					{page.executions.map((entry) => (
 						<li key={entry.executionId} className="p-4">
 							<Link

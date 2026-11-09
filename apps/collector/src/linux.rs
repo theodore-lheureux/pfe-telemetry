@@ -90,7 +90,7 @@ impl Collector {
             None if host_visibility => "host".into(),
             None => {
                 return Err(io::Error::other(
-                    "Restricted visibility requires TELEMETRY_COLLECTOR_PROCESS_NAMESPACE_ID",
+                    "Restricted visibility requires RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID",
                 ));
             }
         };
@@ -121,9 +121,9 @@ impl Collector {
         loss.start_epoch(&epoch);
         let mut host = vec![
             string("host.id", host_id),
-            string("pfe.host.boot_id", boot_id),
+            string("recount.host.boot_id", boot_id),
             string("os.type", "linux"),
-            string("pfe.collection.source", "rust-procfs"),
+            string("recount.collection.source", "rust-procfs"),
         ];
         // Hostname is display-only and must obey the contract's string limit.
         if let Ok(name) = fs::read_to_string("/proc/sys/kernel/hostname") {
@@ -271,19 +271,19 @@ impl Collector {
         .collect::<io::Result<Vec<_>>>()?;
         let diagnostics = vec![
             self.int_gauge(
-                "pfe.collection.discovery.status",
+                "recount.collection.discovery.status",
                 "1",
                 discovery as i64,
                 time,
             ),
             self.int_gauge(
-                "pfe.collection.discovered.processes",
+                "recount.collection.discovered.processes",
                 "{process}",
                 signed(discovered)?,
                 time,
             ),
             gauge(
-                "pfe.collection.discarded.processes",
+                "recount.collection.discarded.processes",
                 "{process}",
                 vec![
                     self.measurement_point(
@@ -301,13 +301,13 @@ impl Collector {
                 ],
             ),
             gauge(
-                "pfe.collection.scan.duration",
+                "recount.collection.scan.duration",
                 "s",
                 vec![self.measurement_point(Value::AsDouble(duration), time, 0, vec![])],
             ),
             // No synchronization estimate is verified by this collector.
-            self.int_gauge("pfe.clock.status", "1", 0, time),
-            counter("pfe.collection.dropped.points", "{point}", dropped),
+            self.int_gauge("recount.clock.status", "1", 0, time),
+            counter("recount.collection.dropped.points", "{point}", dropped),
         ];
         resources.push(resource(self.attributes("collector"), diagnostics));
         Ok(resources)
@@ -316,12 +316,12 @@ impl Collector {
     fn attributes(&self, scope: &str) -> Vec<KeyValue> {
         let mut attributes = self.host.clone();
         attributes.extend([
-            string("pfe.collection.scope", scope),
-            string("pfe.collection.epoch_id", self.epoch.clone()),
-            integer("pfe.collection.interval_ns", self.interval_ns),
+            string("recount.collection.scope", scope),
+            string("recount.collection.epoch_id", self.epoch.clone()),
+            integer("recount.collection.interval_ns", self.interval_ns),
         ]);
         if scope == "collector" {
-            attributes.push(string("pfe.collection.visibility", self.visibility));
+            attributes.push(string("recount.collection.visibility", self.visibility));
         }
         attributes
     }
@@ -336,7 +336,7 @@ impl Collector {
         mut dimensions: Vec<KeyValue>,
     ) -> io::Result<NumberDataPoint> {
         dimensions.push(string(
-            "pfe.counter.segment_id",
+            "recount.counter.segment_id",
             self.continuity.segment(key, raw, time),
         ));
         Ok(self.measurement_point(value, time, start, dimensions))
@@ -366,7 +366,7 @@ impl Collector {
             Value::AsInt(status as i64),
             time,
             0,
-            vec![string("pfe.metric.name", name)],
+            vec![string("recount.metric.name", name)],
         )
     }
 }

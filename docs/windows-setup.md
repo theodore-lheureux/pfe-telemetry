@@ -1,12 +1,12 @@
 # Windows setup
 
-Run the repository commands inside Ubuntu on WSL2. Ansible needs a Linux control environment; VirtualBox and Docker Desktop run on Windows.
+Run Recount's repository tooling inside Ubuntu on WSL2. Run ordinary applications/tests natively, using reusable Docker backends. The optional lab needs a Linux Ansible control environment; VirtualBox and Docker Desktop run on Windows. Compile Linux applications and test harnesses in WSL on the host. Packaged-runtime gates execute prebuilt artifacts in Docker; runtime images never compile source code.
 
 ## Prerequisites
 
 - Install [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install), VirtualBox and Docker Desktop on Windows.
 - Install the Linux version of [Vagrant inside Ubuntu](https://developer.hashicorp.com/vagrant/docs/other/wsl). If Vagrant is also installed on Windows, use the same version in both installations.
-- Install the developer tools listed in the [root README](../README.md#development-setup) inside Ubuntu. Install `build-essential` for native Rust dependencies.
+- Install the developer tools listed in the [root README](../README.md#development-setup) inside Ubuntu. Install `build-essential` for host Rust/librdkafka compilation, not in runtime containers. Build artifacts must match Docker's Linux CPU architecture.
 - Enable the Ubuntu distribution in Docker Desktop's **Settings > Resources > WSL integration**.
 
 ## WSL settings
@@ -44,14 +44,17 @@ Keep the checkout in the Linux home directory. From Ubuntu:
 git clone https://github.com/theodore-lheureux/pfe-telemetry.git
 cd pfe-telemetry
 just setup
-just env up
+just build
+just typecheck
 ```
 
-Open [Grafana](http://localhost:3003/d/node-exporter-full/node-exporter-full) in a Windows browser. Use `just env stop` to stop the environment while keeping the VM disks.
+Next follow the [local stack guide](../infra/README.md) to package host-built Linux artifacts and explicitly initialize the selected current-schema instance. Its identity, data-mount and image/schema guards are authoritative; do not replace a missing intended bind mount with a fresh volume or run offset reset as startup recovery. PostgreSQL stores application/credential authority only; authenticated OTLP flows through raw Kafka, the normalizer, normalized Kafka and native ClickHouse ingestion.
 
-For the web application, run `just dev`. VS Code's WSL extension can open the Ubuntu checkout with `code .`.
+After the stack is prepared and its ingestion API is reachable, `just lab setup` prepares optional Ansible dependencies and `just lab up` starts/provisions the separate VM/monitoring lab. Open [Grafana](http://localhost:3003/d/node-exporter-full/node-exporter-full) in a Windows browser. Use `just lab stop` to retain VM disks and monitoring data, and `just local stop` to stop backends without deleting data. Inspect existing VM metadata and UUIDs before any lifecycle operation. A connectivity probe does not prove telemetry acceptance or query visibility.
 
-See the [test environment README](../infra/test-environment/README.md) for workloads, resource settings and other commands.
+See [web development](../apps/web/README.md) for SSR, email-code/passkey authentication and EN/FR configuration. Run ordinary applications/tests natively in WSL, with host Node for Playwright and native Bun for web fixtures; packaged-runtime gates remain separate. VS Code's WSL extension can open the Ubuntu checkout with `code .`.
+
+See the [Linux lab guide](../infra/lab/README.md) for workloads, resource settings and other commands.
 
 ## Troubleshooting
 

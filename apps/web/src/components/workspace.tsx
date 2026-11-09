@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { Link, useHydrated, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import type {
@@ -35,7 +35,7 @@ export function EmptyState({
 	children,
 }: {
 	title: string;
-	children: ReactNode;
+	children?: ReactNode;
 }) {
 	return (
 		<Empty className="items-start border border-dashed bg-card p-5 text-left">
@@ -44,7 +44,11 @@ export function EmptyState({
 					<h2>{title}</h2>
 				</EmptyTitle>
 			</EmptyHeader>
-			<EmptyContent className="items-start text-left">{children}</EmptyContent>
+			{children && (
+				<EmptyContent className="items-start text-left">
+					{children}
+				</EmptyContent>
+			)}
 		</Empty>
 	);
 }

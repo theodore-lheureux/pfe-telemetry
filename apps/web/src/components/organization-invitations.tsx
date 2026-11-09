@@ -1,5 +1,6 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import type { OrganizationSummary } from "../organizations/contracts";
+import { FormFeedback } from "./form-feedback";
 import { InvitationForm } from "./member-administration/invitation-form";
 import { InvitationList } from "./member-administration/invitation-list";
 import {
@@ -22,7 +23,6 @@ export function OrganizationInvitations({
 	return (
 		<section
 			aria-labelledby="invitations-heading"
-			aria-busy={state.pending}
 			className="flex flex-col gap-4"
 		>
 			<h2
@@ -34,9 +34,16 @@ export function OrganizationInvitations({
 				{m.invitations()}
 			</h2>
 			<InvitationForm state={state} organizationRole={organization.role} />
-			<p role={state.failed ? "alert" : "status"} className="text-sm">
-				{state.message}
-			</p>
+			<FormFeedback
+				message={state.cancelId ? "" : state.message}
+				kind={state.failed ? "error" : "success"}
+				pending={state.pending && !state.cancelId}
+				pendingMessage={
+					state.activity?.type === "resend"
+						? m.resending_invitation()
+						: m.sending_invitation()
+				}
+			/>
 			<InvitationList
 				state={state}
 				invitations={invitations}

@@ -1,5 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { invitation, member } from "../../src/db/schema";
+import * as memberDomain from "../../src/organizations/members.server";
+import * as organizationDomain from "../../src/organizations/organizations.server";
+import * as projectDomain from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
 
 test("manages native memberships and restricts administrator owner controls", async ({
@@ -8,10 +11,12 @@ test("manages native memberships and restricts administrator owner controls", as
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Member lab",
-			slug: "member-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Member lab",
+				slug: "member-lab",
+			}),
+		),
 	);
 	const administrator = await workspace.signIn(page, "admin@example.invalid");
 	await workspace.auth.api.addMember({
@@ -57,7 +62,13 @@ test("manages native memberships and restricts administrator owner controls", as
 	).toBeFocused();
 	expect(
 		data(
-			await workspace.operations.getOrganization(collaborator.headers, org.id),
+			await workspace.operations(collaborator.headers, (actor) =>
+				organizationDomain.getOrganization(
+					workspace.database.db,
+					actor,
+					org.id,
+				),
+			),
 		).role,
 	).toBe("admin");
 	await workspace.signIn(page, "admin@example.invalid");
@@ -109,17 +120,22 @@ test("effective project administrators grant access and can give up their own ad
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Grant lab",
-			slug: "grant-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Grant lab",
+				slug: "grant-lab",
+			}),
+		),
 	);
 	const project = data(
-		await workspace.operations.createProject(owner.headers, {
-			organizationId: org.id,
-			name: "Private project",
-			slug: "private",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
+				organizationId: org.id,
+				name: "Private project",
+				slug: "private",
+			}),
+		),
 	);
 	const manager = await workspace.signIn(page, "manager@example.invalid");
 	const managerMember = await workspace.auth.api.addMember({
@@ -131,11 +147,13 @@ test("effective project administrators grant access and can give up their own ad
 	});
 	const reference = { organizationId: org.id, projectId: project.id };
 	data(
-		await workspace.operations.setProjectMember(owner.headers, {
-			...reference,
-			memberId: managerMember.id,
-			role: "admin",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.setProjectMember(workspace.database.db, actor, {
+				...reference,
+				memberId: managerMember.id,
+				role: "admin",
+			}),
+		),
 	);
 	await workspace.signIn(page, "manager@example.invalid");
 	await page.goto(
@@ -168,7 +186,11 @@ test("effective project administrators grant access and can give up their own ad
 		page.getByRole("heading", { name: "Project access", exact: true }),
 	).toBeFocused();
 	expect(
-		data(await workspace.operations.getProject(viewer.headers, reference)).role,
+		data(
+			await workspace.operations(viewer.headers, (actor) =>
+				projectDomain.getProject(workspace.database.db, actor, reference),
+			),
+		).role,
 	).toBe("viewer");
 	await page
 		.getByLabel("Project role for manager@example.invalid", { exact: true })
@@ -190,9 +212,14 @@ test("effective project administrators grant access and can give up their own ad
 	await expect(page).toHaveURL(`${workspace.origin}/organizations/${org.id}`);
 	expect(
 		(
-			await workspace.operations.listProjectGrantCandidates(
-				manager.headers,
-				reference,
+			await workspace.operations(manager.headers, (actor) =>
+				memberDomain.listProjectGrantCandidates(
+					workspace.database.db,
+					workspace.auth,
+					manager.headers,
+					actor,
+					reference,
+				),
 			)
 		).error?.code,
 	).toBe("FORBIDDEN");
@@ -204,10 +231,12 @@ test("invitation login preserves return path and joining requires an explicit PO
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Invitation lab",
-			slug: "invitation-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Invitation lab",
+				slug: "invitation-lab",
+			}),
+		),
 	);
 	const invited = await workspace.auth.api.createInvitation({
 		headers: owner.headers,
@@ -222,33 +251,14 @@ test("invitation login preserves return path and joining requires an explicit PO
 	await page.goto(`${workspace.origin}${landing}`);
 	await expect(page).toHaveURL(/\/login\?redirect=/);
 	expect(new URL(page.url()).searchParams.get("redirect")).toBe(landing);
-	// Keep the native sign-in flow while replacing only private SMTP delivery.
-	await page.route("**/api/auth/sign-in/magic-link", async (route) => {
-		const request = route.request();
-		const response = await workspace.auth.handler(
-			new Request(request.url(), {
-				method: "POST",
-				headers: { ...request.headers(), "x-forwarded-for": "192.0.2.62" },
-				body: request.postData(),
-			}),
-		);
-		await route.fulfill({
-			status: response.status,
-			headers: Object.fromEntries(response.headers),
-			body: await response.text(),
-		});
-	});
+	await workspace.enableCodeDelivery(page);
 	await page
 		.getByLabel("Email address", { exact: true })
 		.fill("invited@example.invalid");
 	await page
-		.getByRole("button", { name: "Email me a sign-in link", exact: true })
+		.getByRole("button", { name: "Continue with email", exact: true })
 		.click();
-	await expect(page.getByRole("status")).toContainText("a link is on its way");
-	const link = workspace.links.get("invited@example.invalid");
-	if (!link) throw new Error("Expected captured invitation sign-in link");
-	expect(new URL(link).searchParams.get("callbackURL")).toBe(landing);
-	await page.goto(link);
+	await workspace.submitReceivedCode(page, "invited@example.invalid");
 	await expect(page).toHaveURL(`${workspace.origin}${landing}`);
 	await expect(
 		page.getByRole("button", { name: "Accept invitation", exact: true }),
@@ -299,10 +309,12 @@ test("invitation details stay private; expiry, rejection and cancellation are te
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Confidential invitation lab",
-			slug: "confidential-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Confidential invitation lab",
+				slug: "confidential-lab",
+			}),
+		),
 	);
 	const invited = await workspace.auth.api.createInvitation({
 		headers: owner.headers,
@@ -412,10 +424,12 @@ test("stale organization administration is rejected and the controls are refresh
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Revocation lab",
-			slug: "revocation-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Revocation lab",
+				slug: "revocation-lab",
+			}),
+		),
 	);
 	const administrator = await workspace.signIn(page, "admin@example.invalid");
 	const adminMember = await workspace.auth.api.addMember({
@@ -444,11 +458,19 @@ test("stale organization administration is rejected and the controls are refresh
 		page.getByRole("button", { name: "Confirm removal", exact: true }),
 	).toBeVisible();
 	data(
-		await workspace.operations.updateOrganizationMemberRole(owner.headers, {
-			organizationId: org.id,
-			memberId: adminMember.id,
-			role: "member",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			memberDomain.updateRole(
+				workspace.database.db,
+				workspace.auth,
+				owner.headers,
+				actor,
+				{
+					organizationId: org.id,
+					memberId: adminMember.id,
+					role: "member",
+				},
+			),
+		),
 	);
 	await page
 		.getByRole("button", { name: "Confirm removal", exact: true })
@@ -463,8 +485,15 @@ test("stale organization administration is rejected and the controls are refresh
 		page.getByRole("button", { name: "Confirm removal", exact: true }),
 	).toHaveCount(0);
 	expect(
-		data(await workspace.operations.getOrganization(target.headers, org.id))
-			.role,
+		data(
+			await workspace.operations(target.headers, (actor) =>
+				organizationDomain.getOrganization(
+					workspace.database.db,
+					actor,
+					org.id,
+				),
+			),
+		).role,
 	).toBe("member");
 });
 
@@ -474,10 +503,12 @@ test("a successful membership write survives a failed loader refresh", async ({
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Refresh lab",
-			slug: "refresh-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Refresh lab",
+				slug: "refresh-lab",
+			}),
+		),
 	);
 	const target = await workspace.signIn(page, "target@example.invalid");
 	await workspace.auth.api.addMember({
@@ -510,8 +541,15 @@ test("a successful membership write survives a failed loader refresh", async ({
 	);
 	expect(writes).toBe(1);
 	expect(
-		data(await workspace.operations.getOrganization(target.headers, org.id))
-			.role,
+		data(
+			await workspace.operations(target.headers, (actor) =>
+				organizationDomain.getOrganization(
+					workspace.database.db,
+					actor,
+					org.id,
+				),
+			),
+		).role,
 	).toBe("admin");
 	await page.unroute("**/_serverFn/**");
 	await page.getByRole("button", { name: "Try again", exact: true }).click();
@@ -530,10 +568,12 @@ test("recovers pending invitation delivery with native resend and renews expired
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Delivery lab",
-			slug: "delivery-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Delivery lab",
+				slug: "delivery-lab",
+			}),
+		),
 	);
 	await page.goto(`${workspace.origin}/organizations/${org.id}/members`);
 	await page

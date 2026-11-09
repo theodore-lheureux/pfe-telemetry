@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { CreateCredentialForm } from "./collector-credentials/create-credential-form";
 import { CredentialActionDialog } from "./collector-credentials/credential-action-dialog";
 import { CredentialList } from "./collector-credentials/credential-list";
@@ -8,6 +8,7 @@ import {
 	useCollectorCredentials,
 } from "./collector-credentials/use-collector-credentials";
 import { CollectorSetup } from "./collector-setup";
+import { FormFeedback } from "./form-feedback";
 import { Button } from "./ui/button";
 
 export function CollectorCredentials({
@@ -30,14 +31,14 @@ export function CollectorCredentials({
 					onDismiss={() => void state.dismissToken()}
 				/>
 			)}
-			<p role="status" className="text-sm">
-				{state.pending ? m.updating_collector_credentials() : state.message}
-			</p>
-			{state.error && (
-				<p role="alert" className="text-sm text-destructive">
-					{state.error}
-				</p>
-			)}
+			<FormFeedback
+				message={
+					state.confirmation || state.activity === "create"
+						? ""
+						: state.error || state.message
+				}
+				kind={state.error ? "error" : "success"}
+			/>
 			{(state.refreshError || options.credentials === null) && (
 				<div
 					role="alert"
@@ -47,6 +48,8 @@ export function CollectorCredentials({
 					<Button
 						variant="outline"
 						disabled={!state.canRefresh}
+						pending={state.pending}
+						pendingLabel={m.loading()}
 						onClick={() => void state.refreshCredentials()}
 					>
 						{m.refresh_credential_list()}
@@ -72,7 +75,15 @@ export function CollectorCredentials({
 					onCancel={state.cancelAction}
 				/>
 			)}
-			<CreateCredentialForm disabled={state.disabled} create={state.create} />
+			<CreateCredentialForm
+				disabled={state.disabled}
+				create={state.create}
+				feedback={{
+					message:
+						state.activity === "create" ? state.error || state.message : "",
+					failed: !!state.error,
+				}}
+			/>
 			<CollectorSetup />
 		</div>
 	);

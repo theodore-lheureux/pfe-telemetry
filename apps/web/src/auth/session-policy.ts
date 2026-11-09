@@ -1,3 +1,5 @@
+export const AUTH_FRESH_AGE_SECONDS = 600;
+
 export type SessionFailure =
 	| { code: "UNAUTHENTICATED"; message: string; reason?: never }
 	| {

@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import {
 	createFileRoute,
 	Link,

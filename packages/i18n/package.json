@@ -1,5 +1,5 @@
 {
-  "name": "@pfe/i18n",
+  "name": "@recount/i18n",
   "private": true,
   "type": "module",
   "exports": {

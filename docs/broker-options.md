@@ -20,7 +20,11 @@ Apache Iggy is another candidate for exploring Rust infrastructure. It provides 
 
 ## Selection
 
-Kafka is used by the [local telemetry pipeline](../infra/telemetry/README.md). It retains accepted metrics independently of ClickHouse processing and tracks storage consumer offsets. The Rust producer uses idempotence and `acks=all`; the worker commits offsets only after confirmed synchronous batch storage. The local deployment has one partition and one replica. It exercises processing recovery and replay without claiming broker failure tolerance or measured cluster-scale throughput.
+Kafka is selected for the [current stack](../infra/README.md), with separate raw and normalized topics. The ingestion API acknowledges confirmed raw publication. The RustStream normalizer publishes one bare analytical Protobuf point per record and awaits all required output acknowledgements before settling input. Framework tracked periodic commits follow settled prefixes. ClickHouse's native `ProtobufSingle` Kafka source and non-aggregating view feed `ReplacingMergeTree` points. There is no Rust ClickHouse writer, registry service or PostgreSQL telemetry acceptance ledger.
+
+Rust producers use idempotence and `acks=all`; raw consumers disable automatic commit/store. Native storage/offset handling is another at-least-once boundary, not a transaction with either Rust publication or the point table. Immutable sample identity and logical-uniqueness queries are required even when broker-level producer idempotence is enabled. See [acknowledgement and routing](telemetry-point-contract.md#routing-batching-and-acknowledgement).
+
+Development defaults use three fixed partitions per topic and one broker/replica. They provide neither broker disk-loss tolerance nor measured cluster-scale throughput. Byte/time retention and record/fetch bounds are configurable operational settings, not fleet capacity or a promised outage window.
 
 NATS JetStream remains a smaller alternative if Kafka's operating cost outweighs the value of its consumer ecosystem and planned replication experiments. Redpanda provides a Kafka-compatible deployment alternative.
 
@@ -28,16 +32,20 @@ For JetStream, file-backed storage, a durable pull consumer, and limits retentio
 
 ## Kafka deployment
 
-The local setup uses a Compose broker, a persistent volume, and the `pfe.metrics.v1` topic with one partition and one replica. KRaft allows a development process to serve as both broker and controller without ZooKeeper. [Docker setup](https://kafka.apache.org/43/getting-started/docker/), [KRaft](https://kafka.apache.org/43/operations/kraft/).
+The local setup uses a Compose broker and project-scoped persistent data, with explicit initialization/checking of both current topics. KRaft allows a development process to serve as both broker and controller without ZooKeeper. No schema registry, Connect process, Keeper or standalone deduplication service is added to this path. [Docker setup](https://kafka.apache.org/43/getting-started/docker/), [KRaft](https://kafka.apache.org/43/operations/kraft/).
 
-Only the Rust backend produces and consumes Kafka records. Host applications and container applications need reachable advertised broker addresses. Vagrant collectors use OTLP/gRPC to reach the ingestion server. Topic initialization, health checks, retention, and disk limits belong in the environment configuration. [Advertised listeners](https://kafka.apache.org/43/configuration/broker-configs/#advertised.listeners).
+Backend services, including native ClickHouse consumers, access the broker on a private network; Kafka has no published development port in the consolidated stack. Collectors use OTLP/gRPC and need no broker credentials. The normalizer joins only the broker network and needs no application database or ClickHouse credentials. Reachable advertised addresses must match each consumer's actual network. [Advertised listeners](https://kafka.apache.org/43/configuration/broker-configs/#advertised.listeners).
+
+Admission, normalizer and native consumer body/row/fetch settings must fit the declared broker/topic ceilings. Topic initialization checks existing configuration rather than silently resizing or reconfiguring it. Raw routing spreads immutable batches; normalized routing uses a shared stream hash and explicit fixed partition. Neither supplies global event-time order. Partition resizing needs an explicit coordinated routing policy, not an assumption that affinity survives arbitrary count changes.
+
+Normal startup never resets offsets. Fresh groups require explicit operator initialization; missing/expired checkpoints remain visible failures. Starting at retained earliest cannot prove that an older deleted prefix was complete. Deterministic poison is not skipped after a retry count; outages cause retry/backpressure. Follow the [normalizer reference](../apps/normalizer/README.md) and [stack guide](../infra/README.md) for exact configuration, bootstrap, mounts, schema artifacts and identity checks rather than duplicating operator steps here.
 
 Replication tests can use three combined broker/controller processes, three topic replicas, `acks=all`, and `min.insync.replicas=2`. Separate controller and broker roles are recommended for critical deployments. Three containers on one laptop exercise individual process failures but share the same host failure domain. [KRaft deployment](https://kafka.apache.org/43/operations/kraft/), [replication settings](https://kafka.apache.org/43/configuration/broker-configs/#min.insync.replicas).
 
 ## Design justification
 
-Distributed executions can be expensive or difficult to reproduce. Retaining raw telemetry independently of analysis preserves evidence through processing failures and allows corrected analysis to reuse a capture. A broker also gives future consumers their own progress without changing the collector protocol.
+Distributed executions can be expensive or difficult to reproduce. Retaining raw telemetry independently of analysis preserves supported evidence through processing failures, within configured retention. A broker also gives future consumers their own progress without changing the collector protocol. Retained replay uses the current schema only; this is not a commitment to old-format readers, data conversion or historical backfills between prototypes.
 
-These requirements justify evaluating a durable broker. Kafka's additional complexity is justified when its partitioning, independent consumers, and replicated operation are exercised. If one recoverable storage worker meets the requirements, a smaller broker or direct durable storage remains sufficient.
+Kafka's partitioning and separate consumer groups serve the selected pipeline; replication remains a deployment capability rather than a demonstrated property of one local broker. NATS/Redpanda and direct durable storage remain comparisons, not simultaneously supported runtime paths. Revisit operating cost with representative data rather than treating ecosystem size or synthetic fixture passes as a throughput result.
 
-The [reliability scenarios](ingestion-and-reliability.md#validation-scenarios) provide concrete checks for recovery, replay, duplicates, and overload.
+The [reliability scenarios](ingestion-and-reliability.md#validation-scenarios) and [native-ingestion gate](../infra/README.md#validate-native-ingestion) distinguish recovery, replay, duplicates, outages and retention-gap checks. Native iteration reuses the backend; final Linux validation executes host-built Linux artifacts in Docker within an allocated service budget. A broker-independent fixture or direct point insert is not evidence for native Kafka/MV durability.

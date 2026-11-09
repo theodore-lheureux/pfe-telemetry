@@ -1,16 +1,16 @@
 {
-  "name": "@pfe/transactional",
+  "name": "@recount/transactional",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.tsx"
   },
   "scripts": {
-    "dev": "bun run --filter @pfe/i18n compile && email dev --dir ./emails --port 3002",
-    "typecheck": "bun run --filter @pfe/i18n compile && tsc --noEmit"
+    "dev": "bun run --filter @recount/i18n compile && email dev --dir ./emails --port 3002",
+    "typecheck": "bun run --filter @recount/i18n compile && tsc --noEmit"
   },
   "dependencies": {
-    "@pfe/i18n": "workspace:*",
+    "@recount/i18n": "workspace:*",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-email": "6.11.6"

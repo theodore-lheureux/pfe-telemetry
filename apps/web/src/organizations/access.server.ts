@@ -9,7 +9,7 @@ import type {
 } from "./contracts";
 import { OperationError } from "./errors";
 
-type Database = ReturnType<typeof getDatabase>;
+type Database = Pick<ReturnType<typeof getDatabase>, "select">;
 
 export interface Actor {
 	id: string;

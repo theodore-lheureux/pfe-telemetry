@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from "uuid";
 import type { getDatabase } from "../db/client.server";
 import { collectorCredential } from "../db/credentials-schema";
 import { execution } from "../db/executions-schema";
+import { createOnce } from "../lib/create-once.server";
 import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference, ProjectRole } from "../organizations/contracts";
 import { OperationError } from "../organizations/errors";
@@ -13,6 +14,7 @@ import type {
 	TelemetryInput,
 } from "./contracts";
 import { readTelemetry, type TelemetryScope } from "./telemetry.server";
+import { parseCreateExecution } from "./validation";
 
 type Database = ReturnType<typeof getDatabase>;
 type Entry = typeof execution.$inferSelect;
@@ -35,7 +37,10 @@ function tenant(reference: ProjectReference) {
 		eq(execution.projectId, reference.projectId),
 	);
 }
-async function find(database: Database, reference: ExecutionReference) {
+async function find(
+	database: Pick<Database, "select">,
+	reference: ExecutionReference,
+) {
 	const [entry] = await database
 		.select()
 		.from(execution)
@@ -101,7 +106,7 @@ export async function listExecutionSources(
 	return sources;
 }
 export async function getExecution(
-	database: Database,
+	database: Pick<Database, "select">,
 	actor: Actor,
 	input: ExecutionReference,
 ) {
@@ -113,35 +118,56 @@ export async function createExecution(
 	actor: Actor,
 	input: CreateExecutionInput,
 ) {
-	const access = await requireProject(database, actor, input);
-	writer(access.role);
-	const [source] = await database
-		.select({ sourceId: collectorCredential.sourceId })
-		.from(collectorCredential)
-		.where(
-			and(
-				eq(collectorCredential.id, input.credentialId),
-				eq(collectorCredential.projectId, access.id),
-				eq(collectorCredential.organizationId, access.organizationId),
-			),
-		);
-	if (!source)
-		throw new OperationError("NOT_FOUND", "Collector source not found");
-	const [entry] = await database
-		.insert(execution)
-		.values({
-			id: uuidv7(),
-			organizationId: access.organizationId,
-			projectId: access.id,
-			sourceId: source.sourceId,
-			hostId: input.hostId,
-			name: input.name,
-			startedAt: new Date(input.startedAt),
-			endedAt: new Date(input.endedAt),
-			createdBy: actor.id,
-		})
-		.returning();
-	return summary(entry, actor, access.role);
+	input = parseCreateExecution(input);
+	return createOnce(database, {
+		actorId: actor.id,
+		requestId: input.requestId,
+		scope: {
+			operation: "create-execution",
+			organizationId: input.organizationId,
+			projectId: input.projectId,
+		},
+		values: [
+			input.credentialId,
+			input.name,
+			input.hostId,
+			input.startedAt,
+			input.endedAt,
+		],
+		resourceId: uuidv7(),
+		authorize: async (tx) => {
+			const access = await requireProject(tx, actor, input);
+			writer(access.role);
+			return access;
+		},
+		create: async (tx, id, access) => {
+			const [source] = await tx
+				.select({ sourceId: collectorCredential.sourceId })
+				.from(collectorCredential)
+				.where(
+					and(
+						eq(collectorCredential.id, input.credentialId),
+						eq(collectorCredential.projectId, access.id),
+						eq(collectorCredential.organizationId, access.organizationId),
+					),
+				);
+			if (!source)
+				throw new OperationError("NOT_FOUND", "Collector source not found");
+			await tx.insert(execution).values({
+				id,
+				organizationId: access.organizationId,
+				projectId: access.id,
+				sourceId: source.sourceId,
+				hostId: input.hostId,
+				name: input.name,
+				startedAt: new Date(input.startedAt),
+				endedAt: new Date(input.endedAt),
+				createdBy: actor.id,
+			});
+		},
+		read: (tx, executionId) =>
+			getExecution(tx, actor, { ...input, executionId }),
+	});
 }
 export async function updateExecution(
 	database: Database,

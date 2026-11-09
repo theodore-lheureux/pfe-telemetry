@@ -20,14 +20,14 @@ export function readAuthConfig(env = process.env) {
 	) {
 		throw new Error("BETTER_AUTH_URL requires HTTPS, except on localhost");
 	}
-	if (!["true", "false"].includes(env.AUTH_ALLOW_SIGN_UP ?? "")) {
-		throw new Error("AUTH_ALLOW_SIGN_UP must be true or false");
+	if (!["true", "false"].includes(env.RECOUNT_AUTH_ALLOW_SIGN_UP ?? "")) {
+		throw new Error("RECOUNT_AUTH_ALLOW_SIGN_UP must be true or false");
 	}
 	return {
 		secret,
 		origin: url.origin,
 		rpID: url.hostname,
-		allowSignUp: env.AUTH_ALLOW_SIGN_UP === "true",
+		allowSignUp: env.RECOUNT_AUTH_ALLOW_SIGN_UP === "true",
 	};
 }
 

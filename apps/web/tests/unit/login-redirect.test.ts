@@ -1,22 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import {
-	localRedirect,
-	loginSearch,
-	signInDestinations,
-} from "../../src/auth/redirect";
+import { localRedirect, loginSearch } from "../../src/auth/redirect";
 
 describe("sign-in return destinations", () => {
 	const origin = "https://telemetry.example.invalid";
-	test("preserves local invitation and tenant links through both callback outcomes", () => {
+	test("preserves local invitation and tenant return destinations", () => {
 		const invitation = "/invitations/opaque-invitation?from=email";
 		expect(loginSearch({ redirect: invitation }, origin).redirect).toBe(
 			invitation,
 		);
-		expect(signInDestinations(invitation)).toEqual({
-			callbackURL: invitation,
-			newUserCallbackURL: invitation,
-			errorCallbackURL: `/login?${new URLSearchParams({ redirect: invitation })}`,
-		});
 		expect(
 			localRedirect(
 				"/organizations/org/projects/project/executions#chart",
@@ -55,17 +46,7 @@ describe("sign-in return destinations", () => {
 			).toBe("/");
 		}
 	});
-	test("defaults safely while retaining login errors and retry destinations", () => {
-		expect(loginSearch({ error: "INVALID_TOKEN" }, origin)).toEqual({
-			redirect: "/",
-			error: "INVALID_TOKEN",
-		});
-		const retry = new URL(
-			signInDestinations("/invitations/test").errorCallbackURL,
-			origin,
-		);
-		expect(
-			loginSearch(Object.fromEntries(retry.searchParams), origin).redirect,
-		).toBe("/invitations/test");
+	test("defaults safely without carrying callback-only branches", () => {
+		expect(loginSearch({}, origin)).toEqual({ redirect: "/" });
 	});
 });

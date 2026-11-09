@@ -1,5 +1,7 @@
 import { eq } from "drizzle-orm";
 import { member } from "../../src/db/schema";
+import * as organizationDomain from "../../src/organizations/organizations.server";
+import * as projectDomain from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
 
 test("onboards, creates and renames private projects, switches tenants and signs out", async ({
@@ -62,7 +64,7 @@ test("onboards, creates and renames private projects, switches tenants and signs
 	await page
 		.getByRole("button", { name: "Create project", exact: true })
 		.click();
-	await expect(page.getByRole("status")).toHaveText(
+	await expect(page.locator("#entity-message").getByRole("alert")).toHaveText(
 		"This slug is already in use. Choose another slug.",
 	);
 	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
@@ -128,7 +130,9 @@ test("onboards, creates and renames private projects, switches tenants and signs
 	).toBeVisible();
 	await expect(page.getByLabel("Email address")).toBeEnabled();
 	await workspace.signIn(page, "other@example.invalid");
-	await page.getByRole("link", { name: "PFE Telemetry", exact: true }).click();
+	await page
+		.getByRole("link", { name: "Recount · Go home", exact: true })
+		.click();
 	await expect(
 		page.getByRole("heading", { name: "Create your first organization" }),
 	).toBeVisible();
@@ -163,17 +167,22 @@ test("protects direct links, uses effective roles and handles membership revocat
 	await expect(page.getByLabel("Email address")).toBeEnabled();
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const organization = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Private lab",
-			slug: "private-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Private lab",
+				slug: "private-lab",
+			}),
+		),
 	);
 	const project = data(
-		await workspace.operations.createProject(owner.headers, {
-			organizationId: organization.id,
-			name: "Private project",
-			slug: "private-project",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
+				organizationId: organization.id,
+				name: "Private project",
+				slug: "private-project",
+			}),
+		),
 	);
 	const projectURL = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}`;
 	const viewer = await workspace.signIn(page, "viewer@example.invalid");
@@ -193,12 +202,14 @@ test("protects direct links, uses effective roles and handles membership revocat
 		page.getByRole("link", { name: "Create project", exact: true }),
 	).toHaveCount(0);
 	data(
-		await workspace.operations.setProjectMember(owner.headers, {
-			organizationId: organization.id,
-			projectId: project.id,
-			memberId: membership.id,
-			role: "viewer",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.setProjectMember(workspace.database.db, actor, {
+				organizationId: organization.id,
+				projectId: project.id,
+				memberId: membership.id,
+				role: "viewer",
+			}),
+		),
 	);
 	await page.goto(`${projectURL}/settings`);
 	await expect(page.getByRole("button", { name: "Save project" })).toHaveCount(
@@ -208,12 +219,14 @@ test("protects direct links, uses effective roles and handles membership revocat
 		page.getByRole("link", { name: "Collector credentials" }),
 	).toHaveCount(0);
 	data(
-		await workspace.operations.setProjectMember(owner.headers, {
-			organizationId: organization.id,
-			projectId: project.id,
-			memberId: membership.id,
-			role: "admin",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.setProjectMember(workspace.database.db, actor, {
+				organizationId: organization.id,
+				projectId: project.id,
+				memberId: membership.id,
+				role: "admin",
+			}),
+		),
 	);
 	await page.reload();
 	await expect(
@@ -250,17 +263,22 @@ test("does not mistake transport failures for empty results and rechecks access 
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const organization = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Mutation lab",
-			slug: "mutation-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Mutation lab",
+				slug: "mutation-lab",
+			}),
+		),
 	);
 	const project = data(
-		await workspace.operations.createProject(owner.headers, {
-			organizationId: organization.id,
-			name: "Original name",
-			slug: "original",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
+				organizationId: organization.id,
+				name: "Original name",
+				slug: "original",
+			}),
+		),
 	);
 	const editor = await workspace.signIn(page, "editor@example.invalid");
 	const membership = await workspace.auth.api.addMember({
@@ -272,12 +290,14 @@ test("does not mistake transport failures for empty results and rechecks access 
 	});
 	if (!membership) throw new Error("Expected a membership");
 	data(
-		await workspace.operations.setProjectMember(owner.headers, {
-			organizationId: organization.id,
-			projectId: project.id,
-			memberId: membership.id,
-			role: "admin",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.setProjectMember(workspace.database.db, actor, {
+				organizationId: organization.id,
+				projectId: project.id,
+				memberId: membership.id,
+				role: "admin",
+			}),
+		),
 	);
 	const projectURL = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}`;
 	await page.goto(`${projectURL}/settings`);
@@ -301,11 +321,13 @@ test("does not mistake transport failures for empty results and rechecks access 
 		page.getByRole("button", { name: "Save project" }),
 	).toBeEnabled();
 	data(
-		await workspace.operations.removeProjectMember(owner.headers, {
-			organizationId: organization.id,
-			projectId: project.id,
-			memberId: membership.id,
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.removeProjectMember(workspace.database.db, actor, {
+				organizationId: organization.id,
+				projectId: project.id,
+				memberId: membership.id,
+			}),
+		),
 	);
 	await page.getByRole("button", { name: "Save project" }).click();
 	await expect(
@@ -313,10 +335,12 @@ test("does not mistake transport failures for empty results and rechecks access 
 	).toBeVisible();
 	expect(
 		data(
-			await workspace.operations.getProject(owner.headers, {
-				organizationId: organization.id,
-				projectId: project.id,
-			}),
+			await workspace.operations(owner.headers, (actor) =>
+				projectDomain.getProject(workspace.database.db, actor, {
+					organizationId: organization.id,
+					projectId: project.id,
+				}),
+			),
 		).name,
 	).toBe("Original name");
 });
@@ -325,12 +349,25 @@ test("returns passkey sign-in to the validated tenant destination", async ({
 	page,
 	workspace,
 }) => {
+	// This case selects the manual action; autofill selection has its own real-verification case.
+	await page.addInitScript(() => {
+		Object.defineProperty(
+			PublicKeyCredential,
+			"isConditionalMediationAvailable",
+			{
+				configurable: true,
+				value: async () => false,
+			},
+		);
+	});
 	const owner = await workspace.signIn(page, "passkey@example.invalid");
 	const organization = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Passkey lab",
-			slug: "passkey-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Passkey lab",
+				slug: "passkey-lab",
+			}),
+		),
 	);
 	const destination = `/organizations/${organization.id}`;
 	const cdp = await page.context().newCDPSession(page);
@@ -371,43 +408,22 @@ test("returns passkey sign-in to the validated tenant destination", async ({
 	).toBeVisible();
 });
 
-test("preserves a local destination through magic-link sign-in without SMTP delivery", async ({
+test("preserves a local destination through email-code sign-in without SMTP delivery", async ({
 	page,
 	workspace,
 }) => {
 	const destination = "/account";
-	await page.route("**/api/auth/sign-in/magic-link", async (route) => {
-		const request = route.request();
-		const body = request.postDataJSON();
-		expect(body.callbackURL).toBe(destination);
-		expect(body.newUserCallbackURL).toBe(destination);
-		expect(
-			new URL(body.errorCallbackURL, workspace.origin).searchParams.get(
-				"redirect",
-			),
-		).toBe(destination);
-		const response = await workspace.auth.handler(
-			new Request(request.url(), {
-				method: "POST",
-				headers: request.headers(),
-				body: request.postData(),
-			}),
-		);
-		await route.fulfill({
-			status: response.status,
-			headers: Object.fromEntries(response.headers),
-			body: await response.text(),
-		});
-	});
+	await workspace.enableCodeDelivery(page);
 	await page.goto(
 		`${workspace.origin}/login?${new URLSearchParams({ redirect: destination })}`,
 	);
-	await page.getByLabel("Email address").fill("magic@example.invalid");
-	await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-	await expect(page.getByRole("status")).toContainText("a link is on its way");
-	const link = workspace.links.get("magic@example.invalid");
-	if (!link) throw new Error("Expected an in-memory sign-in link");
-	await page.goto(link);
+	await page
+		.getByLabel("Email address", { exact: true })
+		.fill("return@example.invalid");
+	await page
+		.getByRole("button", { name: "Continue with email", exact: true })
+		.click();
+	await workspace.submitReceivedCode(page, "return@example.invalid");
 	await expect(page).toHaveURL(`${workspace.origin}${destination}`);
 	await expect(
 		page.getByRole("heading", { name: "Account security", exact: true }),
@@ -420,17 +436,22 @@ test("acknowledges a saved mutation when subsequent metadata reads fail, then re
 }) => {
 	const owner = await workspace.signIn(page, "refresh@example.invalid");
 	const organization = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Refresh lab",
-			slug: "refresh-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Refresh lab",
+				slug: "refresh-lab",
+			}),
+		),
 	);
 	const project = data(
-		await workspace.operations.createProject(owner.headers, {
-			organizationId: organization.id,
-			name: "Before refresh",
-			slug: "refresh",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
+				organizationId: organization.id,
+				name: "Before refresh",
+				slug: "refresh",
+			}),
+		),
 	);
 	await page.goto(
 		`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/settings`,
@@ -455,10 +476,12 @@ test("acknowledges a saved mutation when subsequent metadata reads fail, then re
 	);
 	expect(
 		data(
-			await workspace.operations.getProject(owner.headers, {
-				organizationId: organization.id,
-				projectId: project.id,
-			}),
+			await workspace.operations(owner.headers, (actor) =>
+				projectDomain.getProject(workspace.database.db, actor, {
+					organizationId: organization.id,
+					projectId: project.id,
+				}),
+			),
 		).name,
 	).toBe("Saved despite refresh failure");
 	expect(writes).toBe(1);

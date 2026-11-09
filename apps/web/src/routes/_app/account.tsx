@@ -1,14 +1,21 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
 import {
 	createFileRoute,
 	Link,
 	useHydrated,
 	useRouter,
 } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { authClient } from "@/auth/client";
+import {
+	clearBetterAuthIdentity,
+	refreshBetterAuthIdentity,
+} from "@/auth/identity-state";
+import { settleIdentityRefresh } from "@/auth/refresh";
 import { useAppForm } from "@/components/app-form";
+import { FormFeedback } from "@/components/form-feedback";
 import { useLocaleChangeBlocker } from "@/components/locale-safety";
 import { useMutationFeedback } from "@/components/mutation-feedback";
 import {
@@ -32,12 +39,45 @@ export const Route = createFileRoute("/_app/account")({
 });
 
 function Account() {
-	const { user } = Route.useRouteContext();
+	const { user, authentication } = Route.useRouteContext();
 	const router = useRouter();
 	const hydrated = useHydrated();
 	const setFeedback = useMutationFeedback();
-	const passkeys = authClient.useListPasskeys();
+	const identity = useSyncExternalStore(
+		authentication.subscribe,
+		authentication.getSnapshot,
+		authentication.getSnapshot,
+	);
+	const passkeys = useQuery({
+		queryKey: ["account-passkeys", user.id, identity.revision],
+		enabled: hydrated && !identity.pending,
+		retry: false,
+		staleTime: 0,
+		gcTime: 0,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
+		queryFn: async ({ signal }) => {
+			const result = await authClient.passkey.listUserPasskeys({
+				fetchOptions: { signal, timeout: 10_000 },
+			});
+			const current = authentication.getSnapshot();
+			if (
+				current.pending ||
+				current.revision !== identity.revision ||
+				result.error ||
+				!result.data ||
+				result.data.some((key) => key.userId !== user.id)
+			)
+				throw new Error("Passkeys could not be confirmed for this account");
+			return result.data;
+		},
+	});
 	const [message, setMessage] = useState("");
+	const [failed, setFailed] = useState(false);
+	const [activity, setActivity] = useState<
+		"add" | "remove" | "sessions" | "signout" | null
+	>(null);
+	const actionBusy = useRef(false);
 	const [actionPending, setPending] = useState(false);
 	const form = useAppForm({
 		defaultValues: { name: "" },
@@ -60,12 +100,18 @@ function Account() {
 			error: { code?: string; message?: string } | null;
 		}>,
 		removedId?: string,
+		kind: "add" | "remove" | "sessions" = "add",
 	) {
+		if (actionBusy.current) return;
+		actionBusy.current = true;
+		setActivity(kind);
 		setPending(true);
 		setMessage("");
+		setFailed(false);
 		try {
 			const result = await action();
 			if (result.error) {
+				setFailed(true);
 				setMessage(
 					result.error.code === "SESSION_NOT_FRESH"
 						? m.error_session_fresh()
@@ -75,31 +121,45 @@ function Account() {
 				completedDeletion.current = removedId ?? null;
 				setMessage(m.account_security_updated());
 				setDeleteId(null);
+				await passkeys.refetch();
 			}
 		} catch {
+			setFailed(true);
 			setMessage(m.the_action_was_not_completed_please_try_again());
 		} finally {
+			actionBusy.current = false;
 			setPending(false);
 		}
 	}
 
 	async function signOut() {
+		if (actionBusy.current) return;
+		actionBusy.current = true;
+		setActivity("signout");
 		setPending(true);
 		setMessage("");
+		setFailed(false);
 		try {
 			const result = await authClient.signOut();
 			if (result.error) {
+				setFailed(true);
 				setMessage(m.signout_failed_please_try_again());
 				return;
 			}
+			await router.navigate({ to: "/login", replace: true });
+		} catch {
+			setFailed(true);
+			setMessage(m.signout_failed_please_try_again());
+		} finally {
+			clearBetterAuthIdentity();
 			router.options.context.queryClient.clear();
 			setFeedback(null);
 			router.clearCache();
-			await router.invalidate({ sync: true });
-			await router.navigate({ to: "/login", replace: true });
-		} catch {
-			setMessage(m.signout_failed_please_try_again());
-		} finally {
+			await settleIdentityRefresh(async () => {
+				await refreshBetterAuthIdentity();
+				await router.invalidate({ sync: true });
+			});
+			actionBusy.current = false;
 			setPending(false);
 		}
 	}
@@ -114,10 +174,18 @@ function Account() {
 					variant="outline"
 					onClick={signOut}
 					disabled={!hydrated || pending}
+					pending={pending && activity === "signout"}
+					pendingLabel={m.signing_out()}
 				>
 					{m.sign_out()}
 				</Button>
 			</div>
+			<FormFeedback
+				message={activity === "signout" ? message : ""}
+				kind={failed ? "error" : "success"}
+				pending={pending && activity === "signout"}
+				pendingMessage={m.signing_out()}
+			/>
 			<div>
 				<h1
 					ref={heading}
@@ -136,9 +204,9 @@ function Account() {
 					{m.passkeys()}
 				</h2>
 				<p className="text-sm text-muted-foreground">
-					{m.add_a_passkey_for_faster_signin_email_links()}
+					{m.passkey_recovery_help()}
 				</p>
-				{passkeys.isPending ? (
+				{identity.pending || passkeys.isPending || passkeys.isFetching ? (
 					<div>
 						<p role="status">{m.loading_passkeys()}</p>
 						<Skeleton aria-hidden="true" className="mt-2 h-12 w-full" />
@@ -171,7 +239,6 @@ function Account() {
 										</Button>
 									</AlertDialogTrigger>
 									<AlertDialogContent
-										aria-busy={pending}
 										onEscapeKeyDown={(event) => {
 											if (pending) event.preventDefault();
 										}}
@@ -186,17 +253,24 @@ function Account() {
 										<AlertDialogDescription>
 											{key.name || m.passkey()}
 										</AlertDialogDescription>
-										{message && <p role="alert">{message}</p>}
-										{pending && <p role="status">{m.saving()}</p>}
+										<FormFeedback
+											message={failed ? message : ""}
+											kind="error"
+											pending={pending}
+											pendingMessage={m.removing_passkey()}
+										/>
 										<AlertDialogFooter>
 											<Button
 												variant="destructive"
 												disabled={!hydrated || pending}
+												pending={pending && activity === "remove"}
+												pendingLabel={m.removing_passkey()}
 												onClick={() =>
 													runAction(
 														() =>
 															authClient.passkey.deletePasskey({ id: key.id }),
 														key.id,
+														"remove",
 													)
 												}
 											>
@@ -238,10 +312,25 @@ function Account() {
 							/>
 						)}
 					</form.AppField>
-					<Button type="submit" disabled={!hydrated || pending}>
+					<Button
+						type="submit"
+						disabled={!hydrated || pending}
+						pending={addingPasskey}
+						pendingLabel={m.adding_passkey()}
+					>
 						{m.add_a_passkey()}
 					</Button>
 				</form>
+				<FormFeedback
+					message={
+						(activity === "add" || activity === "remove") && !deleteId
+							? message
+							: ""
+					}
+					kind={failed ? "error" : "success"}
+					pending={addingPasskey}
+					pendingMessage={m.adding_passkey()}
+				/>
 			</section>
 			<section
 				className="flex flex-col items-start gap-3 rounded-lg border p-5"
@@ -256,14 +345,25 @@ function Account() {
 				<Button
 					variant="outline"
 					disabled={!hydrated || pending}
-					onClick={() => runAction(() => authClient.revokeOtherSessions())}
+					pending={pending && activity === "sessions"}
+					pendingLabel={m.revoking_sessions()}
+					onClick={() =>
+						runAction(
+							() => authClient.revokeOtherSessions(),
+							undefined,
+							"sessions",
+						)
+					}
 				>
 					{m.sign_out_other_sessions()}
 				</Button>
+				<FormFeedback
+					message={activity === "sessions" ? message : ""}
+					kind={failed ? "error" : "success"}
+					pending={pending && activity === "sessions"}
+					pendingMessage={m.revoking_sessions()}
+				/>
 			</section>
-			<p role="status" aria-live="polite" className="text-sm">
-				{message}
-			</p>
 			<Link to="/login" className="text-sm underline">
 				{m.sign_in_again()}
 			</Link>

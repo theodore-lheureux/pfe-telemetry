@@ -1,6 +1,6 @@
-import { formatDate, formatSeconds } from "@pfe/i18n";
-import { statusLabel } from "@pfe/i18n/labels";
-import { m } from "@pfe/i18n/messages";
+import { formatDate, formatSeconds } from "@recount/i18n";
+import { statusLabel } from "@recount/i18n/labels";
+import { m } from "@recount/i18n/messages";
 import type { ReactNode } from "react";
 import type { CollectorCredentialSummary } from "../../credentials/contracts";
 import { credentialStatus } from "../../credentials/setup";
@@ -86,15 +86,8 @@ export function CredentialList({
 								<dl className="grid gap-2 text-sm sm:grid-cols-2">
 									<Detail label={m.source_id()}>{credential.sourceId}</Detail>
 									<Detail label={m.credential_id()}>{credential.id}</Detail>
-									<Detail label={m.allowed_host_ids()}>
-										{credential.hosts.length
-											? credential.hosts.join(", ")
-											: m.none_only_submissions_without_a_host_id()}
-									</Detail>
-									<Detail label={m.host_identification()}>
-										{credential.requireHostId
-											? m.required()
-											: m.optional_provided_ids_must_be_allowed()}
+									<Detail label={m.enrolled_root_id()}>
+										{credential.rootId}
 									</Detail>
 									<Detail label={m.maximum_submission_age()}>
 										{formatSeconds(credential.maximumSubmissionAge)}

@@ -1,6 +1,7 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import type { OrganizationSummary } from "../organizations/contracts";
 import type { MemberSummary } from "../organizations/member-contracts";
+import { FormFeedback } from "./form-feedback";
 import { MemberRow } from "./member-administration/member-row";
 import { useOrganizationMembers } from "./member-administration/use-organization-members";
 
@@ -16,11 +17,7 @@ export function OrganizationMembers({
 	const state = useOrganizationMembers(organization, userId);
 	const owners = members.filter((member) => member.role === "owner").length;
 	return (
-		<section
-			aria-labelledby="members-heading"
-			aria-busy={state.pending}
-			className="flex flex-col gap-4"
-		>
+		<section aria-labelledby="members-heading" className="flex flex-col gap-4">
 			<h1
 				ref={state.heading}
 				tabIndex={-1}
@@ -35,9 +32,11 @@ export function OrganizationMembers({
 			<p className="text-sm text-muted-foreground">
 				{m.to_replace_an_owner_an_existing_owner_must()}
 			</p>
-			<p role={state.failed ? "alert" : "status"} className="text-sm">
-				{state.message}
-			</p>
+			<FormFeedback
+				message={state.confirm ? "" : state.message}
+				pending={state.pending && !state.confirm}
+				kind={state.failed ? "error" : "success"}
+			/>
 			<ul className="divide-y rounded-md border bg-card text-card-foreground">
 				{members.map((member) => (
 					<MemberRow

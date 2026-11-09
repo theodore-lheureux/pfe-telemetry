@@ -1,6 +1,6 @@
 use std::{
     io,
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -9,6 +9,7 @@ use opentelemetry_proto::tonic::collector::metrics::v1::{
 };
 use prost::Message;
 use tokio::sync::{Notify, mpsc, watch};
+use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
 use tonic::{
     codec::CompressionEncoding,
@@ -22,7 +23,7 @@ use crate::{
     spool::{Batch, MAX_REQUEST_BYTES, Result, Spool, unix_nanos},
 };
 
-type SharedSpool = Arc<Mutex<Spool>>;
+type SharedSpool = Arc<tokio::sync::Mutex<Spool>>;
 const PENDING_SCANS: usize = 64;
 
 pub async fn run(config: Config) -> Result<()> {
@@ -43,46 +44,46 @@ pub async fn run(config: Config) -> Result<()> {
     } = config;
     let period = Duration::from_millis(interval_ms);
     let max_age = Duration::from_secs(queue_max_age_seconds);
-    let spool = tokio::task::spawn_blocking(move || {
-        Spool::open(&directory, &queue_destination, max_bytes, max_batches)
-    })
-    .await??;
-    let (pending_bytes, pending_batches) = spool.usage()?;
+    let mut spool = Spool::open(&directory, &queue_destination, max_bytes, max_batches).await?;
+    let (pending_bytes, pending_batches) = spool.usage().await?;
+    let discarded_points = spool.discarded_points().await?;
     tracing::info!(
         pending_bytes,
         pending_batches,
-        discarded_points = spool.discarded_points()?,
+        discarded_points,
         "Opened persistent export queue"
     );
-    let spool = Arc::new(Mutex::new(spool));
+    let spool = Arc::new(tokio::sync::Mutex::new(spool));
     let client = client(endpoint);
     let loss = LossTracker::default();
     if drain {
         let (_stop, stopped) = watch::channel(false);
-        return tokio::select! {
-            result = export(client, spool, loss, max_age, None, stopped, authorization) => result,
+        let result = tokio::select! {
+            result = export(client, spool.clone(), loss, max_age, None, stopped, authorization) => result,
             () = shutdown_signal()? => Ok(()),
         };
+        spool.lock().await.close_connection().await?;
+        return result;
     }
     let feedback = loss.clone();
     let collector =
         tokio::task::spawn_blocking(move || crate::Collector::new(sampler_config, feedback))
             .await??;
     let shutdown = shutdown_signal()?;
-    tokio::pin!(shutdown);
     let (stop, stopped) = watch::channel(false);
     let notify = Arc::new(Notify::new());
     let (scans, waiting) = mpsc::channel(PENDING_SCANS);
-    let mut sampler = tokio::spawn(sample(collector, period, scans, stopped.clone()));
-    let mut persister = tokio::spawn(persist(
+    let mut tasks = JoinSet::new();
+    tasks.spawn(sample(collector, period, scans, stopped.clone()));
+    tasks.spawn(persist(
         waiting,
         spool.clone(),
         loss.clone(),
         notify.clone(),
     ));
-    let mut exporter = tokio::spawn(export(
+    tasks.spawn(export(
         client,
-        spool,
+        spool.clone(),
         loss,
         max_age,
         Some(notify),
@@ -95,38 +96,36 @@ pub async fn run(config: Config) -> Result<()> {
         max_batches,
         "Starting Linux resource collection"
     );
-    enum Completed {
-        Shutdown,
-        Sampler,
-        Persister,
-        Exporter,
-    }
-    let (completed, result) = tokio::select! {
-        () = &mut shutdown => (Completed::Shutdown, Ok(())),
-        result = &mut sampler => (Completed::Sampler, result?),
-        result = &mut persister => (Completed::Persister, result?),
-        result = &mut exporter => (Completed::Exporter, result?),
+    let (_running, cancelled) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(supervise(tasks, stop, spool, async move {
+        tokio::select! { () = shutdown => {}, _ = cancelled => {} }
+    }))
+    .await?
+}
+
+async fn supervise(
+    mut tasks: JoinSet<Result<()>>,
+    stop: watch::Sender<bool>,
+    spool: SharedSpool,
+    shutdown: impl Future<Output = ()>,
+) -> Result<()> {
+    let mut result = tokio::select! {
+        () = shutdown => Ok(()),
+        Some(ended) = tasks.join_next() => ended.unwrap_or_else(|error| Err(error.into())),
     };
     stop.send_replace(true);
     // Stop acquisition, drain the bounded volatile buffer to disk, and leave
     // cancelled network requests pending. A slow disk can delay graceful exit.
-    let pending = match completed {
-        Completed::Shutdown => vec![sampler, persister, exporter],
-        Completed::Sampler => vec![persister, exporter],
-        Completed::Persister => vec![sampler, exporter],
-        Completed::Exporter => vec![sampler, persister],
-    };
-    let mut result = result;
-    for task in pending {
-        let ended = match task.await {
-            Ok(result) => result,
-            Err(error) => Err(error.into()),
-        };
+    while let Some(ended) = tasks.join_next().await {
+        let ended = ended.unwrap_or_else(|error| Err(error.into()));
+        // Keep the first worker error, including panics, ahead of close errors.
         if result.is_ok() {
             result = ended;
         }
     }
+    let closed = spool.lock().await.close_connection().await;
     result?;
+    closed?;
     tracing::info!("Stopped collection; pending exports retained");
     Ok(())
 }
@@ -140,20 +139,6 @@ fn client(endpoint: Endpoint) -> MetricsServiceClient<Channel> {
         .send_compressed(CompressionEncoding::Gzip)
         .accept_compressed(CompressionEncoding::Gzip)
         .max_encoding_message_size(MAX_REQUEST_BYTES)
-}
-
-async fn access<T: Send + 'static>(
-    spool: &SharedSpool,
-    operation: impl FnOnce(&mut Spool) -> Result<T> + Send + 'static,
-) -> Result<T> {
-    let spool = spool.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut spool = spool
-            .lock()
-            .map_err(|_| io::Error::other("Queue worker panicked"))?;
-        operation(&mut spool)
-    })
-    .await?
 }
 
 async fn sample(
@@ -200,23 +185,24 @@ async fn persist(
     notify: Arc<Notify>,
 ) -> Result<()> {
     while let Some(scan) = scans.recv().await {
-        let feedback = loss.clone();
-        access(&spool, move |spool| enqueue_scan(spool, scan, &feedback)).await?;
+        enqueue_scan(&mut *spool.lock().await, scan, &loss).await?;
         notify.notify_one();
     }
     Ok(())
 }
 
-fn enqueue_scan(spool: &mut Spool, scan: Scan, loss: &LossTracker) -> Result<()> {
+async fn enqueue_scan(spool: &mut Spool, scan: Scan, loss: &LossTracker) -> Result<()> {
     if scan.generation() != loss.generation() {
         let epoch = scan.epoch().to_owned();
         let resources = scan.into_resources();
-        spool.record_loss(
-            &epoch,
-            LossReason::BufferExpired,
-            point_count(&resources),
-            loss,
-        )?;
+        spool
+            .record_loss(
+                &epoch,
+                LossReason::BufferExpired,
+                point_count(&resources),
+                loss,
+            )
+            .await?;
         return Ok(());
     }
     let epoch = scan.epoch().to_owned();
@@ -228,7 +214,9 @@ fn enqueue_scan(spool: &mut Spool, scan: Scan, loss: &LossTracker) -> Result<()>
     let is_window = |name: &str| {
         matches!(
             name,
-            "pfe.collection.scan.duration" | "pfe.clock.status" | "pfe.clock.uncertainty"
+            "recount.collection.scan.duration"
+                | "recount.clock.status"
+                | "recount.clock.uncertainty"
         )
     };
     for scope in &mut window.scope_metrics {
@@ -247,16 +235,18 @@ fn enqueue_scan(spool: &mut Spool, scan: Scan, loss: &LossTracker) -> Result<()>
     for resource in resources {
         let resource_size = resource.encoded_len() + 16;
         if resource_size + window_size > MAX_REQUEST_BYTES {
-            spool.record_loss(
-                &epoch,
-                LossReason::PermanentRejection,
-                point_count(std::slice::from_ref(&resource)),
-                loss,
-            )?;
+            spool
+                .record_loss(
+                    &epoch,
+                    LossReason::PermanentRejection,
+                    point_count(std::slice::from_ref(&resource)),
+                    loss,
+                )
+                .await?;
             continue;
         }
         if size + resource_size > MAX_REQUEST_BYTES {
-            enqueue_request(spool, &epoch, request, loss)?;
+            enqueue_request(spool, &epoch, request, loss).await?;
             request = ExportMetricsServiceRequest {
                 resource_metrics: vec![window.clone()],
             };
@@ -266,20 +256,35 @@ fn enqueue_scan(spool: &mut Spool, scan: Scan, loss: &LossTracker) -> Result<()>
         request.resource_metrics.push(resource);
     }
     if request.resource_metrics.len() > 1 {
-        enqueue_request(spool, &epoch, request, loss)?;
+        enqueue_request(spool, &epoch, request, loss).await?;
     }
     Ok(())
 }
 
-fn enqueue_request(
+async fn enqueue_request(
     spool: &mut Spool,
     epoch: &str,
     request: ExportMetricsServiceRequest,
     loss: &LossTracker,
 ) -> Result<()> {
+    recount_telemetry_validation::validate::request(
+        &request,
+        recount_telemetry_validation::validate::Limits {
+            decoded_bytes: MAX_REQUEST_BYTES,
+            ..Default::default()
+        },
+    )?;
+    for metric in request
+        .resource_metrics
+        .iter()
+        .flat_map(|r| &r.scope_metrics)
+        .flat_map(|s| &s.metrics)
+    {
+        recount_telemetry_validation::catalogue::validate_collector_metric(metric)?;
+    }
     let points = point_count(&request.resource_metrics);
     let batch = Batch::new(epoch.into(), request, points)?;
-    spool.enqueue(&batch, loss)?;
+    spool.enqueue(&batch, loss).await?;
     Ok(())
 }
 
@@ -338,7 +343,8 @@ async fn export(
         if *stopped.borrow() {
             return Ok(());
         }
-        let Some(batch) = access(&spool, |spool| spool.front()).await? else {
+        let batch = spool.lock().await.front().await?;
+        let Some(batch) = batch else {
             let Some(notify) = &notify else {
                 tracing::info!("Persistent export queue is empty");
                 return Ok(());
@@ -400,11 +406,7 @@ async fn export(
                 Err(_) => break Some((LossReason::BufferExpired, batch.points)),
             }
         };
-        let feedback = loss.clone();
-        access(&spool, move |spool| {
-            spool.finish(&batch, discarded, &feedback)
-        })
-        .await?;
+        spool.lock().await.finish(&batch, discarded, &loss).await?;
     }
 }
 
@@ -414,11 +416,14 @@ fn request(batch: &Batch) -> Result<tonic::Request<ExportMetricsServiceRequest>>
     )?);
     request
         .metadata_mut()
-        .insert("pfe-batch-id", batch.id.parse()?);
+        .insert("recount-batch-id", batch.id.parse()?);
     request.metadata_mut().insert(
-        "pfe-batch-created-unix-nano",
+        "recount-batch-created-unix-nano",
         batch.created_ns.to_string().parse()?,
     );
+    request
+        .metadata_mut()
+        .insert("recount-collection-profile", "linux".parse()?);
     Ok(request)
 }
 
@@ -440,7 +445,7 @@ mod tests {
         metrics_service_server::{MetricsService, MetricsServiceServer},
     };
     use opentelemetry_proto::tonic::metrics::v1::ResourceMetrics;
-    use std::path::PathBuf;
+    use std::{path::PathBuf, sync::Mutex};
     use tonic::{Request, Response, Status};
 
     #[derive(Clone, Default)]
@@ -470,19 +475,25 @@ mod tests {
             }
             let id = request
                 .metadata()
-                .get("pfe-batch-id")
+                .get("recount-batch-id")
                 .unwrap()
                 .to_str()
                 .unwrap()
                 .to_owned();
             let time = request
                 .metadata()
-                .get("pfe-batch-created-unix-nano")
+                .get("recount-batch-created-unix-nano")
                 .unwrap()
                 .to_str()
                 .unwrap()
                 .to_owned();
-            assert!(request.metadata().get("pfe-collection-profile").is_none());
+            assert_eq!(
+                request
+                    .metadata()
+                    .get("recount-collection-profile")
+                    .unwrap(),
+                "linux"
+            );
             let mut state = self.0.lock().unwrap();
             state
                 .requests
@@ -509,9 +520,12 @@ mod tests {
         batch: Batch,
     }
     impl Fixture {
-        fn new() -> Self {
-            let path = std::env::temp_dir().join(format!("pfe-runtime-{}", uuid::Uuid::now_v7()));
-            let mut spool = Spool::open(&path, "test-receiver", 1024 * 1024, 4).unwrap();
+        async fn new() -> Self {
+            let path =
+                std::env::temp_dir().join(format!("recount-runtime-{}", uuid::Uuid::now_v7()));
+            let mut spool = Spool::open(&path, "test-receiver", 1024 * 1024, 4)
+                .await
+                .unwrap();
             let loss = LossTracker::default();
             let request = ExportMetricsServiceRequest {
                 resource_metrics: vec![ResourceMetrics {
@@ -520,13 +534,17 @@ mod tests {
                 }],
             };
             let batch = Batch::new("epoch".into(), request, 3).unwrap();
-            spool.enqueue(&batch, &loss).unwrap();
+            spool.enqueue(&batch, &loss).await.unwrap();
             Self {
                 path,
-                spool: Arc::new(Mutex::new(spool)),
+                spool: Arc::new(tokio::sync::Mutex::new(spool)),
                 loss,
                 batch,
             }
+        }
+
+        async fn close(&self) {
+            self.spool.lock().await.close_connection().await.unwrap();
         }
     }
     impl Drop for Fixture {
@@ -562,9 +580,9 @@ mod tests {
         }
         panic!("Test receiver did not start");
     }
-    async fn until(mut condition: impl FnMut() -> bool) {
+    async fn until(mut condition: impl AsyncFnMut() -> bool) {
         tokio::time::timeout(Duration::from_secs(10), async {
-            while !condition() {
+            while !condition().await {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         })
@@ -589,107 +607,223 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sampling_continues_while_the_persistence_worker_is_blocked() {
-        let fixture = Fixture::new();
-        let held = fixture.spool.clone();
-        let (locked, ready) = tokio::sync::oneshot::channel();
-        let (release, blocked) = std::sync::mpsc::channel();
-        let holder = std::thread::spawn(move || {
-            let _guard = held.lock().unwrap();
-            locked.send(()).unwrap();
-            let _ = blocked.recv();
+    async fn supervisor_drains_scans_and_closes_queue_after_shutdown_error_or_panic() {
+        for ending in ["shutdown", "completion", "error", "panic", "drain-error"] {
+            let fixture = Fixture::new().await;
+            fixture.close().await;
+            *fixture.spool.lock().await =
+                Spool::open(&fixture.path, "test-receiver", 1024 * 1024, 64)
+                    .await
+                    .unwrap();
+            let held = fixture.spool.lock().await;
+            let period = Duration::from_millis(100);
+            let collector = crate::Collector::new(
+                CollectorConfig {
+                    interval: period,
+                    host_id: Some("test-host".into()),
+                    namespace_id: Some("test-namespace".into()),
+                    host_visibility: false,
+                },
+                fixture.loss.clone(),
+            )
+            .unwrap();
+            let (sender, receiver) = mpsc::channel(PENDING_SCANS);
+            let probe = sender.clone();
+            let (stop, stopped) = watch::channel(false);
+            let mut tasks = JoinSet::new();
+            tasks.spawn(sample(collector, period, sender, stopped.clone()));
+            tasks.spawn(persist(
+                receiver,
+                fixture.spool.clone(),
+                fixture.loss.clone(),
+                Arc::new(Notify::new()),
+            ));
+            let (trigger, triggered) = tokio::sync::oneshot::channel();
+            let (shutdown, shutdown_requested) = tokio::sync::oneshot::channel();
+            if ending == "drain-error" {
+                let mut stopped = stopped.clone();
+                tasks.spawn(async move {
+                    stopped.changed().await.unwrap();
+                    Err(io::Error::other("worker failure").into())
+                });
+            } else if ending != "shutdown" {
+                tasks.spawn(async move {
+                    triggered.await.unwrap();
+                    assert_ne!(ending, "panic", "worker panic");
+                    if ending == "completion" {
+                        Ok(())
+                    } else {
+                        Err(io::Error::other("worker failure").into())
+                    }
+                });
+            }
+            let supervisor =
+                tokio::spawn(supervise(tasks, stop, fixture.spool.clone(), async move {
+                    let _ = shutdown_requested.await;
+                }));
+            until(async || probe.capacity() <= PENDING_SCANS - 3).await;
+            if matches!(ending, "shutdown" | "drain-error") {
+                shutdown.send(()).unwrap();
+            } else {
+                trigger.send(()).unwrap();
+            }
+            until(async || *stopped.borrow()).await;
+            let queued = PENDING_SCANS - probe.capacity();
+            drop(probe);
+            assert!(!supervisor.is_finished());
+            drop(held);
+            let result = tokio::time::timeout(Duration::from_secs(10), supervisor)
+                .await
+                .unwrap()
+                .unwrap();
+            match ending {
+                "shutdown" | "completion" => result.unwrap(),
+                "error" | "drain-error" => {
+                    assert_eq!(result.unwrap_err().to_string(), "worker failure");
+                }
+                _ => assert!(result.unwrap_err().to_string().contains("worker panic")),
+            }
+            // Reopening proves the supervisor closed and released the queue only
+            // after the volatile scans were committed; the original batch survives.
+            let mut reopened = Spool::open(&fixture.path, "test-receiver", 1024 * 1024, 64)
+                .await
+                .unwrap();
+            assert!(reopened.usage().await.unwrap().1 > queued as u64);
+            assert_eq!(
+                reopened.front().await.unwrap().unwrap().id,
+                fixture.batch.id
+            );
+            reopened.close().await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn supervisor_preserves_the_first_failure_while_joining_failed_survivors() {
+        let fixture = Fixture::new().await;
+        let (stop, mut stopped) = watch::channel(false);
+        let mut tasks = JoinSet::new();
+        tasks.spawn(async { Err(io::Error::other("initial failure").into()) });
+        tasks.spawn(async move {
+            stopped.changed().await.unwrap();
+            Err(io::Error::other("drain failure").into())
         });
-        ready.await.unwrap();
-        let period = Duration::from_millis(100);
-        let collector = crate::Collector::new(
-            CollectorConfig {
-                interval: period,
-                host_id: Some("test-host".into()),
-                namespace_id: Some("test-namespace".into()),
-                host_visibility: false,
-            },
-            fixture.loss.clone(),
-        )
+        let error = supervise(tasks, stop, fixture.spool.clone(), std::future::pending())
+            .await
+            .unwrap_err();
+        assert_eq!(error.to_string(), "initial failure");
+        let mut reopened = Spool::open(&fixture.path, "test-receiver", 1024 * 1024, 4)
+            .await
+            .unwrap();
+        assert_eq!(
+            reopened.front().await.unwrap().unwrap().id,
+            fixture.batch.id
+        );
+        reopened.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn cancelling_run_stops_workers_and_releases_the_queue_for_replay() {
+        use clap::Parser;
+        let path = std::env::temp_dir().join(format!("recount-cancel-{}", uuid::Uuid::now_v7()));
+        let receiver = Receiver::default();
+        receiver.0.lock().unwrap().unavailable = true;
+        let (endpoint, server_stop) = server(receiver.clone()).await;
+        let config = Config::try_parse_from([
+            "collector",
+            "--endpoint",
+            &endpoint.uri().to_string(),
+            "--queue-directory",
+            path.to_str().unwrap(),
+            "--interval-ms",
+            "100",
+            "--host-id",
+            "test-host",
+            "--process-namespace-id",
+            "test-namespace",
+        ])
         .unwrap();
-        let (sender, receiver) = mpsc::channel(PENDING_SCANS);
-        let probe = sender.clone();
-        let (stop, stopped) = watch::channel(false);
-        let sampler = tokio::spawn(sample(collector, period, sender, stopped));
-        let persister = tokio::spawn(persist(
-            receiver,
-            fixture.spool.clone(),
-            fixture.loss.clone(),
-            Arc::new(Notify::new()),
-        ));
-        until(|| probe.capacity() <= PENDING_SCANS - 3).await;
-        stop.send_replace(true);
-        sampler.await.unwrap().unwrap();
-        drop(probe);
-        release.send(()).unwrap();
-        holder.join().unwrap();
-        persister.await.unwrap().unwrap();
-        assert!(fixture.spool.lock().unwrap().usage().unwrap().1 >= 3);
+        let destination = config.export().unwrap().queue_destination;
+        let task = tokio::spawn(run(config));
+        until(async || !receiver.0.lock().unwrap().requests.is_empty()).await;
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        let mut reopened = None;
+        until(async || {
+            reopened = Spool::open(&path, &destination, 64 * 1024 * 1024, 1024)
+                .await
+                .ok();
+            reopened.is_some()
+        })
+        .await;
+        let mut reopened = reopened.unwrap();
+        assert!(reopened.usage().await.unwrap().1 > 0);
+        assert_eq!(
+            reopened.front().await.unwrap().unwrap().id,
+            receiver.0.lock().unwrap().requests[0].0
+        );
+        reopened.close().await.unwrap();
+        let _ = server_stop.send(());
+        std::fs::remove_dir_all(path).unwrap();
     }
 
     #[tokio::test]
     async fn lost_acknowledgement_and_restart_replay_the_exact_batch() {
-        let mut fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let receiver = Receiver::default();
         receiver.0.lock().unwrap().unavailable = true;
         let (endpoint, server_stop) = server(receiver.clone()).await;
         let (stop, task) = start(endpoint.clone(), &fixture);
-        until(|| !receiver.0.lock().unwrap().requests.is_empty()).await;
+        until(async || !receiver.0.lock().unwrap().requests.is_empty()).await;
         stop.send_replace(true);
         task.await.unwrap().unwrap();
-        assert_eq!(fixture.spool.lock().unwrap().usage().unwrap().1, 1);
+        assert_eq!(fixture.spool.lock().await.usage().await.unwrap().1, 1);
         // Close the original SQLite connection and reopen as after a restart.
-        let placeholder =
-            std::env::temp_dir().join(format!("pfe-placeholder-{}", uuid::Uuid::now_v7()));
-        fixture.spool = Arc::new(Mutex::new(
-            Spool::open(&placeholder, "temporary", 1024, 1).unwrap(),
-        ));
-        fixture.spool = Arc::new(Mutex::new(
-            Spool::open(&fixture.path, "test-receiver", 1024 * 1024, 4).unwrap(),
-        ));
-        std::fs::remove_dir_all(placeholder).unwrap();
+        fixture.close().await;
+        *fixture.spool.lock().await = Spool::open(&fixture.path, "test-receiver", 1024 * 1024, 4)
+            .await
+            .unwrap();
         receiver.0.lock().unwrap().unavailable = false;
         let (stop, task) = start(endpoint, &fixture);
-        until(|| fixture.spool.lock().unwrap().usage().unwrap().1 == 0).await;
+        until(async || fixture.spool.lock().await.usage().await.unwrap().1 == 0).await;
         stop.send_replace(true);
         task.await.unwrap().unwrap();
-        let state = receiver.0.lock().unwrap();
-        assert!(state.requests.len() >= 2);
-        for (id, created, payload) in &state.requests {
-            assert_eq!(id, &fixture.batch.id);
-            assert_eq!(created, &fixture.batch.created_ns.to_string());
-            assert_eq!(payload, &fixture.batch.payload);
+        {
+            let state = receiver.0.lock().unwrap();
+            assert!(state.requests.len() >= 2);
+            for (id, created, payload) in &state.requests {
+                assert_eq!(id, &fixture.batch.id);
+                assert_eq!(created, &fixture.batch.created_ns.to_string());
+                assert_eq!(payload, &fixture.batch.payload);
+            }
         }
         assert_eq!(fixture.loss.generation(), 0);
         let _ = server_stop.send(());
+        fixture.close().await;
     }
 
     #[tokio::test]
     async fn receiver_outage_retries_without_discarding_then_drains() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let receiver = Receiver::default();
         receiver.0.lock().unwrap().unavailable = true;
         let (endpoint, server_stop) = server(receiver.clone()).await;
         let (stop, task) = start(endpoint, &fixture);
-        until(|| receiver.0.lock().unwrap().requests.len() >= 2).await;
-        assert_eq!(fixture.spool.lock().unwrap().usage().unwrap().1, 1);
+        until(async || receiver.0.lock().unwrap().requests.len() >= 2).await;
+        assert_eq!(fixture.spool.lock().await.usage().await.unwrap().1, 1);
         assert_eq!(fixture.loss.generation(), 0);
         receiver.0.lock().unwrap().unavailable = false;
-        until(|| fixture.spool.lock().unwrap().usage().unwrap().1 == 0).await;
+        until(async || fixture.spool.lock().await.usage().await.unwrap().1 == 0).await;
         stop.send_replace(true);
         task.await.unwrap().unwrap();
         assert_eq!(fixture.loss.generation(), 0);
         let _ = server_stop.send(());
+        fixture.close().await;
     }
 
     #[tokio::test]
     async fn permanent_and_partial_rejections_are_not_retried() {
         for partial in [false, true] {
-            let fixture = Fixture::new();
+            let fixture = Fixture::new().await;
             let receiver = Receiver::default();
             {
                 let mut state = receiver.0.lock().unwrap();
@@ -698,22 +832,23 @@ mod tests {
             }
             let (endpoint, server_stop) = server(receiver.clone()).await;
             let (stop, task) = start(endpoint, &fixture);
-            until(|| fixture.spool.lock().unwrap().usage().unwrap().1 == 0).await;
+            until(async || fixture.spool.lock().await.usage().await.unwrap().1 == 0).await;
             stop.send_replace(true);
             task.await.unwrap().unwrap();
             assert_eq!(receiver.0.lock().unwrap().requests.len(), 1);
             assert_eq!(
-                fixture.spool.lock().unwrap().discarded_points().unwrap(),
+                fixture.spool.lock().await.discarded_points().await.unwrap(),
                 if partial { 2 } else { 3 }
             );
             assert_eq!(fixture.loss.generation(), 1);
             let _ = server_stop.send(());
+            fixture.close().await;
         }
     }
 
     #[tokio::test]
     async fn expired_batches_are_removed_without_export() {
-        let fixture = Fixture::new();
+        let fixture = Fixture::new().await;
         let receiver = Receiver::default();
         let (endpoint, server_stop) = server(receiver.clone()).await;
         let (stop, stopped) = watch::channel(false);
@@ -726,12 +861,16 @@ mod tests {
             stopped,
             None,
         ));
-        until(|| fixture.spool.lock().unwrap().usage().unwrap().1 == 0).await;
+        until(async || fixture.spool.lock().await.usage().await.unwrap().1 == 0).await;
         stop.send_replace(true);
         task.await.unwrap().unwrap();
         assert!(receiver.0.lock().unwrap().requests.is_empty());
-        assert_eq!(fixture.spool.lock().unwrap().discarded_points().unwrap(), 3);
+        assert_eq!(
+            fixture.spool.lock().await.discarded_points().await.unwrap(),
+            3
+        );
         let _ = server_stop.send(());
+        fixture.close().await;
     }
 
     #[test]
@@ -748,11 +887,11 @@ mod tests {
     #[tokio::test]
     async fn drain_then_rotate_keeps_old_queue_binding_and_uses_a_new_queue() {
         use clap::Parser;
-        let directory = std::env::temp_dir().join(format!("pfe-rotation-{}", uuid::Uuid::now_v7()));
+        let directory =
+            std::env::temp_dir().join(format!("recount-rotation-{}", uuid::Uuid::now_v7()));
         std::fs::create_dir(&directory).unwrap();
         let token_file = directory.join("source.token");
-        let token =
-            "pfe_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let token = "recount_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         std::fs::write(&token_file, token).unwrap();
         let queue = directory.join("old-queue");
         let receiver = Receiver::default();
@@ -781,19 +920,18 @@ mod tests {
                 config.queue_max_bytes,
                 config.queue_max_batches,
             )
+            .await
             .unwrap();
-            spool.enqueue(&batch, &loss).unwrap();
+            spool.enqueue(&batch, &loss).await.unwrap();
+            spool.close().await.unwrap();
         }
         std::fs::write(&token_file, token.replace('A', "B")).unwrap();
         assert!(run(configuration(&queue)).await.is_err());
-        assert_eq!(
-            Spool::open(&queue, &destination, 64 * 1024 * 1024, 1024)
-                .unwrap()
-                .usage()
-                .unwrap()
-                .1,
-            1
-        );
+        let mut spool = Spool::open(&queue, &destination, 64 * 1024 * 1024, 1024)
+            .await
+            .unwrap();
+        assert_eq!(spool.usage().await.unwrap().1, 1);
+        spool.close().await.unwrap();
         std::fs::write(&token_file, token).unwrap();
         receiver.0.lock().unwrap().authorization = Some(format!("Bearer {token}"));
         tokio::time::timeout(Duration::from_secs(5), run(config))
@@ -801,14 +939,11 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(receiver.0.lock().unwrap().requests.len(), 1);
-        assert_eq!(
-            Spool::open(&queue, &destination, 64 * 1024 * 1024, 1024)
-                .unwrap()
-                .usage()
-                .unwrap()
-                .1,
-            0
-        );
+        let mut spool = Spool::open(&queue, &destination, 64 * 1024 * 1024, 1024)
+            .await
+            .unwrap();
+        assert_eq!(spool.usage().await.unwrap().1, 0);
+        spool.close().await.unwrap();
         std::fs::write(&token_file, token.replace('A', "B")).unwrap();
         assert!(run(configuration(&queue)).await.is_err());
         let new_queue = directory.join("rotated-queue");
@@ -821,8 +956,10 @@ mod tests {
                 rotated_config.queue_max_bytes,
                 rotated_config.queue_max_batches,
             )
+            .await
             .unwrap();
-            spool.enqueue(&batch, &loss).unwrap();
+            spool.enqueue(&batch, &loss).await.unwrap();
+            spool.close().await.unwrap();
         }
         receiver.0.lock().unwrap().authorization =
             Some(format!("Bearer {}", token.replace('A', "B")));

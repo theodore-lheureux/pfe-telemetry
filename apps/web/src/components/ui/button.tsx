@@ -1,5 +1,6 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "cn";
+import { LoaderCircleIcon } from "lucide-react";
 import { Slot } from "radix-ui";
 import type * as React from "react";
 
@@ -46,10 +47,15 @@ function Button({
 	variant = "default",
 	size = "default",
 	asChild = false,
+	pending = false,
+	pendingLabel,
+	children,
 	...props
 }: React.ComponentProps<"button"> &
 	VariantProps<typeof buttonVariants> & {
 		asChild?: boolean;
+		pending?: boolean;
+		pendingLabel?: string;
 	}) {
 	const Comp = asChild ? Slot.Root : "button";
 
@@ -58,9 +64,41 @@ function Button({
 			data-slot="button"
 			data-variant={variant}
 			data-size={size}
+			data-pending={pending || undefined}
 			className={cn(buttonVariants({ variant, size, className }))}
 			{...props}
-		/>
+			disabled={props.disabled || pending}
+			aria-busy={pending || props["aria-busy"]}
+		>
+			{!asChild && pendingLabel ? (
+				<span className="inline-grid place-items-center">
+					<span
+						className={cn(
+							"col-start-1 row-start-1 inline-flex items-center gap-1.5",
+							pending && "invisible",
+						)}
+						aria-hidden={pending}
+					>
+						{children}
+					</span>
+					<span
+						className={cn(
+							"col-start-1 row-start-1 inline-flex items-center gap-1.5",
+							!pending && "invisible",
+						)}
+						aria-hidden={!pending}
+					>
+						<LoaderCircleIcon
+							aria-hidden="true"
+							className="size-4 motion-safe:animate-spin"
+						/>
+						{pendingLabel}
+					</span>
+				</span>
+			) : (
+				children
+			)}
+		</Comp>
 	);
 }
 

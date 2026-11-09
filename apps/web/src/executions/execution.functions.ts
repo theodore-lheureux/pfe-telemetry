@@ -1,11 +1,8 @@
-import { createMiddleware, createServerFn } from "@tanstack/react-start";
-import {
-	getRequest,
-	getRequestHeaders,
-	setResponseHeader,
-} from "@tanstack/react-start/server";
+import { createServerFn } from "@tanstack/react-start";
+import { withActor } from "../auth/actor.server";
+import { privateOperation } from "../auth/private-operation";
 import { parseProjectReference } from "../organizations/validation";
-import { getExecutionRequests } from "./request.server";
+import * as executions from "./executions.server";
 import {
 	parseCreateExecution,
 	parseExecutionList,
@@ -14,49 +11,51 @@ import {
 	parseUpdateExecution,
 } from "./validation";
 
-const privateResponse = createMiddleware({ type: "function" }).server(
-	({ next }) => {
-		setResponseHeader("Cache-Control", "private, no-store");
-		return next();
-	},
-);
 export const listExecutions = createServerFn({ method: "GET" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseExecutionList)
-	.handler(({ data }) =>
-		getExecutionRequests().listExecutions(getRequestHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			executions.listExecutions(database, actor, data),
+		),
 	);
 export const listExecutionSources = createServerFn({ method: "GET" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseProjectReference)
-	.handler(({ data }) =>
-		getExecutionRequests().listExecutionSources(getRequestHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			executions.listExecutionSources(database, actor, data),
+		),
 	);
 export const getExecution = createServerFn({ method: "GET" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseExecutionReference)
-	.handler(({ data }) =>
-		getExecutionRequests().getExecution(getRequestHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			executions.getExecution(database, actor, data),
+		),
 	);
 export const createExecution = createServerFn({ method: "POST" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseCreateExecution)
-	.handler(({ data }) =>
-		getExecutionRequests().createExecution(getRequestHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			executions.createExecution(database, actor, data),
+		),
 	);
 export const updateExecution = createServerFn({ method: "POST" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseUpdateExecution)
-	.handler(({ data }) =>
-		getExecutionRequests().updateExecution(getRequestHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			executions.updateExecution(database, actor, data),
+		),
 	);
 export const queryExecutionTelemetry = createServerFn({ method: "GET" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseTelemetryInput)
-	.handler(({ data }) =>
-		getExecutionRequests().queryExecutionTelemetry(
-			getRequestHeaders(),
-			data,
-			getRequest().signal,
+	.handler(({ data, context: { identity, database, request } }) =>
+		withActor(identity, (actor) =>
+			executions.queryExecutionTelemetry(database, actor, data, request.signal),
 		),
 	);

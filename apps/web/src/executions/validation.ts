@@ -1,5 +1,9 @@
 import { InputError } from "../lib/input-error";
-import { parseName, parseProjectReference } from "../organizations/validation";
+import {
+	parseName,
+	parseProjectReference,
+	parseRequestId,
+} from "../organizations/validation";
 import type {
 	CreateExecutionInput,
 	ExecutionReference,
@@ -88,6 +92,7 @@ export function parseCreateExecution(value: unknown): CreateExecutionInput {
 	return {
 		...parseProjectReference(value),
 		name: parseName(input.name),
+		requestId: parseRequestId(input.requestId),
 		credentialId: uuid(input.credentialId),
 		hostId,
 		startedAt,

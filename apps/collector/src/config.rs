@@ -9,10 +9,13 @@ use tonic::{
 
 use crate::{CollectorConfig, spool::Result};
 
+/// Largest whole-second duration representable as UInt64 nanoseconds.
+const MAX_U64_NANOSECONDS_DURATION_SECONDS: u64 = u64::MAX / 1_000_000_000;
+
 /// Sampling, queue and export settings read once at startup.
 #[derive(Parser)]
 #[command(
-    name = "pfe-collector",
+    name = "recount-collector",
     version,
     about = "Collect Linux node and process resource metrics"
 )]
@@ -21,21 +24,21 @@ pub struct Config {
     #[arg(long)]
     pub drain: bool,
     /// Sampling interval in milliseconds.
-    #[arg(long, env = "TELEMETRY_COLLECTOR_INTERVAL_MS", default_value_t = 1000, value_parser = clap::value_parser!(u64).range(100..=60_000))]
+    #[arg(long, env = "RECOUNT_COLLECTOR_INTERVAL_MS", default_value_t = 1000, value_parser = clap::value_parser!(u64).range(100..=60_000))]
     pub interval_ms: u64,
     /// Maximum bytes of queued Protobuf payloads.
-    #[arg(long, env = "TELEMETRY_COLLECTOR_QUEUE_MAX_BYTES", default_value_t = 64 * 1024 * 1024, value_parser = clap::value_parser!(u64).range(1024 * 1024..=1024 * 1024 * 1024))]
+    #[arg(long, env = "RECOUNT_COLLECTOR_QUEUE_MAX_BYTES", default_value_t = 64 * 1024 * 1024, value_parser = clap::value_parser!(u64).range(1024 * 1024..=1024 * 1024 * 1024))]
     pub queue_max_bytes: u64,
     /// Maximum number of queued batches.
-    #[arg(long, env = "TELEMETRY_COLLECTOR_QUEUE_MAX_BATCHES", default_value_t = 1024, value_parser = clap::value_parser!(u64).range(1..=65_536))]
+    #[arg(long, env = "RECOUNT_COLLECTOR_QUEUE_MAX_BATCHES", default_value_t = 1024, value_parser = clap::value_parser!(u64).range(1..=65_536))]
     pub queue_max_batches: u64,
     /// Maximum pending-batch age in seconds.
-    #[arg(long, env = "TELEMETRY_COLLECTOR_QUEUE_MAX_AGE_SECONDS", default_value_t = 3600, value_parser = clap::value_parser!(u64).range(1..=86_400))]
+    #[arg(long, env = "RECOUNT_COLLECTOR_QUEUE_MAX_AGE_SECONDS", default_value_t = 3600, value_parser = clap::value_parser!(u64).range(1..=MAX_U64_NANOSECONDS_DURATION_SECONDS))]
     pub queue_max_age_seconds: u64,
     /// Directory for the persistent upload queue.
     #[arg(
         long,
-        env = "TELEMETRY_COLLECTOR_QUEUE_DIRECTORY",
+        env = "RECOUNT_COLLECTOR_QUEUE_DIRECTORY",
         default_value = ".state/collector-queue"
     )]
     pub queue_directory: PathBuf,
@@ -49,20 +52,20 @@ pub struct Config {
     /// Private file containing the source bearer token.
     #[arg(
         long,
-        env = "TELEMETRY_COLLECTOR_SOURCE_TOKEN_FILE",
+        env = "RECOUNT_COLLECTOR_SOURCE_TOKEN_FILE",
         hide_env_values = true
     )]
     pub source_token_file: Option<PathBuf>,
     /// Enrolled host identity; defaults to the Linux machine ID.
-    #[arg(long, env = "TELEMETRY_COLLECTOR_HOST_ID")]
+    #[arg(long, env = "RECOUNT_COLLECTOR_HOST_ID")]
     pub host_id: Option<String>,
     /// Process namespace identity; required with restricted visibility.
-    #[arg(long, env = "TELEMETRY_COLLECTOR_PROCESS_NAMESPACE_ID")]
+    #[arg(long, env = "RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID")]
     pub process_namespace_id: Option<String>,
     /// Whether deployment has verified visibility of initial host PIDs.
     #[arg(
         long,
-        env = "TELEMETRY_COLLECTOR_VISIBILITY",
+        env = "RECOUNT_COLLECTOR_VISIBILITY",
         value_enum,
         default_value = "restricted"
     )]
@@ -144,9 +147,9 @@ mod tests {
     fn web_credential_file_is_sensitive_and_rotation_changes_queue_binding() {
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
-        let path = std::env::temp_dir().join(format!("pfe-token-test-{}", uuid::Uuid::now_v7()));
-        let token =
-            "pfe_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        let path =
+            std::env::temp_dir().join(format!("recount-token-test-{}", uuid::Uuid::now_v7()));
+        let token = "recount_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         let mut file = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -173,11 +176,40 @@ mod tests {
         for args in [
             vec!["collector", "--interval-ms", "99"],
             vec!["collector", "--queue-max-batches", "0"],
-            vec!["collector", "--queue-max-age-seconds", "86401"],
+            vec!["collector", "--queue-max-age-seconds", "18446744074"],
             vec!["collector", "--visibility", "unknown"],
         ] {
             assert!(Config::try_parse_from(args).is_err());
         }
+    }
+
+    #[test]
+    fn queue_age_is_finite_and_fits_uint64_nanoseconds() {
+        let max = MAX_U64_NANOSECONDS_DURATION_SECONDS;
+        assert!(u64::try_from(Duration::from_secs(max).as_nanos()).is_ok());
+        assert!(u64::try_from(Duration::from_secs(max + 1).as_nanos()).is_err());
+        for seconds in [1, max] {
+            let config = Config::try_parse_from([
+                "collector",
+                "--queue-max-age-seconds",
+                &seconds.to_string(),
+            ])
+            .unwrap();
+            assert_eq!(config.queue_max_age_seconds, seconds);
+        }
+        for seconds in [0, max + 1] {
+            assert!(
+                Config::try_parse_from([
+                    "collector",
+                    "--queue-max-age-seconds",
+                    &seconds.to_string(),
+                ])
+                .is_err()
+            );
+        }
+        assert!(
+            Config::try_parse_from(["collector", "--queue-max-age-seconds", "Infinity"]).is_err()
+        );
     }
 
     #[test]

@@ -41,6 +41,10 @@ html[data-variant="core"] [data-slot="alert-dialog-content"] {
 	overflow-wrap: anywhere;
 }
 
+html[data-variant="core"] [data-slot="button"][data-pending="true"] {
+	opacity: 1;
+}
+
 html[data-variant="core"] h1 {
 	font-size: 22px;
 	font-weight: 500;

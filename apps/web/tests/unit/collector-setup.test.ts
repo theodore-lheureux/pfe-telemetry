@@ -25,7 +25,7 @@ async function tokenFileExample(
 		[
 			"bash",
 			"-c",
-			`${prefix}\n${collectorTokenCommand}\ntest -z "\${PFE_TOKEN+x}"`,
+			`${prefix}\n${collectorTokenCommand}\ntest -z "\${RECOUNT_TOKEN+x}"`,
 		],
 		{
 			env: { ...process.env, HOME: home },
@@ -38,10 +38,10 @@ async function tokenFileExample(
 }
 
 test("token-file instructions establish private permissions and unset temporary input", async () => {
-	const home = await mkdtemp(join(tmpdir(), "pfe-token-example-"));
+	const home = await mkdtemp(join(tmpdir(), "recount-token-example-"));
 	try {
 		await tokenFileExample(home);
-		const directory = join(home, ".config/pfe-telemetry");
+		const directory = join(home, ".config/recount");
 		expect((await stat(directory)).mode & 0o777).toBe(0o700);
 		expect((await stat(join(directory, "collector.token"))).mode & 0o777).toBe(
 			0o600,
@@ -55,9 +55,9 @@ test("token-file instructions establish private permissions and unset temporary 
 });
 
 test("token-file instructions do not write after failed directory or file preparation", async () => {
-	const home = await mkdtemp(join(tmpdir(), "pfe-token-example-"));
+	const home = await mkdtemp(join(tmpdir(), "recount-token-example-"));
 	try {
-		const directory = join(home, ".config/pfe-telemetry");
+		const directory = join(home, ".config/recount");
 		await mkdir(directory, { recursive: true });
 		const file = join(directory, "collector.token");
 		await writeFile(file, "existing-value", { mode: 0o644 });
@@ -74,9 +74,9 @@ test("token-file instructions do not write after failed directory or file prepar
 });
 
 test("cancelling token input preserves the previous token file", async () => {
-	const home = await mkdtemp(join(tmpdir(), "pfe-token-example-"));
+	const home = await mkdtemp(join(tmpdir(), "recount-token-example-"));
 	try {
-		const directory = join(home, ".config/pfe-telemetry");
+		const directory = join(home, ".config/recount");
 		await mkdir(directory, { recursive: true });
 		const file = join(directory, "collector.token");
 		await writeFile(file, "existing-value", { mode: 0o600 });
@@ -93,8 +93,7 @@ function form(
 	return {
 		name: "Staging",
 		sourceId: "runner",
-		hosts: "host-a\r\nhost-b",
-		requireHostId: true,
+		rootId: "host-a",
 		expiresAt: "",
 		maximumSubmissionAge: "3600",
 		allowedClockSkew: "60",
@@ -103,38 +102,34 @@ function form(
 }
 
 describe("collector enrollment form", () => {
-	test("normalizes line-separated hosts and sends policy numbers", () => {
-		expect(
-			credentialFormValues(form({ hosts: " host-a \r\n\r\n host-b\n" })),
-		).toEqual({
+	test("normalizes the root and sends explicit local-process policy", () => {
+		expect(credentialFormValues(form({ rootId: " host-a " }))).toEqual({
 			name: "Staging",
 			sourceId: "runner",
-			hosts: ["host-a", "host-b"],
-			requireHostId: true,
+			rootId: "host-a",
+			rootKind: 1,
+			adapter: "linux",
+			allowedLocalKinds: [4],
+			additionalRoots: [],
+			resources: [],
 			maximumSubmissionAge: 3600,
 			allowedClockSkew: 60,
 			expiresAt: null,
 		});
 	});
-	test("requires enrolled hosts unless identification is explicitly optional", () => {
-		expect(() => credentialFormValues(form({ hosts: "" }))).toThrow(
-			"at least one",
+	test("requires an explicit enrolled root", () => {
+		expect(() => credentialFormValues(form({ rootId: "" }))).toThrow(
+			"resource identifiers",
 		);
-		const data = form({ hosts: "" });
-		data.requireHostId = false;
-		expect(credentialFormValues(data)).toMatchObject({
-			hosts: [],
-			requireHostId: false,
-		});
 	});
-	test("rejects duplicate host enrollment and invalid UTF-8 identifier lengths", () => {
-		expect(() => credentialFormValues(form({ hosts: "node\nnode" }))).toThrow(
-			"unique",
+	test("rejects multi-root text and invalid UTF-8 identifier lengths", () => {
+		expect(() => credentialFormValues(form({ rootId: "node\nnode" }))).toThrow(
+			"control",
 		);
 		expect(() =>
 			credentialFormValues(form({ sourceId: "é".repeat(65) })),
 		).toThrow("UTF-8");
-		expect(() => credentialFormValues(form({ hosts: "node\tbad" }))).toThrow(
+		expect(() => credentialFormValues(form({ rootId: "node\tbad" }))).toThrow(
 			"control",
 		);
 		expect(

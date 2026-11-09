@@ -7,11 +7,12 @@ import {
 	test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
-import type { Locale } from "@pfe/i18n";
-import type { OrganizationInvitationEmailProps } from "@pfe/transactional";
+import type { Locale } from "@recount/i18n";
+import type { OrganizationInvitationEmailProps } from "@recount/transactional";
 import { eq } from "drizzle-orm";
 import { Pool } from "pg";
 import { applyMigrations } from "../../scripts/migrations";
+import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
 import { createDatabase } from "../../src/db/client.server";
 import {
@@ -28,7 +29,11 @@ import type {
 	OrganizationRole,
 } from "../../src/organizations/contracts";
 import { parseCreateInvitationInput } from "../../src/organizations/invitation-validation";
-import { createOrganizationRequests } from "../../src/organizations/request.server";
+import * as invitationDomain from "../../src/organizations/invitations.server";
+import * as organizationDomain from "../../src/organizations/organizations.server";
+import * as projectDomain from "../../src/organizations/projects.server";
+
+import { trustedCodeSignIn } from "../auth-actors";
 
 const adminUrl = process.env.TEST_DATABASE_URL;
 if (!adminUrl) throw new Error("TEST_DATABASE_URL is required");
@@ -41,21 +46,23 @@ const origin = "http://localhost:3001";
 let databaseName: string;
 let database: ReturnType<typeof createDatabase>;
 let auth: ReturnType<typeof createAuth>;
-let operations: ReturnType<typeof createOrganizationRequests>;
-let links: Map<string, string>;
+let authInstances: ReturnType<typeof createAuth>[];
+let operations: ReturnType<typeof actorService>;
+let codes: Map<string, string>;
 let actorCount: number;
 let invitationEmails: OrganizationInvitationEmailProps[];
 let failInvitationDelivery: boolean;
 let signInLocales: Locale[];
 
 beforeEach(async () => {
-	databaseName = `pfe_org_test_${randomUUID().replaceAll("-", "")}`;
+	authInstances = [];
+	databaseName = `recount_org_test_${randomUUID().replaceAll("-", "")}`;
 	await admin.query(`CREATE DATABASE "${databaseName}"`);
 	const url = new URL(adminUrl);
 	url.pathname = `/${databaseName}`;
 	await applyMigrations(url.toString());
 	database = createDatabase({ connectionString: url.toString(), max: 4 });
-	links = new Map();
+	codes = new Map();
 	actorCount = 0;
 	invitationEmails = [];
 	failInvitationDelivery = false;
@@ -69,8 +76,8 @@ beforeEach(async () => {
 		},
 		database.db,
 		{
-			sendSignInLink: async (email, url, locale) => {
-				links.set(email, url);
+			sendSignInCode: async (email, code, locale) => {
+				codes.set(email, code);
 				signInLocales.push(locale);
 			},
 			sendOrganizationInvitation: async (props) => {
@@ -79,15 +86,16 @@ beforeEach(async () => {
 			},
 		},
 	);
-	operations = createOrganizationRequests(database.db, auth);
+	authInstances.push(auth);
+	operations = actorService(auth);
 });
 
 describe("native organization invitations", () => {
-	test("carries the initiating locale through native invitation creation, resend and magic links", async () => {
+	test("carries the initiating locale through native invitation creation, resend and email codes", async () => {
 		const owner = await actor();
 		const organization = await createOrganization(owner);
 		const headers = new Headers(owner.headers);
-		headers.set("cookie", `${headers.get("cookie")}; pfe_locale=fr`);
+		headers.set("cookie", `${headers.get("cookie")}; recount_locale=fr`);
 		const initiatingRequest = () =>
 			new Request(`${origin}/_serverFn/test-invitation`, {
 				method: "POST",
@@ -99,44 +107,58 @@ describe("native organization invitations", () => {
 			role: "member" as const,
 		};
 		const created = data(
-			await operations.createInvitation(headers, input, initiatingRequest()),
+			await operations(headers, () =>
+				invitationDomain.createInvitation(
+					auth,
+					headers,
+					input,
+					initiatingRequest(),
+				),
+			),
 		);
 		const resent = data(
-			await operations.createInvitation(
-				headers,
-				{ ...input, resend: true },
-				initiatingRequest(),
+			await operations(headers, () =>
+				invitationDomain.createInvitation(
+					auth,
+					headers,
+					{ ...input, resend: true },
+					initiatingRequest(),
+				),
 			),
 		);
 		expect(resent.id).toBe(created.id);
 		expect(invitationEmails.map((email) => email.locale)).toEqual(["fr", "fr"]);
 		headers.set(
 			"cookie",
-			`${owner.headers.get("cookie")}; pfe_locale=unsupported`,
+			`${owner.headers.get("cookie")}; recount_locale=unsupported`,
 		);
 		data(
-			await operations.createInvitation(
-				headers,
-				{ ...input, resend: true },
-				initiatingRequest(),
+			await operations(headers, () =>
+				invitationDomain.createInvitation(
+					auth,
+					headers,
+					{ ...input, resend: true },
+					initiatingRequest(),
+				),
 			),
 		);
 		expect(invitationEmails.at(-1)?.locale).toBe("en");
 		const response = await auth.handler(
-			new Request(`${origin}/api/auth/sign-in/magic-link`, {
+			new Request(`${origin}/api/auth/email-otp/send-verification-otp`, {
 				method: "POST",
 				headers: {
 					origin,
 					"content-type": "application/json",
-					cookie: "pfe_locale=fr",
+					cookie: "recount_locale=fr",
 				},
 				body: JSON.stringify({
 					email: "french-signin@example.invalid",
-					callbackURL: "/account",
+					type: "sign-in",
 				}),
 			}),
 		);
 		expect(response.status).toBe(200);
+		await auth.emailDelivery.drain();
 		expect(signInLocales.at(-1)).toBe("fr");
 	});
 
@@ -144,13 +166,16 @@ describe("native organization invitations", () => {
 		const owner = await actor();
 		const organization = await createOrganization(owner);
 		const created = data(
-			await operations.createInvitation(
-				owner.headers,
-				parseCreateInvitationInput({
-					organizationId: organization.id,
-					email: "  USER-2@EXAMPLE.INVALID  ",
-					role: "member",
-				}),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(
+					auth,
+					owner.headers,
+					parseCreateInvitationInput({
+						organizationId: organization.id,
+						email: "  USER-2@EXAMPLE.INVALID  ",
+						role: "member",
+					}),
+				),
 			),
 		);
 		expect(invitationEmails).toEqual([
@@ -167,19 +192,35 @@ describe("native organization invitations", () => {
 		const recipient = await actor();
 		const reference = { invitationId: created.id };
 		expect(
-			data(await operations.inspectInvitation(recipient.headers, reference)),
+			data(
+				await operations(recipient.headers, () =>
+					invitationDomain.inspectInvitation(
+						auth,
+						recipient.headers,
+						reference,
+					),
+				),
+			),
 		).toMatchObject({
 			...created,
 			organizationName: organization.name,
 			organizationSlug: organization.slug,
 			inviterEmail: owner.email,
 		});
-		expect(data(await operations.listOrganizations(recipient.headers))).toEqual(
-			[],
-		);
+		expect(
+			data(
+				await operations(recipient.headers, (actor) =>
+					organizationDomain.listOrganizations(database.db, actor),
+				),
+			),
+		).toEqual([]);
 		const outcomes = await Promise.all([
-			operations.acceptInvitation(recipient.headers, reference),
-			operations.acceptInvitation(recipient.headers, reference),
+			operations(recipient.headers, () =>
+				invitationDomain.acceptInvitation(auth, recipient.headers, reference),
+			),
+			operations(recipient.headers, () =>
+				invitationDomain.acceptInvitation(auth, recipient.headers, reference),
+			),
 		]);
 		expect(outcomes.filter((outcome) => outcome.data)).toHaveLength(1);
 		const accepted = outcomes.find((outcome) => outcome.data)?.data;
@@ -199,22 +240,44 @@ describe("native organization invitations", () => {
 				.activeOrganizationId,
 		).toBe(organization.id);
 		expect(
-			data(await operations.listProjects(recipient.headers, organization.id)),
+			data(
+				await operations(recipient.headers, (actor) =>
+					projectDomain.listProjects(database.db, actor, organization.id),
+				),
+			),
 		).toEqual([]);
 		expect(
-			(await operations.inspectInvitation(recipient.headers, reference)).error
-				?.code,
-		).toBe("NOT_FOUND");
-		expect(
-			(await operations.rejectInvitation(recipient.headers, reference)).error
-				?.code,
+			(
+				await operations(recipient.headers, () =>
+					invitationDomain.inspectInvitation(
+						auth,
+						recipient.headers,
+						reference,
+					),
+				)
+			).error?.code,
 		).toBe("NOT_FOUND");
 		expect(
 			(
-				await operations.cancelInvitation(owner.headers, {
-					...reference,
-					organizationId: organization.id,
-				})
+				await operations(recipient.headers, () =>
+					invitationDomain.rejectInvitation(auth, recipient.headers, reference),
+				)
+			).error?.code,
+		).toBe("NOT_FOUND");
+		expect(
+			(
+				await operations(owner.headers, (actor) =>
+					invitationDomain.cancelInvitation(
+						database.db,
+						auth,
+						owner.headers,
+						actor,
+						{
+							...reference,
+							organizationId: organization.id,
+						},
+					),
+				)
 			).error?.code,
 		).toBe("CONFLICT");
 	});
@@ -234,53 +297,115 @@ describe("native organization invitations", () => {
 			role: "admin" as const,
 		};
 		expect(
-			(await operations.createInvitation(ordinary.headers, input)).error?.code,
+			(
+				await operations(ordinary.headers, () =>
+					invitationDomain.createInvitation(auth, ordinary.headers, input),
+				)
+			).error?.code,
 		).toBe("FORBIDDEN");
 		expect(
-			(await operations.createInvitation(outsider.headers, input)).error,
+			(
+				await operations(outsider.headers, () =>
+					invitationDomain.createInvitation(auth, outsider.headers, input),
+				)
+			).error,
 		).not.toBeNull();
 		expect(
 			(
-				await operations.createInvitation(administrator.headers, {
-					...input,
-					role: "owner",
-				})
+				await operations(administrator.headers, () =>
+					invitationDomain.createInvitation(auth, administrator.headers, {
+						...input,
+						role: "owner",
+					}),
+				)
 			).error?.code,
 		).toBe("FORBIDDEN");
 		const created = data(
-			await operations.createInvitation(administrator.headers, input),
+			await operations(administrator.headers, () =>
+				invitationDomain.createInvitation(auth, administrator.headers, input),
+			),
 		);
 		// Native Better Auth permits organization members to list invitations.
 		expect(
-			data(await operations.listInvitations(ordinary.headers, organization.id)),
+			data(
+				await operations(ordinary.headers, () =>
+					invitationDomain.listInvitations(
+						auth,
+						ordinary.headers,
+						organization.id,
+					),
+				),
+			),
 		).toEqual([created]);
 		expect(
-			(await operations.listInvitations(outsider.headers, organization.id))
-				.error?.code,
+			(
+				await operations(outsider.headers, () =>
+					invitationDomain.listInvitations(
+						auth,
+						outsider.headers,
+						organization.id,
+					),
+				)
+			).error?.code,
 		).toBe("FORBIDDEN");
 		const reference = {
 			organizationId: organization.id,
 			invitationId: created.id,
 		};
 		expect(
-			(await operations.cancelInvitation(ordinary.headers, reference)).error
-				?.code,
+			(
+				await operations(ordinary.headers, (actor) =>
+					invitationDomain.cancelInvitation(
+						database.db,
+						auth,
+						ordinary.headers,
+						actor,
+						reference,
+					),
+				)
+			).error?.code,
 		).toBe("FORBIDDEN");
 		expect(
-			(await operations.cancelInvitation(outsider.headers, reference)).error
-				?.code,
-		).toBe("NOT_FOUND");
-		expect(
 			(
-				await operations.cancelInvitation(owner.headers, {
-					...reference,
-					organizationId: other.id,
-				})
+				await operations(outsider.headers, (actor) =>
+					invitationDomain.cancelInvitation(
+						database.db,
+						auth,
+						outsider.headers,
+						actor,
+						reference,
+					),
+				)
 			).error?.code,
 		).toBe("NOT_FOUND");
 		expect(
-			data(await operations.cancelInvitation(administrator.headers, reference))
-				.status,
+			(
+				await operations(owner.headers, (actor) =>
+					invitationDomain.cancelInvitation(
+						database.db,
+						auth,
+						owner.headers,
+						actor,
+						{
+							...reference,
+							organizationId: other.id,
+						},
+					),
+				)
+			).error?.code,
+		).toBe("NOT_FOUND");
+		expect(
+			data(
+				await operations(administrator.headers, (actor) =>
+					invitationDomain.cancelInvitation(
+						database.db,
+						auth,
+						administrator.headers,
+						actor,
+						reference,
+					),
+				),
+			).status,
 		).toBe("canceled");
 	});
 
@@ -296,7 +421,9 @@ describe("native organization invitations", () => {
 			role: "owner" as const,
 		};
 		const created = data(
-			await operations.createInvitation(owner.headers, input),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, input),
+			),
 		);
 		for (const role of ["admin,owner", ["admin", "owner"], "unknown"]) {
 			expect(
@@ -335,39 +462,54 @@ describe("native organization invitations", () => {
 		).toBe(403);
 		expect(
 			(
-				await operations.createInvitation(administrator.headers, {
-					...input,
-					role: "member",
-					resend: true,
-				})
+				await operations(administrator.headers, () =>
+					invitationDomain.createInvitation(auth, administrator.headers, {
+						...input,
+						role: "member",
+						resend: true,
+					}),
+				)
 			).error?.code,
 		).toBe("INVALID_INPUT");
 		expect(
 			(
-				await operations.createInvitation(administrator.headers, {
-					...input,
-					resend: true,
-				})
+				await operations(administrator.headers, () =>
+					invitationDomain.createInvitation(auth, administrator.headers, {
+						...input,
+						resend: true,
+					}),
+				)
 			).error?.code,
 		).toBe("FORBIDDEN");
 		expect(invitationEmails).toHaveLength(1);
 		const resent = data(
-			await operations.createInvitation(owner.headers, {
-				...input,
-				resend: true,
-			}),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, {
+					...input,
+					resend: true,
+				}),
+			),
 		);
 		expect(resent.id).toBe(created.id);
 		expect(invitationEmails).toHaveLength(2);
 		expect(await database.db.select().from(invitation)).toHaveLength(1);
 		data(
-			await operations.acceptInvitation(recipient.headers, {
-				invitationId: created.id,
-			}),
+			await operations(recipient.headers, () =>
+				invitationDomain.acceptInvitation(auth, recipient.headers, {
+					invitationId: created.id,
+				}),
+			),
 		);
 		expect(
-			data(await operations.getOrganization(recipient.headers, organization.id))
-				.role,
+			data(
+				await operations(recipient.headers, (actor) =>
+					organizationDomain.getOrganization(
+						database.db,
+						actor,
+						organization.id,
+					),
+				),
+			).role,
 		).toBe("owner");
 		expect(
 			(await database.db.select().from(organizationOwnerGuard))[0].ownerCount,
@@ -380,37 +522,51 @@ describe("native organization invitations", () => {
 		const stranger = await actor();
 		const organization = await createOrganization(owner);
 		const created = data(
-			await operations.createInvitation(owner.headers, {
-				organizationId: organization.id,
-				email: recipient.email,
-				role: "member",
-			}),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, {
+					organizationId: organization.id,
+					email: recipient.email,
+					role: "member",
+				}),
+			),
 		);
 		const reference = { invitationId: created.id };
 		for (const operation of [
-			operations.inspectInvitation,
-			operations.acceptInvitation,
-			operations.rejectInvitation,
+			invitationDomain.inspectInvitation,
+			invitationDomain.acceptInvitation,
+			invitationDomain.rejectInvitation,
 		]) {
-			expect((await operation(new Headers(), reference)).error?.code).toBe(
-				"UNAUTHENTICATED",
-			);
-			expect((await operation(stranger.headers, reference)).error?.code).toBe(
-				"FORBIDDEN",
-			);
+			expect(
+				(
+					await operations<unknown>(new Headers(), () =>
+						operation(auth, new Headers(), reference),
+					)
+				).error?.code,
+			).toBe("UNAUTHENTICATED");
+			expect(
+				(
+					await operations<unknown>(stranger.headers, () =>
+						operation(auth, stranger.headers, reference),
+					)
+				).error?.code,
+			).toBe("FORBIDDEN");
 		}
 		await database.db
 			.update(user)
 			.set({ emailVerified: false })
 			.where(eq(user.id, recipient.userId));
 		for (const operation of [
-			operations.inspectInvitation,
-			operations.acceptInvitation,
-			operations.rejectInvitation,
+			invitationDomain.inspectInvitation,
+			invitationDomain.acceptInvitation,
+			invitationDomain.rejectInvitation,
 		]) {
-			expect((await operation(recipient.headers, reference)).error?.code).toBe(
-				"FORBIDDEN",
-			);
+			expect(
+				(
+					await operations<unknown>(recipient.headers, () =>
+						operation(auth, recipient.headers, reference),
+					)
+				).error?.code,
+			).toBe("FORBIDDEN");
 		}
 		for (const path of [
 			"/organization/accept-invitation",
@@ -430,11 +586,18 @@ describe("native organization invitations", () => {
 			.set({ emailVerified: true })
 			.where(eq(user.id, recipient.userId));
 		expect(
-			data(await operations.rejectInvitation(recipient.headers, reference)),
+			data(
+				await operations(recipient.headers, () =>
+					invitationDomain.rejectInvitation(auth, recipient.headers, reference),
+				),
+			),
 		).toEqual(reference);
 		expect(
-			(await operations.acceptInvitation(recipient.headers, reference)).error
-				?.code,
+			(
+				await operations(recipient.headers, () =>
+					invitationDomain.acceptInvitation(auth, recipient.headers, reference),
+				)
+			).error?.code,
 		).toBe("NOT_FOUND");
 		expect(
 			await database.db
@@ -453,7 +616,9 @@ describe("native organization invitations", () => {
 			role: "member" as const,
 		};
 		const created = data(
-			await operations.createInvitation(owner.headers, input),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, input),
+			),
 		);
 		await database.db
 			.update(user)
@@ -475,7 +640,11 @@ describe("native organization invitations", () => {
 			body: { code: "VERIFIED_EMAIL_REQUIRED" },
 		});
 		expect(
-			(await operations.createInvitation(owner.headers, input)).error,
+			(
+				await operations(owner.headers, () =>
+					invitationDomain.createInvitation(auth, owner.headers, input),
+				)
+			).error,
 		).toMatchObject({ code: "FORBIDDEN", reason: "VERIFIED_EMAIL_REQUIRED" });
 		expect(
 			(
@@ -505,11 +674,13 @@ describe("native organization invitations", () => {
 		const owner = await actor();
 		const organization = await createOrganization(owner);
 		data(
-			await operations.createInvitation(owner.headers, {
-				organizationId: organization.id,
-				email: "new@example.invalid",
-				role: "member",
-			}),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, {
+					organizationId: organization.id,
+					email: "new@example.invalid",
+					role: "member",
+				}),
+			),
 		);
 		for (const query of [
 			`organizationId=${organization.id}`,
@@ -549,7 +720,9 @@ describe("native organization invitations", () => {
 			role: "owner" as const,
 		};
 		const created = data(
-			await operations.createInvitation(owner.headers, input),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, input),
+			),
 		);
 		const bypass = await auth.handler(
 			post(
@@ -577,10 +750,12 @@ describe("native organization invitations", () => {
 			.set({ expiresAt: new Date(Date.now() - 1000) })
 			.where(eq(invitation.id, created.id));
 		const replacement = data(
-			await operations.createInvitation(administrator.headers, {
-				...input,
-				role: "member",
-			}),
+			await operations(administrator.headers, () =>
+				invitationDomain.createInvitation(auth, administrator.headers, {
+					...input,
+					role: "member",
+				}),
+			),
 		);
 		expect(replacement.id).not.toBe(created.id);
 		const resent = await auth.handler(
@@ -605,7 +780,9 @@ describe("native organization invitations", () => {
 			role: "member" as const,
 		};
 		const created = data(
-			await operations.createInvitation(owner.headers, input),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, input),
+			),
 		);
 		await database.db
 			.update(invitation)
@@ -624,37 +801,54 @@ describe("native organization invitations", () => {
 		).toBe(400);
 		for (const invitationId of ["missing-invitation", created.id]) {
 			for (const operation of [
-				operations.inspectInvitation,
-				operations.acceptInvitation,
-				operations.rejectInvitation,
+				invitationDomain.inspectInvitation,
+				invitationDomain.acceptInvitation,
+				invitationDomain.rejectInvitation,
 			]) {
 				expect(
-					(await operation(recipient.headers, { invitationId })).error?.code,
+					(
+						await operations<unknown>(recipient.headers, () =>
+							operation(auth, recipient.headers, { invitationId }),
+						)
+					).error?.code,
 				).toBe("NOT_FOUND");
 			}
 		}
 		const renewed = data(
-			await operations.createInvitation(owner.headers, {
-				...input,
-				resend: true,
-			}),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, {
+					...input,
+					resend: true,
+				}),
+			),
 		);
 		expect(renewed.expiresAt.getTime()).toBeGreaterThan(Date.now());
 		expect(renewed.id).not.toBe(created.id);
 		data(
-			await operations.cancelInvitation(owner.headers, {
-				organizationId: organization.id,
-				invitationId: renewed.id,
-			}),
+			await operations(owner.headers, (actor) =>
+				invitationDomain.cancelInvitation(
+					database.db,
+					auth,
+					owner.headers,
+					actor,
+					{
+						organizationId: organization.id,
+						invitationId: renewed.id,
+					},
+				),
+			),
 		);
 		for (const operation of [
-			operations.inspectInvitation,
-			operations.acceptInvitation,
-			operations.rejectInvitation,
+			invitationDomain.inspectInvitation,
+			invitationDomain.acceptInvitation,
+			invitationDomain.rejectInvitation,
 		]) {
 			expect(
-				(await operation(recipient.headers, { invitationId: renewed.id })).error
-					?.code,
+				(
+					await operations<unknown>(recipient.headers, () =>
+						operation(auth, recipient.headers, { invitationId: renewed.id }),
+					)
+				).error?.code,
 			).toBe("NOT_FOUND");
 		}
 		expect(
@@ -675,11 +869,15 @@ describe("native organization invitations", () => {
 		};
 		failInvitationDelivery = true;
 		const created = data(
-			await operations.createInvitation(owner.headers, input),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, input),
+			),
 		);
 		expect(invitationEmails).toHaveLength(0);
 		const pending = data(
-			await operations.listInvitations(owner.headers, organization.id),
+			await operations(owner.headers, () =>
+				invitationDomain.listInvitations(auth, owner.headers, organization.id),
+			),
 		);
 		expect(pending).toHaveLength(1);
 		expect(pending[0].status).toBe("pending");
@@ -687,10 +885,12 @@ describe("native organization invitations", () => {
 		failInvitationDelivery = false;
 		expect(
 			data(
-				await operations.createInvitation(owner.headers, {
-					...input,
-					resend: true,
-				}),
+				await operations(owner.headers, () =>
+					invitationDomain.createInvitation(auth, owner.headers, {
+						...input,
+						resend: true,
+					}),
+				),
 			).id,
 		).toBe(pending[0].id);
 		expect(invitationEmails).toHaveLength(1);
@@ -704,24 +904,36 @@ describe("native organization invitations", () => {
 			email: "new@example.invalid",
 			role: "member" as const,
 		};
-		data(await operations.createInvitation(owner.headers, input));
-		expect(
-			(await operations.createInvitation(owner.headers, input)).error?.code,
-		).toBe("CONFLICT");
+		data(
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, input),
+			),
+		);
 		expect(
 			(
-				await operations.createInvitation(owner.headers, {
-					...input,
-					email: owner.email,
-				})
+				await operations(owner.headers, () =>
+					invitationDomain.createInvitation(auth, owner.headers, input),
+				)
 			).error?.code,
 		).toBe("CONFLICT");
 		expect(
 			(
-				await operations.createInvitation(owner.headers, {
-					...input,
-					email: "not-an-email",
-				})
+				await operations(owner.headers, () =>
+					invitationDomain.createInvitation(auth, owner.headers, {
+						...input,
+						email: owner.email,
+					}),
+				)
+			).error?.code,
+		).toBe("CONFLICT");
+		expect(
+			(
+				await operations(owner.headers, () =>
+					invitationDomain.createInvitation(auth, owner.headers, {
+						...input,
+						email: "not-an-email",
+					}),
+				)
 			).error?.code,
 		).toBe("INVALID_INPUT");
 		expect(invitationEmails).toHaveLength(1);
@@ -735,21 +947,29 @@ describe("native organization invitations", () => {
 			email: "new@example.invalid",
 			role: "member" as const,
 		};
-		data(await operations.createInvitation(owner.headers, input));
+		data(
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, input),
+			),
+		);
 		for (let attempt = 1; attempt < 10; attempt++) {
 			data(
-				await operations.createInvitation(owner.headers, {
-					...input,
-					resend: true,
-				}),
+				await operations(owner.headers, () =>
+					invitationDomain.createInvitation(auth, owner.headers, {
+						...input,
+						resend: true,
+					}),
+				),
 			);
 		}
 		expect(
 			(
-				await operations.createInvitation(owner.headers, {
-					...input,
-					resend: true,
-				})
+				await operations(owner.headers, () =>
+					invitationDomain.createInvitation(auth, owner.headers, {
+						...input,
+						resend: true,
+					}),
+				)
 			).error?.code,
 		).toBe("RATE_LIMITED");
 		expect(
@@ -769,10 +989,12 @@ describe("native organization invitations", () => {
 			.set({ lastRequest: Date.now() - 60_001 })
 			.where(eq(rateLimit.key, `invitation-send:${owner.userId}`));
 		data(
-			await operations.createInvitation(owner.headers, {
-				...input,
-				resend: true,
-			}),
+			await operations(owner.headers, () =>
+				invitationDomain.createInvitation(auth, owner.headers, {
+					...input,
+					resend: true,
+				}),
+			),
 		);
 		expect(invitationEmails).toHaveLength(11);
 	});
@@ -789,22 +1011,27 @@ describe("native organization invitations", () => {
 			},
 			database.db,
 			{
-				sendSignInLink: async () => {
-					throw new Error("Unexpected sign-in email");
-				},
+				sendSignInCode: async () => {},
 				sendOrganizationInvitation: async (props) => {
 					invitationEmails.push(props);
 				},
 			},
 		);
-		const second = createOrganizationRequests(database.db, secondAuth);
+		authInstances.push(secondAuth);
+		const second = actorService(secondAuth);
 		const outcomes = await Promise.all(
 			Array.from({ length: 15 }, (_, index) =>
-				(index % 2 ? operations : second).createInvitation(owner.headers, {
-					organizationId: organization.id,
-					email: `concurrent-${index}@example.invalid`,
-					role: "member",
-				}),
+				(index % 2 ? operations : second)(owner.headers, () =>
+					invitationDomain.createInvitation(
+						index % 2 ? auth : secondAuth,
+						owner.headers,
+						{
+							organizationId: organization.id,
+							email: `concurrent-${index}@example.invalid`,
+							role: "member",
+						},
+					),
+				),
 			),
 		);
 		expect(outcomes.filter((outcome) => outcome.data)).toHaveLength(10);
@@ -830,11 +1057,13 @@ describe("native organization invitations", () => {
 			"admin",
 		);
 		const created = data(
-			await operations.createInvitation(administrator.headers, {
-				organizationId: organization.id,
-				email: "new@example.invalid",
-				role: "member",
-			}),
+			await operations(administrator.headers, () =>
+				invitationDomain.createInvitation(auth, administrator.headers, {
+					organizationId: organization.id,
+					email: "new@example.invalid",
+					role: "member",
+				}),
+			),
 		);
 		await auth.api.removeMember({
 			headers: owner.headers,
@@ -844,21 +1073,43 @@ describe("native organization invitations", () => {
 			},
 		});
 		expect(
-			(await operations.listInvitations(administrator.headers, organization.id))
-				.error?.code,
+			(
+				await operations(administrator.headers, () =>
+					invitationDomain.listInvitations(
+						auth,
+						administrator.headers,
+						organization.id,
+					),
+				)
+			).error?.code,
 		).toBe("FORBIDDEN");
 		expect(
 			(
-				await operations.cancelInvitation(administrator.headers, {
-					organizationId: organization.id,
-					invitationId: created.id,
-				})
+				await operations(administrator.headers, (actor) =>
+					invitationDomain.cancelInvitation(
+						database.db,
+						auth,
+						administrator.headers,
+						actor,
+						{
+							organizationId: organization.id,
+							invitationId: created.id,
+						},
+					),
+				)
 			).error?.code,
 		).toBe("NOT_FOUND");
 		await auth.handler(post("/sign-out", {}, owner.headers));
 		expect(
-			(await operations.listInvitations(owner.headers, organization.id)).error
-				?.code,
+			(
+				await operations(owner.headers, () =>
+					invitationDomain.listInvitations(
+						auth,
+						owner.headers,
+						organization.id,
+					),
+				)
+			).error?.code,
 		).toBe("UNAUTHENTICATED");
 	});
 
@@ -969,6 +1220,9 @@ describe("native organization invitations", () => {
 });
 
 afterEach(async () => {
+	await Promise.all(
+		authInstances.map((instance) => instance.emailDelivery.close()),
+	);
 	await database?.pool.end();
 	await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
 });
@@ -996,17 +1250,12 @@ function data<T>(result: OperationResult<T>): T {
 async function actor() {
 	actorCount++;
 	const email = `user-${actorCount}@example.invalid`;
-	const requested = await auth.handler(
-		post(
-			"/sign-in/magic-link",
-			{ email, callbackURL: "/account" },
-			new Headers({ "x-forwarded-for": `192.0.2.${actorCount}` }),
-		),
+	const signedIn = await trustedCodeSignIn(
+		auth,
+		email,
+		(email) => codes.get(email),
+		new Headers({ origin }),
 	);
-	expect(requested.status).toBe(200);
-	const link = links.get(email);
-	if (!link) throw new Error("Expected test sign-in link");
-	const signedIn = await auth.handler(new Request(link));
 	const cookie = signedIn.headers
 		.getSetCookie()
 		.map((value) => value.split(";")[0])
@@ -1022,10 +1271,12 @@ async function createOrganization(
 	slug = "test-org",
 ) {
 	return data(
-		await operations.createOrganization(owner.headers, {
-			name: "Test organization",
-			slug,
-		}),
+		await operations(owner.headers, () =>
+			organizationDomain.createOrganization(auth, owner.headers, {
+				name: "Test organization",
+				slug,
+			}),
+		),
 	);
 }
 
@@ -1047,28 +1298,47 @@ describe("organization and project boundaries", () => {
 		expect(organization.role).toBe("owner");
 		expect(
 			(
-				await operations.createOrganization(owner.headers, {
-					name: "Duplicate",
-					slug: organization.slug,
-				})
+				await operations(owner.headers, () =>
+					organizationDomain.createOrganization(auth, owner.headers, {
+						name: "Duplicate",
+						slug: organization.slug,
+					}),
+				)
 			).error?.code,
 		).toBe("CONFLICT");
-		expect(data(await operations.listOrganizations(owner.headers))).toEqual([
-			organization,
-		]);
-		expect(data(await operations.listOrganizations(outsider.headers))).toEqual(
-			[],
-		);
 		expect(
-			(await operations.getOrganization(outsider.headers, organization.id))
-				.error?.code,
+			data(
+				await operations(owner.headers, (actor) =>
+					organizationDomain.listOrganizations(database.db, actor),
+				),
+			),
+		).toEqual([organization]);
+		expect(
+			data(
+				await operations(outsider.headers, (actor) =>
+					organizationDomain.listOrganizations(database.db, actor),
+				),
+			),
+		).toEqual([]);
+		expect(
+			(
+				await operations(outsider.headers, (actor) =>
+					organizationDomain.getOrganization(
+						database.db,
+						actor,
+						organization.id,
+					),
+				)
+			).error?.code,
 		).toBe("NOT_FOUND");
 		expect(
 			(
-				await operations.createOrganization(new Headers(), {
-					name: "Denied",
-					slug: "denied",
-				})
+				await operations(new Headers(), () =>
+					organizationDomain.createOrganization(auth, new Headers(), {
+						name: "Denied",
+						slug: "denied",
+					}),
+				)
 			).error?.code,
 		).toBe("UNAUTHENTICATED");
 		await database.db
@@ -1077,10 +1347,12 @@ describe("organization and project boundaries", () => {
 			.where(eq(user.id, outsider.userId));
 		expect(
 			(
-				await operations.createOrganization(outsider.headers, {
-					name: "Denied",
-					slug: "denied",
-				})
+				await operations(outsider.headers, () =>
+					organizationDomain.createOrganization(auth, outsider.headers, {
+						name: "Denied",
+						slug: "denied",
+					}),
+				)
 			).error?.code,
 		).toBe("FORBIDDEN");
 		const invalid = await auth.handler(
@@ -1105,11 +1377,14 @@ describe("organization and project boundaries", () => {
 			"admin",
 		);
 		const project = data(
-			await operations.createProject(owner.headers, {
-				organizationId: organization.id,
-				name: "Private project",
-				slug: "private-project",
-			}),
+			await operations(owner.headers, (actor) =>
+				projectDomain.createProject(database.db, actor, {
+					requestId: crypto.randomUUID(),
+					organizationId: organization.id,
+					name: "Private project",
+					slug: "private-project",
+				}),
+			),
 		);
 		const reference = {
 			organizationId: organization.id,
@@ -1117,101 +1392,137 @@ describe("organization and project boundaries", () => {
 		};
 		expect(
 			data(
-				await operations.listProjects(collaborator.headers, organization.id),
+				await operations(collaborator.headers, (actor) =>
+					projectDomain.listProjects(database.db, actor, organization.id),
+				),
 			),
 		).toEqual([]);
 		expect(
-			(await operations.getProject(collaborator.headers, reference)).error
-				?.code,
+			(
+				await operations(collaborator.headers, (actor) =>
+					projectDomain.getProject(database.db, actor, reference),
+				)
+			).error?.code,
 		).toBe("NOT_FOUND");
 		expect(
 			(
-				await operations.createProject(collaborator.headers, {
-					organizationId: organization.id,
-					name: "Denied",
-					slug: "denied",
-				})
+				await operations(collaborator.headers, (actor) =>
+					projectDomain.createProject(database.db, actor, {
+						requestId: crypto.randomUUID(),
+						organizationId: organization.id,
+						name: "Denied",
+						slug: "denied",
+					}),
+				)
 			).error?.code,
 		).toBe("FORBIDDEN");
 		for (const role of ["viewer", "member"] as const) {
 			data(
-				await operations.setProjectMember(owner.headers, {
-					...reference,
-					memberId: collaboratorMember.id,
-					role,
-				}),
+				await operations(owner.headers, (actor) =>
+					projectDomain.setProjectMember(database.db, actor, {
+						...reference,
+						memberId: collaboratorMember.id,
+						role,
+					}),
+				),
 			);
 			expect(
-				data(await operations.getProject(collaborator.headers, reference)).role,
+				data(
+					await operations(collaborator.headers, (actor) =>
+						projectDomain.getProject(database.db, actor, reference),
+					),
+				).role,
 			).toBe(role);
 			expect(
 				(
-					await operations.updateProject(collaborator.headers, {
-						...reference,
-						name: "Denied",
-					})
+					await operations(collaborator.headers, (actor) =>
+						projectDomain.updateProject(database.db, actor, {
+							...reference,
+							name: "Denied",
+						}),
+					)
 				).error?.code,
 			).toBe("FORBIDDEN");
 			expect(
 				(
-					await operations.setProjectMember(collaborator.headers, {
-						...reference,
-						memberId: collaboratorMember.id,
-						role: "admin",
-					})
+					await operations(collaborator.headers, (actor) =>
+						projectDomain.setProjectMember(database.db, actor, {
+							...reference,
+							memberId: collaboratorMember.id,
+							role: "admin",
+						}),
+					)
 				).error?.code,
 			).toBe("FORBIDDEN");
 		}
 		data(
-			await operations.setProjectMember(owner.headers, {
-				...reference,
-				memberId: collaboratorMember.id,
-				role: "admin",
-			}),
+			await operations(owner.headers, (actor) =>
+				projectDomain.setProjectMember(database.db, actor, {
+					...reference,
+					memberId: collaboratorMember.id,
+					role: "admin",
+				}),
+			),
 		);
 		expect(
 			data(
-				await operations.updateProject(collaborator.headers, {
-					...reference,
-					name: "Updated",
-				}),
+				await operations(collaborator.headers, (actor) =>
+					projectDomain.updateProject(database.db, actor, {
+						...reference,
+						name: "Updated",
+					}),
+				),
 			).name,
 		).toBe("Updated");
 		data(
-			await operations.setProjectMember(owner.headers, {
-				...reference,
-				memberId: adminMember.id,
-				role: "viewer",
-			}),
+			await operations(owner.headers, (actor) =>
+				projectDomain.setProjectMember(database.db, actor, {
+					...reference,
+					memberId: adminMember.id,
+					role: "viewer",
+				}),
+			),
 		);
 		expect(
-			data(await operations.getProject(administrator.headers, reference)).role,
+			data(
+				await operations(administrator.headers, (actor) =>
+					projectDomain.getProject(database.db, actor, reference),
+				),
+			).role,
 		).toBe("admin");
 		expect(
 			(
-				await operations.createProject(owner.headers, {
-					organizationId: organization.id,
-					name: "Duplicate",
-					slug: project.slug,
-				})
+				await operations(owner.headers, (actor) =>
+					projectDomain.createProject(database.db, actor, {
+						requestId: crypto.randomUUID(),
+						organizationId: organization.id,
+						name: "Duplicate",
+						slug: project.slug,
+					}),
+				)
 			).error?.code,
 		).toBe("CONFLICT");
 		const second = await createOrganization(owner, "second-org");
 		expect(
 			data(
-				await operations.createProject(owner.headers, {
-					organizationId: second.id,
-					name: "Independent",
-					slug: project.slug,
-				}),
+				await operations(owner.headers, (actor) =>
+					projectDomain.createProject(database.db, actor, {
+						requestId: crypto.randomUUID(),
+						organizationId: second.id,
+						name: "Independent",
+						slug: project.slug,
+					}),
+				),
 			).organizationId,
 		).toBe(second.id);
 		expect(
 			(
-				await operations.getProject(owner.headers, {
-					...reference,
-					organizationId: second.id,
-				})
+				await operations(owner.headers, (actor) =>
+					projectDomain.getProject(database.db, actor, {
+						...reference,
+						organizationId: second.id,
+					}),
+				)
 			).error?.code,
 		).toBe("NOT_FOUND");
 	});
@@ -1228,11 +1539,14 @@ describe("organization and project boundaries", () => {
 			.from(member)
 			.where(eq(member.organizationId, second.id));
 		const project = data(
-			await operations.createProject(owner.headers, {
-				organizationId: organization.id,
-				name: "Project",
-				slug: "project",
-			}),
+			await operations(owner.headers, (actor) =>
+				projectDomain.createProject(database.db, actor, {
+					requestId: crypto.randomUUID(),
+					organizationId: organization.id,
+					name: "Project",
+					slug: "project",
+				}),
+			),
 		);
 		const reference = {
 			organizationId: organization.id,
@@ -1240,11 +1554,13 @@ describe("organization and project boundaries", () => {
 		};
 		expect(
 			(
-				await operations.setProjectMember(owner.headers, {
-					...reference,
-					memberId: outsideMember.id,
-					role: "viewer",
-				})
+				await operations(owner.headers, (actor) =>
+					projectDomain.setProjectMember(database.db, actor, {
+						...reference,
+						memberId: outsideMember.id,
+						role: "viewer",
+					}),
+				)
 			).error?.code,
 		).toBe("NOT_FOUND");
 		await expect(
@@ -1255,18 +1571,22 @@ describe("organization and project boundaries", () => {
 		).rejects.toMatchObject({ cause: { code: "23503" } });
 		expect(
 			(
-				await operations.removeProjectMember(owner.headers, {
-					...reference,
-					memberId: outsideMember.id,
-				})
+				await operations(owner.headers, (actor) =>
+					projectDomain.removeProjectMember(database.db, actor, {
+						...reference,
+						memberId: outsideMember.id,
+					}),
+				)
 			).error?.code,
 		).toBe("NOT_FOUND");
 		expect(
 			data(
-				await operations.removeProjectMember(owner.headers, {
-					...reference,
-					memberId: collaboratorMember.id,
-				}),
+				await operations(owner.headers, (actor) =>
+					projectDomain.removeProjectMember(database.db, actor, {
+						...reference,
+						memberId: collaboratorMember.id,
+					}),
+				),
 			),
 		).toEqual({ removed: true });
 		await expect(
@@ -1287,11 +1607,13 @@ describe("organization and project boundaries", () => {
 				.execute(),
 		).rejects.toMatchObject({ cause: { code: "23505" } });
 		data(
-			await operations.setProjectMember(owner.headers, {
-				...reference,
-				memberId: collaboratorMember.id,
-				role: "viewer",
-			}),
+			await operations(owner.headers, (actor) =>
+				projectDomain.setProjectMember(database.db, actor, {
+					...reference,
+					memberId: collaboratorMember.id,
+					role: "viewer",
+				}),
+			),
 		);
 		await auth.api.removeMember({
 			headers: owner.headers,
@@ -1301,19 +1623,28 @@ describe("organization and project boundaries", () => {
 			},
 		});
 		expect(
-			(await operations.getProject(collaborator.headers, reference)).error
-				?.code,
+			(
+				await operations(collaborator.headers, (actor) =>
+					projectDomain.getProject(database.db, actor, reference),
+				)
+			).error?.code,
 		).toBe("NOT_FOUND");
 		expect(await database.db.select().from(projectMember)).toHaveLength(0);
 		await addMember(organization.id, collaborator);
 		expect(
-			(await operations.getProject(collaborator.headers, reference)).error
-				?.code,
+			(
+				await operations(collaborator.headers, (actor) =>
+					projectDomain.getProject(database.db, actor, reference),
+				)
+			).error?.code,
 		).toBe("NOT_FOUND");
 		await auth.handler(post("/sign-out", {}, collaborator.headers));
 		expect(
-			(await operations.getProject(collaborator.headers, reference)).error
-				?.code,
+			(
+				await operations(collaborator.headers, (actor) =>
+					projectDomain.getProject(database.db, actor, reference),
+				)
+			).error?.code,
 		).toBe("UNAUTHENTICATED");
 	});
 
@@ -1394,8 +1725,15 @@ describe("organization and project boundaries", () => {
 			body: { invitationId: created.id },
 		});
 		expect(
-			data(await operations.getOrganization(invited.headers, organization.id))
-				.role,
+			data(
+				await operations(invited.headers, (actor) =>
+					organizationDomain.getOrganization(
+						database.db,
+						actor,
+						organization.id,
+					),
+				),
+			).role,
 		).toBe("owner");
 	});
 
@@ -1412,8 +1750,15 @@ describe("organization and project boundaries", () => {
 			(await database.db.select().from(organizationOwnerGuard))[0].ownerCount,
 		).toBe(2);
 		expect(
-			data(await operations.getOrganization(second.headers, organization.id))
-				.role,
+			data(
+				await operations(second.headers, (actor) =>
+					organizationDomain.getOrganization(
+						database.db,
+						actor,
+						organization.id,
+					),
+				),
+			).role,
 		).toBe("owner");
 		const outcomes = await Promise.allSettled([
 			database.db

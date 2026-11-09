@@ -4,6 +4,7 @@ import {
 	useSelector,
 } from "@tanstack/react-form";
 import { type ComponentProps, type ReactNode, useId } from "react";
+import { validationMessages } from "../lib/form-validation";
 import { Field, FieldDescription, FieldError, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { NativeSelect } from "./ui/native-select";
@@ -57,8 +58,8 @@ function TextField({ label, description, id, ...props }: TextFieldProps) {
 			{invalid && (
 				<FieldError
 					id={`${inputId}-error`}
-					errors={state.meta.errors.map((message) => ({
-						message: String(message),
+					errors={validationMessages(state.meta.errors).map((message) => ({
+						message,
 					}))}
 				/>
 			)}
@@ -109,8 +110,8 @@ function TextareaField({
 			{invalid && (
 				<FieldError
 					id={`${inputId}-error`}
-					errors={state.meta.errors.map((message) => ({
-						message: String(message),
+					errors={validationMessages(state.meta.errors).map((message) => ({
+						message,
 					}))}
 				/>
 			)}
@@ -154,8 +155,8 @@ function SelectField({
 			{invalid && (
 				<FieldError
 					id={`${inputId}-error`}
-					errors={state.meta.errors.map((message) => ({
-						message: String(message),
+					errors={validationMessages(state.meta.errors).map((message) => ({
+						message,
 					}))}
 				/>
 			)}

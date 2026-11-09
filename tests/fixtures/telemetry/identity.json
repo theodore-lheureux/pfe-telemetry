@@ -1,0 +1,8 @@
+{
+  "project_id": "project-a",
+  "source_id": "source-a",
+  "payload_kind": 1,
+  "client_batch_id": "batch-a",
+  "original_position": [0, 0, 0, 0],
+  "sample_id": "1f7612e909a4e5dfbce676b19579eeab0752189643df72b6dcbdf02f6c3d5859"
+}

@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import {
 	createFileRoute,
 	Link,
@@ -9,7 +9,8 @@ import { getCurrentUser } from "@/auth/session.functions";
 import { navClass } from "@/components/workspace";
 
 export const Route = createFileRoute("/_app")({
-	beforeLoad: async ({ location }) => {
+	beforeLoad: async ({ location, context }) => {
+		await context.authentication.beforePrivateRead();
 		const user = await getCurrentUser();
 		if (!user)
 			throw redirect({

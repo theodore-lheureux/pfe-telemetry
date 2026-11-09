@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { useHydrated } from "@tanstack/react-router";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -41,6 +41,7 @@ export interface CredentialConfirmation {
 interface CollectorCredentialsState {
 	heading: RefObject<HTMLHeadingElement | null>;
 	pending: boolean;
+	activity: "create" | "rotate" | "revoke" | "refresh" | null;
 	disabled: boolean;
 	canRefresh: boolean;
 	message: string;
@@ -68,6 +69,8 @@ export function useCollectorCredentials({
 }: CollectorCredentialsOptions): CollectorCredentialsState {
 	const hydrated = useHydrated();
 	const [pending, setPending] = useState(false);
+	const [activity, setActivity] =
+		useState<CollectorCredentialsState["activity"]>(null);
 	const [message, setMessage] = useState("");
 	const [error, setError] = useState("");
 	const [refreshError, setRefreshError] = useState(false);
@@ -95,6 +98,7 @@ export function useCollectorCredentials({
 				setReveal(null);
 				setConfirmation(null);
 				setPending(false);
+				setActivity(null);
 				setRefreshError(true);
 				setMessage("");
 				setError("");
@@ -105,6 +109,7 @@ export function useCollectorCredentials({
 			const current = generation.current;
 			busy.current = true;
 			setPending(true);
+			setActivity("refresh");
 			void refreshAccess()
 				.then(() => {
 					if (mounted.current && current === generation.current)
@@ -150,11 +155,13 @@ export function useCollectorCredentials({
 			OperationResult<CollectorCredentialSummary | RevealedCollectorCredential>
 		>,
 		successMessage: string,
+		activity: "create" | "rotate" | "revoke",
 	): Promise<boolean> {
 		if (busy.current || reveal) return false;
 		const current = generation.current;
 		busy.current = true;
 		setPending(true);
+		setActivity(activity);
 		setMessage("");
 		setError("");
 		try {
@@ -207,6 +214,7 @@ export function useCollectorCredentials({
 		const current = generation.current;
 		busy.current = true;
 		setPending(true);
+		setActivity("refresh");
 		await refresh();
 		if (current === generation.current) {
 			busy.current = false;
@@ -240,6 +248,7 @@ export function useCollectorCredentials({
 			action === "rotate"
 				? m.credential_rotated_save_the_replacement_token_now()
 				: m.credential_revoked(),
+			action,
 		);
 	}
 
@@ -247,6 +256,7 @@ export function useCollectorCredentials({
 		return runAction(
 			() => createCollectorCredential({ data: { ...reference, ...values } }),
 			m.credential_created_save_the_token_now(),
+			"create",
 		);
 	}
 
@@ -256,6 +266,7 @@ export function useCollectorCredentials({
 	return {
 		heading,
 		pending,
+		activity,
 		disabled,
 		canRefresh: hydrated && !pending,
 		message,

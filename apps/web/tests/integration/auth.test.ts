@@ -1,63 +1,64 @@
-import {
-	afterAll,
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	test,
-} from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { Pool } from "pg";
 import { applyMigrations } from "../../scripts/migrations";
+import { readAuthenticationState } from "../../src/auth/authentication-state.server";
 import type { AuthConfig } from "../../src/auth/config.server";
 import { createAuth } from "../../src/auth/create-auth.server";
+import { createAuthEmailDelivery } from "../../src/auth/email-delivery.server";
+import { readAuthSession } from "../../src/auth/session.server";
 import { createDatabase } from "../../src/db/client.server";
 import { passkey } from "../../src/db/schema";
+import { trustedCodeSignIn } from "../auth-actors";
 
 const adminUrl = process.env.TEST_DATABASE_URL;
 if (!adminUrl) throw new Error("TEST_DATABASE_URL is required");
 const admin = new Pool({ connectionString: adminUrl, max: 1 });
 const config: AuthConfig = {
-	origin: "http://localhost:3001",
+	origin: "http://localhost:36601",
 	rpID: "localhost",
-	secret: `test-only-auth-secret-${randomUUID()}`,
+	secret: `test-only-${randomUUID()}`,
 	allowSignUp: true,
 };
 let databaseName: string;
 let database: ReturnType<typeof createDatabase>;
-let sentLinks: { email: string; url: string }[];
-
+let sentCodes: { email: string; code: string; locale: string }[];
+let instances: ReturnType<typeof createAuth>[];
 function auth(allowSignUp = true) {
-	return createAuth({ ...config, allowSignUp }, database.db, {
-		sendSignInLink: async (email, url) => {
-			sentLinks.push({ email, url });
+	const instance = createAuth({ ...config, allowSignUp }, database.db, {
+		sendSignInCode: async (email, code, locale) => {
+			sentCodes.push({ email, code, locale });
 		},
 		sendOrganizationInvitation: async () => {
 			throw new Error("Unexpected invitation email");
 		},
 	});
+	instances.push(instance);
+	return instance;
 }
-
 beforeEach(async () => {
-	databaseName = `pfe_auth_test_${randomUUID().replaceAll("-", "")}`;
+	instances = [];
+	sentCodes = [];
+	databaseName = `recount_auth_test_${randomUUID().replaceAll("-", "")}`;
 	await admin.query(`CREATE DATABASE "${databaseName}"`);
 	const url = new URL(adminUrl);
 	url.pathname = `/${databaseName}`;
 	await applyMigrations(url.toString());
-	database = createDatabase({ connectionString: url.toString(), max: 2 });
-	sentLinks = [];
-});
-
+	database = createDatabase({ connectionString: url.toString(), max: 4 });
+	sentCodes = [];
+	instances = [];
+}, 60_000);
 afterEach(async () => {
+	await Promise.all(
+		instances.map((instance) => instance.emailDelivery.close()),
+	);
 	await database?.pool.end();
 	await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
-});
-
+}, 60_000);
 afterAll(async () => {
 	await admin.end();
 });
-
 function post(
 	path: string,
 	body: unknown,
@@ -75,180 +76,404 @@ function post(
 		body: JSON.stringify(body),
 	});
 }
-
-async function requestLink(
-	instance: ReturnType<typeof auth>,
-	email = "user@example.com",
-) {
-	const response = await instance.handler(
-		post("/sign-in/magic-link", { email, callbackURL: "/account" }),
-	);
-	expect(response.status).toBe(200);
-	const link = sentLinks.at(-1);
-	if (!link) throw new Error("Expected a sign-in email");
-	return link.url;
-}
-
-async function signIn(instance: ReturnType<typeof auth>) {
-	const url = await requestLink(instance);
-	const response = await instance.handler(new Request(url));
-	expect(response.status).toBe(302);
+function cookie(response: Response) {
 	return response.headers
 		.getSetCookie()
 		.map((value) => value.split(";")[0])
 		.join("; ");
 }
+async function requestCode(
+	instance: ReturnType<typeof auth>,
+	email: string,
+	locale = "en",
+) {
+	const response = await instance.handler(
+		post(
+			"/email-otp/send-verification-otp",
+			{ email, type: "sign-in" },
+			`recount_locale=${locale}`,
+		),
+	);
+	expect(response.status).toBe(200);
+	await instance.emailDelivery.drain();
+	const sent = sentCodes.filter((message) => message.email === email).at(-1);
+	if (!sent) throw new Error("Expected an in-memory email code");
+	return sent.code;
+}
+async function signIn(
+	instance: ReturnType<typeof auth>,
+	email = "user@example.invalid",
+) {
+	return cookie(
+		await trustedCodeSignIn(
+			instance,
+			email,
+			(email) =>
+				sentCodes.filter((message) => message.email === email).at(-1)?.code,
+		),
+	);
+}
 
-describe("passwordless account security", () => {
-	test("verifies email once and invalidates the session on logout", async () => {
-		const instance = auth();
-		const url = await requestLink(instance);
-		const token = new URL(url).searchParams.get("token");
-		if (!token) throw new Error("Expected a sign-in token");
-		const stored = await database.db.execute(
-			sql`SELECT identifier FROM app.verification`,
-		);
-		expect(JSON.stringify(stored.rows)).not.toContain(token);
-		const results = await Promise.all([
-			instance.handler(new Request(url)),
-			instance.handler(new Request(url)),
-		]);
-		const successful = results.filter((response) =>
-			response.headers.has("set-cookie"),
-		);
-		expect(successful).toHaveLength(1);
-		const cookie = successful[0].headers
-			.getSetCookie()
-			.map((value) => value.split(";")[0])
-			.join("; ");
-		expect(successful[0].headers.get("set-cookie")).toContain("HttpOnly");
-		const session = await instance.api.getSession({
-			headers: new Headers({ cookie }),
-		});
-		expect(session?.user.emailVerified).toBe(true);
-		expect(session?.user.email).toBe("user@example.com");
-		expect((await instance.handler(post("/sign-out", {}, cookie))).status).toBe(
-			200,
-		);
-		expect(
-			await instance.api.getSession({ headers: new Headers({ cookie }) }),
-		).toBeNull();
+test("email code creates one verified session, stores a hash and cannot be replayed", async () => {
+	const instance = auth();
+	const email = "new@example.invalid";
+	const code = await requestCode(instance, email);
+	expect(/^\d{6}$/.test(code)).toBe(true);
+	const stored = await database.db.execute<{ value: string; expires_at: Date }>(
+		sql`SELECT value, expires_at FROM app.verification`,
+	);
+	expect(stored.rows.some((row) => row.value.includes(code))).toBe(false);
+	const expiry = new Date(stored.rows[0].expires_at).getTime() - Date.now();
+	expect(expiry > 290_000 && expiry <= 300_000).toBe(true);
+	const results = await Promise.all(
+		[1, 2].map(() =>
+			instance.handler(post("/sign-in/email-otp", { email, otp: code })),
+		),
+	);
+	expect(results.filter((response) => response.ok)).toHaveLength(1);
+	const success = results.find((response) => response.ok);
+	if (!success) throw new Error("Expected one successful code verification");
+	const session = await instance.api.getSession({
+		headers: new Headers({ cookie: cookie(success) }),
 	});
-
-	test("closed registration rejects new accounts but permits existing users", async () => {
-		const closed = auth(false);
-		const deniedUrl = await requestLink(closed);
-		const denied = await closed.handler(new Request(deniedUrl));
-		expect(denied.headers.get("location")).toContain(
-			"new_user_signup_disabled",
-		);
-		expect(
-			(await database.db.execute(sql`SELECT id FROM app.user`)).rows,
-		).toHaveLength(0);
-		await signIn(auth());
-		const cookie = await signIn(closed);
-		expect(
-			await closed.api.getSession({ headers: new Headers({ cookie }) }),
-		).not.toBeNull();
-	});
-
-	test("rejects cross-origin requests and external callback destinations", async () => {
-		const instance = auth();
-		expect(
-			(
-				await instance.handler(
-					post(
-						"/sign-in/magic-link",
-						{ email: "user@example.com" },
-						"",
-						"https://attacker.example",
-					),
-				)
-			).status,
-		).toBe(403);
+	expect(session?.user.emailVerified).toBe(true);
+	expect(
+		success.headers.getSetCookie().some((value) => value.includes("HttpOnly")),
+	).toBe(true);
+	expect(
+		(await instance.handler(post("/sign-in/email-otp", { email, otp: code })))
+			.ok,
+	).toBe(false);
+	expect(
+		(await instance.handler(post("/sign-out", {}, cookie(success)))).ok,
+	).toBe(true);
+	expect(
+		await instance.api.getSession({
+			headers: new Headers({ cookie: cookie(success) }),
+		}),
+	).toBeNull();
+});
+test("email code rotation, expiry and attempt limit are enforced", async () => {
+	const instance = auth();
+	const email = "rotate@example.invalid";
+	const first = await requestCode(instance, email);
+	const latest = await requestCode(instance, email);
+	if (first !== latest)
 		expect(
 			(
 				await instance.handler(
-					post("/sign-in/magic-link", {
-						email: "user@example.com",
-						callbackURL: "https://attacker.example",
-					}),
-				)
-			).status,
-		).toBe(403);
-		expect(sentLinks).toHaveLength(0);
-		expect(
-			(
-				await instance.handler(
-					post("/sign-up/email", {
-						email: "user@example.com",
-						password: "not-supported",
-						name: "User",
-					}),
+					post("/sign-in/email-otp", { email, otp: first }),
 				)
 			).ok,
 		).toBe(false);
-	});
-
-	test("rejects expired links and enforces recent authentication on passkey deletion", async () => {
-		const instance = auth();
-		const url = await requestLink(instance);
-		await database.db.execute(
-			sql`UPDATE app.verification SET expires_at = now() - interval '1 minute'`,
-		);
-		const expired = await instance.handler(new Request(url));
-		expect(expired.headers.get("location")).toContain("INVALID_TOKEN");
-		const cookie = await signIn(instance);
-		const options = await instance.handler(
-			new Request(
-				`${config.origin}/api/auth/passkey/generate-register-options`,
-				{ headers: { cookie } },
-			),
-		);
-		expect(options.ok).toBe(true);
-		const registration = await options.json();
-		expect(registration.rp.id).toBe("localhost");
-		expect(registration.authenticatorSelection.userVerification).toBe(
-			"required",
-		);
-		const session = await instance.api.getSession({
-			headers: new Headers({ cookie }),
+	await database.db.execute(
+		sql`UPDATE app.verification SET expires_at=now()-interval '1 second'`,
+	);
+	expect(
+		(await instance.handler(post("/sign-in/email-otp", { email, otp: latest })))
+			.ok,
+	).toBe(false);
+	const fresh = await requestCode(instance, "attempt@example.invalid");
+	for (let index = 0; index < 3; index++)
+		await instance.api.signInEmailOTP({
+			body: {
+				email: "attempt@example.invalid",
+				otp: fresh === "000000" ? "111111" : "000000",
+			},
+			asResponse: true,
 		});
-		if (!session) throw new Error("Expected an authenticated session");
-		const key = {
-			id: "owned-passkey",
-			userId: session.user.id,
-			publicKey: "unused-for-deletion",
-			credentialID: "owned-credential",
-			counter: 0,
-			deviceType: "singleDevice",
-			backedUp: false,
-		};
-		await database.db.insert(passkey).values(key);
-		const removed = await instance.handler(
-			post("/passkey/delete-passkey", { id: key.id }, cookie),
-		);
-		expect(removed.status).toBe(200);
-		expect(await removed.json()).toEqual({ status: true });
-		expect((await database.db.select().from(passkey)).length).toBe(0);
-		await database.db.insert(passkey).values(key);
-		await database.db.execute(
-			sql`UPDATE app.session SET created_at = now() - interval '20 minutes'`,
-		);
-		const denied = await instance.handler(
-			post("/passkey/delete-passkey", { id: key.id }, cookie),
-		);
-		expect(denied.status).toBe(403);
-		expect((await denied.json()).code).toBe("SESSION_NOT_FRESH");
-		expect((await database.db.select().from(passkey)).length).toBe(1);
-	});
-
-	test("shares email request rate limits between application instances", async () => {
-		for (let index = 0; index < 5; index++) await requestLink(auth());
-		const limited = await auth().handler(
-			post("/sign-in/magic-link", { email: "user@example.com" }),
-		);
-		expect(limited.status).toBe(429);
-		expect(sentLinks).toHaveLength(5);
-	});
+	expect(
+		(
+			await instance.api.signInEmailOTP({
+				body: { email: "attempt@example.invalid", otp: fresh },
+				asResponse: true,
+			})
+		).ok,
+	).toBe(false);
 });
+test("closed registration sends generic acknowledgements without waiting for SMTP", async () => {
+	await signIn(auth(), "existing@example.invalid");
+	let release!: () => void;
+	const gate = new Promise<void>((resolve) => {
+		release = resolve;
+	});
+	let completed = false;
+	let started = false;
+	const instance = createAuth({ ...config, allowSignUp: false }, database.db, {
+		sendSignInCode: async () => {
+			started = true;
+			await gate;
+			completed = true;
+		},
+		sendOrganizationInvitation: async () => {},
+	});
+	instances.push(instance);
+	try {
+		const existing = await instance.handler(
+			post("/email-otp/send-verification-otp", {
+				email: "existing@example.invalid",
+				type: "sign-in",
+			}),
+		);
+		const unknown = await instance.handler(
+			post("/email-otp/send-verification-otp", {
+				email: "unknown@example.invalid",
+				type: "sign-in",
+			}),
+		);
+		expect(existing.status).toBe(200);
+		expect(unknown.status).toBe(200);
+		expect(await existing.json()).toEqual(await unknown.json());
+		expect(started).toBe(true);
+		expect(completed).toBe(false);
+	} finally {
+		release();
+		await instance.emailDelivery.drain();
+	}
+	expect(completed).toBe(true);
+	expect(
+		(
+			await database.db.execute(
+				sql`SELECT id FROM app."user" WHERE email='unknown@example.invalid'`,
+			)
+		).rows,
+	).toHaveLength(0);
+});
+test("email delivery errors are owned and sanitized while HTTP acknowledgements stay generic", async () => {
+	let failures = 0;
+	const delivery = createAuthEmailDelivery(() => {
+		failures++;
+	});
+	const instance = createAuth(
+		config,
+		database.db,
+		{
+			sendSignInCode: async () => {
+				throw new Error("private transport diagnostics");
+			},
+			sendOrganizationInvitation: async () => {},
+		},
+		delivery,
+	);
+	instances.push(instance);
+	const response = await instance.handler(
+		post("/email-otp/send-verification-otp", {
+			email: "delivery@example.invalid",
+			type: "sign-in",
+		}),
+	);
+	expect(response.status).toBe(200);
+	await delivery.drain();
+	expect(failures).toBe(1);
+});
+test("HTTP code throttling survives auth instances; fixture server APIs do not spend that budget", async () => {
+	const instance = auth();
+	for (let index = 0; index < 6; index++)
+		await signIn(instance, `actor-${index}@example.invalid`);
+	for (let index = 0; index < 3; index++)
+		await requestCode(instance, `rate-${index}@example.invalid`);
+	const limited = await auth().handler(
+		post("/email-otp/send-verification-otp", {
+			email: "rate-last@example.invalid",
+			type: "sign-in",
+		}),
+	);
+	expect(limited.status).toBe(429);
+	expect(Number(limited.headers.get("X-Retry-After")) > 0).toBe(true);
+});
+test("database failures reject code requests without sending email", async () => {
+	const instance = auth();
+	const fault = spyOn(database.pool, "query").mockImplementation(() => {
+		throw new Error("Test database unavailable");
+	});
+	try {
+		// Database-backed throttling runs before Better Auth's response router.
+		await expect(
+			instance.handler(
+				post("/email-otp/send-verification-otp", {
+					email: "fault@example.invalid",
+					type: "sign-in",
+				}),
+			),
+		).rejects.toThrow();
+		expect(fault).toHaveBeenCalled();
+		await instance.emailDelivery.drain();
+		expect(sentCodes).toHaveLength(0);
+	} finally {
+		fault.mockRestore();
+	}
+	for (const table of ["verification", "session", "user"]) {
+		const result = await database.pool.query(
+			`SELECT count(*)::int AS count FROM app.${table === "user" ? '"user"' : table}`,
+		);
+		expect(result.rows[0].count).toBe(0);
+	}
+});
+test("session reads reject database failures instead of treating them as signed out", async () => {
+	const instance = auth();
+	const sessionCookie = await signIn(instance, "rpc-fault@example.invalid");
+	const headers = new Headers({ cookie: sessionCookie });
+	const fault = spyOn(database.pool, "query").mockImplementation(() => {
+		throw new Error("Test database unavailable");
+	});
+	try {
+		for (const operation of [
+			() => readAuthSession(instance, headers),
+			() => readAuthenticationState(headers, instance),
+		]) {
+			await expect(operation()).rejects.toThrow();
+		}
+	} finally {
+		fault.mockRestore();
+	}
+});
+test("email code delivery preserves request locale and rejects other purposes and cross-origin sign-in", async () => {
+	const instance = auth();
+	await Promise.all([
+		requestCode(instance, "en@example.invalid", "en"),
+		requestCode(instance, "fr@example.invalid", "fr"),
+	]);
+	expect(
+		sentCodes
+			.map(({ email, locale }) => ({ email, locale }))
+			.sort((a, b) => a.email.localeCompare(b.email)),
+	).toEqual([
+		{ email: "en@example.invalid", locale: "en" },
+		{ email: "fr@example.invalid", locale: "fr" },
+	]);
+	expect(
+		(
+			await instance.handler(
+				post("/email-otp/send-verification-otp", {
+					email: "purpose@example.invalid",
+					type: "forget-password",
+				}),
+			)
+		).status,
+	).toBe(400);
+	expect(
+		(
+			await instance.handler(
+				post(
+					"/sign-in/email-otp",
+					{ email: "en@example.invalid", otp: "000000" },
+					"",
+					"https://attacker.example",
+				),
+			)
+		).status,
+	).toBe(403);
+	expect(
+		(
+			await instance.handler(
+				post("/email-otp/request-password-reset", {
+					email: "en@example.invalid",
+				}),
+			)
+		).status,
+	).toBe(404);
+	expect(
+		(
+			await instance.handler(
+				post("/sign-up/email", {
+					email: "en@example.invalid",
+					password: "disabled",
+					name: "User",
+				}),
+			)
+		).ok,
+	).toBe(false);
+});
+test("existing verified users can reauthenticate with registration closed and passkey changes require freshness", async () => {
+	await signIn(auth());
+	const instance = auth(false);
+	const sessionCookie = await signIn(instance);
+	const options = await instance.handler(
+		new Request(`${config.origin}/api/auth/passkey/generate-register-options`, {
+			headers: { cookie: sessionCookie },
+		}),
+	);
+	expect(options.ok).toBe(true);
+	const registration = await options.json();
+	expect(registration.rp.id).toBe("localhost");
+	expect(registration.authenticatorSelection.userVerification).toBe("required");
+	expect(registration.authenticatorSelection.residentKey).toBe("required");
+	const session = await instance.api.getSession({
+		headers: new Headers({ cookie: sessionCookie }),
+	});
+	if (!session) throw new Error("Expected fixture session");
+	const key = {
+		id: "owned-passkey",
+		userId: session.user.id,
+		publicKey: "unused-for-deletion",
+		credentialID: "owned-credential",
+		counter: 0,
+		deviceType: "singleDevice",
+		backedUp: false,
+	};
+	await database.db.insert(passkey).values(key);
+	const removed = await instance.handler(
+		post("/passkey/delete-passkey", { id: key.id }, sessionCookie),
+	);
+	expect(removed.status).toBe(200);
+	expect(await removed.json()).toEqual({ status: true });
+	expect((await database.db.select().from(passkey)).length).toBe(0);
+	await database.db.insert(passkey).values(key);
+	await database.db.execute(
+		sql`UPDATE app.session SET created_at=now()-interval '20 minutes'`,
+	);
+	const denied = await instance.handler(
+		post("/passkey/delete-passkey", { id: key.id }, sessionCookie),
+	);
+	expect(denied.status).toBe(403);
+	expect((await denied.json()).code).toBe("SESSION_NOT_FRESH");
+	const rename = await instance.handler(
+		post(
+			"/passkey/update-passkey",
+			{ id: key.id, name: "Changed" },
+			sessionCookie,
+		),
+	);
+	expect(rename.status).toBe(403);
+	expect((await rename.json()).code).toBe("SESSION_NOT_FRESH");
+	expect((await database.db.select().from(passkey)).length).toBe(1);
+});
+
+test.each(["wrong", "unknown", "expired", "exhausted"] as const)(
+	"public email-code failure is uniform for %s",
+	async (kind) => {
+		const email = "privacy@example.invalid";
+		if (kind !== "unknown") await signIn(auth(), email);
+		const instance = auth(false);
+		await instance.api.sendVerificationOTP({
+			body: { email, type: "sign-in" },
+		});
+		await instance.emailDelivery.drain();
+		const code = sentCodes
+			.filter((message) => message.email === email)
+			.at(-1)?.code;
+		const wrong = code === "000000" ? "111111" : "000000";
+		if (kind === "expired")
+			await database.db.execute(
+				sql`UPDATE app.verification SET expires_at=now()-interval '1 second'`,
+			);
+		if (kind === "exhausted") {
+			for (let index = 0; index < 3; index++)
+				await instance.api.signInEmailOTP({
+					body: { email, otp: wrong },
+					asResponse: true,
+				});
+		}
+		const response = await instance.handler(
+			post("/sign-in/email-otp", {
+				email,
+				otp: kind === "wrong" || !code ? wrong : code,
+			}),
+		);
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			code: "INVALID_OTP",
+			message: "Invalid or expired code",
+		});
+	},
+);

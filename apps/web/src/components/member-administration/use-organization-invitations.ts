@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
 import { useHydrated } from "@tanstack/react-router";
 import { useRef, useState } from "react";
@@ -13,7 +13,7 @@ import {
 } from "../../organizations/invitation.functions";
 import { useAppForm } from "../app-form";
 import { useLocaleChangeBlocker } from "../locale-safety";
-import { useAdministrationOperation } from "./use-administration-operation";
+import { useMutationOwner } from "../use-mutation-owner";
 
 export type Invitation = NonNullable<
 	Awaited<ReturnType<typeof createInvitation>>["data"]
@@ -24,7 +24,7 @@ export function useOrganizationInvitations(
 	userId: string,
 ) {
 	const hydrated = useHydrated();
-	const { router, begin } = useAdministrationOperation(userId);
+	const { router, begin } = useMutationOwner(userId);
 	const heading = useRef<HTMLHeadingElement>(null);
 	const [actionPending, setPending] = useState(false);
 	const values: { email: string; role: OrganizationRole } = {
@@ -40,23 +40,28 @@ export function useOrganizationInvitations(
 	const [message, setMessage] = useState("");
 	const [failed, setFailed] = useState(false);
 	const [cancelId, setCancelId] = useState<string | null>(null);
+	const [activity, setActivity] = useState<
+		{ type: "send" } | { type: "resend" | "cancel"; id: string } | null
+	>(null);
 	useLocaleChangeBlocker(pending);
 
-	function start() {
+	function start(nextActivity: NonNullable<typeof activity>) {
 		if (!hydrated) return null;
 		const operation = begin(() => {
 			setPending(false);
 			setCancelId(null);
+			setActivity(null);
 		});
 		if (!operation) return null;
 		setPending(true);
+		setActivity(nextActivity);
 		setMessage("");
 		setFailed(false);
 		return operation;
 	}
 
 	async function send(value: { email: string; role: OrganizationRole }) {
-		const operation = start();
+		const operation = start({ type: "send" });
 		if (!operation) return;
 		let applied = false;
 		try {
@@ -100,7 +105,7 @@ export function useOrganizationInvitations(
 	}
 
 	async function resend(invitation: Invitation) {
-		const operation = start();
+		const operation = start({ type: "resend", id: invitation.id });
 		if (!operation) return;
 		let applied = false;
 		try {
@@ -149,7 +154,7 @@ export function useOrganizationInvitations(
 	}
 
 	async function cancel(invitationId: string) {
-		const operation = start();
+		const operation = start({ type: "cancel", id: invitationId });
 		if (!operation) return;
 		let applied = false;
 		try {
@@ -197,6 +202,8 @@ export function useOrganizationInvitations(
 		form,
 		heading,
 		pending,
+		sending,
+		activity,
 		disabled: !hydrated || pending,
 		failed,
 		message,

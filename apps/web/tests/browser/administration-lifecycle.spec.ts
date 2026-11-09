@@ -1,8 +1,84 @@
-import { existsSync } from "node:fs";
-import type { Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import type { Page, Request } from "@playwright/test";
+import { parseAst } from "@tanstack/router-utils";
 import { eq } from "drizzle-orm";
 import { invitation, member } from "../../src/db/schema";
+import * as memberDomain from "../../src/organizations/members.server";
+import * as organizationDomain from "../../src/organizations/organizations.server";
+import * as projectDomain from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
+
+let builtServerFunctionManifest:
+	| ReadonlyMap<string, readonly string[]>
+	| undefined;
+
+function builtServerFunctionPath(operation: string) {
+	if (!builtServerFunctionManifest) {
+		// Retain only immutable build metadata, never the AST or request/session data.
+		const filename = new URL(
+			"../../.output/server/_ssr/ssr.mjs",
+			import.meta.url,
+		);
+		const source = parseAst({
+			code: readFileSync(filename, "utf8"),
+			filename: filename.pathname,
+		});
+		const manifest = new Map<string, string[]>();
+		for (const statement of source.program.body) {
+			if (statement.type !== "VariableDeclaration") continue;
+			for (const declaration of statement.declarations) {
+				if (declaration.init?.type !== "ObjectExpression") continue;
+				for (const entry of declaration.init.properties) {
+					if (
+						entry.type !== "ObjectProperty" ||
+						entry.key.type !== "StringLiteral" ||
+						entry.value.type !== "ObjectExpression"
+					)
+						continue;
+					const field = entry.value.properties.find(
+						(field) =>
+							field.type === "ObjectProperty" &&
+							field.key.type === "Identifier" &&
+							field.key.name === "functionName" &&
+							field.value.type === "StringLiteral",
+					);
+					if (
+						field?.type !== "ObjectProperty" ||
+						field.value.type !== "StringLiteral"
+					)
+						continue;
+					const paths = manifest.get(field.value.value) ?? [];
+					paths.push(`/_serverFn/${encodeURIComponent(entry.key.value)}`);
+					manifest.set(field.value.value, paths);
+				}
+			}
+		}
+		builtServerFunctionManifest = manifest;
+	}
+	const paths =
+		builtServerFunctionManifest.get(`${operation}_createServerFn_handler`) ??
+		[];
+	if (paths.length !== 1)
+		throw new Error(
+			`Expected one generated server-function manifest entry for ${operation}`,
+		);
+	return paths[0];
+}
+
+async function serverFunctionPath(
+	page: Page,
+	module: string,
+	operation: string,
+) {
+	if (process.env.RECOUNT_BROWSER_BUILT === "true")
+		return builtServerFunctionPath(operation);
+	return page.evaluate(
+		async ({ module, operation }) =>
+			(await import(`/src/organizations/${module}.ts`))[operation]
+				.url as string,
+		{ module, operation },
+	);
+}
 
 async function holdSuccessfulWrite(page: Page) {
 	let executed: () => void = () => undefined;
@@ -20,14 +96,15 @@ async function holdSuccessfulWrite(page: Page) {
 	let released = false;
 	let intercepted = false;
 	let reads = 0;
+	const pendingReads = new Set<Request>();
 	page.on("request", (request) => {
-		if (
-			released &&
-			request.method() === "GET" &&
-			request.url().includes("/_serverFn/")
-		)
-			reads++;
+		if (request.method() === "GET" && request.url().includes("/_serverFn/")) {
+			pendingReads.add(request);
+			if (released) reads++;
+		}
 	});
+	page.on("requestfinished", (request) => pendingReads.delete(request));
+	page.on("requestfailed", (request) => pendingReads.delete(request));
 	await page.route("**/_serverFn/**", async (route) => {
 		if (route.request().method() !== "POST" || intercepted) {
 			await route.continue();
@@ -45,6 +122,22 @@ async function holdSuccessfulWrite(page: Page) {
 		ready,
 		get reads() {
 			return reads;
+		},
+		async settleNavigationReads() {
+			await expect
+				.poll(async () => {
+					if (pendingReads.size) return false;
+					await page.evaluate(
+						() =>
+							new Promise<void>((resolve) =>
+								requestAnimationFrame(() =>
+									requestAnimationFrame(() => resolve()),
+								),
+							),
+					);
+					return pendingReads.size === 0;
+				})
+				.toBe(true);
 		},
 		async release() {
 			released = true;
@@ -92,82 +185,60 @@ for (const child of [
 	}) => {
 		const owner = await workspace.signIn(page, "owner@example.invalid");
 		const org = data(
-			await workspace.operations.createOrganization(owner.headers, {
-				name: "Expiry lab",
-				slug: "expiry-lab",
-			}),
+			await workspace.operations(owner.headers, () =>
+				organizationDomain.createOrganization(workspace.auth, owner.headers, {
+					name: "Expiry lab",
+					slug: "expiry-lab",
+				}),
+			),
 		);
 		const project = data(
-			await workspace.operations.createProject(owner.headers, {
-				organizationId: org.id,
-				name: "Private",
-				slug: "private",
-			}),
+			await workspace.operations(owner.headers, (actor) =>
+				projectDomain.createProject(workspace.database.db, actor, {
+					requestId: crypto.randomUUID(),
+					organizationId: org.id,
+					name: "Private",
+					slug: "private",
+				}),
+			),
 		);
 		const parent = `/organizations/${org.id}${child.project ? `/projects/${project.id}/settings` : ""}`;
 		const destination = `${parent}/members`;
 		await page.goto(`${workspace.origin}${parent}`);
 		await expect(
 			page.getByRole("button", { name: "Switch organization", exact: true }),
-		).toBeEnabled();
-		const rpc = await page.evaluate(
-			async ({ module, operation }) =>
-				(await import(`/src/organizations/${module}.ts`))[operation]
-					.url as string,
-			child,
-		);
+		).toBeEnabled({ timeout: 20_000 });
+		const rpc = await serverFunctionPath(page, child.module, child.operation);
+		const rpcMatcher = `${new URL(rpc, workspace.origin).href}*`;
 		let expired = false;
-		await page.route(
-			`${new URL(rpc, workspace.origin).href}*`,
-			async (route) => {
-				if (expired) {
-					await route.continue();
-					return;
-				}
-				expired = true;
-				const response = await route.fetch({
-					headers: { ...route.request().headers(), cookie: "" },
-				});
-				await route.fulfill({ response });
-			},
-		);
+		await page.route(rpcMatcher, async (route) => {
+			// Keep this child fault armed through both intent preload and navigation.
+			expired = true;
+			const response = await route.fetch({
+				headers: { ...route.request().headers(), cookie: "" },
+			});
+			expect((await response.text()).includes("UNAUTHENTICATED")).toBe(true);
+			await route.fulfill({ response });
+		});
 		await page
 			.getByRole("link", {
 				name: child.project ? "Project members" : "Members",
 				exact: true,
 			})
-			.click();
+			// Target navigation rather than a hover-triggered speculative read.
+			.dispatchEvent("click", { button: 0 });
 		await expect(page).toHaveURL(/\/login\?redirect=/);
 		expect(expired).toBe(true);
 		expect(new URL(page.url()).searchParams.get("redirect")).toBe(destination);
-		await page.route("**/api/auth/sign-in/magic-link", async (route) => {
-			const request = route.request();
-			const response = await workspace.auth.handler(
-				new Request(request.url(), {
-					method: "POST",
-					headers: { ...request.headers(), "x-forwarded-for": "192.0.2.63" },
-					body: request.postData(),
-				}),
-			);
-			await route.fulfill({
-				status: response.status,
-				headers: Object.fromEntries(response.headers),
-				body: await response.text(),
-			});
-		});
+		await page.unroute(rpcMatcher);
+		await workspace.enableCodeDelivery(page);
 		await page
 			.getByLabel("Email address", { exact: true })
 			.fill("owner@example.invalid");
 		await page
-			.getByRole("button", { name: "Email me a sign-in link", exact: true })
+			.getByRole("button", { name: "Continue with email", exact: true })
 			.click();
-		await expect(page.getByRole("status")).toContainText(
-			"a link is on its way",
-		);
-		const link = workspace.links.get("owner@example.invalid");
-		if (!link) throw new Error("Expected captured sign-in link");
-		expect(new URL(link).searchParams.get("callbackURL")).toBe(destination);
-		await page.goto(link);
+		await workspace.submitReceivedCode(page, "owner@example.invalid");
 		await expect(page).toHaveURL(`${workspace.origin}${destination}`);
 		await expect(
 			page.getByRole("heading", {
@@ -184,23 +255,30 @@ test("a delayed self-project demotion cannot replace a newer organization page",
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const first = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "First lab",
-			slug: "first-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "First lab",
+				slug: "first-lab",
+			}),
+		),
 	);
 	const second = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Second lab",
-			slug: "second-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Second lab",
+				slug: "second-lab",
+			}),
+		),
 	);
 	const project = data(
-		await workspace.operations.createProject(owner.headers, {
-			organizationId: first.id,
-			name: "Private",
-			slug: "private",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
+				organizationId: first.id,
+				name: "Private",
+				slug: "private",
+			}),
+		),
 	);
 	const manager = await workspace.signIn(page, "manager@example.invalid");
 	const membership = await workspace.auth.api.addMember({
@@ -210,12 +288,14 @@ test("a delayed self-project demotion cannot replace a newer organization page",
 		body: { organizationId: second.id, userId: manager.userId, role: "member" },
 	});
 	data(
-		await workspace.operations.setProjectMember(owner.headers, {
-			organizationId: first.id,
-			projectId: project.id,
-			memberId: membership.id,
-			role: "admin",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.setProjectMember(workspace.database.db, actor, {
+				organizationId: first.id,
+				projectId: project.id,
+				memberId: membership.id,
+				role: "admin",
+			}),
+		),
 	);
 	await page.goto(`${workspace.origin}/organizations/${second.id}`);
 	await page
@@ -264,10 +344,12 @@ test("a delayed self-project demotion cannot replace a newer organization page",
 	expect(held.reads).toBe(0);
 	expect(
 		data(
-			await workspace.operations.getProject(manager.headers, {
-				organizationId: first.id,
-				projectId: project.id,
-			}),
+			await workspace.operations(manager.headers, (actor) =>
+				projectDomain.getProject(workspace.database.db, actor, {
+					organizationId: first.id,
+					projectId: project.id,
+				}),
+			),
 		).role,
 	).toBe("viewer");
 });
@@ -278,16 +360,20 @@ test("a delayed organization leave cannot navigate away from another organizatio
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const first = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "First lab",
-			slug: "first-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "First lab",
+				slug: "first-lab",
+			}),
+		),
 	);
 	const second = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Second lab",
-			slug: "second-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Second lab",
+				slug: "second-lab",
+			}),
+		),
 	);
 	const person = await workspace.signIn(page, "member@example.invalid");
 	const membership = await workspace.auth.api.addMember({
@@ -303,6 +389,9 @@ test("a delayed organization leave cannot navigate away from another organizatio
 	await page
 		.getByRole("button", { name: "Switch organization", exact: true })
 		.click();
+	await expect(
+		page.getByRole("heading", { name: "First lab", exact: true }),
+	).toBeVisible();
 	await page.getByRole("link", { name: "Members", exact: true }).click();
 	const held = await holdSuccessfulWrite(page);
 	await page
@@ -346,10 +435,12 @@ test("a delayed invitation acceptance does not redirect after its landing page i
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Invited lab",
-			slug: "invited-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Invited lab",
+				slug: "invited-lab",
+			}),
+		),
 	);
 	const invited = await workspace.auth.api.createInvitation({
 		headers: owner.headers,
@@ -366,10 +457,16 @@ test("a delayed invitation acceptance does not redirect after its landing page i
 		.getByRole("button", { name: "Accept invitation", exact: true })
 		.click();
 	await held.ready;
-	await page.getByRole("link", { name: "PFE Telemetry", exact: true }).click();
+	// A stationary pointer can intent-preload a new home-page link under it.
+	await page.mouse.move(0, 0);
+	await page
+		.getByRole("link", { name: "Recount · Go home", exact: true })
+		.focus();
+	await page.keyboard.press("Enter");
 	await expect(
 		page.getByRole("heading", { name: "Your organizations", exact: true }),
 	).toBeVisible();
+	await held.settleNavigationReads();
 	await held.release();
 	await expect(page).toHaveURL(`${workspace.origin}/`);
 	expect(held.reads).toBe(0);
@@ -389,16 +486,20 @@ test("an old invitation response stays retired after navigating away and back", 
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const first = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "First lab",
-			slug: "first-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "First lab",
+				slug: "first-lab",
+			}),
+		),
 	);
 	const second = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Second lab",
-			slug: "second-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Second lab",
+				slug: "second-lab",
+			}),
+		),
 	);
 	const path = `${workspace.origin}/organizations/${first.id}/members`;
 	await page.goto(path);
@@ -435,6 +536,8 @@ test("an old invitation response stays retired after navigating away and back", 
 			exact: true,
 		}),
 	).toBeVisible();
+	await page.mouse.move(0, 0);
+	await held.settleNavigationReads();
 	await held.release();
 	await expect(page).toHaveURL(path);
 	expect(held.reads).toBe(0);
@@ -450,17 +553,22 @@ for (const kind of ["invitation", "grant"] as const) {
 	}) => {
 		const owner = await workspace.signIn(page, "owner@example.invalid");
 		const org = data(
-			await workspace.operations.createOrganization(owner.headers, {
-				name: "Refresh lab",
-				slug: "refresh-lab",
-			}),
+			await workspace.operations(owner.headers, () =>
+				organizationDomain.createOrganization(workspace.auth, owner.headers, {
+					name: "Refresh lab",
+					slug: "refresh-lab",
+				}),
+			),
 		);
 		const project = data(
-			await workspace.operations.createProject(owner.headers, {
-				organizationId: org.id,
-				name: "Private",
-				slug: "private",
-			}),
+			await workspace.operations(owner.headers, (actor) =>
+				projectDomain.createProject(workspace.database.db, actor, {
+					requestId: crypto.randomUUID(),
+					organizationId: org.id,
+					name: "Private",
+					slug: "private",
+				}),
+			),
 		);
 		const target = await workspace.signIn(page, "target@example.invalid");
 		await workspace.auth.api.addMember({
@@ -526,10 +634,12 @@ for (const kind of ["invitation", "grant"] as const) {
 			).toBeVisible();
 			expect(
 				data(
-					await workspace.operations.getProject(target.headers, {
-						organizationId: org.id,
-						projectId: project.id,
-					}),
+					await workspace.operations(target.headers, (actor) =>
+						projectDomain.getProject(workspace.database.db, actor, {
+							organizationId: org.id,
+							projectId: project.id,
+						}),
+					),
 				).role,
 			).toBe("viewer");
 		}
@@ -548,16 +658,20 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 		async ({ page, workspace }) => {
 			const owner = await workspace.signIn(page, "owner@example.invalid");
 			const first = data(
-				await workspace.operations.createOrganization(owner.headers, {
-					name: "First lab",
-					slug: "first-lab",
-				}),
+				await workspace.operations(owner.headers, () =>
+					organizationDomain.createOrganization(workspace.auth, owner.headers, {
+						name: "First lab",
+						slug: "first-lab",
+					}),
+				),
 			);
 			const second = data(
-				await workspace.operations.createOrganization(owner.headers, {
-					name: "Second lab",
-					slug: "second-lab",
-				}),
+				await workspace.operations(owner.headers, () =>
+					organizationDomain.createOrganization(workspace.auth, owner.headers, {
+						name: "Second lab",
+						slug: "second-lab",
+					}),
+				),
 			);
 			const target = await workspace.signIn(page, "target@example.invalid");
 			await workspace.auth.api.addMember({
@@ -575,10 +689,10 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 					exact: true,
 				}),
 			).toBeEnabled();
-			const rpc = await page.evaluate(
-				async (modulePath) =>
-					(await import(modulePath)).listOrganizationMembers.url as string,
-				"/src/organizations/member.functions.ts",
+			const rpc = await serverFunctionPath(
+				page,
+				"member.functions",
+				"listOrganizationMembers",
 			);
 			let started: () => void = () => undefined;
 			const ready = new Promise<void>((resolve) => {
@@ -643,10 +757,10 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 						.filter({ hasText: "Your membership change was saved." }),
 				).toBeVisible();
 				await expect(
-					page.getByRole("button", {
-						name: "Save role for target@example.invalid",
-						exact: true,
-					}),
+					page
+						.getByLabel("Role for target@example.invalid", { exact: true })
+						.locator("xpath=ancestor::form")
+						.locator('button[type="submit"]'),
 				).toBeDisabled();
 			}
 			release();
@@ -677,7 +791,13 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 			}
 			expect(
 				data(
-					await workspace.operations.getOrganization(target.headers, first.id),
+					await workspace.operations(target.headers, (actor) =>
+						organizationDomain.getOrganization(
+							workspace.database.db,
+							actor,
+							first.id,
+						),
+					),
 				).role,
 			).toBe("admin");
 		},
@@ -690,10 +810,12 @@ test("a saved membership write is acknowledged when its refresh becomes not-foun
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Owner lab",
-			slug: "owner-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Owner lab",
+				slug: "owner-lab",
+			}),
+		),
 	);
 	const replacement = await workspace.signIn(
 		page,
@@ -707,7 +829,15 @@ test("a saved membership write is acknowledged when its refresh becomes not-foun
 		body: { organizationId: org.id, userId: target.userId, role: "member" },
 	});
 	const ownerMember = data(
-		await workspace.operations.listOrganizationMembers(owner.headers, org.id),
+		await workspace.operations(owner.headers, (actor) =>
+			memberDomain.listMembers(
+				workspace.database.db,
+				workspace.auth,
+				owner.headers,
+				actor,
+				org.id,
+			),
+		),
 	).find((entry) => entry.userId === owner.userId);
 	if (!ownerMember) throw new Error("Expected canonical owner");
 	await workspace.signIn(page, "owner@example.invalid");
@@ -739,8 +869,15 @@ test("a saved membership write is acknowledged when its refresh becomes not-foun
 		"Your membership change was saved, but the page could not refresh.",
 	);
 	expect(
-		data(await workspace.operations.getOrganization(target.headers, org.id))
-			.role,
+		data(
+			await workspace.operations(target.headers, (actor) =>
+				organizationDomain.getOrganization(
+					workspace.database.db,
+					actor,
+					org.id,
+				),
+			),
+		).role,
 	).toBe("admin");
 });
 
@@ -750,10 +887,12 @@ test("fragment navigation retires the old response without leaving retained invi
 }) => {
 	const owner = await workspace.signIn(page, "owner@example.invalid");
 	const org = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Fragment lab",
-			slug: "fragment-lab",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Fragment lab",
+				slug: "fragment-lab",
+			}),
+		),
 	);
 	const path = `${workspace.origin}/organizations/${org.id}/members`;
 	await page.goto(path);
@@ -806,16 +945,6 @@ test("fragment navigation retires the old response without leaving retained invi
 });
 
 test.describe("composed collector credential lifetime", () => {
-	test.skip(
-		process.env.PFE_TEST_CREDENTIAL_REVEAL !== "true" &&
-			!existsSync(
-				new URL(
-					"../../src/components/collector-credentials.tsx",
-					import.meta.url,
-				),
-			),
-		"Requires the coordinator's composed PFE-56/PFE-57 credential UI and backend",
-	);
 	test("an abandoned invitation response cannot invalidate a newer one-time token reveal", async ({
 		page,
 		workspace,
@@ -823,17 +952,22 @@ test.describe("composed collector credential lifetime", () => {
 		try {
 			const owner = await workspace.signIn(page, "owner@example.invalid");
 			const org = data(
-				await workspace.operations.createOrganization(owner.headers, {
-					name: "Reveal lab",
-					slug: "reveal-lab",
-				}),
+				await workspace.operations(owner.headers, () =>
+					organizationDomain.createOrganization(workspace.auth, owner.headers, {
+						name: "Reveal lab",
+						slug: "reveal-lab",
+					}),
+				),
 			);
 			const project = data(
-				await workspace.operations.createProject(owner.headers, {
-					organizationId: org.id,
-					name: "Private",
-					slug: "private",
-				}),
+				await workspace.operations(owner.headers, (actor) =>
+					projectDomain.createProject(workspace.database.db, actor, {
+						requestId: crypto.randomUUID(),
+						organizationId: org.id,
+						name: "Private",
+						slug: "private",
+					}),
+				),
 			);
 			await page.goto(`${workspace.origin}/organizations/${org.id}/members`);
 			const held = await holdSuccessfulWrite(page);
@@ -858,7 +992,7 @@ test.describe("composed collector credential lifetime", () => {
 				.fill("Reveal source");
 			await page.getByLabel("Source ID", { exact: true }).fill("reveal-source");
 			await page
-				.getByLabel("Allowed host IDs (one per line)", { exact: true })
+				.getByLabel("Enrolled root ID", { exact: true })
 				.fill("reveal-host");
 			await page
 				.getByRole("button", { name: "Create credential", exact: true })
@@ -867,6 +1001,21 @@ test.describe("composed collector credential lifetime", () => {
 				exact: true,
 			});
 			await expect(tokenField).toBeVisible();
+			const grants = await workspace.database.pool.query(
+				`SELECT g.resource_id,g.resource_kind,g.adapter,g.allowed_local_kinds
+           FROM ingestion.collector_root_grant g JOIN ingestion.collector_credential c
+           ON (g.credential_id,g.project_id,g.organization_id)=(c.id,c.project_id,c.organization_id)
+           WHERE c.organization_id=$1 AND c.project_id=$2 AND c.source_id=$3`,
+				[org.id, project.id, "reveal-source"],
+			);
+			expect(grants.rows).toEqual([
+				{
+					resource_id: "reveal-host",
+					resource_kind: 1,
+					adapter: "linux",
+					allowed_local_kinds: [4],
+				},
+			]);
 			const token = await tokenField.inputValue();
 			await page.route("**/_serverFn/**", (route) =>
 				route.request().method() === "GET" ? route.abort() : route.fallback(),

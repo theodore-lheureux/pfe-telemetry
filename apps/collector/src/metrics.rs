@@ -74,7 +74,7 @@ pub(crate) fn resource(attributes: Vec<KeyValue>, metrics: Vec<Metric>) -> Resou
         }),
         scope_metrics: vec![ScopeMetrics {
             scope: Some(InstrumentationScope {
-                name: "pfe.collector.procfs".into(),
+                name: "recount.collector.procfs".into(),
                 version: env!("CARGO_PKG_VERSION").into(),
                 ..Default::default()
             }),
@@ -92,7 +92,7 @@ mod tests {
     #[test]
     fn baseline_builders_preserve_types_units_and_dimensions() {
         let cpu = counter(
-            "pfe.node.cpu.time",
+            "recount.node.cpu.time",
             "s",
             vec![point(
                 number_data_point::Value::AsDouble(1.25),
@@ -101,13 +101,13 @@ mod tests {
                 vec![
                     string("cpu.mode", "user"),
                     string(
-                        "pfe.counter.segment_id",
+                        "recount.counter.segment_id",
                         "bd2e9e7e-09b7-4e28-807d-1b71ab43de88",
                     ),
                 ],
             )],
         );
-        assert_eq!(cpu.name, "pfe.node.cpu.time");
+        assert_eq!(cpu.name, "recount.node.cpu.time");
         assert_eq!(cpu.unit, "s");
         let Some(metric::Data::Sum(sum)) = cpu.data else {
             panic!("CPU must be a sum");
@@ -121,7 +121,7 @@ mod tests {
         assert_eq!(sum.data_points[0].attributes[0].key, "cpu.mode");
 
         let rss = gauge(
-            "pfe.process.memory.rss",
+            "recount.process.memory.rss",
             "By",
             vec![point(number_data_point::Value::AsInt(4096), 200, 0, vec![])],
         );

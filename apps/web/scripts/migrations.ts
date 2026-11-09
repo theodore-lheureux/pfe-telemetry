@@ -17,7 +17,7 @@ export async function applyMigrations(
 		connectionTimeoutMillis: 5_000,
 		statement_timeout: 60_000,
 		lock_timeout: 10_000,
-		application_name: "pfe-migrations",
+		application_name: "recount-migrations",
 	});
 	try {
 		const client = await pool.connect();

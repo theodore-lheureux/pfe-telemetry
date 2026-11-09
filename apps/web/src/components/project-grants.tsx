@@ -1,9 +1,10 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import type {
 	ProjectMembershipSummary,
 	ProjectSummary,
 } from "../organizations/contracts";
 import type { MemberSummary } from "../organizations/member-contracts";
+import { FormFeedback } from "./form-feedback";
 import { ProjectGrantRow } from "./member-administration/project-grant-row";
 import { useProjectGrants } from "./member-administration/use-project-grants";
 
@@ -20,11 +21,7 @@ export function ProjectGrants({
 }) {
 	const state = useProjectGrants(project, userId);
 	return (
-		<section
-			className="flex flex-col gap-4"
-			aria-labelledby="grants-heading"
-			aria-busy={state.pending}
-		>
+		<section className="flex flex-col gap-4" aria-labelledby="grants-heading">
 			<h1
 				ref={state.heading}
 				tabIndex={-1}
@@ -39,9 +36,11 @@ export function ProjectGrants({
 			<p className="text-sm text-muted-foreground">
 				{m.organization_owners_and_administrators_have_implicit_project_administrator()}
 			</p>
-			<p role={state.failed ? "alert" : "status"} className="text-sm">
-				{state.message}
-			</p>
+			<FormFeedback
+				message={state.confirmation ? "" : state.message}
+				pending={state.pending && !state.confirmation}
+				kind={state.failed ? "error" : "success"}
+			/>
 			<ul className="divide-y rounded-md border bg-card text-card-foreground">
 				{members.map((member) => (
 					<ProjectGrantRow

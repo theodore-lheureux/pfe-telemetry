@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { paraglideMiddleware } from "@pfe/i18n/server";
+import { paraglideMiddleware } from "@recount/i18n/server";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
 	formatSample,
@@ -30,7 +30,15 @@ test("validates calendar timestamps, fixed windows and bounded resolution", () =
 		expect(() => parseTimestamp(value)).toThrow();
 	expect(() => parseTelemetryInput({ ...reference, buckets: 601 })).toThrow();
 	expect(() => parseTelemetryInput({ ...reference, buckets: 0.5 })).toThrow();
+	expect(
+		parseTelemetryInput({
+			...reference,
+			sourceId: "foreign",
+			hostId: "other-resource",
+		}),
+	).toEqual({ ...reference, buckets: 300 });
 	const input = {
+		requestId: crypto.randomUUID(),
 		...reference,
 		credentialId: reference.executionId,
 		name: "Test",
@@ -53,7 +61,7 @@ test("renders exact large integers, missing values and translated chart labels w
 	for (const locale of ["en", "fr"] as const) {
 		const response = await paraglideMiddleware(
 			new Request("https://test.invalid", {
-				headers: { cookie: `pfe_locale=${locale}` },
+				headers: { cookie: `recount_locale=${locale}` },
 			}),
 			() =>
 				new Response(
@@ -66,23 +74,29 @@ test("renders exact large integers, missing values and translated chart labels w
 								series: [
 									{
 										id: "stream",
-										profile: "standard",
-										metric: "pfe.node.memory.total",
+										metric: "recount.node.memory.total",
 										unit: "By",
 										hostId: "node1",
 										cpuMode: null,
-										points: [
+										segments: [
 											{
-												bucketMs: 0,
-												timeNs: "18446744073709551614",
-												integer: "9007199254740993",
-												double: null,
-											},
-											{
-												bucketMs: 1,
-												timeNs: "1000001",
-												integer: null,
-												double: null,
+												id: "epoch",
+												points: [
+													{
+														bucketMs: 0,
+														timeNs: "18446744073709551614",
+														flags: 0,
+														integer: "9007199254740993",
+														double: null,
+													},
+													{
+														bucketMs: 1,
+														timeNs: "1000001",
+														flags: 1,
+														integer: null,
+														double: null,
+													},
+												],
 											},
 										],
 									},

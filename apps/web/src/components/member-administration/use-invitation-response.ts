@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { operationMessage } from "../../lib/operation-message";
@@ -7,11 +7,11 @@ import {
 	rejectInvitation,
 } from "../../organizations/invitation.functions";
 import { useLocaleChangeBlocker } from "../locale-safety";
-import { useAdministrationOperation } from "./use-administration-operation";
+import { useMutationOwner } from "../use-mutation-owner";
 
 export function useInvitationResponse(invitationId: string, userId: string) {
 	const hydrated = useHydrated();
-	const { router, begin } = useAdministrationOperation(userId);
+	const { router, begin } = useMutationOwner(userId);
 	const [pending, setPending] = useState(false);
 	const [message, setMessage] = useState("");
 	const [rejected, setRejected] = useState(false);

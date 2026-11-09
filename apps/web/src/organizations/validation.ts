@@ -48,9 +48,21 @@ export function parseOrganizationReference(value: unknown) {
 
 export function parseCreateProjectInput(value: unknown): CreateProjectInput {
 	return {
+		requestId: parseRequestId(record(value).requestId),
 		...parseOrganizationInput(value),
 		...parseOrganizationReference(value),
 	};
+}
+
+export function parseRequestId(value: unknown) {
+	if (
+		typeof value !== "string" ||
+		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+			value,
+		)
+	)
+		throw new Error("Invalid request identifier");
+	return value.toLowerCase();
 }
 
 export function parseProjectReference(value: unknown): ProjectReference {
@@ -62,7 +74,10 @@ export function parseProjectReference(value: unknown): ProjectReference {
 		)
 	)
 		throw new Error("Invalid project identifier");
-	return { ...parseOrganizationReference(value), projectId: input.projectId };
+	return {
+		...parseOrganizationReference(value),
+		projectId: input.projectId.toLowerCase(),
+	};
 }
 
 export function parseUpdateProjectInput(value: unknown): UpdateProjectInput {

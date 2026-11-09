@@ -1,7 +1,8 @@
-import { formatDate } from "@pfe/i18n";
-import { roleLabel, statusLabel } from "@pfe/i18n/labels";
-import { m } from "@pfe/i18n/messages";
+import { formatDate } from "@recount/i18n";
+import { roleLabel, statusLabel } from "@recount/i18n/labels";
+import { m } from "@recount/i18n/messages";
 import type { OrganizationRole } from "../../organizations/contracts";
+import { FormFeedback } from "../form-feedback";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -80,7 +81,6 @@ export function InvitationList({
 									</Button>
 								</AlertDialogTrigger>
 								<AlertDialogContent
-									aria-busy={pending}
 									onCloseAutoFocus={(event) => {
 										if (pending) {
 											event.preventDefault();
@@ -97,19 +97,21 @@ export function InvitationList({
 									<AlertDialogDescription>
 										{m.cancel_this_invitation_its_link_will_no_longer()}
 									</AlertDialogDescription>
-									{failed && message && (
-										<p role="alert" className="text-sm text-destructive">
-											{message}
-										</p>
-									)}
+									<FormFeedback
+										message={failed ? message : ""}
+										kind="error"
+										pending={pending}
+										pendingMessage={m.canceling_invitation()}
+									/>
 									<AlertDialogFooter>
-										{pending && <p role="status">{m.saving()}</p>}
 										<AlertDialogCancel disabled={pending}>
 											{m.keep_invitation()}
 										</AlertDialogCancel>
 										<Button
 											variant="destructive"
 											disabled={pending}
+											pending={pending}
+											pendingLabel={m.canceling_invitation()}
 											onClick={() => void state.cancel(invitation.id)}
 										>
 											{m.confirm_cancellation()}
@@ -124,6 +126,12 @@ export function InvitationList({
 								<Button
 									variant="outline"
 									disabled={disabled}
+									pending={
+										pending &&
+										state.activity?.type === "resend" &&
+										state.activity.id === invitation.id
+									}
+									pendingLabel={m.resending_invitation()}
 									onClick={() => void state.resend(invitation)}
 									aria-label={m.resend_invitation_named({
 										email: invitation.email,

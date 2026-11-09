@@ -1,5 +1,5 @@
-import { roleLabel } from "@pfe/i18n/labels";
-import { m } from "@pfe/i18n/messages";
+import { roleLabel } from "@recount/i18n/labels";
+import { m } from "@recount/i18n/messages";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageHeading } from "@/components/workspace";

@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import type { OrganizationRole } from "../../organizations/contracts";
 import { Button } from "../ui/button";
 import { NativeSelectOption } from "../ui/native-select";
@@ -56,7 +56,12 @@ export function InvitationForm({
 					</field.SelectField>
 				)}
 			</form.AppField>
-			<Button type="submit" disabled={disabled}>
+			<Button
+				type="submit"
+				disabled={disabled}
+				pending={state.sending}
+				pendingLabel={m.sending_invitation()}
+			>
 				{m.send_invitation()}
 			</Button>
 		</form>

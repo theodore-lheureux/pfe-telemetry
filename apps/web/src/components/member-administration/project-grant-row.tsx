@@ -1,7 +1,8 @@
-import { roleLabel } from "@pfe/i18n/labels";
-import { m } from "@pfe/i18n/messages";
+import { roleLabel } from "@recount/i18n/labels";
+import { m } from "@recount/i18n/messages";
 import type { ProjectMembershipSummary } from "../../organizations/contracts";
 import type { MemberSummary } from "../../organizations/member-contracts";
+import { FormFeedback } from "../form-feedback";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -80,7 +81,6 @@ export function ProjectGrantRow({
 					}}
 				>
 					<AlertDialogContent
-						aria-busy={pending}
 						onCloseAutoFocus={(event) => {
 							event.preventDefault();
 							const trigger = state.confirmationTrigger.current;
@@ -103,16 +103,17 @@ export function ProjectGrantRow({
 									? m.this_removes_your_project_administrator_access_you_will()
 									: m.remove_access_question({ email: member.email })}
 						</AlertDialogDescription>
-						{failed && message && (
-							<p role="alert" className="text-sm text-destructive">
-								{message}
-							</p>
-						)}
+						<FormFeedback
+							message={failed ? message : ""}
+							kind="error"
+							pending={pending}
+						/>
 						<AlertDialogFooter>
-							{pending && <p role="status">{m.saving()}</p>}
 							<Button
 								variant="destructive"
 								disabled={pending}
+								pending={pending}
+								pendingLabel={m.saving()}
 								onClick={() => void state.change(member, confirmation.role)}
 							>
 								{m.confirm_access_change()}

@@ -8,16 +8,16 @@ describe("database configuration", () => {
 		expect(
 			readDatabaseConfig({
 				DATABASE_URL: connectionString,
-				DATABASE_POOL_MAX: "3",
+				RECOUNT_DATABASE_POOL_MAX: "3",
 			}).max,
 		).toBe(3);
 		for (const value of ["0", "101"]) {
 			expect(() =>
 				readDatabaseConfig({
 					DATABASE_URL: connectionString,
-					DATABASE_POOL_MAX: value,
+					RECOUNT_DATABASE_POOL_MAX: value,
 				}),
-			).toThrow("DATABASE_POOL_MAX");
+			).toThrow("RECOUNT_DATABASE_POOL_MAX");
 		}
 	});
 

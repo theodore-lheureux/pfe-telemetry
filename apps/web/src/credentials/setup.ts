@@ -1,28 +1,29 @@
 import { InputError } from "../lib/input-error";
+import { parseCollectorCredentialValues } from "./validation";
 
-export const collectorBuildCommand = `cargo build --locked --release -p pfe-collector
+export const collectorBuildCommand = `cargo build --locked --release -p recount-collector
 install -d -m 0755 "$HOME/.local/bin"
-install -m 0755 target/release/pfe-collector "$HOME/.local/bin/pfe-collector"`;
+install -m 0755 target/release/recount-collector "$HOME/.local/bin/recount-collector"`;
 
 export const collectorTokenCommand = `umask 077
 set +x
-unset PFE_TOKEN
-if install -d -m 700 "$HOME/.config/pfe-telemetry"; then
-  if IFS= read -r -s -p 'Paste collector token: ' PFE_TOKEN &&
-     install -m 600 /dev/null "$HOME/.config/pfe-telemetry/collector.token"; then
-    printf '%s\\n' "$PFE_TOKEN" > "$HOME/.config/pfe-telemetry/collector.token"
+unset RECOUNT_TOKEN
+if install -d -m 700 "$HOME/.config/recount"; then
+  if IFS= read -r -s -p 'Paste collector token: ' RECOUNT_TOKEN &&
+     install -m 600 /dev/null "$HOME/.config/recount/collector.token"; then
+    printf '%s\\n' "$RECOUNT_TOKEN" > "$HOME/.config/recount/collector.token"
   fi
 fi
 printf '\\n'
-unset PFE_TOKEN`;
+unset RECOUNT_TOKEN`;
 
-export const collectorRunCommand = `"$HOME/.local/bin/pfe-collector" \\
+export const collectorRunCommand = `"$HOME/.local/bin/recount-collector" \\
   --endpoint http://127.0.0.1:14317 \\
-  --source-token-file "$HOME/.config/pfe-telemetry/collector.token" \\
+  --source-token-file "$HOME/.config/recount/collector.token" \\
   --host-id 'REPLACE_WITH_ENROLLED_HOST_ID' \\
   --visibility restricted \\
   --process-namespace-id 'REPLACE_WITH_NAMESPACE_ID' \\
-  --queue-directory "$HOME/.local/state/pfe-telemetry/queue"`;
+  --queue-directory "$HOME/.local/state/recount/queue"`;
 
 export function credentialStatus(
 	credential: { revokedAt: Date | null; expiresAt: Date | null },
@@ -37,17 +38,13 @@ export function credentialStatus(
 export interface CredentialFormValues {
 	name: string;
 	sourceId: string;
-	hosts: string;
-	requireHostId: boolean;
+	rootId: string;
 	expiresAt: string;
 	maximumSubmissionAge: string;
 	allowedClockSkew: string;
 }
 
 export function credentialFormValues(form: CredentialFormValues) {
-	const name = form.name.trim();
-	if (!name || name.length > 120)
-		throw new InputError("INVALID_NAME", "Name must contain 1–120 characters.");
 	const expiry = form.expiresAt;
 	const expiresAt = expiry ? new Date(expiry) : null;
 	if (
@@ -58,39 +55,15 @@ export function credentialFormValues(form: CredentialFormValues) {
 			"INVALID_EXPIRY",
 			"Choose an expiration in the future, or leave it empty.",
 		);
-	const hosts = form.hosts
-		.split(/\r?\n/)
-		.map((host) => host.trim())
-		.filter(Boolean);
-	const requireHostId = form.requireHostId;
-	if (requireHostId && !hosts.length)
-		throw new InputError(
-			"HOSTS_REQUIRED",
-			"Enter at least one allowed host ID when host identification is required.",
-		);
-	if (hosts.length > 256 || new Set(hosts).size !== hosts.length)
-		throw new InputError(
-			"HOSTS_UNIQUE",
-			"Enter up to 256 unique host IDs, one per line.",
-		);
-	const sourceId = form.sourceId.trim();
-	if (
-		[sourceId, ...hosts].some(
-			(id) =>
-				!id || new TextEncoder().encode(id).length > 128 || /\p{Cc}/u.test(id),
-		)
-	)
-		throw new InputError(
-			"INVALID_IDENTIFIER",
-			"Source and host IDs must contain 1–128 UTF-8 bytes without control characters.",
-		);
-	return {
-		name,
-		sourceId,
-		hosts,
-		requireHostId,
+	return parseCollectorCredentialValues({
+		name: form.name,
+		sourceId: form.sourceId.trim(),
+		rootId: form.rootId.trim(),
+		rootKind: 1,
+		adapter: "linux" as const,
+		allowedLocalKinds: [4],
 		maximumSubmissionAge: Number(form.maximumSubmissionAge),
 		allowedClockSkew: Number(form.allowedClockSkew),
 		expiresAt: expiresAt?.toISOString() ?? null,
-	};
+	});
 }

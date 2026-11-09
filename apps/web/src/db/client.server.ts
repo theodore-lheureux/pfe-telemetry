@@ -10,7 +10,7 @@ export function createDatabase(config: DatabaseConfig) {
 		connectionTimeoutMillis: 5_000,
 		idleTimeoutMillis: 30_000,
 		statement_timeout: 15_000,
-		application_name: "pfe-web",
+		application_name: "recount-web",
 	});
 	// Idle-client errors otherwise become unhandled EventEmitter errors. Do not
 	// log driver errors: they can contain connection or query details.
@@ -23,16 +23,16 @@ export function createDatabase(config: DatabaseConfig) {
 type Database = ReturnType<typeof createDatabase>;
 // Keep the pool across development module reloads.
 const runtime = globalThis as typeof globalThis & {
-	pfeApplicationDatabase?: Database;
+	recountApplicationDatabase?: Database;
 };
 
 export function getDatabase() {
-	runtime.pfeApplicationDatabase ??= createDatabase(readDatabaseConfig());
-	return runtime.pfeApplicationDatabase.db;
+	runtime.recountApplicationDatabase ??= createDatabase(readDatabaseConfig());
+	return runtime.recountApplicationDatabase.db;
 }
 
 export async function closeDatabase() {
-	const database = runtime.pfeApplicationDatabase;
-	delete runtime.pfeApplicationDatabase;
+	const database = runtime.recountApplicationDatabase;
+	delete runtime.recountApplicationDatabase;
 	await database?.pool.end();
 }

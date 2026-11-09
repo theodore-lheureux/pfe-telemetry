@@ -1,17 +1,21 @@
-import { formatDate, formatSeconds } from "@pfe/i18n";
-import { m } from "@pfe/i18n/messages";
-import { getLocale } from "@pfe/i18n/runtime";
+import { formatDate, formatSeconds } from "@recount/i18n";
+import { m } from "@recount/i18n/messages";
+import { getLocale } from "@recount/i18n/runtime";
 import { useId } from "react";
-import type { TelemetryResult, TelemetrySeries } from "./contracts";
+import type {
+	TelemetryPoint,
+	TelemetryResult,
+	TelemetrySeries,
+} from "./contracts";
 
 function label(series: TelemetrySeries) {
-	return series.metric === "pfe.node.cpu.time"
+	return series.metric === "recount.node.cpu.time"
 		? m.node_cumulative_cpu_time()
-		: series.metric === "pfe.node.memory.total"
+		: series.metric === "recount.node.memory.total"
 			? m.node_total_memory()
 			: m.node_available_memory();
 }
-function plotValue(point: TelemetrySeries["points"][number]) {
+function plotValue(point: TelemetryPoint) {
 	if (point.integer !== null) {
 		const value = BigInt(point.integer);
 		return value <= BigInt(Number.MAX_SAFE_INTEGER) &&
@@ -37,13 +41,14 @@ function Series({
 	result: TelemetryResult;
 }) {
 	const id = useId();
-	const values = series.points
+	const values = series.segments
+		.flatMap((segment) => segment.points)
 		.map(plotValue)
 		.filter((value): value is number => value !== null);
 	const min = values.length ? Math.min(...values) : 0;
 	const max = values.length ? Math.max(...values) : 0;
 	const duration = result.to.getTime() - result.from.getTime();
-	const title = `${label(series)} · ${series.hostId ?? m.unidentified_host()}${series.cpuMode ? ` · ${series.cpuMode}` : ""} · ${m.collection_profile({ profile: series.profile })} · ${series.id.slice(-8)}`;
+	const title = `${label(series)} · ${series.hostId ?? m.unidentified_host()}${series.cpuMode ? ` · ${series.cpuMode}` : ""} · ${series.id.slice(-8)}`;
 	return (
 		<section className="space-y-3 rounded-xl border p-4">
 			<h3 className="font-semibold">
@@ -59,20 +64,27 @@ function Series({
 				<desc id={`${id}-description`}>
 					{m.node_context_not_execution_workload_consumption_last_sample()}
 				</desc>
-				{series.points.map((point) => {
-					const value = plotValue(point);
-					return value === null ? null : (
-						<circle
-							key={point.bucketMs}
-							cx={
-								10 + ((point.bucketMs - result.from.getTime()) / duration) * 580
-							}
-							cy={max === min ? 80 : 150 - ((value - min) / (max - min)) * 140}
-							r={3}
-							fill="currentColor"
-						/>
-					);
-				})}
+				{series.segments.map((segment) => (
+					<g key={segment.id} data-continuity-segment={segment.id}>
+						{segment.points.map((point) => {
+							const value = plotValue(point);
+							return value === null ? null : (
+								<circle
+									key={point.bucketMs}
+									cx={
+										10 +
+										((point.bucketMs - result.from.getTime()) / duration) * 580
+									}
+									cy={
+										max === min ? 80 : 150 - ((value - min) / (max - min)) * 140
+									}
+									r={3}
+									fill="currentColor"
+								/>
+							);
+						})}
+					</g>
+				))}
 			</svg>
 			<p className="text-xs text-muted-foreground">{m.chart_exact_values()}</p>
 			<section
@@ -87,27 +99,33 @@ function Series({
 					</caption>
 					<thead>
 						<tr>
+							<th>{m.continuity_segment()}</th>
 							<th>{m.bucket_start_utc()}</th>
 							<th>{m.sample_nanoseconds()}</th>
 							<th>{series.unit}</th>
 						</tr>
 					</thead>
 					<tbody>
-						{series.points.map((point) => (
-							<tr key={point.bucketMs}>
-								<td>{formatDate(point.bucketMs)}</td>
-								<td className="font-mono text-xs">{point.timeNs}</td>
-								<td>
-									{point.integer !== null
-										? new Intl.NumberFormat(getLocale()).format(
-												BigInt(point.integer),
-											)
-										: point.double !== null
-											? formatSample(point.double)
-											: m.no_recorded_value()}
-								</td>
-							</tr>
-						))}
+						{series.segments.flatMap((segment) =>
+							segment.points.map((point) => (
+								<tr key={`${segment.id}/${point.bucketMs}`}>
+									<td className="font-mono text-xs">
+										{segment.id.slice(0, 12)}
+									</td>
+									<td>{formatDate(point.bucketMs)}</td>
+									<td className="font-mono text-xs">{point.timeNs}</td>
+									<td>
+										{point.integer !== null
+											? new Intl.NumberFormat(getLocale()).format(
+													BigInt(point.integer),
+												)
+											: point.double !== null
+												? formatSample(point.double)
+												: m.no_recorded_value()}
+									</td>
+								</tr>
+							)),
+						)}
 					</tbody>
 				</table>
 			</section>

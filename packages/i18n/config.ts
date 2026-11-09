@@ -2,7 +2,7 @@ import type { CompilerOptions } from "@inlang/paraglide-js";
 
 export const compilerOptions = {
 	strategy: ["cookie", "baseLocale"],
-	cookieName: "pfe_locale",
+	cookieName: "recount_locale",
 	cookieMaxAge: 31_536_000,
 	cookieSameSite: "lax",
 	cookieSecure: "auto",

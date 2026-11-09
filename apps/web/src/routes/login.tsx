@@ -1,27 +1,46 @@
-import { m } from "@pfe/i18n/messages";
-import { useSelector } from "@tanstack/react-form";
+import { m } from "@recount/i18n/messages";
 import {
 	createFileRoute,
-	Link,
 	type SearchSchemaInput,
 	useHydrated,
 	useRouter,
 } from "@tanstack/react-router";
 import { createIsomorphicFn } from "@tanstack/react-start";
 import { getRequestUrl } from "@tanstack/react-start/server";
-import { useEffect, useRef, useState } from "react";
+import { REGEXP_ONLY_DIGITS } from "input-otp";
+import { ArrowLeftIcon, KeyRoundIcon } from "lucide-react";
+import {
+	useEffect,
+	useEffectEvent,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
+import type {
+	AuthenticationOperation,
+	AuthenticationOutcome,
+} from "../auth/authentication";
 import { authClient } from "../auth/client";
-import { loginSearch, signInDestinations } from "../auth/redirect";
+import {
+	passkeyAuthenticationSupported,
+	preparePasskey,
+} from "../auth/passkey";
+import { loginSearch } from "../auth/redirect";
 import { useAppForm } from "../components/app-form";
+import { type FeedbackKind, FormFeedback } from "../components/form-feedback";
 import { useLocaleChangeBlocker } from "../components/locale-safety";
 import { useMutationFeedback } from "../components/mutation-feedback";
-import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
+import {
+	InputOTP,
+	InputOTPGroup,
+	InputOTPSlot,
+} from "../components/ui/input-otp";
 
 const currentOrigin = createIsomorphicFn()
 	.server(() => getRequestUrl().origin)
 	.client(() => window.location.origin);
-
 export const Route = createFileRoute("/login")({
 	validateSearch: (search: Record<string, unknown> & SearchSchemaInput) =>
 		loginSearch(search, currentOrigin()),
@@ -29,23 +48,54 @@ export const Route = createFileRoute("/login")({
 	component: Login,
 });
 
+type Action = "send" | "resend" | "verify" | "check" | "passkey";
+type Message = { kind: FeedbackKind; text: string };
+
 function Login() {
-	const { error, redirect } = Route.useSearch();
+	const { redirect } = Route.useSearch();
+	const { authentication } = Route.useRouteContext();
+	const identity = useSyncExternalStore(
+		authentication.subscribe,
+		authentication.getSnapshot,
+		authentication.getSnapshot,
+	);
 	const router = useRouter();
 	const hydrated = useHydrated();
 	const setFeedback = useMutationFeedback();
-	const [passkeyPending, setPasskeyPending] = useState(false);
-	const form = useAppForm({
-		defaultValues: { email: "" },
-		onSubmit: async ({ value }) => signInWithEmail(value.email),
-	});
-	const emailPending = useSelector(form.store, (state) => state.isSubmitting);
-	const pending = passkeyPending || emailPending;
-	useLocaleChangeBlocker(pending);
-	const passkeysSupported =
-		hydrated && window.isSecureContext && "PublicKeyCredential" in window;
-	const [message, setMessage] = useState("");
+	const [phase, setPhase] = useState<"email" | "code">(
+		identity.recovery?.email ? "code" : "email",
+	);
+	const [sentEmail, setSentEmail] = useState(identity.recovery?.email ?? "");
+	const [localAction, setAction] = useState<Action | null>(null);
+	const action = localAction ?? identity.action;
+	const [message, setMessage] = useState<Message | null>(null);
+	const [codeInvalid, setCodeInvalid] = useState(false);
+	const [uncertain, setUncertain] = useState(!!identity.recovery);
+	const [retryAt, setRetryAt] = useState(0);
+	const [verifyRetryAt, setVerifyRetryAt] = useState(0);
+	const [sendRateLimited, setSendRateLimited] = useState(false);
+	const [now, setNow] = useState(0);
 	const lifetime = useRef({ mounted: false, generation: 0 });
+	const operation = useRef<symbol | null>(null);
+	const request = useRef<{ cancel: () => void } | null>(null);
+	const conditional = useRef<{ cancel: () => void } | null>(null);
+	const previousPhase = useRef(phase);
+	const emailInput = useRef<HTMLInputElement>(null);
+	const codeInput = useRef<HTMLInputElement>(null);
+	const emailForm = useAppForm({
+		defaultValues: { email: "" },
+		onSubmit: async ({ value }) => requestCode(value.email, false),
+	});
+	const codeForm = useAppForm({
+		defaultValues: { code: "" },
+		onSubmit: async ({ value }) => verifyCode(value.code),
+	});
+	const busy = localAction !== null || identity.pending;
+	const remaining = Math.max(0, Math.ceil((retryAt - now) / 1000));
+	const verifyRemaining = Math.max(0, Math.ceil((verifyRetryAt - now) / 1000));
+	const passkeysSupported = hydrated ? passkeyAuthenticationSupported() : null;
+	useLocaleChangeBlocker(busy);
+
 	useEffect(() => {
 		const state = lifetime.current;
 		state.mounted = true;
@@ -55,139 +105,560 @@ function Login() {
 				if (
 					fromLocation?.href !== toLocation.href ||
 					fromLocation?.state.__TSR_key !== toLocation.state.__TSR_key
-				)
+				) {
 					state.generation++;
+					conditional.current?.cancel();
+					request.current?.cancel();
+				}
 			},
 		);
+		const hide = () => {
+			state.generation++;
+			conditional.current?.cancel();
+			request.current?.cancel();
+			codeForm.reset();
+		};
+		window.addEventListener("pagehide", hide);
 		return () => {
 			state.mounted = false;
 			state.generation++;
+			hide();
+			window.removeEventListener("pagehide", hide);
 			stop();
 		};
-	}, [router]);
+	}, [router, codeForm]);
+	useEffect(() => {
+		const deadline = Math.max(retryAt, verifyRetryAt);
+		if (!deadline || Date.now() >= deadline) return;
+		setNow(Date.now());
+		const interval = window.setInterval(() => {
+			const time = Date.now();
+			setNow(time);
+			if (time >= deadline) window.clearInterval(interval);
+		}, 1000);
+		return () => window.clearInterval(interval);
+	}, [retryAt, verifyRetryAt]);
+	useEffect(() => {
+		if (previousPhase.current === phase) return;
+		previousPhase.current = phase;
+		(phase === "code" ? codeInput.current : emailInput.current)?.focus();
+	}, [phase]);
 
-	async function signInWithPasskey() {
-		if (pending || !passkeysSupported) return;
-		const generation = ++lifetime.current.generation;
-		const current = () =>
-			lifetime.current.mounted && lifetime.current.generation === generation;
-		setPasskeyPending(true);
-		setMessage("");
-		try {
-			const result = await authClient.signIn.passkey();
-			if (!current()) return;
-			if (result.error) {
-				setMessage(m.passkey_signin_was_not_completed_try_again_or());
-			} else {
-				router.options.context.queryClient.clear();
-				setFeedback(null);
-				router.clearCache();
-				await router.invalidate({ sync: true });
-				if (!current()) return;
-				await router.navigate({ href: redirect, replace: true });
-			}
-		} catch {
-			if (current()) setMessage(m.signin_is_unavailable_please_try_again());
-		} finally {
-			if (lifetime.current.mounted) setPasskeyPending(false);
-		}
-	}
-
-	async function signInWithEmail(email: string) {
-		if (!hydrated || passkeyPending) return;
-		const generation = ++lifetime.current.generation;
-		setMessage("");
-		try {
-			const result = await authClient.signIn.magicLink({
-				email,
-				...signInDestinations(redirect),
+	async function presentAuthentication(
+		outcome: AuthenticationOutcome,
+		current: () => boolean,
+	) {
+		if (!current()) return;
+		if (outcome.status === "authenticated") {
+			codeForm.reset();
+			setFeedback(null);
+			await router.navigate({ href: redirect, replace: true });
+		} else if (outcome.status === "uncertain") {
+			setUncertain(true);
+			setMessage({ kind: "warning", text: m.signin_uncertain() });
+		} else if (outcome.status === "rejected") {
+			if (outcome.httpStatus === 429)
+				setMessage({ kind: "warning", text: m.code_rate_limited() });
+			else if (
+				["INVALID_OTP", "OTP_EXPIRED", "TOO_MANY_ATTEMPTS"].includes(
+					outcome.code ?? "",
+				)
+			) {
+				setCodeInvalid(true);
+				setMessage({
+					kind: "error",
+					text:
+						outcome.code === "TOO_MANY_ATTEMPTS"
+							? m.code_attempts_exceeded()
+							: m.code_invalid(),
+				});
+			} else
+				setMessage({
+					kind: "error",
+					text: m.signin_is_unavailable_please_try_again(),
+				});
+		} else
+			setMessage({
+				kind: "error",
+				text: m.signin_is_unavailable_please_try_again(),
 			});
-			if (
-				!lifetime.current.mounted ||
-				lifetime.current.generation !== generation
-			)
-				return;
-			setMessage(
-				result.error
-					? m.we_could_not_send_a_signin_link_please()
-					: m.if_this_address_can_sign_in_a_link(),
-			);
+	}
+	const completeConditional = useEffectEvent(presentAuthentication);
+	useEffect(() => {
+		const recovery = identity.recovery;
+		if (!recovery) return;
+		setUncertain(true);
+		if (recovery.email) {
+			setSentEmail(recovery.email);
+			setPhase("code");
+		}
+		setMessage({ kind: "warning", text: m.signin_uncertain() });
+	}, [identity.recovery]);
+	useEffect(() => {
+		if (!hydrated || phase !== "email") return;
+		if (
+			authentication.getSnapshot().pending ||
+			authentication.getSnapshot().recovery
+		)
+			return;
+		const state = lifetime.current;
+		const generation = state.generation;
+		const controller = new AbortController();
+		let lease: AuthenticationOperation | null = null;
+		const attempt = {
+			cancel: () => {
+				controller.abort();
+				lease?.cancel();
+			},
+		};
+		conditional.current = attempt;
+		const current = () =>
+			state.mounted &&
+			state.generation === generation &&
+			!controller.signal.aborted;
+		void preparePasskey(controller.signal, true)
+			.then(async (result) => {
+				if (result.status !== "ready" || !current() || operation.current)
+					return;
+				lease = authentication.begin("passkey");
+				if (!lease) return;
+				setMessage(null);
+				const outcome = await lease.submit(async (signal) => {
+					const verified = await authClient.passkey.verifyAuthentication({
+						response: result.assertion,
+						fetchOptions: { signal, retry: 0 },
+					});
+					return {
+						ok: !verified.error,
+						code:
+							verified.error && "code" in verified.error
+								? verified.error.code
+								: undefined,
+						httpStatus: verified.error?.status,
+					};
+				});
+				await completeConditional(outcome, current);
+			})
+			.catch(() => {
+				if (current() && lease)
+					setMessage({
+						kind: "error",
+						text: m.signin_is_unavailable_please_try_again(),
+					});
+			})
+			.finally(() => {
+				lease?.finish();
+				if (conditional.current === attempt) conditional.current = null;
+			});
+		return attempt.cancel;
+	}, [hydrated, phase, authentication]);
+
+	function begin(kind: "send" | "resend") {
+		if (!hydrated || operation.current || authentication.getSnapshot().pending)
+			return null;
+		conditional.current?.cancel();
+		const state = lifetime.current;
+		const generation = ++state.generation;
+		const owner = Symbol(kind);
+		const controller = new AbortController();
+		operation.current = owner;
+		setAction(kind);
+		setMessage(null);
+		const current = () =>
+			state.mounted &&
+			state.generation === generation &&
+			operation.current === owner &&
+			!controller.signal.aborted;
+		const finish = () => {
+			if (operation.current === owner) {
+				operation.current = null;
+				if (state.mounted) setAction(null);
+			}
+			if (request.current === attempt) request.current = null;
+		};
+		const attempt = {
+			cancel: () => {
+				controller.abort();
+				finish();
+			},
+		};
+		request.current = attempt;
+		return { current, finish, signal: controller.signal };
+	}
+	function cooldown(seconds = 60) {
+		const time = Date.now();
+		setNow(time);
+		setRetryAt((previous) => Math.max(previous, time + seconds * 1000));
+	}
+	async function requestCode(value: string, resend: boolean) {
+		if (resend && remaining > 0) return;
+		const lease = begin(resend ? "resend" : "send");
+		if (!lease) return;
+		const email = value.trim();
+		cooldown();
+		const showCode = (feedback: Message) => {
+			authentication.clearRecovery();
+			setSentEmail(email);
+			codeForm.reset();
+			setCodeInvalid(false);
+			setUncertain(false);
+			setPhase("code");
+			setMessage(feedback);
+		};
+		try {
+			const result = await authClient.emailOtp.sendVerificationOtp({
+				email,
+				type: "sign-in",
+				fetchOptions: {
+					signal: lease.signal,
+					onError: ({ response }: { response: Response }) => {
+						if (lease.current() && response.status === 429) {
+							const time = Date.now();
+							setNow(time);
+							setRetryAt(
+								time +
+									(Number(response.headers.get("X-Retry-After")) || 60) * 1000,
+							);
+							setSendRateLimited(true);
+						}
+					},
+				},
+			});
+			if (!lease.current()) return;
+			if (!result.error) {
+				setSendRateLimited(false);
+				showCode({ kind: "success", text: resend ? m.code_requested() : "" });
+			} else if (result.error.status === 429)
+				setMessage({ kind: "warning", text: m.code_rate_limited() });
+			else if (!result.error.status || result.error.status >= 500)
+				showCode({ kind: "warning", text: m.code_request_uncertain() });
+			else setMessage({ kind: "error", text: m.code_request_failed() });
 		} catch {
-			if (
-				lifetime.current.mounted &&
-				lifetime.current.generation === generation
-			)
-				setMessage(m.we_could_not_send_a_signin_link_please());
+			if (lease.current())
+				showCode({ kind: "warning", text: m.code_request_uncertain() });
+		} finally {
+			lease.finish();
 		}
 	}
+	async function verifyCode(code: string) {
+		if (!uncertain && !/^\d{6}$/.test(code)) {
+			setCodeInvalid(true);
+			setMessage({ kind: "error", text: m.code_six_digits() });
+			return;
+		}
+		if (!uncertain && verifyRemaining > 0) return;
+		if (operation.current || authentication.getSnapshot().pending) return;
+		conditional.current?.cancel();
+		const state = lifetime.current;
+		const generation = ++state.generation;
+		const current = () => state.mounted && state.generation === generation;
+		setCodeInvalid(false);
+		setMessage(null);
+		if (uncertain || authentication.getSnapshot().recovery) {
+			const outcome = await authentication.recover();
+			await presentAuthentication(outcome, current);
+			if (current() && outcome.status === "uncertain")
+				setMessage({ kind: "warning", text: m.signin_check_failed() });
+			return;
+		}
+		const lease = authentication.begin("verify");
+		if (!lease) return;
+		const attempt = { cancel: lease.cancel };
+		request.current = attempt;
+		try {
+			const outcome = await lease.submit(async (signal) => {
+				const result = await authClient.signIn.emailOtp({
+					email: sentEmail,
+					otp: code,
+					fetchOptions: {
+						signal,
+						retry: 0,
+						onError: ({ response }: { response: Response }) => {
+							if (current() && response.status === 429) {
+								const time = Date.now();
+								setNow(time);
+								setVerifyRetryAt(
+									time +
+										(Number(response.headers.get("X-Retry-After")) || 60) *
+											1000,
+								);
+							}
+						},
+					},
+				});
+				return {
+					ok: !result.error,
+					code: result.error?.code,
+					httpStatus: result.error?.status,
+				};
+			}, sentEmail);
+			await presentAuthentication(outcome, current);
+		} catch {
+			if (current())
+				setMessage({ kind: "warning", text: m.signin_uncertain() });
+		} finally {
+			lease.finish();
+			if (request.current === attempt) request.current = null;
+		}
+	}
+	async function signInWithPasskey() {
+		if (
+			!passkeysSupported ||
+			operation.current ||
+			authentication.getSnapshot().pending
+		)
+			return;
+		conditional.current?.cancel();
+		const state = lifetime.current;
+		const generation = ++state.generation;
+		const current = () => state.mounted && state.generation === generation;
+		if (authentication.getSnapshot().recovery?.method === "passkey") {
+			await presentAuthentication(await authentication.recover(), current);
+			return;
+		}
+		const lease = authentication.begin("passkey");
+		if (!lease) return;
+		const attempt = { cancel: lease.cancel };
+		request.current = attempt;
+		setMessage(null);
+		try {
+			const prepared = await preparePasskey(lease.signal, false);
+			if (!current()) return;
+			if (prepared.status !== "ready") {
+				setMessage({
+					kind: "error",
+					text: m.passkey_signin_was_not_completed_try_again_or(),
+				});
+				return;
+			}
+			const outcome = await lease.submit(async (signal) => {
+				const result = await authClient.passkey.verifyAuthentication({
+					response: prepared.assertion,
+					fetchOptions: { signal, retry: 0 },
+				});
+				return {
+					ok: !result.error,
+					code:
+						result.error && "code" in result.error
+							? result.error.code
+							: undefined,
+					httpStatus: result.error?.status,
+				};
+			});
+			await presentAuthentication(outcome, current);
+		} catch {
+			if (current())
+				setMessage({
+					kind: "error",
+					text: m.signin_is_unavailable_please_try_again(),
+				});
+		} finally {
+			lease.finish();
+			if (request.current === attempt) request.current = null;
+		}
+	}
+	function changeEmail() {
+		if (operation.current || authentication.getSnapshot().pending) return;
+		authentication.clearRecovery();
+		lifetime.current.generation++;
+		codeForm.reset();
+		setCodeInvalid(false);
+		setUncertain(false);
+		setMessage(null);
+		setPhase("email");
+	}
+	const pendingText =
+		action === "passkey"
+			? m.signing_in()
+			: action === "verify"
+				? m.verifying_code()
+				: action === "check"
+					? m.checking_signin()
+					: m.sending_code();
 
 	return (
 		<main className="mx-auto my-8 flex w-[calc(100%_-_2rem)] max-w-md flex-col gap-6 rounded-lg border bg-card p-5 text-card-foreground sm:my-16">
-			<Link to="/" className="text-sm text-muted-foreground">
-				{m.app_title()}
-			</Link>
 			<div>
-				<h1 className="text-2xl font-semibold tracking-tight">{m.sign_in()}</h1>
+				<h1 className="text-[22px] font-medium">
+					{phase === "email" ? m.sign_in() : m.check_your_email()}
+				</h1>
 				<p className="mt-2 text-sm text-muted-foreground">
-					{m.use_a_passkey_or_get_a_secure_signin()}
+					{phase === "email"
+						? m.use_a_passkey_or_get_a_secure_signin()
+						: m.code_for_email({ email: sentEmail })}
 				</p>
 			</div>
-			{error && (
-				<Alert variant="destructive">
-					<AlertDescription>
-						{m.this_signin_link_is_invalid_expired_or_cannot()}
-					</AlertDescription>
-				</Alert>
-			)}
-			<Button
-				size="lg"
-				disabled={pending || !passkeysSupported}
-				onClick={signInWithPasskey}
-			>
-				{m.sign_in_with_a_passkey()}
-			</Button>
-			{!passkeysSupported && (
-				<p className="text-sm text-muted-foreground">
-					{m.passkeys_require_a_supported_browser_and_https_or()}
-				</p>
-			)}
-			<form
-				method="post"
-				onSubmit={(event) => {
-					event.preventDefault();
-					event.stopPropagation();
-					void form.handleSubmit();
-				}}
-				className="flex flex-col gap-3 border-t pt-6"
-			>
-				<form.AppField name="email">
-					{(field) => (
-						<field.TextField
-							id="email"
-							label={m.email_address()}
-							type="email"
-							autoComplete="email"
-							required
-							disabled={!hydrated || pending}
-							maxLength={254}
-						/>
-					)}
-				</form.AppField>
-				<Button
-					size="lg"
-					variant="outline"
-					type="submit"
-					disabled={!hydrated || pending}
+			{phase === "email" ? (
+				<form
+					method="post"
+					className="flex flex-col gap-3"
+					onSubmit={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						void emailForm.handleSubmit();
+					}}
 				>
-					{m.email_me_a_signin_link()}
-				</Button>
-				<p className="text-sm text-muted-foreground">
-					{m.new_here_or_lost_your_passkeys_start_with()}
-				</p>
-			</form>
-			<p role="status" aria-live="polite" className="text-sm">
-				{message}
-			</p>
+					<emailForm.AppField name="email">
+						{(field) => (
+							<field.TextField
+								ref={emailInput}
+								id="email"
+								label={m.email_address()}
+								type="email"
+								autoComplete="username webauthn"
+								required
+								disabled={!hydrated}
+								readOnly={busy}
+								maxLength={254}
+							/>
+						)}
+					</emailForm.AppField>
+					<Button
+						type="submit"
+						disabled={!hydrated || busy || (sendRateLimited && remaining > 0)}
+						pending={action === "send"}
+						pendingLabel={m.sending_code()}
+					>
+						{sendRateLimited && remaining > 0
+							? m.verify_code_in({ seconds: remaining })
+							: m.send_code()}
+					</Button>
+				</form>
+			) : (
+				<form
+					method="post"
+					className="flex flex-col gap-4"
+					onSubmit={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						void codeForm.handleSubmit();
+					}}
+				>
+					<codeForm.Field name="code">
+						{(field) => {
+							const invalid = codeInvalid;
+							return (
+								<Field data-invalid={invalid} className="items-center gap-2">
+									<FieldLabel htmlFor="email-code" className="sr-only">
+										{m.signin_code()}
+									</FieldLabel>
+									<div className="flex justify-center">
+										<InputOTP
+											ref={codeInput}
+											id="email-code"
+											name={field.name}
+											value={field.state.value}
+											onChange={(value) => {
+												setCodeInvalid(false);
+												setMessage((current) =>
+													current?.kind === "error" ? null : current,
+												);
+												field.handleChange(value);
+											}}
+											onBlur={field.handleBlur}
+											inputMode="numeric"
+											autoComplete="one-time-code"
+											pattern={REGEXP_ONLY_DIGITS}
+											maxLength={6}
+											required={!uncertain}
+											readOnly={busy || uncertain}
+											aria-invalid={invalid}
+											aria-describedby="code-help signin-feedback"
+											pasteTransformer={(value) => value.replace(/\D/g, "")}
+											pushPasswordManagerStrategy="increase-width"
+										>
+											<InputOTPGroup aria-hidden="true">
+												<InputOTPSlot index={0} aria-invalid={invalid} />
+												<InputOTPSlot index={1} aria-invalid={invalid} />
+												<InputOTPSlot index={2} aria-invalid={invalid} />
+												<InputOTPSlot index={3} aria-invalid={invalid} />
+												<InputOTPSlot index={4} aria-invalid={invalid} />
+												<InputOTPSlot index={5} aria-invalid={invalid} />
+											</InputOTPGroup>
+										</InputOTP>
+									</div>
+									<FieldDescription
+										id="code-help"
+										className="text-center text-[13px]"
+									>
+										{m.code_expires_short()}
+									</FieldDescription>
+								</Field>
+							);
+						}}
+					</codeForm.Field>
+					<div className="flex flex-col gap-2">
+						<Button
+							type="submit"
+							disabled={busy || (!uncertain && verifyRemaining > 0)}
+							pending={action === "verify" || action === "check"}
+							pendingLabel={
+								uncertain ? m.checking_signin() : m.verifying_code()
+							}
+						>
+							{uncertain
+								? m.check_signin()
+								: verifyRemaining
+									? m.verify_code_in({ seconds: verifyRemaining })
+									: m.verify_code()}
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							className="w-full disabled:text-muted-foreground disabled:opacity-100"
+							disabled={busy || remaining > 0}
+							pending={action === "resend"}
+							pendingLabel={m.sending_code()}
+							onClick={() => void requestCode(sentEmail, true)}
+						>
+							{remaining
+								? m.resend_code_in({ seconds: remaining })
+								: m.resend_code()}
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							className="w-full text-muted-foreground"
+							disabled={busy}
+							onClick={changeEmail}
+						>
+							<ArrowLeftIcon aria-hidden="true" />
+							{m.change_email()}
+						</Button>
+					</div>
+				</form>
+			)}
+			<FormFeedback
+				key={phase}
+				id="signin-feedback"
+				message={message?.text ?? ""}
+				kind={message?.kind ?? "success"}
+				pending={busy}
+				pendingMessage={pendingText}
+				reserveLine={false}
+			/>
+			{phase === "email" && (
+				<div className="flex flex-col gap-3 border-t pt-6">
+					<Button
+						type="button"
+						variant="outline"
+						disabled={busy || !passkeysSupported}
+						pending={action === "passkey"}
+						pendingLabel={m.signing_in()}
+						onClick={() => void signInWithPasskey()}
+					>
+						<KeyRoundIcon aria-hidden="true" />
+						{identity.recovery?.method === "passkey"
+							? m.check_signin()
+							: m.sign_in_with_a_passkey()}
+					</Button>
+					{passkeysSupported === false && (
+						<p className="text-sm text-muted-foreground">
+							{m.passkeys_require_a_supported_browser_and_https_or()}
+						</p>
+					)}
+				</div>
+			)}
 		</main>
 	);
 }

@@ -1,10 +1,24 @@
-import type { Locale } from "@pfe/i18n";
-import { m } from "@pfe/i18n/messages";
+import type { Locale } from "@recount/i18n";
+import { m } from "@recount/i18n/messages";
 import { render, toPlainText } from "react-email";
 import OrganizationInvitationEmail, {
 	type OrganizationInvitationEmailProps,
 } from "../emails/organization-invitation";
-import SignInEmail from "../emails/sign-in";
+import SignInCodeEmail from "../emails/sign-in-code";
+import { emailBrandAssets } from "./brand-assets";
+
+export const emailBrandImages = [
+	{
+		filename: "recount-lockup-on-light.png",
+		cid: "recount-logo-light",
+		base64: emailBrandAssets.light,
+	},
+	{
+		filename: "recount-lockup-on-dark.png",
+		cid: "recount-logo-dark",
+		base64: emailBrandAssets.dark,
+	},
+];
 
 export type { OrganizationInvitationEmailProps } from "../emails/organization-invitation";
 
@@ -19,13 +33,13 @@ export async function renderOrganizationInvitationEmail(
 	};
 }
 
-export async function renderSignInEmail(
-	url: string,
+export async function renderSignInCodeEmail(
+	code: string,
 	locale: Locale,
 ): Promise<{ subject: string; html: string; text: string }> {
-	const html = await render(<SignInEmail url={url} locale={locale} />);
+	const html = await render(<SignInCodeEmail code={code} locale={locale} />);
 	return {
-		subject: m.email_sign_in_subject({}, { locale }),
+		subject: m.email_code_subject({}, { locale }),
 		html,
 		text: toPlainText(html),
 	};

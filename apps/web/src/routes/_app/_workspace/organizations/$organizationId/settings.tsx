@@ -1,5 +1,5 @@
-import { roleLabel } from "@pfe/i18n/labels";
-import { m } from "@pfe/i18n/messages";
+import { roleLabel } from "@recount/i18n/labels";
+import { m } from "@recount/i18n/messages";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageHeading } from "@/components/workspace";
 
@@ -15,9 +15,7 @@ function OrganizationSettings() {
 	const { organization } = Route.useRouteContext();
 	return (
 		<>
-			<PageHeading title={m.organization_settings()}>
-				{m.organization_metadata_and_your_current_access()}
-			</PageHeading>
+			<PageHeading title={m.organization_settings()} />
 			<dl className="grid max-w-xl gap-4 rounded-xl border p-5 text-sm">
 				<div>
 					<dt className="text-muted-foreground">{m.name()}</dt>
@@ -36,9 +34,6 @@ function OrganizationSettings() {
 					<dd className="break-all font-mono text-xs">{organization.id}</dd>
 				</div>
 			</dl>
-			<p className="text-sm text-muted-foreground">
-				{m.organization_renaming_and_deletion_are_not_available()}
-			</p>
 		</>
 	);
 }

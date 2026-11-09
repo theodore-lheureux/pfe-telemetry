@@ -1,17 +1,8 @@
-import { formatDate, type Locale } from "@pfe/i18n";
-import { roleLabel } from "@pfe/i18n/labels";
-import { m } from "@pfe/i18n/messages";
-import {
-	Body,
-	Button,
-	Container,
-	Head,
-	Heading,
-	Html,
-	Link,
-	Preview,
-	Text,
-} from "react-email";
+import { formatDate, type Locale } from "@recount/i18n";
+import { roleLabel } from "@recount/i18n/labels";
+import { m } from "@recount/i18n/messages";
+import { Button, Heading, Link, Text } from "react-email";
+import { EmailLayout, emailStyles } from "../src/email-layout";
 
 export interface OrganizationInvitationEmailProps {
 	locale: Locale;
@@ -33,65 +24,55 @@ export default function OrganizationInvitationEmail({
 	locale,
 }: OrganizationInvitationEmailProps) {
 	return (
-		<Html lang={locale}>
-			<Head />
-			<Preview>
-				{m.email_invitation_preview(
+		<EmailLayout
+			locale={locale}
+			preview={m.email_invitation_preview(
+				{ organization: organizationName },
+				{ locale },
+			)}
+		>
+			<Heading style={emailStyles.heading}>
+				{m.email_invitation_heading(
 					{ organization: organizationName },
 					{ locale },
 				)}
-			</Preview>
-			<Body
-				style={{ backgroundColor: "#f5f5f5", fontFamily: "Arial, sans-serif" }}
+			</Heading>
+			<Text style={emailStyles.text}>
+				{m.email_invitation_body(
+					{
+						inviter: inviterEmail,
+						organization: organizationName,
+						role: roleLabel(role, locale),
+					},
+					{ locale },
+				)}
+			</Text>
+			<Text style={emailStyles.text}>
+				{m.email_invitation_review({ email }, { locale })}
+			</Text>
+			<Button
+				href={url}
+				className="recount-email-button"
+				style={emailStyles.button}
 			>
-				<Container
-					style={{
-						backgroundColor: "#fff",
-						padding: "32px",
-						margin: "32px auto",
-						maxWidth: "480px",
-					}}
-				>
-					<Heading>
-						{m.email_invitation_heading(
-							{ organization: organizationName },
-							{ locale },
-						)}
-					</Heading>
-					<Text>
-						{m.email_invitation_body(
-							{
-								inviter: inviterEmail,
-								organization: organizationName,
-								role: roleLabel(role, locale),
-							},
-							{ locale },
-						)}
-					</Text>
-					<Text>{m.email_invitation_review({ email }, { locale })}</Text>
-					<Button
-						href={url}
-						style={{
-							backgroundColor: "#171717",
-							color: "#fff",
-							padding: "12px 20px",
-							borderRadius: "6px",
-						}}
-					>
-						{m.email_invitation_button({}, { locale })}
-					</Button>
-					<Text>
-						{m.email_invitation_expiry(
-							{ date: formatDate(expiresAt, locale) },
-							{ locale },
-						)}
-					</Text>
-					<Text>{m.email_link_fallback({}, { locale })}</Text>
-					<Link href={url}>{url}</Link>
-					<Text>{m.email_invitation_ignore({}, { locale })}</Text>
-				</Container>
-			</Body>
-		</Html>
+				{m.email_invitation_button({}, { locale })}
+			</Button>
+			<Text style={emailStyles.text}>
+				{m.email_invitation_expiry(
+					{ date: formatDate(expiresAt, locale) },
+					{ locale },
+				)}
+			</Text>
+			<Text style={emailStyles.text}>
+				{m.email_link_fallback({}, { locale })}
+			</Text>
+			<Link className="recount-email-link" href={url} style={emailStyles.link}>
+				{url}
+			</Link>
+			<Text style={emailStyles.text}>
+				{m.email_invitation_ignore({}, { locale })}
+			</Text>
+		</EmailLayout>
 	);
 }
 

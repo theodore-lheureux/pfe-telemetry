@@ -1,29 +1,26 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { Pool } from "pg";
 import { v7 as uuidv7 } from "uuid";
-import { applyMigrations } from "../../scripts/migrations";
+import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
-import { createCollectorCredentialRequests } from "../../src/credentials/credentials.server";
-import { createDatabase } from "../../src/db/client.server";
+import * as credentialDomain from "../../src/credentials/credentials.server";
 import { execution, member } from "../../src/db/schema";
+import * as executionDomain from "../../src/executions/executions.server";
 import { queryExecutionTelemetry } from "../../src/executions/executions.server";
-import { createExecutionRequests } from "../../src/executions/request.server";
 import { parseCreateExecution } from "../../src/executions/validation";
 import type { OperationResult } from "../../src/organizations/contracts";
-import { createOrganizationRequests } from "../../src/organizations/request.server";
+import * as organizationDomain from "../../src/organizations/organizations.server";
+import * as projectDomain from "../../src/organizations/projects.server";
 
-const adminUrl = process.env.TEST_DATABASE_URL;
-if (!adminUrl) throw new Error("Disposable TEST_DATABASE_URL is required");
-const admin = new Pool({ connectionString: adminUrl, max: 1 });
-const name = `pfe_executions_${randomUUID().replaceAll("-", "")}`;
-let database: ReturnType<typeof createDatabase>;
+import { createTestDatabase } from "../database";
+
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let auth: ReturnType<typeof createAuth>;
-let requests: ReturnType<typeof createExecutionRequests>;
-let organizations: ReturnType<typeof createOrganizationRequests>;
+let requests: ReturnType<typeof actorService>;
+let organizations: ReturnType<typeof actorService>;
 const origin = "http://localhost:3001";
-const links = new Map<string, string>();
+const codes = new Map<string, string>();
 let count = 0;
 function data<T>(result: OperationResult<T>): T {
 	if (result.error) throw new Error(result.error.message);
@@ -31,18 +28,15 @@ function data<T>(result: OperationResult<T>): T {
 }
 async function actor() {
 	const email = `execution-${++count}@example.invalid`;
-	await auth.handler(
-		new Request(`${origin}/api/auth/sign-in/magic-link`, {
-			method: "POST",
-			headers: {
-				origin,
-				"content-type": "application/json",
-				"x-forwarded-for": `192.0.2.${count}`,
-			},
-			body: JSON.stringify({ email }),
-		}),
-	);
-	const response = await auth.handler(new Request(links.get(email) as string));
+	await auth.api.sendVerificationOTP({ body: { email, type: "sign-in" } });
+	await auth.emailDelivery.drain();
+	const otp = codes.get(email);
+	if (!otp) throw new Error("Expected captured sign-in code");
+	const response = await auth.api.signInEmailOTP({
+		body: { email, otp },
+		headers: { origin },
+		asResponse: true,
+	});
 	const headers = new Headers({
 		origin,
 		cookie: response.headers
@@ -55,12 +49,7 @@ async function actor() {
 	return { id: session.user.id, headers };
 }
 beforeAll(async () => {
-	await admin.query(`CREATE DATABASE "${name}"`);
-	const url = new URL(adminUrl);
-	url.pathname = `/${name}`;
-	await applyMigrations(url.toString());
-	await applyMigrations(url.toString());
-	database = createDatabase({ connectionString: url.toString(), max: 4 });
+	database = await createTestDatabase("executions");
 	auth = createAuth(
 		{
 			origin,
@@ -70,19 +59,18 @@ beforeAll(async () => {
 		},
 		database.db,
 		{
-			sendSignInLink: async (email, link) => {
-				links.set(email, link);
+			sendSignInCode: async (email, code) => {
+				codes.set(email, code);
 			},
 			sendOrganizationInvitation: async () => {},
 		},
 	);
-	requests = createExecutionRequests(database.db, auth);
-	organizations = createOrganizationRequests(database.db, auth);
+	requests = actorService(auth);
+	organizations = actorService(auth);
 });
 afterAll(async () => {
-	await database?.pool.end();
-	await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
-	await admin.end();
+	await auth?.emailDelivery.close();
+	await database?.close();
 });
 
 test("independent canonical access, immutable source selection, tenant-qualified cursors and project-wide reads", async () => {
@@ -91,24 +79,32 @@ test("independent canonical access, immutable source selection, tenant-qualified
 	const viewer = await actor();
 	const outsider = await actor();
 	const organization = data(
-		await organizations.createOrganization(owner.headers, {
-			name: "Executions",
-			slug: `executions-${randomUUID()}`,
-		}),
+		await organizations(owner.headers, () =>
+			organizationDomain.createOrganization(auth, owner.headers, {
+				name: "Executions",
+				slug: `executions-${randomUUID()}`,
+			}),
+		),
 	);
 	const project = data(
-		await organizations.createProject(owner.headers, {
-			organizationId: organization.id,
-			name: "Private",
-			slug: "private",
-		}),
+		await organizations(owner.headers, (actor) =>
+			projectDomain.createProject(database.db, actor, {
+				requestId: crypto.randomUUID(),
+				organizationId: organization.id,
+				name: "Private",
+				slug: "private",
+			}),
+		),
 	);
 	const other = data(
-		await organizations.createProject(owner.headers, {
-			organizationId: organization.id,
-			name: "Other",
-			slug: "other",
-		}),
+		await organizations(owner.headers, (actor) =>
+			projectDomain.createProject(database.db, actor, {
+				requestId: crypto.randomUUID(),
+				organizationId: organization.id,
+				name: "Other",
+				slug: "other",
+			}),
+		),
 	);
 	const reference = { organizationId: organization.id, projectId: project.id };
 	for (const entry of [writer, viewer, outsider])
@@ -128,32 +124,45 @@ test("independent canonical access, immutable source selection, tenant-qualified
 		[viewer, "viewer"],
 	] as const)
 		data(
-			await organizations.setProjectMember(owner.headers, {
-				...reference,
-				memberId: memberships.find((item) => item.userId === entry.id)
-					?.id as string,
-				role,
-			}),
+			await organizations(owner.headers, (actor) =>
+				projectDomain.setProjectMember(database.db, actor, {
+					...reference,
+					memberId: memberships.find((item) => item.userId === entry.id)
+						?.id as string,
+					role,
+				}),
+			),
 		);
-	const credentials = createCollectorCredentialRequests(database.db, auth);
+	const credentials = actorService(auth);
 	const credential = data(
-		await credentials.createCollectorCredential(owner.headers, {
-			...reference,
-			name: "Collector",
-			sourceId: "source",
-			hosts: ["node1"],
-		}),
+		await credentials(owner.headers, (actor) =>
+			credentialDomain.createCollectorCredential(database.db, actor, {
+				...reference,
+				name: "Collector",
+				sourceId: "source",
+				rootId: "node1",
+				rootKind: 1,
+				adapter: "linux",
+				allowedLocalKinds: [4],
+			}),
+		),
 	);
 	const otherCredential = data(
-		await credentials.createCollectorCredential(owner.headers, {
-			organizationId: organization.id,
-			projectId: other.id,
-			name: "Other",
-			sourceId: "foreign",
-			hosts: ["node2"],
-		}),
+		await credentials(owner.headers, (actor) =>
+			credentialDomain.createCollectorCredential(database.db, actor, {
+				organizationId: organization.id,
+				projectId: other.id,
+				name: "Other",
+				sourceId: "foreign",
+				rootId: "node2",
+				rootKind: 1,
+				adapter: "linux",
+				allowedLocalKinds: [4],
+			}),
+		),
 	);
 	const input = parseCreateExecution({
+		requestId: crypto.randomUUID(),
 		...reference,
 		credentialId: credential.credential.id,
 		name: "Recorded",
@@ -162,32 +171,54 @@ test("independent canonical access, immutable source selection, tenant-qualified
 		endedAt: "2026-11-03T11:00:00Z",
 	});
 	expect(
-		(await requests.createExecution(viewer.headers, input)).error?.code,
+		(
+			await requests(viewer.headers, (actor) =>
+				executionDomain.createExecution(database.db, actor, input),
+			)
+		).error?.code,
 	).toBe("FORBIDDEN");
 	expect(
 		(
-			await requests.createExecution(writer.headers, {
-				...input,
-				credentialId: otherCredential.credential.id,
-			})
+			await requests(writer.headers, (actor) =>
+				executionDomain.createExecution(database.db, actor, {
+					...input,
+					credentialId: otherCredential.credential.id,
+				}),
+			)
 		).error?.code,
 	).toBe("NOT_FOUND");
-	const entry = data(await requests.createExecution(writer.headers, input));
+	const entry = data(
+		await requests(writer.headers, (actor) =>
+			executionDomain.createExecution(database.db, actor, input),
+		),
+	);
 	const ref = { ...reference, executionId: entry.executionId };
 	expect(entry.startedAt).toBeInstanceOf(Date);
-	expect(data(await requests.getExecution(viewer.headers, ref)).name).toBe(
-		"Recorded",
-	);
 	expect(
-		(await requests.updateExecution(viewer.headers, { ...ref, name: "No" }))
-			.error?.code,
+		data(
+			await requests(viewer.headers, (actor) =>
+				executionDomain.getExecution(database.db, actor, ref),
+			),
+		).name,
+	).toBe("Recorded");
+	expect(
+		(
+			await requests(viewer.headers, (actor) =>
+				executionDomain.updateExecution(database.db, actor, {
+					...ref,
+					name: "No",
+				}),
+			)
+		).error?.code,
 	).toBe("FORBIDDEN");
 	expect(
 		data(
-			await requests.updateExecution(owner.headers, {
-				...ref,
-				name: "Renamed",
-			}),
+			await requests(owner.headers, (actor) =>
+				executionDomain.updateExecution(database.db, actor, {
+					...ref,
+					name: "Renamed",
+				}),
+			),
 		).sourceId,
 	).toBe("source");
 	const foreignRef = { ...ref, projectId: other.id };
@@ -195,33 +226,54 @@ test("independent canonical access, immutable source selection, tenant-qualified
 		const expected =
 			headers === outsider.headers ? "NOT_FOUND" : "UNAUTHENTICATED";
 		const outcomes = await Promise.all([
-			requests.getExecution(headers, ref),
-			requests.listExecutions(headers, {
-				...reference,
-				beforeId: ref.executionId,
-			}),
-			requests.listExecutionSources(headers, reference),
-			requests.queryExecutionTelemetry(headers, {
-				...ref,
-				from: "2026-11-03T10:10:00Z",
-			}),
-			requests.createExecution(headers, input),
-			requests.updateExecution(headers, { ...ref, name: "No" }),
+			requests(headers, (actor) =>
+				executionDomain.getExecution(database.db, actor, ref),
+			),
+			requests(headers, (actor) =>
+				executionDomain.listExecutions(database.db, actor, {
+					...reference,
+					beforeId: ref.executionId,
+				}),
+			),
+			requests(headers, (actor) =>
+				executionDomain.listExecutionSources(database.db, actor, reference),
+			),
+			requests(headers, (actor) =>
+				executionDomain.queryExecutionTelemetry(database.db, actor, {
+					...ref,
+					from: "2026-11-03T10:10:00Z",
+				}),
+			),
+			requests(headers, (actor) =>
+				executionDomain.createExecution(database.db, actor, input),
+			),
+			requests(headers, (actor) =>
+				executionDomain.updateExecution(database.db, actor, {
+					...ref,
+					name: "No",
+				}),
+			),
 		]);
 		expect(outcomes.every((result) => result.error?.code === expected)).toBe(
 			true,
 		);
 	}
 	expect(
-		(await requests.getExecution(owner.headers, foreignRef)).error?.code,
+		(
+			await requests(owner.headers, (actor) =>
+				executionDomain.getExecution(database.db, actor, foreignRef),
+			)
+		).error?.code,
 	).toBe("NOT_FOUND");
 	expect(
 		(
-			await requests.listExecutions(owner.headers, {
-				organizationId: organization.id,
-				projectId: other.id,
-				beforeId: ref.executionId,
-			})
+			await requests(owner.headers, (actor) =>
+				executionDomain.listExecutions(database.db, actor, {
+					organizationId: organization.id,
+					projectId: other.id,
+					beforeId: ref.executionId,
+				}),
+			)
 		).error?.code,
 	).toBe("NOT_FOUND");
 	let scope: unknown;
@@ -248,6 +300,20 @@ test("independent canonical access, immutable source selection, tenant-qualified
 		to: new Date("2026-11-03T10:11:00Z"),
 		buckets: 60,
 	});
+	let foreignRead = false;
+	await expect(
+		queryExecutionTelemetry(
+			database.db,
+			viewer,
+			foreignRef,
+			undefined,
+			async (value) => {
+				foreignRead = true;
+				return { from: value.from, to: value.to, bucketMs: 1000, series: [] };
+			},
+		),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	expect(foreignRead).toBe(false);
 	await expect(
 		queryExecutionTelemetry(database.db, viewer, {
 			...ref,
@@ -255,14 +321,20 @@ test("independent canonical access, immutable source selection, tenant-qualified
 		}),
 	).rejects.toMatchObject({ code: "INVALID_INPUT" });
 	data(
-		await credentials.revokeCollectorCredential(owner.headers, {
-			...reference,
-			credentialId: credential.credential.id,
-		}),
+		await credentials(owner.headers, (actor) =>
+			credentialDomain.revokeCollectorCredential(database.db, actor, {
+				...reference,
+				credentialId: credential.credential.id,
+			}),
+		),
 	);
-	expect(data(await requests.getExecution(viewer.headers, ref)).sourceId).toBe(
-		"source",
-	);
+	expect(
+		data(
+			await requests(viewer.headers, (actor) =>
+				executionDomain.getExecution(database.db, actor, ref),
+			),
+		).sourceId,
+	).toBe("source");
 	const inserted = Array.from({ length: 51 }, () => ({
 		id: uuidv7(),
 		organizationId: organization.id,
@@ -273,12 +345,18 @@ test("independent canonical access, immutable source selection, tenant-qualified
 		endedAt: entry.endedAt,
 	}));
 	await database.db.insert(execution).values(inserted);
-	const first = data(await requests.listExecutions(viewer.headers, reference));
+	const first = data(
+		await requests(viewer.headers, (actor) =>
+			executionDomain.listExecutions(database.db, actor, reference),
+		),
+	);
 	const second = data(
-		await requests.listExecutions(viewer.headers, {
-			...reference,
-			beforeId: first.nextCursor as string,
-		}),
+		await requests(viewer.headers, (actor) =>
+			executionDomain.listExecutions(database.db, actor, {
+				...reference,
+				beforeId: first.nextCursor as string,
+			}),
+		),
 	);
 	expect(first.executions).toHaveLength(50);
 	expect(second.executions).toHaveLength(2);
@@ -290,13 +368,19 @@ test("independent canonical access, immutable source selection, tenant-qualified
 		).size,
 	).toBe(52);
 	data(
-		await organizations.removeProjectMember(owner.headers, {
-			...reference,
-			memberId: memberships.find((item) => item.userId === viewer.id)
-				?.id as string,
-		}),
+		await organizations(owner.headers, (actor) =>
+			projectDomain.removeProjectMember(database.db, actor, {
+				...reference,
+				memberId: memberships.find((item) => item.userId === viewer.id)
+					?.id as string,
+			}),
+		),
 	);
 	expect(
-		(await requests.queryExecutionTelemetry(viewer.headers, ref)).error?.code,
+		(
+			await requests(viewer.headers, (actor) =>
+				executionDomain.queryExecutionTelemetry(database.db, actor, ref),
+			)
+		).error?.code,
 	).toBe("NOT_FOUND");
 });

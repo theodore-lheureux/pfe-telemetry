@@ -1,6 +1,7 @@
 export type OrganizationRole = "owner" | "admin" | "member";
 export type ProjectRole = "viewer" | "member" | "admin";
 export type FailureReason =
+	| "REQUEST_ID_REUSED"
 	| "LAST_OWNER"
 	| "VERIFIED_EMAIL_REQUIRED"
 	| "INVALID_TIME_RANGE"
@@ -33,6 +34,7 @@ export interface OrganizationInput {
 }
 
 export interface CreateProjectInput extends OrganizationInput {
+	requestId: string;
 	organizationId: string;
 }
 

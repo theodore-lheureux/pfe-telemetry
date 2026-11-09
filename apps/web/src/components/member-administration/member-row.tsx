@@ -1,7 +1,8 @@
-import { roleLabel } from "@pfe/i18n/labels";
-import { m } from "@pfe/i18n/messages";
+import { roleLabel } from "@recount/i18n/labels";
+import { m } from "@recount/i18n/messages";
 import type { OrganizationRole } from "../../organizations/contracts";
 import type { MemberSummary } from "../../organizations/member-contracts";
+import { FormFeedback } from "../form-feedback";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -85,7 +86,6 @@ export function MemberRow({
 				)}
 				{confirm === member.id && !protectedOwner && (self || canManage) && (
 					<AlertDialogContent
-						aria-busy={pending}
 						onCloseAutoFocus={(event) => {
 							if (pending) {
 								event.preventDefault();
@@ -105,16 +105,17 @@ export function MemberRow({
 								: m.remove_member_question({ email: member.email })}{" "}
 							{m.this_removes_their_organization_membership_and_all_explicit()}
 						</AlertDialogDescription>
-						{failed && message && (
-							<p role="alert" className="text-sm text-destructive">
-								{message}
-							</p>
-						)}
+						<FormFeedback
+							message={failed ? message : ""}
+							kind="error"
+							pending={pending}
+						/>
 						<AlertDialogFooter>
-							{pending && <p role="status">{m.saving()}</p>}
 							<Button
 								variant="destructive"
 								disabled={pending}
+								pending={pending}
+								pendingLabel={m.saving()}
 								onClick={() =>
 									void state.change(
 										self

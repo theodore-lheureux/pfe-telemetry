@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { EntityForm } from "@/components/entity-form";
 import { PageHeading } from "@/components/workspace";
@@ -29,9 +29,12 @@ function NewProject() {
 			<EntityForm
 				key={organization.id}
 				slug
+				receiptBacked
 				submitLabel={m.create_project()}
 				save={(input) =>
-					createProject({ data: { ...input, organizationId: organization.id } })
+					createProject({
+						data: { ...input, organizationId: organization.id },
+					})
 				}
 				onSuccess={async (project, recover) => {
 					const destination = {

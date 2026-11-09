@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { createFileRoute } from "@tanstack/react-router";
 import { EntityForm } from "@/components/entity-form";
 import { PageHeading } from "@/components/workspace";

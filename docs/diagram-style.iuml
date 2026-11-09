@@ -1,0 +1,82 @@
+' Shared style for the PFE Telemetry diagrams.
+' Black and white; yellow marks a choice that is still open.
+
+skinparam dpi 160
+skinparam shadowing false
+skinparam ResponseMessageBelowArrow true
+
+<style>
+root {
+  BackGroundColor #FFFFFF
+  FontColor #000000
+  FontSize 13
+  LineColor #222222
+}
+
+title {
+  FontSize 18
+  FontStyle bold
+  LineColor transparent
+  BackGroundColor transparent
+  Margin 10 10 16 10
+}
+
+arrow {
+  LineColor #222222
+  LineThickness 1
+  FontColor #000000
+  FontSize 12
+}
+
+legend {
+  BackGroundColor transparent
+  LineColor transparent
+  FontSize 12
+}
+
+componentDiagram, deploymentDiagram {
+  rectangle, queue, database {
+    BackGroundColor #FFFFFF
+    LineColor #222222
+    LineThickness 1
+    RoundCorner 0
+    MinimumWidth 200
+    Padding 10
+  }
+  .ouvert {
+    BackGroundColor #FFF4CC
+  }
+  .zone {
+    BackGroundColor transparent
+    LineColor #888888
+    LineStyle 6-4
+    FontStyle normal
+    FontColor #444444
+    FontSize 12
+  }
+  actor {
+    BackGroundColor #FFFFFF
+    LineColor #222222
+  }
+}
+
+sequenceDiagram {
+  participant, queue, database, actor {
+    BackGroundColor #FFFFFF
+    LineColor #222222
+    RoundCorner 0
+  }
+  lifeLine {
+    LineColor #666666
+    BackGroundColor #FFFFFF
+  }
+  separator {
+    BackGroundColor #FFFFFF
+    LineColor #666666
+    FontStyle bold
+  }
+}
+</style>
+
+!$open = "#FFF4CC"
+!$read = "dashed"

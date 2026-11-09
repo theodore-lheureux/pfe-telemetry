@@ -1,0 +1,5 @@
+{
+  "candidate_tree": "1ce12b13218c82500e4ad72380ea09a70514547e",
+  "ordinary-cpu-process": { "raw_bytes": 823, "json_bytes": 8803 },
+  "metadata-heavy": { "raw_bytes": 68268, "json_bytes": 8193323 }
+}

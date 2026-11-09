@@ -1,8 +1,11 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
+import { useSelector } from "@tanstack/react-form";
 import { useHydrated, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
 import { useAppForm } from "../components/app-form";
+import { FormFeedback } from "../components/form-feedback";
+import { useLocaleChangeBlocker } from "../components/locale-safety";
 import { Button } from "../components/ui/button";
+import { validationError } from "../lib/form-validation";
 import { inputMessage } from "../lib/operation-message";
 import type { ExecutionReference } from "./contracts";
 import { parseTimestamp } from "./validation";
@@ -18,29 +21,41 @@ export function RangeForm({
 }) {
 	const router = useRouter();
 	const hydrated = useHydrated();
-	const [message, setMessage] = useState("");
 	const form = useAppForm({
 		defaultValues: { from: from.toISOString(), to: to.toISOString() },
-		onSubmit: async ({ value }) => {
+		validators: {
+			onSubmit: ({ value }) =>
+				validationError(() => {
+					parseTimestamp(value.from);
+					parseTimestamp(value.to);
+				}),
+		},
+		onSubmit: async ({ value, formApi }) => {
 			try {
-				const from = parseTimestamp(value.from);
-				const to = parseTimestamp(value.to);
-				setMessage("");
 				await router.navigate({
 					to: "/organizations/$organizationId/projects/$projectId/executions/$executionId",
 					params: reference,
-					search: { from, to },
+					search: {
+						from: parseTimestamp(value.from),
+						to: parseTimestamp(value.to),
+					},
 				});
 			} catch (error) {
-				setMessage(inputMessage(error));
+				formApi.setErrorMap({ onSubmit: inputMessage(error) });
 			}
 		},
 	});
+	const message = useSelector(form.store, (state) => state.errorMap.onSubmit);
+	const pending = useSelector(form.store, (state) => state.isSubmitting);
+	useLocaleChangeBlocker(pending);
 	return (
 		<form
+			method="get"
+			aria-busy={pending}
 			className="flex flex-wrap items-end gap-3"
 			onSubmit={(event) => {
 				event.preventDefault();
+				event.stopPropagation();
 				void form.handleSubmit();
 			}}
 		>
@@ -49,7 +64,7 @@ export function RangeForm({
 					<field.TextField
 						label={m.start_utc_iso()}
 						required
-						disabled={!hydrated}
+						disabled={!hydrated || pending}
 					/>
 				)}
 			</form.AppField>
@@ -58,14 +73,25 @@ export function RangeForm({
 					<field.TextField
 						label={m.end_utc_iso()}
 						required
-						disabled={!hydrated}
+						disabled={!hydrated || pending}
 					/>
 				)}
 			</form.AppField>
-			<Button type="submit" disabled={!hydrated}>
+			<Button
+				type="submit"
+				disabled={!hydrated || pending}
+				pending={pending}
+				pendingLabel={m.loading()}
+			>
 				{m.apply_interval()}
 			</Button>
-			<p role="status">{message}</p>
+			<FormFeedback
+				message={message ?? ""}
+				kind="error"
+				pending={pending}
+				pendingMessage={m.loading()}
+				className="basis-full"
+			/>
 		</form>
 	);
 }

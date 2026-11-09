@@ -6,8 +6,10 @@ import {
 	type Actor,
 	requireOrganization,
 	requireOrganizationMember,
+	requireProject,
 	resolveOrganizationRole,
 } from "./access.server";
+import type { ProjectReference } from "./contracts";
 import { OperationError } from "./errors";
 import type {
 	MemberReference,
@@ -17,6 +19,17 @@ import type {
 
 type Auth = ReturnType<typeof createAuth>;
 type Database = ReturnType<typeof getDatabase>;
+
+export async function listProjectGrantCandidates(
+	database: Database,
+	auth: Auth,
+	headers: Headers,
+	actor: Actor,
+	reference: ProjectReference,
+) {
+	await requireProject(database, actor, reference, "admin");
+	return listMembers(database, auth, headers, actor, reference.organizationId);
+}
 
 export async function listMembers(
 	database: Database,

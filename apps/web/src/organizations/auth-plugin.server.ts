@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { requestLocale } from "@pfe/i18n";
-import type { OrganizationInvitationEmailProps } from "@pfe/transactional";
+import { requestLocale } from "@recount/i18n";
+import type { OrganizationInvitationEmailProps } from "@recount/transactional";
 import type { BetterAuthPlugin } from "better-auth";
 import {
 	APIError,

@@ -1,12 +1,11 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
-import { Link, useHydrated, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useAppForm } from "../components/app-form";
-import { useLocaleChangeBlocker } from "../components/locale-safety";
-import { useMutationNotice } from "../components/mutation-feedback";
+import { FormFeedback } from "../components/form-feedback";
 import { Button } from "../components/ui/button";
-import { inputMessage, operationMessage } from "../lib/operation-message";
+import { useAppMutation } from "../components/use-app-mutation";
+import { validationError } from "../lib/form-validation";
 import type { ProjectReference } from "../organizations/contracts";
 import { createExecution } from "./execution.functions";
 import { parseCreateExecution } from "./validation";
@@ -20,118 +19,60 @@ export function CreateExecutionForm({
 	sources: { credentialId: string; name: string; sourceId: string }[];
 	userId: string;
 }) {
-	const router = useRouter();
-	const hydrated = useHydrated();
-	const publishNotice = useMutationNotice();
-	const mounted = useRef(false);
-	useEffect(() => {
-		mounted.current = true;
-		return () => {
-			mounted.current = false;
-		};
-	}, []);
-	const [message, setMessage] = useState("");
-	const [locked, setLocked] = useState(false);
-	const [savedId, setSavedId] = useState<string>();
+	const mutation = useAppMutation({
+		userId,
+		receiptBacked: true,
+		transientNotice: true,
+		save: (input: ReturnType<typeof parseCreateExecution>) =>
+			createExecution({ data: input }),
+		saved: m.execution_recorded_if_the_saved_execution_cannot_load(),
+		refreshFailed: m.execution_recorded_but_its_page_could_not_load(),
+		unknown: m.the_recording_response_did_not_arrive_check_the(),
+	});
+	async function settle(result: Awaited<ReturnType<typeof mutation.submit>>) {
+		if (result && !result.error)
+			await result.refresh(
+				undefined,
+				m.execution_recorded_if_the_saved_execution_cannot_load(),
+			);
+	}
 	const form = useAppForm({
 		defaultValues: {
+			...reference,
+			requestId: crypto.randomUUID(),
 			name: "",
 			credentialId: sources[0]?.credentialId ?? "",
 			hostId: "",
 			startedAt: "",
 			endedAt: "",
 		},
+		validators: {
+			onSubmit: ({ value }) =>
+				validationError(() => parseCreateExecution(value)),
+		},
 		onSubmit: async ({ value }) => {
-			if (!hydrated || locked) return;
-			let input: ReturnType<typeof parseCreateExecution>;
-			try {
-				input = parseCreateExecution({ ...reference, ...value });
-			} catch (error) {
-				setMessage(inputMessage(error));
-				return;
-			}
-			let current = true;
-			let saved = false;
-			let retainNotice = false;
-			let refreshHref: string | undefined;
-			let notice: ReturnType<typeof publishNotice> | undefined;
-			const sameActor = () =>
-				!router.state.matches.some(
-					(match) =>
-						"user" in match.context && match.context.user.id !== userId,
-				);
-			const stop = router.subscribe("onBeforeNavigate", ({ toLocation }) => {
-				if (refreshHref === toLocation.href) {
-					refreshHref = undefined;
-					return;
-				}
-				current = false;
-				notice?.clear();
-				stop();
-			});
-			setMessage("");
-			try {
-				const result = await createExecution({ data: input });
-				if (!mounted.current || !current || !sameActor()) return;
-				if (result.error) {
-					setMessage(operationMessage(result.error));
-					if (
-						["UNAUTHENTICATED", "NOT_FOUND", "FORBIDDEN"].includes(
-							result.error.code,
-						)
-					)
-						await router.invalidate();
-					return;
-				}
-				setLocked(true);
-				saved = true;
-				setSavedId(result.data.executionId);
-				setMessage(m.execution_recorded_if_the_saved_execution_cannot_load());
-				notice = publishNotice(
-					m.execution_recorded_if_the_saved_execution_cannot_load(),
-				);
-				refreshHref = router.state.location.href;
-				await router.invalidate({ sync: true });
-				if (!current || !sameActor()) notice.clear();
-				else if (
-					router.state.matches.some(
-						(match) => match.status === "error" || match.status === "notFound",
-					)
-				) {
-					notice.update(m.execution_recorded_but_its_page_could_not_load());
-					retainNotice = true;
-				} else notice.clear();
-			} catch {
-				if (saved && current && sameActor()) {
-					notice?.update(m.execution_recorded_but_its_page_could_not_load());
-					retainNotice = notice !== undefined;
-				} else notice?.clear();
-				if (mounted.current && current && sameActor()) {
-					setLocked(true);
-					setMessage(
-						saved
-							? m.execution_recorded_but_its_page_could_not_load()
-							: m.the_recording_response_did_not_arrive_check_the(),
-					);
-				}
-			} finally {
-				// A failed-refresh notice can outlive this form; clear it on the next navigation.
-				if (!retainNotice) stop();
-			}
+			await settle(await mutation.submit(parseCreateExecution(value)));
 		},
 	});
-	const pending = useSelector(form.store, (state) => state.isSubmitting);
-	useLocaleChangeBlocker(pending || locked);
-	const disabled = !hydrated || pending || locked;
+	const inputError = useSelector(
+		form.store,
+		(state) => state.errorMap.onSubmit,
+	);
+	const submitting = useSelector(form.store, (state) => state.isSubmitting);
+	const pending = submitting || mutation.pending;
+	const disabled =
+		mutation.disabled ||
+		pending ||
+		["uncertain", "saved", "refresh-failed"].includes(mutation.status);
 	return (
 		<form
 			method="post"
 			aria-busy={pending}
-			className="flex max-w-xl flex-col gap-4 rounded-xl border p-5"
+			className="flex max-w-xl flex-col gap-4 rounded-md border bg-card p-5 text-card-foreground"
 			onSubmit={(event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				void form.handleSubmit();
+				if (!disabled) void form.handleSubmit();
 			}}
 		>
 			<h2 className="font-semibold">{m.record_an_execution_interval()}</h2>
@@ -192,16 +133,34 @@ export function CreateExecutionForm({
 					/>
 				)}
 			</form.AppField>
-			<Button type="submit" disabled={disabled}>
-				{pending ? m.recording() : m.record_execution()}
+			<Button
+				type="submit"
+				disabled={disabled}
+				pending={pending}
+				pendingLabel={m.recording()}
+			>
+				{m.record_execution()}
 			</Button>
-			<p role="status" aria-live="polite">
-				{message}
-			</p>
-			{savedId && (
+			<FormFeedback
+				message={inputError || mutation.message}
+				kind={inputError ? "error" : mutation.kind}
+				pending={pending}
+				pendingMessage={m.recording()}
+			/>
+			{mutation.canRetry && (
+				<Button
+					type="button"
+					variant="outline"
+					disabled={pending}
+					onClick={() => void mutation.retry().then(settle)}
+				>
+					{m.retry_same_create()}
+				</Button>
+			)}
+			{mutation.data && (
 				<Link
 					to="/organizations/$organizationId/projects/$projectId/executions/$executionId"
-					params={{ ...reference, executionId: savedId }}
+					params={{ ...reference, executionId: mutation.data.executionId }}
 					className="underline"
 				>
 					{m.open_saved_execution()}

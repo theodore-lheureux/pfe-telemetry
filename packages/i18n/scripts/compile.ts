@@ -32,5 +32,5 @@ await compile({
 	outdir: new URL("../src/paraglide", import.meta.url).pathname,
 });
 const { m } = await import("../src/paraglide/messages.js");
-if (m.app_title({}, { locale: "fr" }) !== "PFE Telemetry")
+if (m.app_title({}, { locale: "fr" }) !== "Recount")
 	throw new Error("Compiled catalog smoke check failed");

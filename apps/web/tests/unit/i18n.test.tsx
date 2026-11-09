@@ -4,14 +4,14 @@ import {
 	formatNumber,
 	formatSeconds,
 	requestLocale,
-} from "@pfe/i18n";
-import { m } from "@pfe/i18n/messages";
-import { getLocale } from "@pfe/i18n/runtime";
-import { paraglideMiddleware } from "@pfe/i18n/server";
+} from "@recount/i18n";
+import { m } from "@recount/i18n/messages";
+import { getLocale } from "@recount/i18n/runtime";
+import { paraglideMiddleware } from "@recount/i18n/server";
 import {
 	renderOrganizationInvitationEmail,
-	renderSignInEmail,
-} from "@pfe/transactional";
+	renderSignInCodeEmail,
+} from "@recount/transactional";
 import { operationMessage } from "../../src/lib/operation-message";
 
 describe("request-isolated English and French", () => {
@@ -19,10 +19,10 @@ describe("request-isolated English and French", () => {
 		expect(requestLocale(new Headers({ "accept-language": "fr" }))).toBe("en");
 		for (const [cookie, locale] of [
 			["", "en"],
-			["pfe_locale=fr", "fr"],
-			["pfe_locale=FR", "fr"],
-			["pfe_locale=de", "en"],
-			["pfe_locale=%66r", "en"],
+			["recount_locale=fr", "fr"],
+			["recount_locale=FR", "fr"],
+			["recount_locale=de", "en"],
+			["recount_locale=%66r", "en"],
 		] as const) {
 			expect(requestLocale(new Headers({ cookie }))).toBe(locale);
 		}
@@ -35,7 +35,7 @@ describe("request-isolated English and French", () => {
 		};
 		const response = await paraglideMiddleware(
 			new Request("https://telemetry.example.invalid", {
-				headers: { cookie: "pfe_locale=fr" },
+				headers: { cookie: "recount_locale=fr" },
 			}),
 			() =>
 				Response.json([
@@ -57,7 +57,7 @@ describe("request-isolated English and French", () => {
 				const locale = index % 2 ? "fr" : "en";
 				return paraglideMiddleware(
 					new Request("https://telemetry.example.invalid/login", {
-						headers: { cookie: `pfe_locale=${locale}` },
+						headers: { cookie: `recount_locale=${locale}` },
 					}),
 					async () => {
 						await new Promise((resolve) => setTimeout(resolve, index % 3));
@@ -100,7 +100,7 @@ test("both email locales stay explicit across concurrent subjects, previews, tex
 	const rendered = await Promise.all(
 		(["en", "fr"] as const).map(async (locale) => {
 			const [signIn, invitation] = await Promise.all([
-				renderSignInEmail(url, locale),
+				renderSignInCodeEmail("012345", locale),
 				renderOrganizationInvitationEmail({
 					locale,
 					url,
@@ -117,19 +117,20 @@ test("both email locales stay explicit across concurrent subjects, previews, tex
 	for (const { locale, signIn, invitation } of rendered) {
 		for (const email of [signIn, invitation]) {
 			expect(email.html).toContain(`lang="${locale}"`);
-			expect(email.html).toContain(`href="${url}"`);
-			expect(email.text).toContain(url);
 			expect(email.html).not.toContain("<script>");
 		}
+		expect(invitation.html).toContain(`href="${url}"`);
+		expect(invitation.text).toContain(url);
+		expect(signIn.text).toContain("012345");
 		expect(signIn.subject).toBe(
 			locale === "fr"
-				? "Connexion à PFE Telemetry"
-				: "Sign in to PFE Telemetry",
+				? "Votre code de connexion Recount"
+				: "Your Recount sign-in code",
 		);
 		expect(invitation.subject).toBe(
 			locale === "fr"
-				? "Vous êtes invité à une organisation sur PFE Telemetry"
-				: "You are invited to an organization on PFE Telemetry",
+				? "Vous êtes invité à une organisation sur Recount"
+				: "You are invited to an organization on Recount",
 		);
 		expect(invitation.text).toContain(
 			locale === "fr"

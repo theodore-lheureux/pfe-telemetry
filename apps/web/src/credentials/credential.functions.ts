@@ -1,58 +1,42 @@
-import { createMiddleware, createServerFn } from "@tanstack/react-start";
-import {
-	getRequestHeaders,
-	setResponseHeader,
-} from "@tanstack/react-start/server";
+import { createServerFn } from "@tanstack/react-start";
+import { withActor } from "../auth/actor.server";
+import { privateOperation } from "../auth/private-operation";
 import { parseProjectReference } from "../organizations/validation";
-import { getCollectorCredentialRequests } from "./request.server";
+import * as credentials from "./credentials.server";
 import {
 	parseCollectorCredentialReference,
 	parseCreateCollectorCredentialInput,
 } from "./validation";
 
-const privateResponse = createMiddleware({ type: "function" }).server(
-	({ next }) => {
-		setResponseHeader("Cache-Control", "private, no-store");
-		return next();
-	},
-);
-
 export const listCollectorCredentials = createServerFn({ method: "GET" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseProjectReference)
-	.handler(async ({ data }) =>
-		getCollectorCredentialRequests().listCollectorCredentials(
-			getRequestHeaders(),
-			data,
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			credentials.listCollectorCredentials(database, actor, data),
 		),
 	);
-
 export const createCollectorCredential = createServerFn({ method: "POST" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseCreateCollectorCredentialInput)
-	.handler(async ({ data }) =>
-		getCollectorCredentialRequests().createCollectorCredential(
-			getRequestHeaders(),
-			data,
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			credentials.createCollectorCredential(database, actor, data),
 		),
 	);
-
 export const rotateCollectorCredential = createServerFn({ method: "POST" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseCollectorCredentialReference)
-	.handler(async ({ data }) =>
-		getCollectorCredentialRequests().rotateCollectorCredential(
-			getRequestHeaders(),
-			data,
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			credentials.rotateCollectorCredential(database, actor, data),
 		),
 	);
-
 export const revokeCollectorCredential = createServerFn({ method: "POST" })
-	.middleware([privateResponse])
+	.middleware([privateOperation])
 	.validator(parseCollectorCredentialReference)
-	.handler(async ({ data }) =>
-		getCollectorCredentialRequests().revokeCollectorCredential(
-			getRequestHeaders(),
-			data,
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			credentials.revokeCollectorCredential(database, actor, data),
 		),
 	);

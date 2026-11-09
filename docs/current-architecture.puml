@@ -1,0 +1,41 @@
+@startuml
+!include diagram-style.iuml
+
+title PFE Telemetry - Architecture
+skinparam nodesep 70
+skinparam ranksep 60
+skinparam defaultTextAlignment left
+
+rectangle "Compute nodes" as nodes <<zone>> {
+  rectangle "<b>Collectors</b>\n[Rust]\n\nCollectent les métriques\ndes nodes et processus" as collector [[ingestion-and-reliability.md]]
+}
+
+rectangle "Backend" as backend <<zone>> {
+  rectangle "<b>Ingestion API</b>\n[Rust / Tonic]\n\nValide et accepte\nles batches" as ingestion [[ingestion-server.md]]
+  queue "<b>Kafka</b>\n\nConserve les batches\npour le replay" as kafka [[broker-options.md]]
+  rectangle "<b>Processing worker</b>\n[Rust]\n\nTransforme les métriques,\ngère la déduplication" as worker [[ingestion-and-reliability.md]]
+  database "<b>Storage</b>\n[DuckDB / Parquet envisagés]\n\nHistorique des métriques" as storage <<ouvert>> [[serialization.md]]
+}
+
+rectangle "Web" as webzone <<zone>> {
+  rectangle "<b>Web app</b>\n[TanStack Start]\n\nDashboard, permissions\net export" as web [[architecture.md]]
+}
+
+actor "User" as user
+
+collector -right-> ingestion : Envoie les batches\n[OTLP / gRPC]
+ingestion -right-> kafka : Publie\n[Protobuf]
+kafka -down-> worker : Consomme
+worker -left-> storage : Écrit
+web -right[$read]-> storage : Query
+user -up-> web : Consulte\n[HTTPS / JSON]
+
+collector -[hidden]down-> web
+ingestion -[hidden]down-> storage
+
+hide stereotype
+
+legend top right
+  <back:$open>      </back> Choix à confirmer
+endlegend
+@enduml

@@ -1,7 +1,14 @@
-import type { Locale } from "@pfe/i18n";
-import { m } from "@pfe/i18n/messages";
+import type { Locale } from "@recount/i18n";
+import { m } from "@recount/i18n/messages";
 import { and, eq } from "drizzle-orm";
-import { invitation, member } from "../../src/db/schema";
+import {
+	collectorCredential,
+	collectorRootGrant,
+	invitation,
+	member,
+} from "../../src/db/schema";
+import * as memberDomain from "../../src/organizations/members.server";
+import * as organizationDomain from "../../src/organizations/organizations.server";
 import { data, expect, test } from "./fixtures";
 
 test.use({ timezoneId: "America/Toronto" });
@@ -14,10 +21,10 @@ test("localized SSR, invalid preferences, concurrent requests, hydration and con
 		Array.from({ length: 12 }, async (_, index) => {
 			const locale = index % 2 ? "fr" : "en";
 			const response = await fetch(`${workspace.origin}/login`, {
-				headers: { cookie: `pfe_locale=${locale}` },
+				headers: { cookie: `recount_locale=${locale}` },
 			});
 			const html = await response.text();
-			expect(html).toContain(`<html lang="${locale}">`);
+			expect(html).toContain(`<html lang="${locale}"`);
 			expect(html).toContain(
 				locale === "fr"
 					? "Se connecter avec une clé d’accès"
@@ -31,10 +38,10 @@ test("localized SSR, invalid preferences, concurrent requests, hydration and con
 	expect(responses.every((status) => status === 200)).toBe(true);
 	for (const value of ["invalid", "FR"]) {
 		const response = await fetch(`${workspace.origin}/login`, {
-			headers: { cookie: `pfe_locale=${value}` },
+			headers: { cookie: `recount_locale=${value}` },
 		});
 		expect(await response.text()).toContain(
-			`<html lang="${value === "FR" ? "fr" : "en"}">`,
+			`<html lang="${value === "FR" ? "fr" : "en"}"`,
 		);
 	}
 	const errors: string[] = [];
@@ -58,7 +65,7 @@ test("localized SSR, invalid preferences, concurrent requests, hydration and con
 	);
 	expect(
 		(await page.context().cookies()).find(
-			(cookie) => cookie.name === "pfe_locale",
+			(cookie) => cookie.name === "recount_locale",
 		)?.value ?? "en",
 	).toBe("en");
 	await page.getByLabel("Language", { exact: true }).selectOption("fr");
@@ -74,13 +81,11 @@ test("localized SSR, invalid preferences, concurrent requests, hydration and con
 	);
 	expect(new URL(page.url()).hash).toBe("#keep");
 	const cookie = (await page.context().cookies()).find(
-		(entry) => entry.name === "pfe_locale",
+		(entry) => entry.name === "recount_locale",
 	);
 	expect(cookie).toMatchObject({ value: "fr", path: "/", sameSite: "Lax" });
 	expect(cookie?.expires).toBeGreaterThan(Date.now() / 1000 + 30_000_000);
-	await page
-		.getByRole("button", { name: "Recevoir un lien de connexion" })
-		.click();
+	await page.getByRole("button", { name: "Continuer par e-mail" }).click();
 	expect(
 		await page
 			.getByLabel("Adresse e-mail")
@@ -103,10 +108,12 @@ for (const locale of ["en", "fr"] as const) {
 	}) => {
 		const owner = await workspace.signIn(page, "owner@example.invalid");
 		const organization = data(
-			await workspace.operations.createOrganization(owner.headers, {
-				name: "Owner safety",
-				slug: "owner-safety",
-			}),
+			await workspace.operations(owner.headers, () =>
+				organizationDomain.createOrganization(workspace.auth, owner.headers, {
+					name: "Owner safety",
+					slug: "owner-safety",
+				}),
+			),
 		);
 		const replacement = await workspace.signIn(
 			page,
@@ -123,7 +130,7 @@ for (const locale of ["en", "fr"] as const) {
 		await page
 			.context()
 			.addCookies([
-				{ name: "pfe_locale", value: locale, url: workspace.origin },
+				{ name: "recount_locale", value: locale, url: workspace.origin },
 			]);
 		await page.goto(
 			`${workspace.origin}/organizations/${organization.id}/members`,
@@ -139,11 +146,19 @@ for (const locale of ["en", "fr"] as const) {
 			dialog.getByRole("button", { name: m.keep_membership({}, options) }),
 		).toBeFocused();
 		data(
-			await workspace.operations.updateOrganizationMemberRole(owner.headers, {
-				organizationId: organization.id,
-				memberId: replacementMember.id,
-				role: "member",
-			}),
+			await workspace.operations(owner.headers, (actor) =>
+				memberDomain.updateRole(
+					workspace.database.db,
+					workspace.auth,
+					owner.headers,
+					actor,
+					{
+						organizationId: organization.id,
+						memberId: replacementMember.id,
+						role: "member",
+					},
+				),
+			),
 		);
 		let ready: () => void = () => {};
 		const received = new Promise<void>((resolve) => {
@@ -169,7 +184,7 @@ for (const locale of ["en", "fr"] as const) {
 		).toBeDisabled();
 		await expect(
 			dialog.getByRole("button", {
-				name: m.confirm_leave({}, options),
+				name: m.saving({}, options),
 				exact: true,
 			}),
 		).toBeDisabled();
@@ -203,7 +218,7 @@ for (const locale of ["en", "fr"] as const) {
 		await page
 			.context()
 			.addCookies([
-				{ name: "pfe_locale", value: locale, url: workspace.origin },
+				{ name: "recount_locale", value: locale, url: workspace.origin },
 			]);
 		const errors: string[] = [];
 		let mutationURL = "";
@@ -253,9 +268,11 @@ for (const locale of ["en", "fr"] as const) {
 		});
 		expect(csrf.status).toBe(403);
 		expect(
-			data(await workspace.operations.listOrganizations(owner.headers)).map(
-				(organization) => organization.name,
-			),
+			data(
+				await workspace.operations(owner.headers, (actor) =>
+					organizationDomain.listOrganizations(workspace.database.db, actor),
+				),
+			).map((organization) => organization.name),
 		).toEqual(["Locale lab"]);
 		await page
 			.getByRole("link", { name: text(m.organization_settings), exact: true })
@@ -327,11 +344,19 @@ for (const locale of ["en", "fr"] as const) {
 			await expect(
 				page.getByText(text(m.member_role_updated), { exact: true }),
 			).toBeVisible();
-			await workspace.operations.updateOrganizationMemberRole(owner.headers, {
-				organizationId,
-				memberId: collaboratorMember.id,
-				role: "member",
-			});
+			await workspace.operations(owner.headers, (actor) =>
+				memberDomain.updateRole(
+					workspace.database.db,
+					workspace.auth,
+					owner.headers,
+					actor,
+					{
+						organizationId,
+						memberId: collaboratorMember.id,
+						role: "member",
+					},
+				),
+			);
 			await page.goto(`${projectURL}/settings/members`);
 			await page
 				.getByLabel(
@@ -426,7 +451,7 @@ for (const locale of ["en", "fr"] as const) {
 			await page.keyboard.press("Escape");
 			await otherContext.clearCookies();
 			await otherContext.addCookies([
-				{ name: "pfe_locale", value: locale, url: workspace.origin },
+				{ name: "recount_locale", value: locale, url: workspace.origin },
 			]);
 			await otherPage.goto(`${workspace.origin}/invitations/${created.id}`);
 			await expect(otherPage).toHaveURL(/\/login\?redirect=/);
@@ -438,7 +463,7 @@ for (const locale of ["en", "fr"] as const) {
 				"recipient@example.invalid",
 			);
 			await otherContext.addCookies([
-				{ name: "pfe_locale", value: locale, url: workspace.origin },
+				{ name: "recount_locale", value: locale, url: workspace.origin },
 			]);
 			await otherPage.goto(`${workspace.origin}/invitations/${created.id}`);
 			await expect(
@@ -486,9 +511,25 @@ for (const locale of ["en", "fr"] as const) {
 		await page
 			.getByLabel(text(m.source_id), { exact: true })
 			.fill("chart-source");
+		const root = page.getByRole("textbox", {
+			name: text(m.enrolled_root_id),
+			exact: true,
+		});
+		await expect(root).toHaveAttribute("required", "");
+		await expect(root).toHaveAccessibleDescription(text(m.enrolled_root_help));
 		await page
-			.getByLabel(text(m.allowed_host_ids_one_per_line), { exact: true })
-			.fill("node1");
+			.getByRole("button", { name: text(m.create_credential), exact: true })
+			.click();
+		await expect(root).toBeFocused();
+		expect(
+			await root.evaluate(
+				(element: HTMLInputElement) => element.validity.valueMissing,
+			),
+		).toBe(true);
+		await expect(
+			page.getByLabel(text(m.onetime_collector_token), { exact: true }),
+		).toHaveCount(0);
+		await root.fill("node1");
 		await page
 			.getByRole("button", { name: text(m.create_credential), exact: true })
 			.click();
@@ -508,6 +549,47 @@ for (const locale of ["en", "fr"] as const) {
 			.click();
 		await expect(token).toHaveCount(0);
 		expect((await page.content()).includes(secret)).toBe(false);
+		// Check persisted grants only after hiding the one-time token from failure artifacts.
+		const enrollments = await workspace.database.db
+			.select({
+				rootId: collectorCredential.rootId,
+				rootKind: collectorCredential.rootKind,
+				sourceId: collectorCredential.sourceId,
+				resourceId: collectorRootGrant.resourceId,
+				resourceKind: collectorRootGrant.resourceKind,
+				adapter: collectorRootGrant.adapter,
+				allowedLocalKinds: collectorRootGrant.allowedLocalKinds,
+			})
+			.from(collectorCredential)
+			.innerJoin(
+				collectorRootGrant,
+				and(
+					eq(collectorRootGrant.credentialId, collectorCredential.id),
+					eq(collectorRootGrant.projectId, collectorCredential.projectId),
+					eq(
+						collectorRootGrant.organizationId,
+						collectorCredential.organizationId,
+					),
+				),
+			)
+			.where(
+				and(
+					eq(collectorCredential.organizationId, organizationId),
+					eq(collectorCredential.projectId, projectURL.split("/").at(-1) ?? ""),
+					eq(collectorCredential.name, "Locale credential"),
+				),
+			);
+		expect(enrollments).toEqual([
+			{
+				rootId: "node1",
+				rootKind: 1,
+				sourceId: "chart-source",
+				resourceId: "node1",
+				resourceKind: 1,
+				adapter: "linux",
+				allowedLocalKinds: [4],
+			},
+		]);
 		const credentialSSR = await page.reload();
 		expect((await credentialSSR?.text())?.includes(secret)).toBe(false);
 		await expect(token).toHaveCount(0);

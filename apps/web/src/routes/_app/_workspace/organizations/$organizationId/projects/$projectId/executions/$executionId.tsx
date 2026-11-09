@@ -1,5 +1,5 @@
-import { formatDate } from "@pfe/i18n";
-import { m } from "@pfe/i18n/messages";
+import { formatDate } from "@recount/i18n";
+import { m } from "@recount/i18n/messages";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { EntityForm } from "@/components/entity-form";
 import { PageHeading } from "@/components/workspace";

@@ -4,6 +4,7 @@ export interface ExecutionReference extends ProjectReference {
 	executionId: string;
 }
 export interface CreateExecutionInput extends ProjectReference {
+	requestId: string;
 	name: string;
 	credentialId: string;
 	hostId: string | null;
@@ -25,19 +26,20 @@ export interface TelemetryInput extends ExecutionReference {
 	to?: string;
 	buckets?: number;
 }
+export interface TelemetryPoint {
+	bucketMs: number;
+	timeNs: string;
+	flags: number;
+	integer: string | null;
+	double: number | null;
+}
 export interface TelemetrySeries {
 	id: string;
-	profile: "standard" | "external/1.0";
 	metric: string;
 	unit: "s" | "By";
 	hostId: string | null;
 	cpuMode: string | null;
-	points: {
-		bucketMs: number;
-		timeNs: string;
-		integer: string | null;
-		double: number | null;
-	}[];
+	segments: { id: string; points: TelemetryPoint[] }[];
 }
 export interface TelemetryResult {
 	from: Date;

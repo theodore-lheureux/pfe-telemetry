@@ -1,7 +1,7 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { type RefObject, useRef } from "react";
 import type { CollectorCredentialSummary } from "../../credentials/contracts";
-import { Alert, AlertDescription } from "../ui/alert";
+import { FormFeedback } from "../form-feedback";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -48,7 +48,6 @@ export function CredentialActionDialog({
 						intro.current?.focus();
 					}
 				}}
-				aria-busy={pending}
 				onEscapeKeyDown={(event) => {
 					if (pending) event.preventDefault();
 				}}
@@ -72,17 +71,27 @@ export function CredentialActionDialog({
 						? m.rotation_warning({ name: credential.name })
 						: m.revocation_warning({ name: credential.name })}
 				</AlertDialogDescription>
-				{error && (
-					<Alert variant="destructive">
-						<AlertDescription>{error}</AlertDescription>
-					</Alert>
-				)}
+				<FormFeedback
+					message={error}
+					kind="error"
+					pending={pending}
+					pendingMessage={
+						action === "rotate"
+							? m.rotating_credential()
+							: m.revoking_credential()
+					}
+				/>
 				<AlertDialogFooter>
-					{pending && <p role="status">{m.updating_collector_credentials()}</p>}
 					<Button
 						variant="destructive"
 						disabled={disabled}
 						onClick={() => void onConfirm()}
+						pending={pending}
+						pendingLabel={
+							action === "rotate"
+								? m.rotating_credential()
+								: m.revoking_credential()
+						}
 					>
 						{action === "rotate"
 							? m.confirm_rotation()

@@ -1,6 +1,6 @@
-import type { Locale } from "@pfe/i18n";
-import { m } from "@pfe/i18n/messages";
-import { getLocale, setLocale } from "@pfe/i18n/runtime";
+import type { Locale } from "@recount/i18n";
+import { m } from "@recount/i18n/messages";
+import { getLocale, setLocale } from "@recount/i18n/runtime";
 import { useHydrated } from "@tanstack/react-router";
 import { LanguagesIcon } from "lucide-react";
 import { useState } from "react";

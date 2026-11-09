@@ -43,6 +43,20 @@
       "when": 1793725716771,
       "tag": "0005_executions",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793852412398,
+      "tag": "0006_resource_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794112905071,
+      "tag": "0007_create_receipts",
+      "breakpoints": true
     }
   ]
 }

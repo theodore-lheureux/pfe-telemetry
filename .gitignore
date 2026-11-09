@@ -6,11 +6,13 @@ dist
 !.env.example
 *.log
 test-results
-infra/test-environment/.vagrant/
+.vagrant/
 .state/
 .venv/
+__pycache__/
 .ansible/
 target/
+/.cargo/config.toml
 lefthook-local.yml
 lefthook-local.yaml
 packages/i18n/src/paraglide/

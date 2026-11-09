@@ -1,5 +1,5 @@
-import { m } from "@pfe/i18n/messages";
-import { getLocale } from "@pfe/i18n/runtime";
+import { m } from "@recount/i18n/messages";
+import { getLocale } from "@recount/i18n/runtime";
 import type { QueryClient } from "@tanstack/react-query";
 import {
 	createRootRouteWithContext,
@@ -11,6 +11,7 @@ import {
 	useMatch,
 } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
+import type { AuthenticationController } from "../auth/authentication";
 import { LanguageSwitcher } from "../components/language-switcher";
 import { LocaleSafety } from "../components/locale-safety";
 import { MutationFeedback } from "../components/mutation-feedback";
@@ -21,29 +22,30 @@ import { clearValidation, localizeValidation } from "../lib/input-validation";
 import { getInitialTheme, themeCookie } from "../lib/theme";
 import css from "../styles.css?url";
 
-export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
-	{
-		beforeLoad: () => ({ theme: getInitialTheme() }),
-		head: () => ({
-			meta: [
-				{ charSet: "utf-8" },
-				{ name: "viewport", content: "width=device-width, initial-scale=1" },
-				{ title: m.app_title() },
-			],
-			links: [
-				{ rel: "stylesheet", href: css },
-				{
-					rel: "icon",
-					type: "image/svg+xml",
-					href: "/brand/recount-app-icon.svg",
-				},
-			],
-		}),
-		component: Outlet,
-		shellComponent: RootDocument,
-		notFoundComponent: RouteNotFound,
-	},
-);
+export const Route = createRootRouteWithContext<{
+	queryClient: QueryClient;
+	authentication: AuthenticationController;
+}>()({
+	beforeLoad: () => ({ theme: getInitialTheme() }),
+	head: () => ({
+		meta: [
+			{ charSet: "utf-8" },
+			{ name: "viewport", content: "width=device-width, initial-scale=1" },
+			{ title: m.app_title() },
+		],
+		links: [
+			{ rel: "stylesheet", href: css },
+			{
+				rel: "icon",
+				type: "image/svg+xml",
+				href: "/brand/recount-app-icon.svg",
+			},
+		],
+	}),
+	component: Outlet,
+	shellComponent: RootDocument,
+	notFoundComponent: RouteNotFound,
+});
 
 function RootDocument({ children }: { children: ReactNode }) {
 	const { theme: initialTheme } = Route.useRouteContext();

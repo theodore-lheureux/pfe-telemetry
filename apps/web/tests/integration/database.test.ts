@@ -33,7 +33,7 @@ let pools: Pool[];
 let folders: string[];
 
 beforeEach(async () => {
-	name = `pfe_test_${randomUUID().replaceAll("-", "")}`;
+	name = `recount_test_${randomUUID().replaceAll("-", "")}`;
 	pools = [];
 	folders = [];
 	await admin.query(`CREATE DATABASE "${name}"`);
@@ -59,7 +59,7 @@ function database() {
 }
 
 async function withNextMigration(statement: string) {
-	const folder = await mkdtemp(join(tmpdir(), "pfe-migrations-"));
+	const folder = await mkdtemp(join(tmpdir(), "recount-migrations-"));
 	folders.push(folder);
 	await cp(migrationsFolder, folder, { recursive: true });
 	const journalPath = join(folder, "meta/_journal.json");

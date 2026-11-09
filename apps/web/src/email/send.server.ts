@@ -1,27 +1,28 @@
-import type { Locale } from "@pfe/i18n";
+import type { Locale } from "@recount/i18n";
 import {
+	emailBrandImages,
 	type OrganizationInvitationEmailProps,
 	renderOrganizationInvitationEmail,
-	renderSignInEmail,
-} from "@pfe/transactional";
+	renderSignInCodeEmail,
+} from "@recount/transactional";
 import nodemailer, { type Transporter } from "nodemailer";
 
 let sender: ReturnType<typeof createEmailSender> | undefined;
-
-export async function sendSignInLink(
-	email: string,
-	url: string,
-	locale: Locale,
-) {
-	sender ??= createEmailSender();
-	await sender.sendSignInLink(email, url, locale);
-}
 
 export async function sendOrganizationInvitation(
 	props: OrganizationInvitationEmailProps,
 ) {
 	sender ??= createEmailSender();
 	await sender.sendOrganizationInvitation(props);
+}
+
+export async function sendSignInCode(
+	email: string,
+	code: string,
+	locale: Locale,
+) {
+	sender ??= createEmailSender();
+	await sender.sendSignInCode(email, code, locale);
 }
 
 export function createEmailSender(
@@ -63,14 +64,21 @@ export function createEmailSender(
 				from: EMAIL_FROM,
 				to: email,
 				...message,
+				attachments: emailBrandImages.map((image) => ({
+					filename: image.filename,
+					cid: image.cid,
+					content: Buffer.from(image.base64, "base64"),
+					contentType: "image/png",
+					contentDisposition: "inline" as const,
+				})),
 			});
 		} catch {
 			throw new Error("Email delivery failed");
 		}
 	}
 	return {
-		sendSignInLink: async (email: string, url: string, locale: Locale) =>
-			deliver(email, await renderSignInEmail(url, locale)),
+		sendSignInCode: async (email: string, code: string, locale: Locale) =>
+			deliver(email, await renderSignInCodeEmail(code, locale)),
 		sendOrganizationInvitation: async (
 			props: OrganizationInvitationEmailProps,
 		) => deliver(props.email, await renderOrganizationInvitationEmail(props)),

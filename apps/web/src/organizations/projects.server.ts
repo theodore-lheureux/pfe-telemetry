@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { and, asc, eq, or, sql } from "drizzle-orm";
 import type { getDatabase } from "../db/client.server";
 import { member, project, projectMember } from "../db/schema";
+import { createOnce } from "../lib/create-once.server";
 import {
 	type Actor,
 	requireOrganization,
@@ -18,6 +20,7 @@ import type {
 	UpdateProjectInput,
 } from "./contracts";
 import { OperationError } from "./errors";
+import { parseCreateProjectInput } from "./validation";
 
 type Database = ReturnType<typeof getDatabase>;
 
@@ -60,7 +63,7 @@ export async function listProjects(
 }
 
 export function getProject(
-	database: Database,
+	database: Pick<Database, "select">,
 	actor: Actor,
 	reference: ProjectReference,
 ) {
@@ -72,27 +75,45 @@ export async function createProject(
 	actor: Actor,
 	input: CreateProjectInput,
 ) {
-	const membership = await requireOrganization(
-		database,
-		actor,
-		input.organizationId,
-	);
-	if (membership.role === "member")
-		throw new OperationError(
-			"FORBIDDEN",
-			"Organization administrator access required",
-		);
-	const [created] = await database
-		.insert(project)
-		.values({ ...input, createdBy: actor.id })
-		.returning();
-	return {
-		id: created.id,
-		organizationId: created.organizationId,
-		name: created.name,
-		slug: created.slug,
-		role: "admin",
-	} satisfies ProjectSummary;
+	input = parseCreateProjectInput(input);
+	return createOnce(database, {
+		actorId: actor.id,
+		requestId: input.requestId,
+		scope: {
+			operation: "create-project",
+			organizationId: input.organizationId,
+			projectId: null,
+		},
+		values: [input.name, input.slug],
+		resourceId: randomUUID(),
+		authorize: async (tx) => {
+			const membership = await requireOrganization(
+				tx,
+				actor,
+				input.organizationId,
+			);
+			if (membership.role === "member")
+				throw new OperationError(
+					"FORBIDDEN",
+					"Organization administrator access required",
+				);
+			return membership;
+		},
+		create: async (tx, id) => {
+			await tx.insert(project).values({
+				id,
+				organizationId: input.organizationId,
+				name: input.name,
+				slug: input.slug,
+				createdBy: actor.id,
+			});
+		},
+		read: (tx, projectId) =>
+			getProject(tx, actor, {
+				organizationId: input.organizationId,
+				projectId,
+			}),
+	});
 }
 
 export async function updateProject(

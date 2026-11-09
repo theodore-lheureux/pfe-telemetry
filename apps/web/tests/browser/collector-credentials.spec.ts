@@ -1,5 +1,7 @@
-import { m } from "@pfe/i18n/messages";
 import type { Page } from "@playwright/test";
+import { m } from "@recount/i18n/messages";
+import * as organizationDomain from "../../src/organizations/organizations.server";
+import * as projectDomain from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
 
 let state: {
@@ -23,25 +25,33 @@ test.beforeEach(async ({ page, workspace }) => {
 		"collector-admin@example.invalid",
 	);
 	const organization = data(
-		await workspace.operations.createOrganization(owner.headers, {
-			name: "Collector UI",
-			slug: "collector-ui",
-		}),
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Collector UI",
+				slug: "collector-ui",
+			}),
+		),
 	);
 	const reference = { organizationId: organization.id };
 	const project = data(
-		await workspace.operations.createProject(owner.headers, {
-			...reference,
-			name: "Collector project",
-			slug: "collector",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
+				...reference,
+				name: "Collector project",
+				slug: "collector",
+			}),
+		),
 	);
 	const other = data(
-		await workspace.operations.createProject(owner.headers, {
-			...reference,
-			name: "Other project",
-			slug: "other",
-		}),
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
+				...reference,
+				name: "Other project",
+				slug: "other",
+			}),
+		),
 	);
 	for (const [person, role] of [
 		[viewer, "viewer"],
@@ -51,12 +61,14 @@ test.beforeEach(async ({ page, workspace }) => {
 			body: { ...reference, userId: person.userId, role: "member" },
 		});
 		data(
-			await workspace.operations.setProjectMember(owner.headers, {
-				...reference,
-				projectId: project.id,
-				memberId: member.id,
-				role,
-			}),
+			await workspace.operations(owner.headers, (actor) =>
+				projectDomain.setProjectMember(workspace.database.db, actor, {
+					...reference,
+					projectId: project.id,
+					memberId: member.id,
+					role,
+				}),
+			),
 		);
 	}
 	state = {
@@ -71,16 +83,11 @@ test.beforeEach(async ({ page, workspace }) => {
 	};
 });
 
-test.afterEach(async ({ page }) => {
-	// Close before fixture teardown so failure snapshots cannot retain a token.
-	await page.close();
-});
-
 function path(projectId = state.projectId) {
 	return `/organizations/${state.organizationId}/projects/${projectId}/settings/credentials`;
 }
 
-async function signIn(page: Page, cookie = state.ownerCookie) {
+async function setSessionCookie(page: Page, cookie: string) {
 	await page.context().clearCookies();
 	await page.context().addCookies(
 		cookie.split("; ").map((part) => {
@@ -93,6 +100,10 @@ async function signIn(page: Page, cookie = state.ownerCookie) {
 			};
 		}),
 	);
+}
+
+async function signIn(page: Page, cookie = state.ownerCookie) {
+	await setSessionCookie(page, cookie);
 	await page.goto(state.origin + path());
 	await expect(
 		page.getByRole("heading", { name: "Collector credentials", exact: true }),
@@ -103,7 +114,7 @@ async function create(page: Page, name: string) {
 	await page.getByLabel("Credential name", { exact: true }).fill(name);
 	await page.getByLabel("Source ID", { exact: true }).fill("browser-source");
 	await page
-		.getByLabel("Allowed host IDs (one per line)", { exact: true })
+		.getByLabel("Enrolled root ID", { exact: true })
 		.fill("browser-host");
 	await page
 		.getByRole("button", { name: "Create credential", exact: true })
@@ -125,7 +136,7 @@ test("create, one-time reveal, clipboard denial, rotation and permanent revocati
 	await create(page, "Lifecycle source");
 	await expect(tokenField(page)).toBeVisible();
 	const first = await tokenField(page).inputValue();
-	expect(/^pfe_[0-9a-f-]{36}_[A-Za-z0-9_-]{43}$/.test(first)).toBe(true);
+	expect(/^recount_[0-9a-f-]{36}_[A-Za-z0-9_-]{43}$/.test(first)).toBe(true);
 	await expect(
 		page.getByRole("button", { name: "Create credential", exact: true }),
 	).toBeDisabled();
@@ -221,7 +232,7 @@ test("French credential confirmation blocks closing while pending and retains a 
 	await signIn(page);
 	await page
 		.context()
-		.addCookies([{ name: "pfe_locale", value: "fr", url: state.origin }]);
+		.addCookies([{ name: "recount_locale", value: "fr", url: state.origin }]);
 	await page.reload();
 	const locale = { locale: "fr" } as const;
 	await page
@@ -231,7 +242,7 @@ test("French credential confirmation blocks closing while pending and retains a 
 		.getByLabel(m.source_id({}, locale), { exact: true })
 		.fill("source-fr");
 	await page
-		.getByLabel(m.allowed_host_ids_one_per_line({}, locale), { exact: true })
+		.getByLabel(m.enrolled_root_id({}, locale), { exact: true })
 		.fill("host-fr");
 	await page
 		.getByRole("button", { name: m.create_credential({}, locale), exact: true })
@@ -372,11 +383,45 @@ test("viewers cannot list or mutate, while an explicit project admin can manage"
 		await expect(
 			page.getByText("You have read access.", { exact: false }),
 		).toBeVisible();
-		await page.evaluate(async (href) => {
-			const modulePath = "/src/router.tsx";
-			const { getRouter } = await import(modulePath);
-			await getRouter().preloadRoute({ to: href });
-		}, path());
+		await admin
+			.getByRole("link", { name: "Project settings", exact: true })
+			.click();
+		await expect(
+			admin.getByRole("heading", { name: "Project settings", exact: true }),
+		).toBeVisible();
+		const credentialsLink = admin.getByRole("link", {
+			name: "Collector credentials",
+			exact: true,
+		});
+		await expect(credentialsLink).toHaveAttribute("href", path());
+		// Exercise the real retained Link after the browser's session becomes a viewer.
+		await setSessionCookie(admin, state.viewerCookie);
+		admin.on("request", (request) => {
+			if (new URL(request.url()).pathname === listPath) calls++;
+		});
+		const preloadRequest = admin.waitForRequest(
+			(request) =>
+				request.method() === "GET" &&
+				request.url().includes("/_serverFn/") &&
+				new URL(request.url()).pathname !== listPath &&
+				request.url().includes(state.projectId),
+		);
+		await credentialsLink.hover();
+		const access = await (await preloadRequest).response();
+		if (!access)
+			throw new Error(
+				"Expected the Link intent preload's project access response",
+			);
+		expect(access.ok()).toBe(true);
+		expect((await access.text()).includes('"viewer"')).toBe(true);
+		await expect(admin).toHaveURL(
+			`${state.origin}/organizations/${state.organizationId}/projects/${state.projectId}/settings`,
+		);
+		expect(calls).toBe(0);
+		await credentialsLink.click();
+		await expect(
+			admin.getByText("You have read access.", { exact: false }),
+		).toBeVisible();
 		expect(calls).toBe(0);
 	} finally {
 		await context.close();
@@ -445,7 +490,7 @@ test("late mutation completion cannot reveal into another project and duplicate 
 	try {
 		await create(page, "Late source");
 		await expect(
-			page.getByRole("button", { name: "Create credential", exact: true }),
+			page.getByRole("button", { name: m.creating_credential(), exact: true }),
 		).toBeDisabled();
 		await page
 			.getByRole("combobox", { name: "Project", exact: true })
@@ -691,7 +736,7 @@ test("a pre-freeze mutation response cannot reveal after restoration", async ({
 	try {
 		await create(page, "Pre-freeze source");
 		await expect(
-			page.getByRole("button", { name: "Create credential", exact: true }),
+			page.getByRole("button", { name: m.creating_credential(), exact: true }),
 		).toBeDisabled();
 		await page.evaluate(() =>
 			window.dispatchEvent(

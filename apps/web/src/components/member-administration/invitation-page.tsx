@@ -1,8 +1,9 @@
-import { formatDate } from "@pfe/i18n";
-import { roleLabel } from "@pfe/i18n/labels";
-import { m } from "@pfe/i18n/messages";
+import { formatDate } from "@recount/i18n";
+import { roleLabel } from "@recount/i18n/labels";
+import { m } from "@recount/i18n/messages";
 import { Link } from "@tanstack/react-router";
 import type { inspectInvitation } from "../../organizations/invitation.functions";
+import { FormFeedback } from "../form-feedback";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -35,10 +36,7 @@ export function InvitationPage({
 		requestRejection,
 	} = useInvitationResponse(invitationId, user.id);
 	return (
-		<main
-			aria-busy={pending}
-			className="mx-auto flex min-h-svh max-w-xl flex-col items-start justify-center gap-5 px-6 py-12"
-		>
+		<main className="mx-auto flex min-h-svh max-w-xl flex-col items-start justify-center gap-5 px-6 py-12">
 			<Link to="/" className="text-sm underline">
 				{m.app_title()}
 			</Link>
@@ -52,7 +50,12 @@ export function InvitationPage({
 			<p className="text-sm text-muted-foreground">
 				{m.signed_in_invitation({ email: user.email })}
 			</p>
-			{message && <p role="alert">{message}</p>}
+			<FormFeedback
+				message={confirmReject ? "" : message}
+				kind="error"
+				pending={pending && !confirmReject}
+				pendingMessage={m.accepting_invitation()}
+			/>
 			{acceptedOrganization ? (
 				<div>
 					<p role="status">{m.invitation_accepted()}</p>
@@ -108,7 +111,12 @@ export function InvitationPage({
 						{m.joining_gives_you_an_organization_membership_members_still()}
 					</p>
 					<div className="flex gap-3">
-						<Button disabled={disabled} onClick={() => void decide(true)}>
+						<Button
+							disabled={disabled}
+							onClick={() => void decide(true)}
+							pending={pending && !confirmReject}
+							pendingLabel={m.accepting_invitation()}
+						>
 							{m.accept_invitation()}
 						</Button>
 						<Button
@@ -127,7 +135,6 @@ export function InvitationPage({
 						}}
 					>
 						<AlertDialogContent
-							aria-busy={pending}
 							onEscapeKeyDown={(event) => {
 								if (pending) event.preventDefault();
 							}}
@@ -145,12 +152,18 @@ export function InvitationPage({
 							<AlertDialogDescription>
 								{m.reject_this_invitation_you_will_need_a_new()}
 							</AlertDialogDescription>
-							{message && <p role="alert">{message}</p>}
-							{pending && <p role="status">{m.saving()}</p>}
+							<FormFeedback
+								message={message}
+								kind="error"
+								pending={pending}
+								pendingMessage={m.rejecting_invitation()}
+							/>
 							<AlertDialogFooter>
 								<Button
 									variant="destructive"
 									disabled={pending}
+									pending={pending}
+									pendingLabel={m.rejecting_invitation()}
 									onClick={() => void decide(false)}
 								>
 									{m.confirm_rejection()}

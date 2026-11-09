@@ -11,7 +11,7 @@ use crate::{
 };
 
 const CPU_TIME: &str = "process.cpu.time";
-const RESIDENT_MEMORY: &str = "pfe.process.memory.rss";
+const RESIDENT_MEMORY: &str = "recount.process.memory.rss";
 const DISK_IO: &str = "process.disk.io";
 
 impl Collector {
@@ -93,19 +93,22 @@ impl Collector {
             metrics.push(counter(DISK_IO, "By", disk_points));
         }
         statuses.push(self.read_status(DISK_IO, disk_status, disk_time));
-        metrics.push(gauge("pfe.collection.read.status", "1", statuses));
+        metrics.push(gauge("recount.collection.read.status", "1", statuses));
         let mut attributes = self.attributes("process");
         attributes.extend([
             integer("process.pid", i64::from(stat.pid)),
             integer("process.parent_pid", i64::from(stat.ppid)),
-            string("pfe.process.namespace_id", self.namespace.clone()),
+            string("recount.process.namespace_id", self.namespace.clone()),
             string(
-                "pfe.process.incarnation_id",
+                "recount.process.incarnation_id",
                 format!("start-ticks:{}", stat.starttime),
             ),
-            string("pfe.process.start_time_ticks", stat.starttime.to_string()),
+            string(
+                "recount.process.start_time_ticks",
+                stat.starttime.to_string(),
+            ),
             integer(
-                "pfe.linux.clock_ticks_per_second",
+                "recount.linux.clock_ticks_per_second",
                 self.ticks_per_second as i64,
             ),
         ]);

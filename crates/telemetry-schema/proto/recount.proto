@@ -1,0 +1,163 @@
+syntax = "proto3";
+package recount.telemetry;
+
+// These are trusted adapter fields, never authority asserted by an OTLP sender.
+message SecurityScope { string project_id = 1; string source_id = 2; }
+message BatchIdentity { string client_id = 1; uint64 created_unix_nano = 2; }
+message Position { uint32 resource = 1; uint32 scope = 2; uint32 metric = 3; uint32 point = 4; }
+message ResourceRef { string id = 1; ResourceKind kind = 2; }
+enum ResourceKind {
+  RESOURCE_UNKNOWN = 0; HOST = 1; CPU = 2; GPU = 3; PROCESS = 4;
+  VM = 5; CONTAINER = 6; GATEWAY = 7; SENSOR = 8;
+}
+enum RelationKind { RELATION_UNKNOWN = 0; CONTAINS = 1; PLACED_ON = 2; ALLOCATED_TO = 3; OBSERVED_BY = 4; }
+message Relationship {
+  ResourceRef from = 1; ResourceRef to = 2; RelationKind kind = 3;
+  optional uint64 effective_from_unix_nano = 4;
+  optional uint64 effective_until_unix_nano = 5;
+  string evidence = 6; string provenance = 7;
+}
+message ResourceContext {
+  ResourceRef resource = 1;
+  optional string host_id = 2;
+  optional string device_id = 3;
+  repeated Relationship relationships = 4;
+  ResourceAccess access = 5;
+}
+message RootScope {}
+message BoundScope {}
+message LocalResource {
+  string root_id = 1;
+  string adapter = 2;
+  string local_incarnation = 3;
+}
+// Resolved and checked at admission, retained unchanged for accepted replay.
+message ResourceAccess {
+  oneof scope {
+    RootScope root = 1;
+    LocalResource local = 2;
+    BoundScope bound = 3;
+  }
+}
+message ResourceBinding { uint32 original_resource = 1; ResourceContext context = 2; }
+enum PayloadKind { PAYLOAD_UNKNOWN = 0; OTLP_METRICS = 1; }
+message RawRecord {
+  SecurityScope security = 1;
+  string record_id = 2;
+  uint64 received_unix_nano = 3;
+  BatchIdentity batch = 4;
+  PayloadKind payload_kind = 5;
+  // Existing generated OTLP ExportMetricsServiceRequest, not another OTLP model.
+  bytes otlp_request = 6;
+  repeated ResourceBinding bindings = 7;
+}
+message NormalizedPoint {
+  SecurityScope security = 1;
+  bytes sample_id = 2;
+  bytes stream_id = 3;
+  Position original = 4;
+  ResourceContext context = 5;
+  uint64 time_unix_nano = 6;
+  uint64 start_time_unix_nano = 7;
+  optional string continuity = 8;
+  string metric_name = 9;
+  string unit = 10;
+  uint32 flags = 11;
+  // 1 gauge, 2 sum, 3 histogram, 4 exponential histogram, 5 summary.
+  uint32 metric_kind = 12;
+  optional int64 int_value = 13;
+  optional double double_value = 14;
+  // Complete supported OTLP context, each encoded with existing generated types.
+  // Metric has exactly one original observation, including exemplars and metadata.
+  optional bytes otlp_resource = 15;
+  optional bytes otlp_scope = 16;
+  bytes otlp_metric = 17;
+  string resource_schema_url = 18;
+  string scope_schema_url = 19;
+  uint64 received_unix_nano = 20;
+  string record_id = 21;
+  // floor(time_unix_nano / 86400000000000), never receipt-derived.
+  uint32 event_day = 22;
+  BatchIdentity batch = 23;
+  PayloadKind payload_kind = 24;
+}
+
+// Analytical SQL projection, not another OTLP input model. Field names/types
+// generate the fixture's ClickHouse columns from this descriptor at build time.
+enum MetricKind { METRIC_UNKNOWN = 0; GAUGE = 1; SUM = 2; HISTOGRAM = 3; EXPONENTIAL_HISTOGRAM = 4; SUMMARY = 5; }
+enum Temporality { TEMPORALITY_UNKNOWN = 0; DELTA = 1; CUMULATIVE = 2; }
+enum AttributeKind { ATTRIBUTE_ABSENT = 0; ATTRIBUTE_EMPTY = 1; STRING = 2; INTEGER = 3; DOUBLE = 4; BOOLEAN = 5; BYTES = 6; ARRAY = 7; KEY_VALUE_LIST = 8; }
+message AttributeNode {
+  string path = 1;
+  AttributeKind kind = 2;
+  optional string string_value = 3;
+  optional sint64 int_value = 4;
+  optional double double_value = 5;
+  optional bool bool_value = 6;
+  optional bytes bytes_value = 7;
+  // Repeated nodes retain original depth-first order, including containers.
+}
+// Only lineage/relationship fields not already projected into analytical columns.
+message PointLineage {
+  Position original = 1;
+  BatchIdentity batch = 2;
+  string record_id = 3;
+  fixed64 received_unix_nano = 4;
+  PayloadKind payload_kind = 5;
+  repeated Relationship relationships = 6;
+  ResourceAccess access = 7;
+}
+message AnalyticalPoint {
+  string project_id = 1;
+  string source_id = 2;
+  string resource_id = 3;
+  ResourceKind resource_kind = 4;
+  optional string host_id = 5;
+  optional string device_id = 6;
+  string metric_name = 7;
+  string unit = 8;
+  MetricKind metric_kind = 9;
+  bytes sample_id = 10;
+  bytes stream_id = 11;
+  fixed64 time_unix_nano = 12;
+  fixed64 start_time_unix_nano = 13;
+  uint32 event_day = 14;
+  optional string continuity = 15;
+  uint32 flags = 16;
+  optional sint64 int_value = 17;
+  optional double double_value = 18;
+  bool resource_present = 19;
+  bool scope_present = 20;
+  string scope_name = 21;
+  string scope_version = 22;
+  string resource_schema_url = 23;
+  string scope_schema_url = 24;
+  repeated AttributeNode resource_attributes = 25;
+  repeated AttributeNode scope_attributes = 26;
+  repeated AttributeNode point_attributes = 27;
+  repeated AttributeNode metric_metadata = 28;
+  Temporality temporality = 29;
+  optional bool monotonic = 30;
+  optional fixed64 count = 31;
+  optional double sum = 32;
+  optional double min = 33;
+  optional double max = 34;
+  repeated double explicit_bounds = 35;
+  repeated fixed64 bucket_counts = 36;
+  optional sint32 scale = 37;
+  optional fixed64 zero_count = 38;
+  optional double zero_threshold = 39;
+  optional sint32 positive_offset = 40;
+  repeated fixed64 positive_counts = 41;
+  optional sint32 negative_offset = 42;
+  repeated fixed64 negative_counts = 43;
+  repeated double quantiles = 44;
+  repeated double quantile_values = 45;
+  string description = 46;
+  uint32 resource_dropped_attributes_count = 47;
+  uint32 scope_dropped_attributes_count = 48;
+  // Existing generated OTLP Exemplar and EntityRef bytes, not entire point copies.
+  repeated bytes exemplars = 49;
+  repeated bytes resource_entity_refs = 50;
+  bytes lineage = 51;
+}

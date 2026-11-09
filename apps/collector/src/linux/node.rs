@@ -9,9 +9,9 @@ use crate::{
     metrics::{counter, gauge, string},
 };
 
-const CPU_TIME: &str = "pfe.node.cpu.time";
-const TOTAL_MEMORY: &str = "pfe.node.memory.total";
-const AVAILABLE_MEMORY: &str = "pfe.node.memory.available";
+const CPU_TIME: &str = "recount.node.cpu.time";
+const TOTAL_MEMORY: &str = "recount.node.memory.total";
+const AVAILABLE_MEMORY: &str = "recount.node.memory.available";
 const DISK_IO: &str = "system.disk.io";
 
 impl Collector {
@@ -124,7 +124,7 @@ impl Collector {
             metrics.push(counter(DISK_IO, "By", disk_points));
         }
         statuses.push(self.read_status(DISK_IO, disk_status, time));
-        metrics.push(gauge("pfe.collection.read.status", "1", statuses));
+        metrics.push(gauge("recount.collection.read.status", "1", statuses));
         Ok(metrics)
     }
 }

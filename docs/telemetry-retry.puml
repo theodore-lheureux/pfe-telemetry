@@ -1,0 +1,41 @@
+@startuml
+!pragma teoz true
+!include diagram-style.iuml
+
+title PFE Telemetry - Retry après un timeout
+skinparam style strictuml
+hide footbox
+
+participant "Collector" as collector
+participant "Ingestion API" as ingestion
+queue "Kafka" as kafka
+participant "Processing worker" as worker
+database "Storage" as storage
+
+== Envoi initial ==
+collector -> ingestion ++ : OTLP Export (batch B1)
+ingestion -> ingestion : Authenticate and validate
+ingestion -> kafka ++ : Produce B1
+kafka --> ingestion -- : Producer ACK
+ingestion ->x collector -- : OTLP response lost
+collector -> collector : Timeout, keep B1 in buffer
+
+== Retry ==
+collector -> ingestion ++ : OTLP Export (batch B1)
+ingestion -> ingestion : Authenticate and validate
+ingestion -> kafka ++ : Produce B1
+kafka --> ingestion -- : Producer ACK
+ingestion --> collector -- : OTLP response: OK
+collector -> collector : Remove B1 from buffer
+
+== Processing (async) ==
+worker -> kafka : Poll records
+activate worker
+kafka --> worker : Records: B1, B1
+worker -> storage ++ : Idempotent write B1
+storage --> worker -- : Write confirmed
+worker -> storage ++ : Idempotent write B1
+storage --> worker -- : Already stored, skipped
+worker -> kafka : Commit offset
+deactivate worker
+@enduml

@@ -1,58 +1,56 @@
 import { createServerFn } from "@tanstack/react-start";
-import {
-	getRequestHeaders,
-	setResponseHeader,
-} from "@tanstack/react-start/server";
+import { withActor } from "../auth/actor.server";
+import { privateOperation } from "../auth/private-operation";
 import { parseMemberReference, parseMemberRole } from "./member-contracts";
-import { getOrganizationRequests } from "./request.server";
+import * as members from "./members.server";
 import {
 	parseOrganizationReference,
 	parseProjectReference,
 } from "./validation";
 
-function privateHeaders() {
-	setResponseHeader("Cache-Control", "private, no-store");
-	return getRequestHeaders();
-}
-
 export const listOrganizationMembers = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
 	.validator(parseOrganizationReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().listOrganizationMembers(
-			privateHeaders(),
-			data.organizationId,
+	.handler(({ data, context: { identity, database, auth, headers } }) =>
+		withActor(identity, (actor) =>
+			members.listMembers(database, auth, headers, actor, data.organizationId),
 		),
 	);
-
 export const listProjectGrantCandidates = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
 	.validator(parseProjectReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().listProjectGrantCandidates(
-			privateHeaders(),
-			data,
+	.handler(({ data, context: { identity, database, auth, headers } }) =>
+		withActor(identity, (actor) =>
+			members.listProjectGrantCandidates(database, auth, headers, actor, data),
 		),
 	);
-
 export const updateOrganizationMemberRole = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
 	.validator(parseMemberRole)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().updateOrganizationMemberRole(
-			privateHeaders(),
-			data,
+	.handler(({ data, context: { identity, database, auth, headers } }) =>
+		withActor(identity, (actor) =>
+			members.updateRole(database, auth, headers, actor, data),
 		),
 	);
-
 export const removeOrganizationMember = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
 	.validator(parseMemberReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().removeOrganizationMember(privateHeaders(), data),
+	.handler(({ data, context: { identity, database, auth, headers } }) =>
+		withActor(identity, (actor) =>
+			members.removeMember(database, auth, headers, actor, data),
+		),
 	);
-
 export const leaveOrganization = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
 	.validator(parseOrganizationReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().leaveOrganization(
-			privateHeaders(),
-			data.organizationId,
+	.handler(({ data, context: { identity, database, auth, headers } }) =>
+		withActor(identity, (actor) =>
+			members.leaveOrganization(
+				database,
+				auth,
+				headers,
+				actor,
+				data.organizationId,
+			),
 		),
 	);

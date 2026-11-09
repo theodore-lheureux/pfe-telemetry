@@ -1,232 +1,85 @@
 # Telemetry collection and ingestion contract
 
-The `external/1.0` profile carries Linux node and process measurements as OTLP metrics. Its collection, ingestion and storage rules are implementation requirements. See the [ingestion server](../apps/server/README.md) for currently implemented behavior.
-
-Draft version 1.0.
+The Linux collector's acquisition semantics complement the [telemetry point contract](telemetry-point-contract.md), which defines current raw/analytical messages, sample identity, resource authority, fidelity, routing and admission limits. Runtime settings belong in the [collector](../apps/collector/README.md), [ingestion API](../apps/ingestion-api/README.md), [normalizer](../apps/normalizer/README.md) and [stack](../infra/README.md) references.
 
 ## Wire format and profiles
 
-Use OTLP/gRPC `opentelemetry.proto.collector.metrics.v1.MetricsService/Export` with the standard `ExportMetricsServiceRequest` and `ExportMetricsServiceResponse`. Support uncompressed and gzip requests, with a 4 MiB decoded receiver limit and a 1 MiB collector limit before compression. [Service definition](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto), [receiver settings](../apps/server/README.md)
+Metrics use the standard OTLP/gRPC `MetricsService/Export` request and response. The API accepts uncompressed and gzip metrics and authenticates before acceptance. Requests with validated observations return the standard empty success response only after confirmed raw Kafka publication. Authenticated zero-point requests succeed after authority and validation checks without Kafka publication; their success proves neither publication nor downstream health. Traces return `UNIMPLEMENTED`. There is no partial OTLP success or custom receipt body. [Service definition](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/collector/metrics/v1/metrics_service.proto)
 
-Request metadata `pfe-collection-profile: external/1.0` selects the external collection profile. Requests without it use standard OTLP input (`standard`). Ingestion must accept standard OTLP metrics and traces within source permissions and admission limits. Preserve their native semantics and mark absent context as unknown. Standard OTLP input does not guarantee full process identity or duplicate-safe client retries.
+`recount-collection-profile` is absent/`standard` for ordinary authorized OTLP, or `linux` for the Recount collector adapter. Linux requests require durable batch identity. The collector splits before assigning IDs, commits immutable body/metadata to its local queue and retries without reordering observations. Shared [metadata and retry rules](telemetry-point-contract.md#sample-identity-and-retry-rules) define the exact header values; standard exporters can omit that extension and have the narrower accepted-record replay guarantee.
 
-Authentication must establish trusted `project_id` and `source_id`, permitted hosts and signal types. Payload attributes cannot change these permissions. Require TLS outside the isolated test environment. Execution registration and human ownership belong to the [application API](architecture.md).
+The Linux catalogue is adapter policy, not a universal allowlist for application/IoT metric names. Standard authorized resources do not need invented Linux process or boot fields. Instrumented applications use existing OpenTelemetry SDKs rather than sending execution registration through OTLP.
 
 ## Resource fields
 
-External attributes belong to `ResourceMetrics.resource`. Strings are non-empty UTF-8, at most 128 bytes; IDs are case-sensitive. UUIDs are lowercase hyphenated strings. Integer attributes use `AnyValue.int_value`; decimal uint64 strings use `string_value`.
+Linux node, process and collector resources carry `host.id`, `recount.host.boot_id`, collection source, `recount.collection.scope`, `recount.collection.epoch_id`, intended interval and `os.type=linux`. Instrumentation scope `recount.collector.procfs` reports the current collector package version. UUIDs are opaque identifiers; their embedded time does not replace explicit event, creation or receipt timestamps. [UUID considerations](https://www.rfc-editor.org/rfc/rfc9562.html#section-5.7)
 
-Treat UUIDs as opaque identifiers. Their embedded time must not replace explicit measurement, batch-creation or receipt timestamps, or establish event order across nodes. UUIDv4 is sufficient for collection epoch and counter segment IDs, which do not require ordering. [UUID format and timestamp considerations](https://www.rfc-editor.org/rfc/rfc9562.html#section-5.7)
+The configured `host.id` must match an enrolled root grant. Changing the collector flag changes acquisition identity, not permission. The web enrollment form creates a host root with adapter `linux` and explicit process-local permission. The API derives deterministic local process IDs from trusted project/root plus boot, namespace, PID and start ticks. It fetches bounded root authority keys, not one grant per PID. See [resource grants](telemetry-point-contract.md#resource-grant-interface) and [collector credentials](collector-credentials.md).
 
-| Required attribute           | Type           | Scope and meaning                                                                           |
-| ---------------------------- | -------------- | ------------------------------------------------------------------------------------------- |
-| `host.id`                    | string         | All: enrolled unique machine identity. Cloned machine IDs require separate enrollment IDs.  |
-| `pfe.host.boot_id`           | string         | All: changes after host reboot, unchanged by collector restart.                             |
-| `pfe.collection.scope`       | string enum    | All: `node`, `process`, `collector`.                                                        |
-| `pfe.collection.source`      | string         | All: acquisition implementation.                                                            |
-| `pfe.collection.epoch_id`    | UUID string    | All: new after collector restart or sampling-clock discontinuity.                           |
-| `os.type`                    | string         | All: `linux`.                                                                               |
-| `pfe.collection.interval_ns` | positive int64 | All: intended sampling period.                                                              |
-| `process.pid`                | positive int64 | Process: PID in the declared namespace.                                                     |
-| `pfe.process.namespace_id`   | string         | Process: stable namespace identifier within the boot; initial VMs use `host`.               |
-| `pfe.process.incarnation_id` | string         | Process: token stable for its lifetime, distinguishing PID reuse across collector restarts. |
-| `pfe.collection.visibility`  | string enum    | Collector: `host` enumerates initial host PIDs; `restricted` enumerates a narrower set.     |
+Process resources retain `process.pid`, `recount.process.namespace_id`, incarnation `start-ticks:<decimal>` and decimal raw `recount.process.start_time_ticks`; Linux clock frequency is retained as metadata. The collector reads and rechecks PID/start ticks before emitting points. Unverified identities are discarded, not approximated from rounded creation times or array positions. Deployment must verify the boot-local namespace identity and whether visibility is `host` or `restricted`. Parent PID is descriptive, not proof of execution membership. Resource/point attributes contribute to [OTLP metric stream identity](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#opentelemetry-protocol-data-model); mutable clock quality belongs in diagnostic values, not identity dimensions.
 
-The process key is `(authenticated project, host.id, boot_id, namespace_id, process.pid, incarnation_id)`. On Linux, `start-ticks:<decimal>` is valid when the collector reads and rechecks both the PID and start ticks before emission. Rounded creation times or UUIDs regenerated on discovery cannot satisfy this identity. Discard readings when the process incarnation cannot be verified.
+The adapter resolves node/collector resources to the enrolled root and process resources to its permitted local namespace. Independently identified VMs/devices need exact bindings rather than authority inferred from a parent/placement claim. Root reporting permission is not physical attestation. Unknown topology and execution association remain unknown.
 
-Every external `ScopeMetrics.scope` requires non-empty `name` and `version` strings, at most 128 bytes, identifying the collection or normalization component. An adapter's mapping description must retain source metric names, dimensions and conversions. Keep resources without verified process identity separate from fully identified process histories.
-
-| Optional attribute                                 | Type and placement                                                                                      |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `host.name`                                        | Resource string, any scope; display only.                                                               |
-| `process.parent_pid`                               | Process resource non-negative int64; same namespace.                                                    |
-| `pfe.process.start_time_unix_nano`                 | Process resource decimal uint64 string; requires positive int64 `pfe.process.start_time_resolution_ns`. |
-| `pfe.process.start_time_ticks`                     | Process resource decimal uint64 string; requires positive int64 `pfe.linux.clock_ticks_per_second`.     |
-| `pfe.collection.capabilities`                      | Collector resource string array; absence means none declared.                                           |
-| `pfe.execution.id`, `pfe.execution.association_id` | Process point strings; incomplete claims remain unassociated.                                           |
-
-Resource and point attributes identify OTLP metric streams. Report changing clock status and uncertainty as the diagnostic gauge values below, never as resource or point attributes. Keep the intended sampling period constant within an epoch; changing it starts a new epoch. [Metric stream identity](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#opentelemetry-protocol-data-model)
-
-Application-generated execution and association IDs use UUIDv7. Resolve execution claims against association records in the same project. These records contain the full process key, validity interval, evidence and authorized creator. If a reference is missing or inconsistent, leave the measurements visibly unassociated and accept them if otherwise valid. Parent PID alone cannot prove execution membership. Keep node measurements at node scope. Do not assign a shared worker's entire CPU usage or RSS to each job.
-
-The default metadata allowlist comprises these fields and the dimensions below. Exclude arguments, environment variables, executable paths, owners, application files, memory contents and free-form read errors. Application OTLP attributes follow their source policy.
+The collector exports only allowlisted identity and metric dimensions. It does not read arguments, environment variables, executable links, application files or process memory. Standard OTLP attributes remain subject to shared structural/privacy rules rather than this collector-specific acquisition allowlist.
 
 ## Measurements
 
-Each cycle must attempt the baseline categories for the node and visible processes. Verify process identity before emission, then emit available points and coverage diagnostics. Successful discovery with no devices is valid. Periodic scans can miss short-lived processes.
+Each scan attempts baseline node and visible-process measurements. Available points and coverage diagnostics are emitted together, but individual reads have their own completion times: a scan is not an atomic snapshot. Successful discovery with no disks is valid; periodic discovery can miss short-lived processes.
 
-| Metric                      | Scope   | Data / value / unit    | Point dimensions and meaning                                                                                                                        |
-| --------------------------- | ------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pfe.node.cpu.time`         | Node    | Counter / double / `s` | `cpu.mode`: supported `user`, `nice`, `system`, `idle`, `interrupt`, `softirq`, `steal`; aggregate logical CPUs. Guest time stays within user/nice. |
-| `pfe.node.memory.total`     | Node    | Gauge / int64 / `By`   | OS usable physical RAM.                                                                                                                             |
-| `pfe.node.memory.available` | Node    | Gauge / int64 / `By`   | OS estimate allocatable without swapping.                                                                                                           |
-| `system.disk.io`            | Node    | Counter / int64 / `By` | `system.device`: boot-local address, e.g. `block:8:0`; `disk.io.direction`: `read`, `write`; block-accounted bytes.                                 |
-| `process.cpu.time`          | Process | Counter / double / `s` | `cpu.mode`: `user`, `system`; process and threads, excluding child-process accounting.                                                              |
-| `pfe.process.memory.rss`    | Process | Gauge / int64 / `By`   | Resident memory including shared pages.                                                                                                             |
-| `process.disk.io`           | Process | Counter / int64 / `By` | `disk.io.direction`: `read`, `write`; storage-accounted bytes.                                                                                      |
+The [collector measurement catalogue](../apps/collector/README.md#baseline-measurements) lists names, types, units and dimensions. The shared [catalogue implementation](../crates/telemetry-validation/src/catalogue.rs) validates adapter metric semantics. Current baselines include Recount node CPU/memory, standard system disk I/O and process CPU/disk I/O, plus Recount RSS. Standard metric/vendor identifiers retain their external spelling. [System conventions](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/), [process conventions](https://opentelemetry.io/docs/specs/semconv/system/process-metrics/)
 
-Dimensions are strings. Counters are cumulative monotonic OTLP Sums (`aggregation_temporality = 2`, `is_monotonic = true`). Custom `pfe.*` metrics specify aggregate CPU and memory gauges; conventional counter names retain their definitions. [System conventions](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/), [process conventions](https://opentelemetry.io/docs/specs/semconv/system/process-metrics/)
+CPU and I/O baselines are cumulative monotonic sums, not percentages or rates. Byte counters must fit signed Int64; out-of-range values produce a status instead of wrapping or rounding. Node CPU aggregates logical CPUs, keeps guest time within user/nice and excludes decreasing iowait from monotonic counters. RSS includes shared pages and is not private memory. Disk partitions/devices can overlap; do not sum every I/O series indiscriminately.
 
-Values must be finite and non-negative; byte counts must fit signed int64. Report overflow instead of wrapping or rounding values. Keep per-core CPU, private memory and logical I/O separate. Do not blindly sum overlapping device and partition I/O or RSS that includes shared pages. Linux iowait can decrease and is excluded from monotonic CPU counters.
+The shared catalogue also describes known DCGM native-time gauge ratios and `By/s` rates. Those mappings do not establish GPU/MIG hardware collection or workload attribution in this Linux procfs collector. Standard application histograms, exponential histograms and summaries retain their native structures through the point pipeline; they are not flattened into scalar collector measurements.
 
 ## Time and continuity
 
-`NumberDataPoint.time_unix_nano` records when the read completed, as a non-zero uint64 Unix timestamp in nanoseconds. Gauges use `start_time_unix_nano = 0`. Counters use a stable origin timestamp, or zero when that origin is unknown. A device created after boot cannot use boot time as its origin. Timestamp precision follows source resolution, not encoding. [Metric fields](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/metrics/v1/metrics.proto)
+OTLP event time is the nonzero UInt64 Unix nanosecond timestamp when the read completed. Gauges have zero start time; counters retain a known origin or zero when unknown. The collector initially uses verified boot time for node CPU when it does not exceed event time, and omits that cached origin after a clock discontinuity. Process counter origins and derived Unix process-start times are omitted when wall-clock resolution is not established. Timestamp encoding does not imply clock accuracy. [Metric fields](https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/metrics/v1/metrics.proto)
 
-Baseline counter points require `pfe.counter.segment_id` as a UUID string. Assign a new segment after a counter reset, missed or failed read, known local point loss, lost continuity or collector restart. Device disappearance or reappearance also starts a new segment.
+Each baseline counter point carries `recount.counter.segment_id`. Segments change after resets, failed/missed reads, skipped cycles, device disappearance/reappearance, discarded identities, known local loss or restart. Local loss feedback conservatively invalidates baseline continuity; already enqueued observations keep their original timestamps and segments.
 
-Calculate rates only between successive points with the same resource key, source, scope version, dimensions, epoch and segment. Time must increase and the counter value must not decrease. Known downstream loss invalidates the interval.
+Rates require matching resource identity, source, instrumentation version, dimensions, epoch and segment, strictly increasing event time and non-decreasing counter values. Known loss invalidates the interval:
 
 `rate = (value2 - value1) / ((time2 - time1) / 1e9)`
 
-CPU rate can exceed one. Calculating a percentage relative to allocated resources requires the actual allocation. Do not calculate counter rates from gauges. Preserve late points with their source time, server receipt time and clock diagnostics. A detected clock step ends the current cycle and starts a new epoch before further reads.
+CPU rate can exceed one; percentages relative to an allocation need actual allocation evidence. Never derive counter rates from gauges or bridge disconnected continuity segments. The current chart reader preserves segments but does not add a general rate/rollup product.
 
-Emit `pfe.clock.status` and any known `pfe.clock.uncertainty` once per completed cycle, with the same timestamp as `pfe.collection.scan.duration`. Match them to readings in that scan window using authenticated project/source, host, boot, collection source, epoch and instrumentation scope. A synchronized status and uncertainty bound must cover the entire window. Missing, conflicting or insufficient diagnostics leave clock quality unknown; do not carry an older bound into later cycles. Retain these diagnostics through batch splitting and storage so late arrivals can be matched by source time rather than receipt order.
+`recount.clock.status` is currently zero (unknown), emitted with the timestamp of `recount.collection.scan.duration`. No synchronization estimate is verified, so clock uncertainty is omitted. Clock quality is diagnostic data, not a changing stream-identity attribute. Request splitting repeats clock/scan diagnostics with unchanged timestamps so each fragment retains its scan window.
 
-An unknown clock status can coexist with a coarse estimate adequate for submission-age admission, but supplies no measured synchronization bound across nodes. Standard OTLP delta sums retain their original intervals and types; conversion requires a documented mapping.
+Wall/monotonic discontinuity checks abandon incomplete scans and start a new epoch. Their threshold detects discontinuities; it is not a cross-node synchronization bound. Missing or insufficient clock evidence remains unknown. Submission-age policy applies only to declared batch creation; it neither imposes a measurement-age/future cutoff nor rewrites source timestamps.
 
 ## Missing readings
 
-Omit unavailable values. For each attempted category in each cycle, emit `pfe.collection.read.status` on the node or identified process, with dimension `pfe.metric.name`. Codes: `0` read, `1` unsupported, `2` permission denied, `3` disappeared, `4` read failed, `5` out of range, `6` temporarily unavailable.
+Omit unavailable measurement values. For each attempted baseline category on the node or a verified process, emit `recount.collection.read.status`, an Int64 gauge with unit `1` and dimension `recount.metric.name`:
 
-For partial reads, retain the readable points and report the failure status. An unchanged counter has a measured delta of zero. Missing data is not zero.
+| Code | Meaning                 |
+| ---- | ----------------------- |
+| `0`  | Read successfully       |
+| `1`  | Unsupported             |
+| `2`  | Permission denied       |
+| `3`  | Disappeared             |
+| `4`  | Read failed             |
+| `5`  | Out of range            |
+| `6`  | Temporarily unavailable |
 
-| Diagnostic                            | Scope        | Data / value / unit         | Dimensions or meaning                                                                     |
-| ------------------------------------- | ------------ | --------------------------- | ----------------------------------------------------------------------------------------- |
-| `pfe.collection.read.status`          | Node/process | Gauge / int64 / `1`         | Codes above.                                                                              |
-| `pfe.collection.discovery.status`     | Collector    | Gauge / int64 / `1`         | Same codes.                                                                               |
-| `pfe.collection.discovered.processes` | Collector    | Gauge / int64 / `{process}` | Visible entries this cycle.                                                               |
-| `pfe.collection.discarded.processes`  | Collector    | Gauge / int64 / `{process}` | `reason`: `identity_unverified`, `disappeared`.                                           |
-| `pfe.collection.scan.duration`        | Collector    | Gauge / double / `s`        | Monotonic duration at completion; scan window = completion minus duration.                |
-| `pfe.clock.status`                    | Collector    | Gauge / int64 / `1`         | `0` unknown, `1` synchronized, `2` unsynchronized; applies to the completed scan window.  |
-| `pfe.clock.uncertainty`               | Collector    | Gauge / int64 / `ns`        | Non-negative bound on the absolute source clock error for that window; omit when unknown. |
-| `pfe.collection.dropped.points`       | Collector    | Counter / int64 / `{point}` | Since epoch; `reason`: `buffer_full`, `buffer_expired`, `permanent_rejection`.            |
+Partial reads retain available points and report the failure status. An unchanged counter has a measured zero delta; an inaccessible counter has no measured value. An unverified process cannot receive an invented identity or per-process status.
 
-Each read has its own timestamp; the scan is not an atomic snapshot. Host visibility does not imply that all fields are readable. Absent cycles expose disconnection. Points discarded locally after an uncertain acknowledgement may already exist in backend storage. The discard diagnostic alone must not create gaps where records are present.
+Collector-scope diagnostics report discovery status, visible-entry count, discarded-process counts, monotonic scan duration and cumulative local dropped-point counts by reason. Failed discovery is not proof that a host has no processes. Missing cycles expose disconnection, while a local discard after an uncertain acknowledgement may coexist with already accepted rows. Do not erase present measurements because a discard diagnostic exists.
 
-## Delivery
+Standard OTLP no-recorded flags remain separate from these Linux coverage diagnostics. Shared [SQL projection rules](telemetry-point-contract.md#sql-projection-and-replacement) preserve absent/present-zero values and require readers to exclude no-recorded values even when a payload value exists.
 
-External requests contain one value per metadata key:
+## Delivery and analytical visibility
 
-| ASCII gRPC metadata           | Format                                                                         |
-| ----------------------------- | ------------------------------------------------------------------------------ |
-| `pfe-collection-profile`      | `external/1.0`                                                                 |
-| `pfe-batch-id`                | Lowercase UUIDv7, assigned once per logical batch and retained across retries. |
-| `pfe-batch-created-unix-nano` | Decimal uint64 creation timestamp.                                             |
+Local enqueue confirms recoverable pending upload only. Raw Kafka acknowledgement confirms backend acceptance only. Normalization may produce several records across partitions, and ClickHouse can expose a subset before the remainder. Native ingestion uses a Kafka source and non-aggregating materialized view into `telemetry.metric_points`; it does not wait on a PostgreSQL acceptance index or a complete-batch manifest.
 
-Split batches before assigning IDs. Durably enqueue each payload and its metadata locally before sending. Retries must preserve the body, array order, values, timestamps and metadata. Never repackage attempted observations under new IDs. A point's identity combines the batch key with its positions in the resource, scope, metric and point arrays.
+Sample identity uses trusted project/source, payload kind, immutable client batch identity (or accepted record identity) and original resource/scope/metric/point positions. Credential IDs, receipt times, output offsets and worker batching do not redefine samples. Reusing an identity with changed content violates the protocol; there is no permanent conflict ledger or first-writer guarantee. Current readers select logical unique samples before duplicate-sensitive calculations, independently of background replacement.
 
-Validate the whole request before durable publication. Return gRPC `OK` with an empty standard response only after retaining the whole batch. Do not partially accept a batch. Authenticated empty requests may succeed without retention. Successful export confirms backend acceptance; analytical processing and queryability follow separately. Local enqueue confirms only that the pending upload can be recovered.
+Request-wide invalid/oversized data is rejected before raw publication; deterministic size failures are terminal `RESOURCE_EXHAUSTED` without `RetryInfo`. Temporary authority/broker outages are retryable. A timeout can be ambiguous, so retry unchanged. The collector removes confirmed successes and records terminal rejection/expiry losses; exact retry/status behavior is in the [collector export reference](../apps/collector/README.md#export-and-privacy) and [OTLP failure table](https://opentelemetry.io/docs/specs/otlp/#failures).
 
-Remove pending records on confirmed success. A terminal rejection or expiry permits removal, provided the local discard and its reason are recorded. A timeout or lost acknowledgement leaves acceptance uncertain. Keep the batch pending for retry within its lifetime.
+Accepted Kafka replay validates stored context without refreshing credential expiry/revocation or upload age. Poison halts its affected input without skipping; expired checkpoints are explicit gaps. Fresh-group initialization and schema/mount/image guards belong to [stack operations](../infra/README.md), not automatic startup resets or old-format readers.
 
-Retained envelopes include trusted project and source IDs, receipt time, server-generated UUIDv7 `record_id`, payload kind, profile and version, client identity and time, and the supported re-encoded OTLP payload. Retain the record ID unchanged through replay. See [serialization](serialization.md#retention-and-replay).
+## Validation boundaries
 
-Deduplicate external submissions by `(project_id, source_id, payload_kind, pfe-batch-id)`. Atomically commit measurements, deduplication state and aggregates before advancing consumer progress. Replay of requests without a batch ID uses the trusted `record_id` instead of a client batch ID. Separate client resubmissions may therefore duplicate data.
+Use the shared semantic/binary fixtures for exact values, distribution structures, optionality, attributes and stable identities. Run current native Kafka/MV and application authorization checks separately. A Protobuf/ClickHouse-local round trip alone cannot prove broker replay, storage/offset ambiguity, full two-collector browser behavior or hardware coverage.
 
-The producer must keep batch content immutable. Ingestion is not required to detect every conflict caused by malicious batch ID reuse. Any detected conflict must not overwrite the first batch.
-
-Enrollment publishes two durations in seconds: `maximum_submission_age` (`R`) and `allowed_clock_skew` (`S`). Both must be greater than zero. At receipt, reject batch creation times more than `S` ahead of the ingestion clock or more than `R + S` behind it. A creation time up to `S` in the future is admissible. These checks apply to batch creation, not individual measurement age. Never rewrite creation or measurement timestamps on retry or ingestion. These age guarantees assume a source clock within `S` of the ingestion clock.
-
-Keep deduplication state until `created_at + R + S` has passed and the replay horizons of all retained records have expired. Extending replay requires extending deduplication retention or using a separate output generation. These bounded settings do not guarantee permanent deduplication or an outage window. See [recovery and retention](ingestion-and-reliability.md).
-
-| Result                                                                                                     | Behavior                                                                              |
-| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Invalid fields/types/units/duplicate keys, non-finite values, batch creation more than `S` into the future | `INVALID_ARGUMENT`; whole request rejected.                                           |
-| Unauthorized source/host                                                                                   | `UNAUTHENTICATED` or `PERMISSION_DENIED`; stop unchanged retries.                     |
-| Unknown profile major / expired submission                                                                 | `FAILED_PRECONDITION`; stop unchanged retries.                                        |
-| Oversized/permanently inadmissible request                                                                 | `RESOURCE_EXHAUSTED` without `RetryInfo`; stop unchanged retries.                     |
-| Temporary sink/capacity failure                                                                            | `UNAVAILABLE`; retry unchanged with exponential backoff/jitter, honoring `RetryInfo`. |
-| Transport loss / retryable OTLP status                                                                     | Retry unchanged within lifetime; acceptance may be uncertain.                         |
-
-Follow the [OTLP failure table](https://opentelemetry.io/docs/specs/otlp/#failures) for other statuses. `RESOURCE_EXHAUSTED` is retryable only with recovery `RetryInfo`; received partial success is never retried. Keep credentials and telemetry bodies out of logs/responses.
-
-## Supported formats
-
-The external collection profile is `external/1.0`. Standard OTLP input uses `standard`, which is also the default when the profile header is absent. Reject other profiles without inferring a mapping or silently selecting another profile.
-
-Envelope and storage schema versions identify the current format. Reject unsupported versions without advancing processing. Re-encoding supported Protobuf fields does not preserve unknown fields or the original byte layout.
-
-## Examples
-
-JSON views of OTLP requests use decimal strings for 64-bit integers and integer enum values. The process RSS example is a batch fragment; other categories and statuses are reported in other fragments of the same cycle. [OTLP JSON mapping](https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding)
-
-```json
-{
-  "resourceMetrics": [
-    {
-      "resource": {
-        "attributes": [
-          { "key": "host.id", "value": { "stringValue": "node-01" } },
-          { "key": "pfe.host.boot_id", "value": { "stringValue": "boot-01" } },
-          {
-            "key": "pfe.collection.scope",
-            "value": { "stringValue": "process" }
-          },
-          {
-            "key": "pfe.collection.source",
-            "value": { "stringValue": "rust-procfs" }
-          },
-          {
-            "key": "pfe.collection.epoch_id",
-            "value": { "stringValue": "bd2e9e7e-09b7-4e28-807d-1b71ab43de88" }
-          },
-          { "key": "os.type", "value": { "stringValue": "linux" } },
-          {
-            "key": "pfe.collection.interval_ns",
-            "value": { "intValue": "1000000000" }
-          },
-          { "key": "process.pid", "value": { "intValue": "4821" } },
-          {
-            "key": "pfe.process.namespace_id",
-            "value": { "stringValue": "host" }
-          },
-          {
-            "key": "pfe.process.incarnation_id",
-            "value": { "stringValue": "start-ticks:9500" }
-          }
-        ]
-      },
-      "scopeMetrics": [
-        {
-          "scope": { "name": "pfe.collector.procfs", "version": "0.1.0" },
-          "metrics": [
-            {
-              "name": "pfe.process.memory.rss",
-              "unit": "By",
-              "gauge": {
-                "dataPoints": [
-                  { "timeUnixNano": "1780000100000000000", "asInt": "67108864" }
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-For inaccessible I/O, add this metric to the same process's `scopeMetrics[0].metrics` and omit its `process.disk.io` value. Other readable values remain; no execution association is required.
-
-```json
-{
-  "name": "pfe.collection.read.status",
-  "unit": "1",
-  "gauge": {
-    "dataPoints": [
-      {
-        "timeUnixNano": "1780000100000000000",
-        "asInt": "2",
-        "attributes": [
-          {
-            "key": "pfe.metric.name",
-            "value": { "stringValue": "process.disk.io" }
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+Use native application/browser processes against a reused backend for daily iteration. Build Linux artifacts on the host and execute those artifacts in Linux containers for packaging and Linux-specific validation. Byte/row/expanded-work/concurrency controls are provisional configurable safety limits, not a decoded-memory or production-capacity proof. OTLP JSON remains useful for inspecting examples under its [defined mapping](https://opentelemetry.io/docs/specs/otlp/#json-protobuf-encoding), not an alternative normalized runtime format.

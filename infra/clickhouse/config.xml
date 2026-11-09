@@ -1,0 +1,31 @@
+<clickhouse>
+  <max_server_memory_usage>1342177280</max_server_memory_usage>
+  <background_pool_size>4</background_pool_size>
+  <background_schedule_pool_size>8</background_schedule_pool_size>
+  <background_message_broker_schedule_pool_size>2</background_message_broker_schedule_pool_size>
+  <background_distributed_schedule_pool_size>2</background_distributed_schedule_pool_size>
+  <format_schema_path>/etc/clickhouse-server/format_schemas/</format_schema_path>
+  <kafka>
+    <consumer>
+      <auto_offset_reset>error</auto_offset_reset>
+      <queued_min_messages>1</queued_min_messages>
+      <fetch_wait_max_ms>100</fetch_wait_max_ms>
+      <session_timeout_ms>10000</session_timeout_ms>
+      <heartbeat_interval_ms>3000</heartbeat_interval_ms>
+      <enable_auto_commit>false</enable_auto_commit>
+      <enable_auto_offset_store>false</enable_auto_offset_store>
+    </consumer>
+  </kafka>
+  <merge_tree>
+    <merge_max_block_size>128</merge_max_block_size>
+    <merge_max_block_size_bytes>1048576</merge_max_block_size_bytes>
+    <number_of_free_entries_in_pool_to_execute_mutation>2</number_of_free_entries_in_pool_to_execute_mutation>
+    <number_of_free_entries_in_pool_to_lower_max_size_of_merge>2</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+    <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>2</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
+  </merge_tree>
+  <logger><level>warning</level><console>true</console><log remove="1"/><errorlog remove="1"/></logger>
+  <query_log remove="1"/>
+  <query_thread_log remove="1"/>
+  <text_log remove="1"/>
+  <trace_log remove="1"/>
+</clickhouse>

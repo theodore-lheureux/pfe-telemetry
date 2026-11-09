@@ -1,14 +1,14 @@
 # Ingestion and reliability
 
-The intended delivery model for our collectors is at least once with duplicate-safe storage. Accepted batches may be delivered again after a failure. Reprocessing an identified batch must not inflate sample counts or aggregates.
+Recount uses at-least-once delivery with stable sample identities and duplicate-safe queries. Accepted submissions may be delivered again after a failure. Physical rows can contain retries; calculations must deduplicate before counting or aggregating samples.
 
 Target guarantees depend on storage durability, available capacity, retention, and recovery behavior.
 
 ## Acceptance and processing
 
-The backend authenticates the collector and validates the batch before publication. It acknowledges acceptance only after the broker confirms the write under the configured policy. Without a broker, it acknowledges after a durable storage commit. An in-memory queue alone is insufficient for acceptance.
+The ingestion API authenticates the source, resolves bounded root/resource grants and validates the whole submission, including exact normalized-output limits, before raw Kafka publication. It acknowledges acceptance only after Kafka confirms the write under the configured policy. There is no direct-storage acceptance path. Deterministic limit failures reject the whole submission before publication.
 
-Acceptance means the batch entered the retained ingestion log or storage; it does not mean the measurements are already queryable. Expose processing progress and freshness separately. A stable identity supplied by our collector identifies the batch through acceptance and retries. OTLP services return the standard export response; the batch identity can travel in agreed gRPC metadata without changing that response body. [OTLP responses](https://opentelemetry.io/docs/specs/otlp/)
+Acceptance means the submission entered the retained raw log; it does not mean the measurements are already queryable. Different parts of a submission can become visible at different times. An empty chart is not proof of completeness or ingestion health. A stable identity supplied by the collector identifies the batch through acceptance and retries. OTLP returns the standard export response; batch identity travels in [current gRPC metadata](telemetry-point-contract.md#sample-identity-and-retry-rules), not a custom response body. [OTLP responses](https://opentelemetry.io/docs/specs/otlp/)
 
 A timeout can occur after a successful write. The collector therefore retains the batch and retries with the same identity. Batch and sample identities must remain stable across retries, be scoped to their source and project, and avoid reuse after collector restarts.
 
@@ -18,18 +18,18 @@ Standard third-party OTLP exporters may not supply stable batch or sample identi
 
 | Guarantee                        | Required behavior                                                                   | Boundary                                                                                              |
 | -------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Confirmed acceptance             | Wait for successful publication or storage commit before replying.                  | Durability follows the configured deployment and failure model.                                       |
+| Confirmed acceptance             | Wait for confirmed raw Kafka publication before replying.                           | Durability follows the configured deployment and failure model.                                       |
 | Processing recovery              | Resume from committed progress after a restart.                                     | Recovery must finish before unprocessed records expire; capacity must be sufficient to catch up.      |
-| Safe retries                     | Store each identified sample once and avoid repeating aggregate updates.            | Broker producer deduplication does not replace application deduplication.                             |
+| Safe retries                     | Preserve sample IDs and deduplicate before duplicate-sensitive calculations.        | Physical rows can repeat; broker producer deduplication does not replace query deduplication.         |
 | Replay                           | Read retained raw records using a separate consumer or controlled checkpoint reset. | Replay availability follows retention; archived captures have a separate lifetime.                    |
 | Temporary disconnection recovery | Keep pending collector batches on local disk and upload them after reconnection.    | Bounded buffers cover a finite outage, and cannot protect against losing the collector disk.          |
 | One-broker failure tolerance     | Retain accepted records through a broker failure and resume service after failover. | Requires replicated brokers and a healthy controller quorum; it does not follow from a single broker. |
 
 ## Storage commits and duplicates
 
-The worker commits its broker position only after committing the corresponding measurements. In Kafka, this position is a consumer offset; in JetStream, processing is acknowledged through the consumer.
+The normalizer awaits every required bare point-record acknowledgement before acknowledging input to RustStream. Tracked prefixes are stored and periodically committed by the framework/native client; there is no manual per-input confirmation slot. ClickHouse's `ProtobufSingle` Kafka source and non-aggregating view store rows before advancing downstream offsets. PostgreSQL participates in neither boundary.
 
-If the worker crashes after storage succeeds but before recording progress, it receives the batch again. ClickHouse stores measurements and their batch identity in one atomic row. Queries deduplicate that row before filtering or aggregation; uncertain inserts and offset commits can replay without multiplying measurements. See [execution analytics](execution-telemetry.md#storage-and-replay) for the implemented boundaries.
+Crashing after output/storage but before confirmed progress can replay samples. Stable original sample IDs and event-day partitions let `ReplacingMergeTree` and calculation-appropriate query deduplication collapse immutable retries. The current scalar reader uses bounded `FINAL` before bucket selection. There is no PostgreSQL telemetry claim, whole-batch visibility gate or permanent first-content-wins registry. Reusing an immutable producer ID with changed content violates the protocol and has undefined competing-row results. Malformed retained records fail visibly without skipping their checkpoint. See [execution analytics](execution-telemetry.md#storage-and-visibility) for publication and visibility boundaries; Kafka offsets and external storage are not transactional.
 
 Kafka producer idempotence handles producer retries, but a collector resubmitting an OTLP batch is an application-level retry. Kafka transactions also do not automatically include writes to an external database. [Producer idempotence](https://kafka.apache.org/43/configuration/producer-configs/#enable.idempotence), [Rust consumer guidance](https://github.com/fede1024/rust-rdkafka), [external storage semantics](https://kafka.apache.org/43/design/design/#message-delivery-semantics).
 
@@ -37,7 +37,7 @@ Kafka producer idempotence handles producer retries, but a collector resubmittin
 
 A single broker with a persistent volume supports process-restart experiments while its volume remains intact. It cannot tolerate losing that broker's storage. Kafka acknowledges log replication without requiring a physical disk flush for every write, so simultaneous host or power failures need a separate durability assessment. [Kafka persistence](https://kafka.apache.org/43/design/design/).
 
-For the replicated Kafka test environment, use three replicas, `acks=all`, and `min.insync.replicas=2`. Keep unclean leader election disabled. Insufficient healthy replicas should cause delayed or rejected acceptance rather than silently weaker durability. Controller quorum availability must also be maintained. Broker failover does not provide redundancy for the API or analytical storage. [Replication settings](https://kafka.apache.org/43/configuration/broker-configs/#min.insync.replicas), [leader election](https://kafka.apache.org/43/configuration/topic-configs/#unclean.leader.election.enable).
+The local stack has one broker and one replica, uses `acks=all`, and disables unclean leader election. It does not provide broker disk-loss tolerance. A future replicated deployment would need a healthy controller quorum and an explicit replication/minimum-in-sync policy, such as three replicas with `min.insync.replicas=2`. Insufficient replicas must not silently weaken acceptance. Broker failover alone does not provide API or analytical-storage redundancy. [Replication settings](https://kafka.apache.org/43/configuration/broker-configs/#min.insync.replicas), [leader election](https://kafka.apache.org/43/configuration/topic-configs/#unclean.leader.election.enable).
 
 No uptime, maximum outage duration, or dashboard latency target is established yet. Targets need a specified workload, deployment, and measured recovery capacity.
 
@@ -45,7 +45,7 @@ No uptime, maximum outage duration, or dashboard latency target is established y
 
 Broker retention and collector buffers are bounded. A Kafka size limit can expire records before their age limit, and applies per partition. A promised minimum replay window therefore needs storage sized for the admitted data rate and admission control that prevents early expiry. Historical storage and exports need their own retention rules. [Kafka retention](https://kafka.apache.org/43/configuration/topic-configs/).
 
-Monitor backlog age, remaining disk capacity, collector buffer use, dropped samples, and processing failures. Near capacity, reject or delay new batches according to an explicit policy. If a record is evicted or cannot be processed, retain a visible gap or failure record instead of presenting a complete capture.
+Inspect backlog age, disk capacity, collector buffers and errors separately from charts. Normalizer startup rejects missing/out-of-range checkpoints and never selects an implicit earliest/latest suffix. These are initial snapshots: later native errors remain logged while the process may continue, without an automatic non-ready transition. Handler validation/publication failures globally stop unfinished processing rather than skip it. Fresh groups require explicit initialization. A gap can be unrecoverable; bounded retention is not an outage guarantee.
 
 Kafka orders records within each partition. This order does not establish measurement chronology across nodes. Preserve source timestamps, receipt timestamps, and source sequence information so analysis can handle late data, restarts, and clock differences. [Kafka consumer positions](https://kafka.apache.org/43/design/design/#consumer-position).
 

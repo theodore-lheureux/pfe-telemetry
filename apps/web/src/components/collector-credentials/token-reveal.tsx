@@ -1,5 +1,6 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { useEffect, useRef, useState } from "react";
+import { FormFeedback } from "../form-feedback";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
@@ -15,15 +16,26 @@ export function TokenReveal({
 }) {
 	const title = useRef<HTMLHeadingElement>(null);
 	const [copyMessage, setCopyMessage] = useState("");
+	const [copying, setCopying] = useState(false);
+	const [copyFailed, setCopyFailed] = useState(false);
+	const copyBusy = useRef(false);
 	useEffect(() => {
 		title.current?.focus();
 	}, []);
 	async function copy() {
+		if (copyBusy.current) return;
+		copyBusy.current = true;
+		setCopying(true);
 		try {
 			await navigator.clipboard.writeText(token);
+			setCopyFailed(false);
 			setCopyMessage(m.token_copied_save_it_in_the_private_token());
 		} catch {
+			setCopyFailed(true);
 			setCopyMessage(m.clipboard_access_was_denied_or_is_unavailable_select());
+		} finally {
+			copyBusy.current = false;
+			setCopying(false);
 		}
 	}
 	return (
@@ -53,16 +65,24 @@ export function TokenReveal({
 				className="font-mono"
 			/>
 			<div className="flex flex-wrap gap-2">
-				<Button type="button" onClick={() => void copy()}>
+				<Button
+					type="button"
+					onClick={() => void copy()}
+					pending={copying}
+					pendingLabel={m.copying_token()}
+				>
 					{m.copy_token()}
 				</Button>
 				<Button type="button" variant="outline" onClick={onDismiss}>
 					{m.i_saved_the_token_hide_it()}
 				</Button>
 			</div>
-			<p role="status" className="text-sm">
-				{copyMessage}
-			</p>
+			<FormFeedback
+				message={copyMessage}
+				kind={copyFailed ? "error" : "success"}
+				pending={copying}
+				pendingMessage={m.copying_token()}
+			/>
 		</section>
 	);
 }

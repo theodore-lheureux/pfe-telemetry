@@ -26,18 +26,8 @@ export function loginSearch(
 	origin: string,
 ): {
 	redirect: string;
-	error?: string;
 } {
 	return {
 		redirect: localRedirect(search.redirect, origin),
-		error: typeof search.error === "string" ? search.error : undefined,
-	};
-}
-
-export function signInDestinations(redirect: string) {
-	return {
-		callbackURL: redirect,
-		newUserCallbackURL: redirect,
-		errorCallbackURL: `/login?${new URLSearchParams({ redirect })}`,
 	};
 }

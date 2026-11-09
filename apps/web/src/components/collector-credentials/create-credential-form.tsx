@@ -1,45 +1,41 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
-import { useState } from "react";
+import { MAX_U64_NANOSECONDS_DURATION_SECONDS } from "../../credentials/contracts";
 import { credentialFormValues } from "../../credentials/setup";
-import { inputMessage } from "../../lib/operation-message";
+import { validationError } from "../../lib/form-validation";
 import { useAppForm } from "../app-form";
+import { FormFeedback } from "../form-feedback";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { Field, FieldDescription, FieldLabel } from "../ui/field";
 import type { CredentialValues } from "./use-collector-credentials";
 
 export function CreateCredentialForm({
 	disabled,
 	create,
+	feedback,
 }: {
 	disabled: boolean;
 	create: (values: CredentialValues) => Promise<boolean>;
+	feedback: { message: string; failed: boolean };
 }) {
-	const [error, setError] = useState("");
 	const form = useAppForm({
 		defaultValues: {
 			name: "",
 			sourceId: "",
-			hosts: "",
-			requireHostId: true,
+			rootId: "",
 			expiresAt: "",
 			maximumSubmissionAge: "3600",
 			allowedClockSkew: "60",
 		},
+		validators: {
+			onSubmit: ({ value }) =>
+				validationError(() => credentialFormValues(value)),
+		},
 		onSubmit: async ({ value }) => {
-			if (disabled) return;
-			setError("");
-			let values: ReturnType<typeof credentialFormValues>;
-			try {
-				values = credentialFormValues(value);
-			} catch (cause) {
-				setError(inputMessage(cause));
-				return;
-			}
-			if (await create(values)) form.reset();
+			if (!disabled && (await create(credentialFormValues(value))))
+				form.reset();
 		},
 	});
+	const error = useSelector(form.store, (state) => state.errorMap.onSubmit);
 	const submitting = useSelector(form.store, (state) => state.isSubmitting);
 	return (
 		<section
@@ -85,42 +81,16 @@ export function CreateCredentialForm({
 							/>
 						)}
 					</form.AppField>
-					<form.AppField name="hosts">
+					<form.AppField name="rootId">
 						{(field) => (
-							<field.TextareaField
-								label={m.allowed_host_ids_one_per_line()}
-								rows={3}
-								description={m.host_policy_help({
-									flag: "--host-id",
-									path: "/etc/machine-id",
-								})}
+							<field.TextField
+								label={m.enrolled_root_id()}
+								required
+								maxLength={128}
+								description={m.enrolled_root_help()}
 							/>
 						)}
 					</form.AppField>
-					<form.Field name="requireHostId">
-						{(field) => (
-							<Field>
-								<div className="flex items-center gap-2">
-									<Checkbox
-										id="require-host-id"
-										name={field.name}
-										checked={field.state.value}
-										onBlur={field.handleBlur}
-										onCheckedChange={(checked) =>
-											field.handleChange(checked === true)
-										}
-										aria-describedby="require-host-help"
-									/>
-									<FieldLabel htmlFor="require-host-id">
-										{m.require_host_identification()}
-									</FieldLabel>
-								</div>
-								<FieldDescription id="require-host-help">
-									{m.if_unchecked_submissions_without_a_host_id_are()}
-								</FieldDescription>
-							</Field>
-						)}
-					</form.Field>
 					<form.AppField name="expiresAt">
 						{(field) => (
 							<field.TextField
@@ -141,7 +111,7 @@ export function CreateCredentialForm({
 										type="number"
 										required
 										min={1}
-										max={86400}
+										max={MAX_U64_NANOSECONDS_DURATION_SECONDS}
 										step={1}
 									/>
 								)}
@@ -152,22 +122,28 @@ export function CreateCredentialForm({
 										label={m.allowed_clock_skew_seconds()}
 										type="number"
 										required
-										min={1}
-										max={3600}
+										min={0}
+										max={MAX_U64_NANOSECONDS_DURATION_SECONDS}
 										step={1}
 									/>
 								)}
 							</form.AppField>
 						</div>
 					</details>
-					{error && (
-						<p role="alert" className="text-sm text-destructive">
-							{error}
-						</p>
-					)}
-					<Button type="submit" className="self-start">
+					<Button
+						type="submit"
+						className="self-start"
+						pending={submitting}
+						pendingLabel={m.creating_credential()}
+					>
 						{m.create_credential()}
 					</Button>
+					<FormFeedback
+						message={error || feedback.message}
+						kind={error || feedback.failed ? "error" : "success"}
+						pending={submitting}
+						pendingMessage={m.creating_credential()}
+					/>
 				</fieldset>
 			</form>
 		</section>

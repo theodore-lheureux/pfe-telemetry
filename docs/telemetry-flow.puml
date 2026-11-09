@@ -1,0 +1,40 @@
+@startuml
+!pragma teoz true
+!include diagram-style.iuml
+
+title PFE Telemetry - Flux de données
+skinparam style strictuml
+hide footbox
+
+participant "Collector" as collector
+participant "Ingestion API" as ingestion
+queue "Kafka" as kafka
+participant "Processing worker" as worker
+database "Storage" as storage
+participant "Web app" as web
+actor "User" as user
+
+== Ingestion ==
+collector -> ingestion ++ : OTLP Export (gRPC / Protobuf)
+ingestion -> ingestion : Authenticate and validate
+ingestion -> kafka ++ : Produce batch
+kafka --> ingestion -- : Producer ACK
+ingestion --> collector -- : OTLP response: OK
+
+== Processing (async) ==
+worker -> kafka : Poll records
+activate worker
+kafka --> worker : Telemetry batch
+worker -> worker : Process batch
+worker -> storage ++ : Idempotent write
+storage --> worker -- : Write confirmed
+worker -> kafka : Commit offset
+deactivate worker
+
+== Dashboard ==
+user -> web ++ : Open dashboard
+web -> web : Check permissions
+web -> storage ++ : Query metrics
+storage --> web -- : Query results
+web --> user -- : JSON response
+@enduml

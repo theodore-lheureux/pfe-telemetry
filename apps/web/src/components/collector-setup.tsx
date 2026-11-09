@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import {
 	collectorBuildCommand,
 	collectorRunCommand,
@@ -36,7 +36,7 @@ export function CollectorSetup() {
 			</ol>
 			<h3 className="font-medium">{m.planned_rotation()}</h3>
 			<ol className="flex list-decimal flex-col gap-2 pl-5 text-sm">
-				<li>{m.setup_drain({ command: "pfe-collector --drain" })}</li>
+				<li>{m.setup_drain({ command: "recount-collector --drain" })}</li>
 				<li>{m.confirm_rotation_then_save_the_replacement_token_to()}</li>
 				<li>{m.choose_a_new_private_queue_directory_retain_the()}</li>
 			</ol>

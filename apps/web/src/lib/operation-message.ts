@@ -1,8 +1,9 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import type { FailureReason } from "../organizations/contracts";
 import { InputError } from "./input-error";
 
 const reasons = {
+	REQUEST_ID_REUSED: m.error_request_id_reused,
 	LAST_OWNER: m.error_last_owner,
 	VERIFIED_EMAIL_REQUIRED: m.error_verified_email,
 	INVALID_TIME_RANGE: m.error_invalid_range,

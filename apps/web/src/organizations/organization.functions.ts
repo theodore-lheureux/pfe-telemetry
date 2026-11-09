@@ -1,9 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
-import {
-	getRequestHeaders,
-	setResponseHeader,
-} from "@tanstack/react-start/server";
-import { getOrganizationRequests } from "./request.server";
+import { withActor } from "../auth/actor.server";
+import { privateOperation } from "../auth/private-operation";
+import * as organizations from "./organizations.server";
+import * as projects from "./projects.server";
 import {
 	parseCreateProjectInput,
 	parseOrganizationInput,
@@ -14,71 +13,80 @@ import {
 	parseUpdateProjectInput,
 } from "./validation";
 
-function privateHeaders() {
-	setResponseHeader("Cache-Control", "private, no-store");
-	return getRequestHeaders();
-}
-
-export const listOrganizations = createServerFn({ method: "GET" }).handler(
-	async () => getOrganizationRequests().listOrganizations(privateHeaders()),
-);
-
+export const listOrganizations = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
+	.handler(({ context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			organizations.listOrganizations(database, actor),
+		),
+	);
 export const getOrganization = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
 	.validator(parseOrganizationReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().getOrganization(
-			privateHeaders(),
-			data.organizationId,
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			organizations.getOrganization(database, actor, data.organizationId),
 		),
 	);
-
 export const createOrganization = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
 	.validator(parseOrganizationInput)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().createOrganization(privateHeaders(), data),
-	);
-
-export const listProjects = createServerFn({ method: "GET" })
-	.validator(parseOrganizationReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().listProjects(
-			privateHeaders(),
-			data.organizationId,
+	.handler(({ data, context: { identity, auth, headers } }) =>
+		withActor(identity, () =>
+			organizations.createOrganization(auth, headers, data),
 		),
 	);
-
+export const listProjects = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
+	.validator(parseOrganizationReference)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			projects.listProjects(database, actor, data.organizationId),
+		),
+	);
 export const getProject = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
 	.validator(parseProjectReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().getProject(privateHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) => projects.getProject(database, actor, data)),
 	);
-
 export const createProject = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
 	.validator(parseCreateProjectInput)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().createProject(privateHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			projects.createProject(database, actor, data),
+		),
 	);
-
 export const updateProject = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
 	.validator(parseUpdateProjectInput)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().updateProject(privateHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			projects.updateProject(database, actor, data),
+		),
 	);
-
 export const listProjectMembers = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
 	.validator(parseProjectReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().listProjectMembers(privateHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			projects.listProjectMembers(database, actor, data),
+		),
 	);
-
 export const setProjectMember = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
 	.validator(parseProjectMembershipInput)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().setProjectMember(privateHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			projects.setProjectMember(database, actor, data),
+		),
 	);
-
 export const removeProjectMember = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
 	.validator(parseProjectMembershipReference)
-	.handler(async ({ data }) =>
-		getOrganizationRequests().removeProjectMember(privateHeaders(), data),
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			projects.removeProjectMember(database, actor, data),
+		),
 	);

@@ -1,5 +1,5 @@
 [workspace]
-members = ["apps/collector", "apps/server"]
+members = ["apps/collector", "apps/ingestion-api", "apps/normalizer", "crates/telemetry-schema", "crates/telemetry-validation"]
 resolver = "3"
 
 [workspace.package]

@@ -1,4 +1,7 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
+import * as memberDomain from "../../src/organizations/members.server";
+import * as organizationDomain from "../../src/organizations/organizations.server";
+import * as projectDomain from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
 
 for (const locale of ["en", "fr"] as const) {
@@ -11,17 +14,22 @@ for (const locale of ["en", "fr"] as const) {
 		const email = "target@example.invalid";
 		const owner = await workspace.signIn(page, "owner@example.invalid");
 		const organization = data(
-			await workspace.operations.createOrganization(owner.headers, {
-				name: "Typed forms",
-				slug: "typed-forms",
-			}),
+			await workspace.operations(owner.headers, () =>
+				organizationDomain.createOrganization(workspace.auth, owner.headers, {
+					name: "Typed forms",
+					slug: "typed-forms",
+				}),
+			),
 		);
 		const project = data(
-			await workspace.operations.createProject(owner.headers, {
-				organizationId: organization.id,
-				name: "Private",
-				slug: "private",
-			}),
+			await workspace.operations(owner.headers, (actor) =>
+				projectDomain.createProject(workspace.database.db, actor, {
+					requestId: crypto.randomUUID(),
+					organizationId: organization.id,
+					name: "Private",
+					slug: "private",
+				}),
+			),
 		);
 		const target = await workspace.signIn(page, email);
 		const member = await workspace.auth.api.addMember({
@@ -35,7 +43,7 @@ for (const locale of ["en", "fr"] as const) {
 		await page
 			.context()
 			.addCookies([
-				{ name: "pfe_locale", value: locale, url: workspace.origin },
+				{ name: "recount_locale", value: locale, url: workspace.origin },
 			]);
 		const membersUrl = `${workspace.origin}/organizations/${organization.id}/members`;
 		const grantsUrl = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/settings/members`;
@@ -69,13 +77,14 @@ for (const locale of ["en", "fr"] as const) {
 					: m.project_role_for({ email }, options),
 				{ exact: true },
 			);
-			const submit = page.getByRole("button", {
-				name:
-					kind === "member"
-						? m.save_role_for({ email }, options)
-						: m.save_grant_for({ email }, options),
-				exact: true,
-			});
+			const submit = select
+				.locator("xpath=ancestor::form")
+				.locator('button[type="submit"]');
+			await expect(submit).toHaveAccessibleName(
+				kind === "member"
+					? m.save_role_for({ email }, options)
+					: m.save_grant_for({ email }, options),
+			);
 			await expect(submit).toBeEnabled();
 			await select.selectOption(kind === "member" ? "admin" : "member");
 			let ready!: () => void;
@@ -98,6 +107,7 @@ for (const locale of ["en", "fr"] as const) {
 			await submit.click();
 			await received;
 			await expect(submit).toBeDisabled();
+			await expect(submit).toHaveAttribute("aria-busy", "true");
 			await expect(select).toBeDisabled();
 			await expect(
 				page.getByLabel(m.language({}, options), { exact: true }),
@@ -114,29 +124,39 @@ for (const locale of ["en", "fr"] as const) {
 			if (kind === "member") {
 				expect(
 					data(
-						await workspace.operations.getOrganization(
-							target.headers,
-							organization.id,
+						await workspace.operations(target.headers, (actor) =>
+							organizationDomain.getOrganization(
+								workspace.database.db,
+								actor,
+								organization.id,
+							),
 						),
 					).role,
 				).toBe("admin");
 				data(
-					await workspace.operations.updateOrganizationMemberRole(
-						owner.headers,
-						{
-							organizationId: organization.id,
-							memberId: member.id,
-							role: "member",
-						},
+					await workspace.operations(owner.headers, (actor) =>
+						memberDomain.updateRole(
+							workspace.database.db,
+							workspace.auth,
+							owner.headers,
+							actor,
+							{
+								organizationId: organization.id,
+								memberId: member.id,
+								role: "member",
+							},
+						),
 					),
 				);
 			} else {
 				expect(
 					data(
-						await workspace.operations.getProject(target.headers, {
-							organizationId: organization.id,
-							projectId: project.id,
-						}),
+						await workspace.operations(target.headers, (actor) =>
+							projectDomain.getProject(workspace.database.db, actor, {
+								organizationId: organization.id,
+								projectId: project.id,
+							}),
+						),
 					).role,
 				).toBe("member");
 			}
@@ -152,17 +172,22 @@ for (const kind of ["member", "grant"] as const) {
 		const email = "target@example.invalid";
 		const owner = await workspace.signIn(page, "owner@example.invalid");
 		const organization = data(
-			await workspace.operations.createOrganization(owner.headers, {
-				name: "Abandoned drafts",
-				slug: "abandoned-drafts",
-			}),
+			await workspace.operations(owner.headers, () =>
+				organizationDomain.createOrganization(workspace.auth, owner.headers, {
+					name: "Abandoned drafts",
+					slug: "abandoned-drafts",
+				}),
+			),
 		);
 		const project = data(
-			await workspace.operations.createProject(owner.headers, {
-				organizationId: organization.id,
-				name: "Private",
-				slug: "private",
-			}),
+			await workspace.operations(owner.headers, (actor) =>
+				projectDomain.createProject(workspace.database.db, actor, {
+					requestId: crypto.randomUUID(),
+					organizationId: organization.id,
+					name: "Private",
+					slug: "private",
+				}),
+			),
 		);
 		const target = await workspace.signIn(page, email);
 		await workspace.auth.api.addMember({

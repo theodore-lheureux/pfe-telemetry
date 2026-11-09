@@ -1,4 +1,4 @@
-import { m } from "@pfe/i18n/messages";
+import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
 import { useRef } from "react";
 import type {
@@ -31,7 +31,6 @@ export function MemberRoleForm({
 	return (
 		<form
 			method="post"
-			aria-busy={submitting}
 			className="flex flex-wrap items-end gap-2"
 			onSubmit={(event) => {
 				event.preventDefault();
@@ -74,9 +73,15 @@ export function MemberRoleForm({
 				type="submit"
 				variant="outline"
 				disabled={disabled || submitting}
-				aria-label={m.save_role_for({ email: member.email })}
+				aria-label={
+					submitting
+						? `${m.saving()} ${m.role_for({ email: member.email })}`
+						: m.save_role_for({ email: member.email })
+				}
+				pending={submitting}
+				pendingLabel={m.saving()}
 			>
-				{submitting ? m.saving() : m.save_role()}
+				{m.save_role()}
 			</Button>
 		</form>
 	);
@@ -108,7 +113,6 @@ export function ProjectGrantForm({
 	return (
 		<form
 			method="post"
-			aria-busy={submitting}
 			className="flex flex-wrap items-end gap-2"
 			onSubmit={(event) => {
 				event.preventDefault();
@@ -148,9 +152,15 @@ export function ProjectGrantForm({
 				type="submit"
 				variant="outline"
 				disabled={disabled || submitting}
-				aria-label={m.save_grant_for({ email: member.email })}
+				aria-label={
+					submitting
+						? `${m.saving()} ${m.project_role_for({ email: member.email })}`
+						: m.save_grant_for({ email: member.email })
+				}
+				pending={submitting}
+				pendingLabel={m.saving()}
 			>
-				{submitting ? m.saving() : role ? m.save_grant() : m.grant_access()}
+				{role ? m.save_grant() : m.grant_access()}
 			</Button>
 		</form>
 	);

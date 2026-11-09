@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
 	type OrganizationInvitationEmailProps,
 	renderOrganizationInvitationEmail,
-} from "@pfe/transactional";
+	renderSignInCodeEmail,
+} from "@recount/transactional";
 import nodemailer from "nodemailer";
 import { createEmailSender } from "../../src/email/send.server";
 import {
@@ -24,14 +25,14 @@ const env = {
 	SMTP_PORT: "587",
 	SMTP_USER: "test-only",
 	SMTP_PASSWORD: "test-only",
-	EMAIL_FROM: "PFE <sender@example.invalid>",
+	EMAIL_FROM: "Recount <sender@example.invalid>",
 };
 
 describe("invitation email", () => {
 	test("renders escaped, accessible HTML and plain text with review context", async () => {
 		const message = await renderOrganizationInvitationEmail(props);
 		expect(message.subject).toBe(
-			"You are invited to an organization on PFE Telemetry",
+			"You are invited to an organization on Recount",
 		);
 		expect(message.html).toContain('lang="en"');
 		expect(message.html).toContain("&lt;script&gt;");
@@ -50,7 +51,7 @@ describe("invitation email", () => {
 		}
 	});
 
-	test("delivers both templates through the same configured transport without SMTP", async () => {
+	test("delivers branded templates through the same configured transport without SMTP", async () => {
 		const messages: Record<string, unknown>[] = [];
 		const transport = nodemailer.createTransport({ jsonTransport: true });
 		const sender = createEmailSender(env, {
@@ -61,16 +62,37 @@ describe("invitation email", () => {
 			},
 		});
 		await sender.sendOrganizationInvitation(props);
-		await sender.sendSignInLink(props.email, props.url, "en");
+		await sender.sendSignInCode(props.email, "012345", "fr");
 		expect(messages).toHaveLength(2);
 		expect(messages[0]).toMatchObject({
 			to: [{ address: props.email, name: "" }],
-			from: { address: "sender@example.invalid", name: "PFE" },
-			subject: "You are invited to an organization on PFE Telemetry",
+			from: { address: "sender@example.invalid", name: "Recount" },
+			subject: "You are invited to an organization on Recount",
 		});
 		expect(messages[0].html).toContain(props.url);
 		expect(messages[0].text).toContain(props.url);
-		expect(messages[1].subject).toBe("Sign in to PFE Telemetry");
+		expect(messages[1].subject).toBe("Votre code de connexion Recount");
+		for (const message of messages) {
+			const images = message.attachments as {
+				cid: string;
+				contentType: string;
+				contentDisposition: string;
+			}[];
+			expect(images.map((image) => image.cid)).toEqual([
+				"recount-logo-light",
+				"recount-logo-dark",
+			]);
+			expect(
+				images.every(
+					(image) =>
+						image.contentType === "image/png" &&
+						image.contentDisposition === "inline",
+				),
+			).toBe(true);
+			expect(message.html).toContain("cid:recount-logo-light");
+			expect(message.html).toContain("cid:recount-logo-dark");
+		}
+		expect(messages[1].text).toContain("012345");
 	});
 
 	test("sanitizes transport failures and rejects incomplete SMTP configuration", async () => {
@@ -89,6 +111,25 @@ describe("invitation email", () => {
 			"SMTP_PORT",
 		);
 	});
+});
+
+test("code emails preserve leading zeros and explicit locale with accessible branding", async () => {
+	const results = await Promise.all(
+		(["en", "fr"] as const).map(async (locale) => ({
+			locale,
+			message: await renderSignInCodeEmail("012345", locale),
+		})),
+	);
+	for (const { locale, message } of results) {
+		expect(message.html).toContain(`lang="${locale}"`);
+		expect(message.text).toContain("012345");
+		expect(message.html.match(/aria-label="Recount"/g)).toHaveLength(1);
+		expect(message.html).toContain("Helvetica Neue");
+		expect(message.html).not.toContain("localhost");
+		expect(message.text).toContain(
+			locale === "fr" ? "Ne communiquez ce code" : "Do not share this code",
+		);
+	}
 });
 
 test("validates invitation identifiers, roles and resend input", () => {
