@@ -13,11 +13,6 @@ export const emailBrandImages = [
 		cid: "recount-logo-light",
 		base64: emailBrandAssets.light,
 	},
-	{
-		filename: "recount-lockup-on-dark.png",
-		cid: "recount-logo-dark",
-		base64: emailBrandAssets.dark,
-	},
 ];
 
 export type { OrganizationInvitationEmailProps } from "../emails/organization-invitation";

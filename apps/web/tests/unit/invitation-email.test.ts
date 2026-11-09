@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	emailBrandImages,
 	type OrganizationInvitationEmailProps,
 	renderOrganizationInvitationEmail,
 	renderSignInCodeEmail,
@@ -45,6 +46,8 @@ describe("invitation email", () => {
 			"organization Administrator",
 			"Nov 5, 2026",
 			"Opening the link does not accept it",
+			`Sign in with ${props.email} and verify your email to review this invitation.`,
+			"Do not forward this link",
 			props.url,
 		]) {
 			expect(message.text).toContain(text);
@@ -78,10 +81,7 @@ describe("invitation email", () => {
 				contentType: string;
 				contentDisposition: string;
 			}[];
-			expect(images.map((image) => image.cid)).toEqual([
-				"recount-logo-light",
-				"recount-logo-dark",
-			]);
+			expect(images.map((image) => image.cid)).toEqual(["recount-logo-light"]);
 			expect(
 				images.every(
 					(image) =>
@@ -89,10 +89,51 @@ describe("invitation email", () => {
 						image.contentDisposition === "inline",
 				),
 			).toBe(true);
-			expect(message.html).toContain("cid:recount-logo-light");
-			expect(message.html).toContain("cid:recount-logo-dark");
+			expect(String(message.html).match(/src="cid:[^"]+"/g)).toEqual([
+				'src="cid:recount-logo-light"',
+			]);
+			expect(message.html).not.toContain("cid:recount-logo-dark");
+			expect(message.html).not.toContain("data:image");
 		}
 		expect(messages[1].text).toContain("012345");
+	});
+
+	test("builds real multipart MIME with one referenced inline PNG without a network transport", async () => {
+		const transport = nodemailer.createTransport({
+			streamTransport: true,
+			buffer: true,
+			newline: "unix",
+		});
+		const messages: string[] = [];
+		const sender = createEmailSender(env, {
+			sendMail: async (message) => {
+				const sent = await transport.sendMail(message);
+				messages.push(sent.message.toString());
+				return sent;
+			},
+		});
+		await sender.sendOrganizationInvitation({ ...props, locale: "fr" });
+		await sender.sendSignInCode(props.email, "012345", "en");
+		for (const mime of messages) {
+			expect(mime).toContain("Content-Type: multipart/alternative;");
+			expect(mime).toContain("Content-Type: multipart/related;");
+			expect(mime).toContain("Content-Type: text/plain; charset=utf-8");
+			expect(mime).toContain("Content-Type: text/html; charset=utf-8");
+			expect(mime.match(/^Content-ID: .+$/gm)).toEqual([
+				"Content-ID: <recount-logo-light>",
+			]);
+			expect(mime.match(/^Content-Type: image\/.+$/gm)).toEqual([
+				"Content-Type: image/png; name=recount-lockup-on-light.png",
+			]);
+			expect(mime).toContain(
+				"Content-Disposition: inline; filename=recount-lockup-on-light.png",
+			);
+			expect(mime.replace(/=\n/g, "")).toContain("cid:recount-logo-light");
+			expect(mime).not.toContain("recount-logo-dark");
+			const imagePart = mime.split("Content-Type: image/png;")[1];
+			const encoded = imagePart.split("\n\n")[1].split("\n--")[0];
+			expect(encoded.replace(/\s/g, "")).toBe(emailBrandImages[0].base64);
+		}
 	});
 
 	test("sanitizes transport failures and rejects incomplete SMTP configuration", async () => {
@@ -123,12 +164,49 @@ test("code emails preserve leading zeros and explicit locale with accessible bra
 	for (const { locale, message } of results) {
 		expect(message.html).toContain(`lang="${locale}"`);
 		expect(message.text).toContain("012345");
-		expect(message.html.match(/aria-label="Recount"/g)).toHaveLength(1);
+		expect(message.html.match(/alt="Recount"/g)).toHaveLength(1);
+		expect(message.html.indexOf("012345")).toBeLessThan(
+			message.html.indexOf('alt="Recount"'),
+		);
 		expect(message.html).toContain("Helvetica Neue");
 		expect(message.html).not.toContain("localhost");
 		expect(message.text).toContain(
 			locale === "fr" ? "Ne communiquez ce code" : "Do not share this code",
 		);
+		expect(message.text).toContain(
+			locale === "fr"
+				? "Il expire après cinq minutes et ne peut être utilisé qu’une fois."
+				: "It expires in five minutes and can only be used once.",
+		);
+		expect(message.text).toContain(
+			locale === "fr"
+				? "Si vous n’avez pas demandé ce code"
+				: "If you did not request this code",
+		);
+	}
+});
+
+test("escapes invitation identities and fallback URL in both locales", async () => {
+	for (const locale of ["en", "fr"] as const) {
+		const organizationName = '<img src=x onerror="alert(1)"> & Partners';
+		const url = `${props.url}?review=1&source=email`;
+		const message = await renderOrganizationInvitationEmail({
+			...props,
+			locale,
+			organizationName,
+			url,
+		});
+		expect(message.html).toContain(
+			"&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; Partners",
+		);
+		expect(message.html).not.toContain("<img src=x");
+		expect(message.html.match(/<img\b/g)).toHaveLength(1);
+		expect(message.html.match(/href="[^"]+"/g)).toEqual([
+			`href="${props.url}?review=1&amp;source=email"`,
+			`href="${props.url}?review=1&amp;source=email"`,
+		]);
+		expect(message.text).toContain(organizationName);
+		expect(message.text).toContain(url);
 	}
 });
 

@@ -118,7 +118,23 @@ test("both email locales stay explicit across concurrent subjects, previews, tex
 		for (const email of [signIn, invitation]) {
 			expect(email.html).toContain(`lang="${locale}"`);
 			expect(email.html).not.toContain("<script>");
+			expect(email.html).toContain('name="color-scheme" content="light"');
+			expect(email.html).not.toContain("prefers-color-scheme");
+			expect(email.html).not.toContain("recount-email-card");
+			expect(email.html.match(/<h1\b/g)).toHaveLength(1);
+			expect(email.html.match(/<img\b/g)).toHaveLength(1);
+			expect(email.html).toContain('alt="Recount"');
 		}
+		expect(signIn.html).toContain(
+			locale === "fr"
+				? "Utilisez votre code à usage unique pour vous connecter à Recount."
+				: "Use your one-time code to sign in to Recount.",
+		);
+		expect(invitation.html).toContain(
+			locale === "fr"
+				? "Vous êtes invité à rejoindre &lt;script&gt;private name&lt;/script&gt; sur Recount"
+				: "You are invited to join &lt;script&gt;private name&lt;/script&gt; on Recount",
+		);
 		expect(invitation.html).toContain(`href="${url}"`);
 		expect(invitation.text).toContain(url);
 		expect(signIn.text).toContain("012345");
@@ -138,5 +154,22 @@ test("both email locales stay explicit across concurrent subjects, previews, tex
 				: "Opening the link does not accept it",
 		);
 		expect(invitation.html).toContain("&lt;script&gt;");
+		for (const context of [
+			"recipient@example.invalid",
+			"sender@example.invalid",
+			locale === "fr" ? "Administrateur" : "Administrator",
+			locale === "fr" ? "5 nov. 2026 12:00:00 UTC" : "Nov 5, 2026 12:00:00 UTC",
+			locale === "fr"
+				? "Connectez-vous avec recipient@example.invalid et vérifiez votre adresse e-mail pour consulter cette invitation."
+				: "Sign in with recipient@example.invalid and verify your email to review this invitation.",
+			locale === "fr"
+				? "Ne transmettez pas ce lien."
+				: "Do not forward this link.",
+		]) {
+			expect(invitation.text).toContain(context);
+		}
+		expect(invitation.html.indexOf(url)).toBeLessThan(
+			invitation.html.indexOf('alt="Recount"'),
+		);
 	}
 });

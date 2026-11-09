@@ -1,7 +1,7 @@
 import { formatDate, type Locale } from "@recount/i18n";
 import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
-import { Button, Heading, Link, Text } from "react-email";
+import { Button, Link, Section, Text } from "react-email";
 import { EmailLayout, emailStyles } from "../src/email-layout";
 
 export interface OrganizationInvitationEmailProps {
@@ -30,33 +30,32 @@ export default function OrganizationInvitationEmail({
 				{ organization: organizationName },
 				{ locale },
 			)}
+			title={m.email_invitation_heading(
+				{ organization: organizationName },
+				{ locale },
+			)}
+			description={m.email_invitation_body(
+				{
+					inviter: inviterEmail,
+					organization: organizationName,
+					role: roleLabel(role, locale),
+				},
+				{ locale },
+			)}
+			footer={
+				<Text style={emailStyles.footer}>
+					{m.email_invitation_ignore({}, { locale })}
+				</Text>
+			}
 		>
-			<Heading style={emailStyles.heading}>
-				{m.email_invitation_heading(
-					{ organization: organizationName },
-					{ locale },
-				)}
-			</Heading>
-			<Text style={emailStyles.text}>
-				{m.email_invitation_body(
-					{
-						inviter: inviterEmail,
-						organization: organizationName,
-						role: roleLabel(role, locale),
-					},
-					{ locale },
-				)}
-			</Text>
 			<Text style={emailStyles.text}>
 				{m.email_invitation_review({ email }, { locale })}
 			</Text>
-			<Button
-				href={url}
-				className="recount-email-button"
-				style={emailStyles.button}
-			>
-				{m.email_invitation_button({}, { locale })}
-			</Button>
+			<Section style={{ padding: "8px 0" }}>
+				<Button href={url} style={emailStyles.button}>
+					{m.email_invitation_button({}, { locale })}
+				</Button>
+			</Section>
 			<Text style={emailStyles.text}>
 				{m.email_invitation_expiry(
 					{ date: formatDate(expiresAt, locale) },
@@ -66,12 +65,9 @@ export default function OrganizationInvitationEmail({
 			<Text style={emailStyles.text}>
 				{m.email_link_fallback({}, { locale })}
 			</Text>
-			<Link className="recount-email-link" href={url} style={emailStyles.link}>
+			<Link href={url} style={emailStyles.link}>
 				{url}
 			</Link>
-			<Text style={emailStyles.text}>
-				{m.email_invitation_ignore({}, { locale })}
-			</Text>
 		</EmailLayout>
 	);
 }
