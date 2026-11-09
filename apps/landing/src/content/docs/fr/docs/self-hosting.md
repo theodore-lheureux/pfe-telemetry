@@ -27,3 +27,8 @@ Les collecteurs fonctionnent comme avec Recount Cloud. En suivant le [démarrage
 
 - **Recount Cloud** est la façon la plus rapide de commencer. Il n’y a rien à installer ni à entretenir.
 - **L’auto-hébergement** convient aux équipes dont les données doivent rester sur leur réseau, ou qui exploitent déjà leurs propres services.
+
+## Prochaines étapes
+
+- [Suivez le démarrage rapide](/fr/docs/quick-start/) avec votre propre adresse d’ingestion.
+- [Lisez sur les projets et les rôles](/fr/docs/concepts/) avant d’inviter votre équipe.

@@ -1,0 +1,37 @@
+---
+// Replaces Starlight's header social links: the same Pricing and Changelog links as the site
+// header, then the default social icons. Starlight already links the logo to the home page.
+import Default from "@astrojs/starlight/components/SocialIcons.astro";
+
+const fr = Astro.locals.starlightRoute.locale === "fr";
+const links = fr
+	? [
+			{ href: "/fr/pricing/", label: "Tarifs" },
+			{ href: "/fr/changelog/", label: "Nouveautés" },
+		]
+	: [
+			{ href: "/pricing/", label: "Pricing" },
+			{ href: "/changelog/", label: "Changelog" },
+		];
+---
+
+{
+	links.map((link) => (
+		<a href={link.href} class="site-link">
+			{link.label}
+		</a>
+	))
+}
+<Default />
+
+<style>
+	.site-link {
+		color: var(--sl-color-gray-2);
+		font-size: var(--sl-text-sm);
+		font-weight: 500;
+		text-decoration: none;
+	}
+	.site-link:hover {
+		color: var(--sl-color-white);
+	}
+</style>

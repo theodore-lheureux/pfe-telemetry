@@ -44,3 +44,8 @@ Chaque file est liée à une adresse d’ingestion et à un jeton. Si vous chang
 2. Exécutez `recount-collector --drain` avec l’ancien jeton pour envoyer ce qui reste en file.
 3. Renouvelez l’identifiant et remplacez le fichier du jeton.
 4. Redémarrez le collecteur avec un nouveau dossier de file.
+
+## Prochaines étapes
+
+- [Enregistrez une exécution](/fr/docs/quick-start/#5-enregistrer-une-exécution) pour voir ce que faisait une machine.
+- [Hébergez Recount vous-même](/fr/docs/self-hosting/) si vos données doivent rester sur votre réseau.

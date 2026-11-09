@@ -49,6 +49,23 @@ export default defineConfig({
 				},
 			],
 			customCss: ["./src/styles/docs.css"],
+			components: { SocialIcons: "./src/components/docs/SocialIcons.astro" },
+			// Code blocks use GitHub's syntax colors on Tide surfaces, with the kit's 4px corners.
+			expressiveCode: {
+				themes: ["github-dark-default", "github-light-default"],
+				styleOverrides: {
+					borderRadius: "4px",
+					borderColor: "var(--sl-color-hairline)",
+					codeBackground: "var(--sl-color-gray-6)",
+					frames: {
+						frameBoxShadowCssValue: "none",
+						editorTabBarBackground: "var(--sl-color-gray-6)",
+						editorActiveTabBackground: "var(--sl-color-gray-6)",
+						terminalTitlebarBackground: "var(--sl-color-gray-6)",
+						terminalBackground: "var(--sl-color-gray-6)",
+					},
+				},
+			},
 			// The landing page provides the site-wide 404.
 			disable404Route: true,
 			head: [

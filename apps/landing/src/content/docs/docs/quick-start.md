@@ -48,3 +48,8 @@ This is the address for Recount Cloud. If you [self-host](/docs/self-hosting/), 
 In the project, open **Executions** and choose **Record execution**. Pick the source, optionally a host, and a start and end time. A window can be up to seven days long.
 
 Open the saved execution to see the machine's telemetry for that window.
+
+## Next steps
+
+- [Run the collector on each machine you want to watch](/docs/collector/), and keep it running in the background.
+- [Learn how projects, roles and executions fit together](/docs/concepts/).
