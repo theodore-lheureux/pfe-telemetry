@@ -8,7 +8,11 @@ export async function readAuthenticationState(
 	auth = getAuth(),
 ): Promise<AuthenticationState> {
 	const result = await readAuthSession(auth, headers, true);
+	const factor = result
+		? { pending: false }
+		: await auth.api.twoFactorStatus({ headers });
 	return {
+		twoFactorPending: factor.pending,
 		observedAt: new Date(),
 		freshAgeSeconds: AUTH_FRESH_AGE_SECONDS,
 		session: result

@@ -24,6 +24,7 @@ function summary(entry: {
 	role?: string | null;
 	status: string;
 	expiresAt: Date;
+	createdAt: Date;
 	inviterId: string;
 }): InvitationSummary {
 	return {
@@ -33,6 +34,7 @@ function summary(entry: {
 		role: parseInvitationRole(entry.role),
 		status: entry.status,
 		expiresAt: entry.expiresAt,
+		createdAt: entry.createdAt,
 		inviterId: entry.inviterId,
 	};
 }

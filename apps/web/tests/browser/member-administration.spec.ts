@@ -9,6 +9,7 @@ import {
 	expect,
 	openInvitationForm,
 	openMemberActions,
+	openProjectGrant,
 	settingsUrl,
 	test,
 } from "./fixtures";
@@ -52,10 +53,8 @@ test("manages native memberships and restricts administrator owner controls", as
 	);
 	await page.goto(url);
 	await expect(
-		page.getByText(
-			"Promote a replacement owner before leaving or changing your role.",
-		),
-	).toBeVisible();
+		page.getByLabel("Role for owner@example.invalid", { exact: true }),
+	).toHaveCount(0);
 	await editMemberRole(page, "collaborator@example.invalid");
 	await page
 		.getByLabel("Role for collaborator@example.invalid", { exact: true })
@@ -176,13 +175,14 @@ test("effective project administrators grant access and can give up their own ad
 		),
 	);
 	await expect(
-		page.getByText("Implicit administrator · Organization Owner", {
-			exact: true,
-		}),
+		page
+			.getByRole("table", { name: "Roles", exact: true })
+			.getByText("Owner", { exact: true }),
 	).toBeVisible();
 	await expect(
 		page.getByLabel("Project role for owner@example.invalid", { exact: true }),
 	).toHaveCount(0);
+	await openProjectGrant(page, "viewer@example.invalid");
 	await expect(
 		page.getByRole("button", {
 			name: "Save project grant for viewer@example.invalid",
@@ -199,7 +199,7 @@ test("effective project administrators grant access and can give up their own ad
 		page.getByText("Project grant saved.", { exact: true }),
 	).toBeVisible();
 	await expect(
-		page.getByRole("heading", { name: "Project access", exact: true }),
+		page.getByRole("heading", { name: "Access control", exact: true }),
 	).toBeFocused();
 	expect(
 		data(

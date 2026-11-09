@@ -5,7 +5,7 @@ import {
 	useHydrated,
 	useRouter,
 } from "@tanstack/react-router";
-import { useMutationFeedback } from "./mutation-feedback";
+import { useOptionalMutationFeedback } from "./mutation-feedback";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Skeleton } from "./ui/skeleton";
@@ -25,7 +25,7 @@ export function RoutePending() {
 export function RouteError({ reset }: ErrorComponentProps) {
 	const router = useRouter();
 	const hydrated = useHydrated();
-	const setFeedback = useMutationFeedback();
+	const setFeedback = useOptionalMutationFeedback();
 	return (
 		<div className="mx-auto flex max-w-xl flex-col items-start gap-4 px-6 py-12">
 			<h1 className="text-2xl font-semibold">{m.error_title()}</h1>
@@ -43,7 +43,7 @@ export function RouteError({ reset }: ErrorComponentProps) {
 									(match) => match.status === "success",
 								)
 							)
-								setFeedback(null);
+								setFeedback?.(null);
 							reset();
 						})
 						.catch(() => reset());

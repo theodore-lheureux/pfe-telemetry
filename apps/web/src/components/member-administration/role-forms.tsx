@@ -94,10 +94,12 @@ export function ProjectGrantForm({
 	role,
 	disabled,
 	onSave,
+	compact = false,
 }: {
 	member: MemberSummary;
-	role: ProjectRole | undefined;
+	role?: ProjectRole;
 	disabled: boolean;
+	compact?: boolean;
 	onSave: (
 		role: ProjectRole,
 		trigger: HTMLButtonElement | null,
@@ -115,7 +117,11 @@ export function ProjectGrantForm({
 	return (
 		<form
 			method="post"
-			className="flex flex-wrap items-end gap-2"
+			className={
+				compact
+					? "flex flex-wrap items-end gap-2 [&_label]:sr-only"
+					: "flex flex-wrap items-end gap-2"
+			}
 			onSubmit={(event) => {
 				event.preventDefault();
 				event.stopPropagation();
@@ -151,6 +157,7 @@ export function ProjectGrantForm({
 			</form.AppField>
 			<Button
 				ref={submit}
+				size={compact ? "icon" : "default"}
 				type="submit"
 				variant="outline"
 				disabled={disabled || submitting}
@@ -163,7 +170,9 @@ export function ProjectGrantForm({
 				pendingLabel={m.saving()}
 			>
 				<SaveIcon aria-hidden="true" />
-				{role ? m.save_grant() : m.grant_access()}
+				<span className={compact ? "sr-only" : undefined}>
+					{role ? m.save_grant() : m.grant_access()}
+				</span>
 			</Button>
 		</form>
 	);

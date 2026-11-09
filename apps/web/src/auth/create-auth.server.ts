@@ -10,12 +10,14 @@ import {
 } from "better-auth/api";
 import { emailOTP } from "better-auth/plugins";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
+import { eq, sql } from "drizzle-orm";
 import type { getDatabase } from "../db/client.server";
 import * as schema from "../db/schema";
 import {
 	invitationSecurity,
 	organizationPlugin,
 } from "../organizations/auth-plugin.server";
+import { accountContextHeader } from "./account-context";
 import type { AuthConfig } from "./config.server";
 import {
 	type AuthEmailDelivery,
@@ -23,6 +25,7 @@ import {
 } from "./email-delivery.server";
 import { sessionSignInMethod } from "./session-details.server";
 import { AUTH_FRESH_AGE_SECONDS } from "./session-policy";
+import { recountTwoFactor } from "./two-factor.server";
 
 const credentialSecurity = {
 	id: "credential-security",
@@ -41,7 +44,13 @@ const credentialSecurity = {
 			{
 				matcher: (ctx) =>
 					ctx.path === "/passkey/delete-passkey" ||
-					ctx.path === "/passkey/update-passkey",
+					ctx.path === "/passkey/update-passkey" ||
+					[
+						"/two-factor/enable",
+						"/two-factor/disable",
+						"/two-factor/get-totp-uri",
+						"/two-factor/generate-backup-codes",
+					].includes(ctx.path ?? ""),
 				handler: createAuthMiddleware(async (ctx) => {
 					await freshSessionMiddleware(ctx);
 				}),
@@ -95,6 +104,9 @@ export function createAuth(
 		secret: config.secret,
 		trustedOrigins: [config.origin],
 		disabledPaths: [
+			"/two-factor/send-otp",
+			"/two-factor/verify-otp",
+			"/two-factor/view-backup-codes",
 			"/email-otp/check-verification-otp",
 			"/email-otp/verify-email",
 			"/email-otp/request-password-reset",
@@ -110,6 +122,16 @@ export function createAuth(
 			transaction: true,
 		}),
 		emailAndPassword: { enabled: false },
+		user: {
+			additionalFields: {
+				lastSignedInAt: {
+					type: "date",
+					required: false,
+					input: false,
+					returned: false,
+				},
+			},
+		},
 		session: {
 			freshAge: AUTH_FRESH_AGE_SECONDS,
 			cookieCache: { enabled: false },
@@ -123,7 +145,8 @@ export function createAuth(
 					before: async (session, context) => ({
 						data: {
 							...session,
-							signInMethod: sessionSignInMethod(context?.path),
+							signInMethod:
+								session.signInMethod ?? sessionSignInMethod(context?.path),
 						},
 					}),
 				},
@@ -163,7 +186,79 @@ export function createAuth(
 					residentKey: "required",
 					userVerification: "required",
 				},
+				registration: {
+					afterVerification: async ({ verification, ctx, user }) => {
+						if (ctx.headers?.get(accountContextHeader) !== user.id)
+							throw new APIError("FORBIDDEN", {
+								code: "ACCOUNT_CHANGED",
+								message: "The active account changed",
+							});
+						if (!verification.registrationInfo?.userVerified)
+							throw new APIError("UNAUTHORIZED", {
+								code: "USER_VERIFICATION_REQUIRED",
+								message: "Verify your identity on the authenticator",
+							});
+					},
+				},
+				authentication: {
+					afterVerification: async ({ verification }) => {
+						if (!verification.authenticationInfo.userVerified)
+							throw new APIError("UNAUTHORIZED", {
+								code: "USER_VERIFICATION_REQUIRED",
+								message: "Verify your identity on the authenticator",
+							});
+					},
+				},
 			}),
+			recountTwoFactor(),
+			{
+				id: "recount-sign-in-metadata",
+				hooks: {
+					after: [
+						{
+							matcher: (ctx) =>
+								[
+									"/sign-in/email-otp",
+									"/passkey/verify-authentication",
+									"/two-factor/verify-totp",
+									"/two-factor/verify-backup-code",
+								].includes(ctx.path ?? ""),
+							handler: createAuthMiddleware(async (ctx) => {
+								const completed = ctx.context.newSession;
+								if (!completed) return;
+								const enrollment =
+									ctx.path === "/two-factor/verify-totp" &&
+									ctx.context.session?.user &&
+									!ctx.context.session.user.twoFactorEnabled;
+								if (enrollment) {
+									const sessions =
+										await ctx.context.internalAdapter.listSessions(
+											completed.user.id,
+										);
+									await Promise.all(
+										sessions
+											.filter(
+												(session) => session.token !== completed.session.token,
+											)
+											.map((session) =>
+												ctx.context.internalAdapter.deleteSession(
+													session.token,
+												),
+											),
+									);
+									return;
+								}
+								await database
+									.update(schema.user)
+									.set({
+										lastSignedInAt: sql`greatest(${schema.user.lastSignedInAt}, ${completed.session.createdAt})`,
+									})
+									.where(eq(schema.user.id, completed.user.id));
+							}),
+						},
+					],
+				},
+			},
 			credentialSecurity,
 			tanstackStartCookies(),
 		],

@@ -18,6 +18,7 @@ import { usePageConfirmation } from "../../src/components/use-page-confirmation"
 const queryClient = new QueryClient();
 const authentication = createAuthenticationController({
 	readState: async () => ({
+		twoFactorPending: false,
 		observedAt: new Date(),
 		freshAgeSeconds: 60,
 		session: null,

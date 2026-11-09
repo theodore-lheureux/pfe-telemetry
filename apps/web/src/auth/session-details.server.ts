@@ -4,6 +4,11 @@ import Bowser from "bowser";
 export function sessionSignInMethod(path?: string) {
 	if (path === "/sign-in/email-otp") return "email-otp";
 	if (path === "/passkey/verify-authentication") return "passkey";
+	if (
+		path === "/two-factor/verify-totp" ||
+		path === "/two-factor/verify-backup-code"
+	)
+		return "email-otp";
 	return undefined;
 }
 

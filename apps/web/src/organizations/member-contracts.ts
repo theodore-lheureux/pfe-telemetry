@@ -1,4 +1,4 @@
-import type { OrganizationRole } from "./contracts";
+import type { OrganizationRole, ProjectRole } from "./contracts";
 import { parseIdentifier, parseOrganizationReference } from "./validation";
 
 export interface MemberSummary {
@@ -10,6 +10,17 @@ export interface MemberSummary {
 	image: string | null;
 	gravatarUrl: string;
 	joinedAt: Date;
+}
+
+export interface OrganizationMemberSummary extends MemberSummary {
+	organizationId: string;
+	projectAccess: {
+		id: string;
+		name: string;
+		role: ProjectRole;
+	}[];
+	lastSignedInAt: Date | null;
+	twoFactorEnabled: boolean;
 }
 
 export interface MemberReference {

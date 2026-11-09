@@ -1,5 +1,6 @@
 import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
+import { Link } from "@tanstack/react-router";
 import {
 	MoreHorizontalIcon,
 	ShieldIcon,
@@ -7,8 +8,11 @@ import {
 	XIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { OrganizationRole } from "../../organizations/contracts";
-import type { MemberSummary } from "../../organizations/member-contracts";
+import type {
+	OrganizationRole,
+	ProjectSummary,
+} from "../../organizations/contracts";
+import type { OrganizationMemberSummary } from "../../organizations/member-contracts";
 import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
 import { SessionTime } from "../settings/session-time";
@@ -29,6 +33,7 @@ import {
 	DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { TableCell, TableRow } from "../ui/table";
+import { MemberProjectAccess } from "./member-project-access";
 import { MemberRoleForm } from "./role-forms";
 import type { useOrganizationMembers } from "./use-organization-members";
 
@@ -38,18 +43,26 @@ export function MemberRow({
 	organizationRole,
 	owners,
 	state,
+	projects,
+	userId,
 }: {
-	member: MemberSummary;
+	member: OrganizationMemberSummary;
 	self: boolean;
 	organizationRole: OrganizationRole;
 	owners: number;
 	state: ReturnType<typeof useOrganizationMembers>;
+	projects: ProjectSummary[];
+	userId: string;
 }) {
 	const canManage = organizationRole !== "member";
 	const protectedOwner =
 		member.role === "owner" && (organizationRole !== "owner" || owners <= 1);
 	const { pending, disabled, confirm, failed, message, heading } = state;
 	const [editing, setEditing] = useState(false);
+	const [editingAccess, setEditingAccess] = useState(false);
+	const canManageProjects = projects.some(
+		(project) => project.role === "admin",
+	);
 	const actions = useRef<HTMLButtonElement>(null);
 	const editor = useRef<HTMLFieldSetElement>(null);
 	const previousRole = useRef(member.role);
@@ -76,7 +89,9 @@ export function MemberRow({
 									? m.you_suffix({ name: member.name || member.email })
 									: member.name || member.email}
 							</p>
-							<p className="text-sm text-muted-foreground">{member.email}</p>
+							{member.name && (
+								<p className="text-sm text-muted-foreground">{member.email}</p>
+							)}
 						</div>
 					</div>
 				</TableCell>
@@ -84,10 +99,50 @@ export function MemberRow({
 					<Badge variant="outline">{roleLabel(member.role)}</Badge>
 				</TableCell>
 				<TableCell>
-					<SessionTime value={member.joinedAt} />
+					<div className="flex max-w-64 flex-wrap gap-1">
+						{member.projectAccess.map((project) => (
+							<Badge key={project.id} variant="outline" asChild>
+								<Link
+									to="/organizations/$organizationId/projects/$projectId/executions"
+									params={{
+										organizationId: member.organizationId,
+										projectId: project.id,
+									}}
+								>
+									{project.name}
+								</Link>
+							</Badge>
+						))}
+					</div>
+				</TableCell>
+				<TableCell>
+					<Badge
+						variant="outline"
+						className={
+							member.twoFactorEnabled
+								? "border-green-600 text-green-700 dark:text-green-400"
+								: "border-amber-600 text-amber-700 dark:text-amber-400"
+						}
+					>
+						{member.twoFactorEnabled
+							? m.two_factor_enabled()
+							: m.two_factor_disabled()}
+					</Badge>
+				</TableCell>
+				<TableCell>
+					<SessionTime value={member.joinedAt} relative />
+				</TableCell>
+				<TableCell>
+					{member.lastSignedInAt ? (
+						<SessionTime value={member.lastSignedInAt} relative />
+					) : (
+						<span className="text-muted-foreground">
+							{m.unknown_session_value()}
+						</span>
+					)}
 				</TableCell>
 				<TableCell className="text-right">
-					{!protectedOwner && (self || canManage) && (
+					{(canManageProjects || (!protectedOwner && (self || canManage))) && (
 						<DropdownMenu>
 							<DropdownMenuTrigger asChild>
 								<Button
@@ -112,32 +167,74 @@ export function MemberRow({
 									}
 								}}
 							>
-								{canManage && (
-									<DropdownMenuItem onSelect={() => setEditing(true)}>
+								{canManageProjects && (
+									<DropdownMenuItem
+										onSelect={() => {
+											setEditing(false);
+											setEditingAccess(true);
+										}}
+									>
+										{m.member_manage_access()}
+									</DropdownMenuItem>
+								)}
+								{canManage && !protectedOwner && (
+									<DropdownMenuItem
+										onSelect={() => {
+											setEditingAccess(false);
+											setEditing(true);
+										}}
+									>
 										<ShieldIcon aria-hidden="true" />
 										{m.settings_change_role()}
 									</DropdownMenuItem>
 								)}
-								<DropdownMenuItem
-									variant="destructive"
-									aria-label={
-										self
-											? m.leave_member_named({ email: member.email })
-											: m.remove_member_named({ email: member.email })
-									}
-									onSelect={() => state.requestRemoval(member.id)}
-								>
-									<UserMinusIcon aria-hidden="true" />
-									{self ? m.leave_organization() : m.remove_member()}
-								</DropdownMenuItem>
+								{!protectedOwner && (self || canManage) && (
+									<DropdownMenuItem
+										variant="destructive"
+										aria-label={
+											self
+												? m.leave_member_named({ email: member.email })
+												: m.remove_member_named({ email: member.email })
+										}
+										onSelect={() => state.requestRemoval(member.id)}
+									>
+										<UserMinusIcon aria-hidden="true" />
+										{self ? m.leave_organization() : m.remove_member()}
+									</DropdownMenuItem>
+								)}
 							</DropdownMenuContent>
 						</DropdownMenu>
 					)}
 				</TableCell>
 			</TableRow>
+			{editingAccess && canManageProjects && (
+				<TableRow>
+					<TableCell colSpan={7} className="bg-muted/30 whitespace-normal">
+						<div className="flex justify-between gap-3">
+							<h3 className="font-semibold">{m.member_manage_access()}</h3>
+							<Button
+								size="icon-sm"
+								variant="ghost"
+								aria-label={m.close()}
+								onClick={() => {
+									setEditingAccess(false);
+									actions.current?.focus();
+								}}
+							>
+								<XIcon aria-hidden="true" />
+							</Button>
+						</div>
+						<MemberProjectAccess
+							projects={projects}
+							member={member}
+							userId={userId}
+						/>
+					</TableCell>
+				</TableRow>
+			)}
 			{editing && canManage && !protectedOwner && (
 				<TableRow>
-					<TableCell colSpan={4} className="bg-muted/30 whitespace-normal">
+					<TableCell colSpan={7} className="bg-muted/30 whitespace-normal">
 						<fieldset ref={editor} className="flex min-w-0 flex-col gap-3 py-2">
 							<legend className="sr-only">{m.settings_change_role()}</legend>
 							<div className="flex items-start justify-between gap-4">

@@ -54,7 +54,7 @@ function EnrollmentPrompt() {
 		setPending(true);
 		setMessage("");
 		try {
-			const result = await registerPasskey(operation.signal);
+			const result = await registerPasskey(operation.signal, user.id);
 			if (!operation.current()) return;
 			if (result.error) {
 				setMessage(

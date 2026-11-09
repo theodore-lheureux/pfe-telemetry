@@ -15,13 +15,14 @@ export function requestLocale(headers?: Headers): Locale {
 export function formatDate(
 	value: string | Date | number,
 	locale: Locale = getLocale(),
+	timeZone = "UTC",
 ) {
 	// Combined date/time connectors differ across server and browser ICU releases.
 	const date = new Intl.DateTimeFormat(locale, {
 		dateStyle: "medium",
-		timeZone: "UTC",
+		timeZone,
 	}).format(new Date(value));
-	return `${date} ${formatTime(new Date(value).getTime(), locale)}`;
+	return `${date} ${formatTime(new Date(value).getTime(), locale, timeZone)}`;
 }
 
 export function formatNumber(value: number, locale: Locale = getLocale()) {
@@ -39,12 +40,16 @@ export function formatSeconds(value: number, locale: Locale = getLocale()) {
 	}).format(value);
 }
 
-export function formatTime(value: number, locale: Locale = getLocale()) {
+export function formatTime(
+	value: number,
+	locale: Locale = getLocale(),
+	timeZone = "UTC",
+) {
 	return new Intl.DateTimeFormat(locale, {
 		hour: "2-digit",
 		minute: "2-digit",
 		second: "2-digit",
 		hourCycle: "h23",
-		timeZone: "UTC",
+		timeZone,
 	}).format(value);
 }

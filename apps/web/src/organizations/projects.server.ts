@@ -12,6 +12,7 @@ import {
 } from "./access.server";
 import type {
 	CreateProjectInput,
+	ProjectCustomizationInput,
 	ProjectMembershipInput,
 	ProjectMembershipReference,
 	ProjectMembershipSummary,
@@ -20,6 +21,10 @@ import type {
 	UpdateProjectInput,
 } from "./contracts";
 import { OperationError } from "./errors";
+import {
+	changedProjectTags,
+	parseProjectCustomization,
+} from "./project-customization";
 import { parseCreateProjectInput } from "./validation";
 
 type Database = ReturnType<typeof getDatabase>;
@@ -36,6 +41,10 @@ export async function listProjects(
 			organizationId: project.organizationId,
 			name: project.name,
 			slug: project.slug,
+			tags: project.tags,
+			projectGroup: project.projectGroup,
+			timeZone: project.timeZone,
+			weekStartsOn: project.weekStartsOn,
 			assignedRole: projectMember.role,
 		})
 		.from(project)
@@ -134,6 +143,47 @@ export async function updateProject(
 		.returning();
 	if (!updated) throw new OperationError("NOT_FOUND", "Project not found");
 	return { ...access, name: updated.name } satisfies ProjectSummary;
+}
+
+export async function updateProjectCustomization(
+	database: Database,
+	actor: Actor,
+	value: ProjectCustomizationInput,
+) {
+	const input = parseProjectCustomization(value);
+	return database.transaction(async (tx) => {
+		await requireProject(tx, actor, input, "admin");
+		// Serialize tag edits without replacing another administrator's changes.
+		const [current] = await tx
+			.select()
+			.from(project)
+			.where(
+				and(
+					eq(project.id, input.projectId),
+					eq(project.organizationId, input.organizationId),
+				),
+			)
+			.for("update");
+		if (!current) throw new OperationError("NOT_FOUND", "Project not found");
+		const patch =
+			input.action === "add-tag" || input.action === "remove-tag"
+				? { tags: changedProjectTags(current.tags, input) }
+				: input.action === "group"
+					? { projectGroup: input.projectGroup }
+					: input.action === "time-zone"
+						? { timeZone: input.timeZone }
+						: { weekStartsOn: input.weekStartsOn };
+		await tx
+			.update(project)
+			.set(patch)
+			.where(
+				and(
+					eq(project.id, input.projectId),
+					eq(project.organizationId, input.organizationId),
+				),
+			);
+		return requireProject(tx, actor, input, "admin");
+	});
 }
 
 export async function listProjectMembers(

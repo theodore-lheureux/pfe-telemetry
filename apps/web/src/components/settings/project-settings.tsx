@@ -8,6 +8,7 @@ import { settingsSearch } from "../settings-links";
 import { Button } from "../ui/button";
 import { PageHeading } from "../workspace";
 import { IdentifierField } from "./identifier-field";
+import { ProjectMetadata } from "./project-metadata";
 import { SettingsSection } from "./settings-section";
 
 export function ProjectSettings({ project }: { project: ProjectSummary }) {
@@ -103,6 +104,7 @@ export function ProjectCustomization({ project }: { project: ProjectSummary }) {
 					{m.settings_logo_unavailable()}
 				</p>
 			</SettingsSection>
+			<ProjectMetadata project={project} />
 		</div>
 	);
 }

@@ -1,4 +1,5 @@
 export interface AuthenticationState {
+	twoFactorPending: boolean;
 	observedAt: Date;
 	freshAgeSeconds: number;
 	session: {
@@ -12,7 +13,7 @@ export interface AuthenticationState {
 export interface AuthenticationRecovery {
 	baseline: AuthenticationState;
 	email?: string;
-	method: "verify" | "passkey";
+	method: "verify" | "passkey" | "two-factor";
 }
 
 export function provesNewAuthentication(

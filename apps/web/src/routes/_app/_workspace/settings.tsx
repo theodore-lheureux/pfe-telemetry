@@ -154,6 +154,7 @@ function Settings() {
 	const {
 		settingsOrganization: organization,
 		settingsProject: project,
+		settingsProjects: projects,
 		user,
 	} = Route.useRouteContext();
 	const search = Route.useSearch();
@@ -255,6 +256,7 @@ function Settings() {
 									key={`invitations:${organization.id}:${user.id}`}
 									organization={organization}
 									invitations={loaded.invitations}
+									members={loaded.members}
 									asOf={loaded.asOf}
 									userId={user.id}
 								/>
@@ -264,6 +266,7 @@ function Settings() {
 								organization={organization}
 								members={loaded.members}
 								userId={user.id}
+								projects={projects}
 							/>
 							<PlannedSetting feature={twoFactorFeature} />
 						</>

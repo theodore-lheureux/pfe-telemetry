@@ -9,6 +9,7 @@ import {
 	Trash2Icon,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { accountContextHeader } from "@/auth/account-context";
 import { authClient } from "@/auth/client";
 import { useAccountPasskeys } from "@/auth/use-account-passkeys";
 import { useAppForm } from "@/components/app-form";
@@ -49,6 +50,7 @@ import { signOutOfApplication } from "../sign-out";
 import { ProfileDetails } from "./profile-details";
 import { SessionTime } from "./session-time";
 import { SettingsSection } from "./settings-section";
+import { TwoFactorSettings } from "./two-factor-settings";
 import { WebSessions } from "./web-sessions";
 
 export function UserProfile() {
@@ -70,7 +72,10 @@ export function UserProfile() {
 		onSubmit: async ({ value }) => {
 			if (!hydrated || actionPending) return;
 			await runAction(() =>
-				authClient.passkey.addPasskey({ name: value.name.trim() || undefined }),
+				authClient.passkey.addPasskey({
+					name: value.name.trim() || undefined,
+					fetchOptions: { headers: { [accountContextHeader]: user.id } },
+				}),
 			);
 		},
 	});
@@ -176,6 +181,7 @@ export function UserProfile() {
 				reserveLine={false}
 			/>
 			<ProfileDetails />
+			<TwoFactorSettings />
 			<SettingsSection
 				id="passkeys"
 				title={m.passkeys()}

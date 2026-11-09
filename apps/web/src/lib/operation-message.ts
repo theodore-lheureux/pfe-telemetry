@@ -10,6 +10,7 @@ const reasons = {
 	INVALID_EXECUTION_WINDOW: m.error_execution_window,
 	INVALID_EXPIRY: m.error_expiry,
 	INVALID_NAME: m.error_name,
+	INVALID_PROJECT_SETTING: m.error_project_setting,
 	HOSTS_REQUIRED: m.error_hosts_required,
 	HOSTS_UNIQUE: m.error_hosts_unique,
 	INVALID_IDENTIFIER: m.error_identifier,

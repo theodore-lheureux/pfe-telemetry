@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { createAuth } from "../auth/create-auth.server";
 import { gravatarUrl } from "../components/avatar.server";
 import type { getDatabase } from "../db/client.server";
-import { member } from "../db/schema";
+import { member, projectMember, user } from "../db/schema";
 import {
 	type Actor,
 	requireOrganization,
@@ -16,10 +16,69 @@ import type {
 	MemberReference,
 	MemberRoleInput,
 	MemberSummary,
+	OrganizationMemberSummary,
 } from "./member-contracts";
+import { listProjects } from "./projects.server";
 
 type Auth = ReturnType<typeof createAuth>;
 type Database = ReturnType<typeof getDatabase>;
+
+export async function listOrganizationMembers(
+	database: Database,
+	auth: Auth,
+	headers: Headers,
+	actor: Actor,
+	organizationId: string,
+): Promise<OrganizationMemberSummary[]> {
+	const organization = await requireOrganization(
+		database,
+		actor,
+		organizationId,
+	);
+	const [members, projects, grants, signIns] = await Promise.all([
+		listMembers(database, auth, headers, actor, organizationId),
+		listProjects(database, actor, organizationId),
+		database
+			.select({
+				memberId: projectMember.memberId,
+				projectId: projectMember.projectId,
+				role: projectMember.role,
+			})
+			.from(projectMember)
+			.where(eq(projectMember.organizationId, organizationId)),
+		database
+			.select({
+				id: user.id,
+				lastSignedInAt: user.lastSignedInAt,
+				twoFactorEnabled: user.twoFactorEnabled,
+			})
+			.from(user)
+			.innerJoin(member, eq(member.userId, user.id))
+			.where(eq(member.organizationId, organizationId)),
+	]);
+	return members.map((entry) => ({
+		...entry,
+		organizationId,
+		projectAccess: projects.flatMap((project) => {
+			const role =
+				entry.role !== "member"
+					? ("admin" as const)
+					: grants.find(
+							(grant) =>
+								grant.memberId === entry.id && grant.projectId === project.id,
+						)?.role;
+			return role ? [{ id: project.id, name: project.name, role }] : [];
+		}),
+		lastSignedInAt:
+			organization.role !== "member" || entry.userId === actor.id
+				? (signIns.find((user) => user.id === entry.userId)?.lastSignedInAt ??
+					null)
+				: null,
+		twoFactorEnabled:
+			signIns.find((user) => user.id === entry.userId)?.twoFactorEnabled ??
+			false,
+	}));
+}
 
 export async function listProjectGrantCandidates(
 	database: Database,

@@ -192,6 +192,10 @@ export function useMutationFeedback() {
 	return feedback.setMessage;
 }
 
+export function useOptionalMutationFeedback() {
+	return useContext(FeedbackContext)?.setMessage;
+}
+
 export function useMutationNotice() {
 	const feedback = useContext(FeedbackContext);
 	if (!feedback)

@@ -170,10 +170,6 @@ export function SettingsNavigation({
 																	"active bg-accent text-accent-foreground",
 															}}
 														>
-															<item.icon
-																aria-hidden="true"
-																className="size-3.5 shrink-0 text-muted-foreground"
-															/>
 															<span>{item.label}</span>
 														</Link>
 													</SidebarMenuButton>

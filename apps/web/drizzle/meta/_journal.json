@@ -64,6 +64,27 @@
       "when": 1794215060172,
       "tag": "0008_session_sign_in_method",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794222910465,
+      "tag": "0009_project_customization",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794223059614,
+      "tag": "0010_member_sign_in",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794224136079,
+      "tag": "0011_two_factor_authentication",
+      "breakpoints": true
     }
   ]
 }

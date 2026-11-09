@@ -1,6 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { UserPlusIcon } from "lucide-react";
 import type { OrganizationSummary } from "../organizations/contracts";
+import type { MemberSummary } from "../organizations/member-contracts";
 import { FormFeedback } from "./form-feedback";
 import { InvitationForm } from "./member-administration/invitation-form";
 import { InvitationList } from "./member-administration/invitation-list";
@@ -21,11 +22,13 @@ export function OrganizationInvitations({
 	invitations,
 	asOf,
 	userId,
+	members,
 }: {
 	organization: OrganizationSummary;
 	invitations: Invitation[];
 	asOf: number;
 	userId: string;
+	members: MemberSummary[];
 }) {
 	const state = useOrganizationInvitations(organization, userId);
 	return (
@@ -52,6 +55,8 @@ export function OrganizationInvitations({
 				)}
 				asOf={asOf}
 				organizationRole={organization.role}
+				members={members}
+				userId={userId}
 			/>
 			<Collapsible>
 				<CollapsibleTrigger asChild>

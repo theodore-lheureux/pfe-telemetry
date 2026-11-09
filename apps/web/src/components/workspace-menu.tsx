@@ -27,6 +27,7 @@ import { Card, CardContent } from "./ui/card";
 import {
 	Command,
 	CommandEmpty,
+	CommandGroup,
 	CommandInput,
 	CommandItem,
 	CommandList,
@@ -64,6 +65,12 @@ export function WorkspaceMenu({
 	const { organization, project, organizations, projects, settingsSection } =
 		selection;
 	const selected = { organizationId: organization?.id, projectId: project?.id };
+	const projectGroups = new Map<string, ProjectSummary[]>();
+	for (const entry of projects) {
+		const group = projectGroups.get(entry.projectGroup) ?? [];
+		group.push(entry);
+		projectGroups.set(entry.projectGroup, group);
+	}
 	const router = useRouter();
 	const hydrated = useHydrated();
 	const setFeedback = useMutationFeedback();
@@ -220,16 +227,23 @@ export function WorkspaceMenu({
 											>
 												{m.all_visible_projects()}
 											</CommandItem>
-											{projects.map((entry) => (
-												<CommandItem
-													key={entry.id}
-													value={`${entry.name} ${entry.id}`}
-													data-checked={entry.id === project?.id}
-													onSelect={() => void chooseProject(entry.id)}
+											{[...projectGroups].map(([group, entries]) => (
+												<CommandGroup
+													key={group}
+													heading={group || m.project_ungrouped()}
 												>
-													<ProjectAvatar name={entry.name} />
-													<span className="truncate">{entry.name}</span>
-												</CommandItem>
+													{entries.map((entry) => (
+														<CommandItem
+															key={entry.id}
+															value={`${entry.name} ${entry.slug} ${entry.id} ${entry.projectGroup} ${entry.tags.join(" ")}`}
+															data-checked={entry.id === project?.id}
+															onSelect={() => void chooseProject(entry.id)}
+														>
+															<ProjectAvatar name={entry.name} />
+															<span className="truncate">{entry.name}</span>
+														</CommandItem>
+													))}
+												</CommandGroup>
 											))}
 										</CommandList>
 									</Command>

@@ -72,6 +72,33 @@ export async function openInvitationForm(page: Page, locale: Locale = "en") {
 		.click();
 }
 
+export async function openProjectGrant(
+	page: Page,
+	email: string,
+	locale: Locale = "en",
+) {
+	const field = page.getByLabel(m.project_role_for({ email }, { locale }), {
+		exact: true,
+	});
+	if (await field.count()) return;
+	await page
+		.getByRole("button", {
+			name: m.project_add_member({}, { locale }),
+			exact: true,
+		})
+		.click();
+	const candidates = page.getByLabel(m.project_select_member({}, { locale }), {
+		exact: true,
+	});
+	const value = await candidates
+		.locator("option")
+		.filter({ hasText: email })
+		.getAttribute("value");
+	if (!value) throw new Error("Expected eligible organization member");
+	await candidates.selectOption(value);
+	await expect(field).toBeEnabled();
+}
+
 export async function chooseTheme(
 	page: Page,
 	mode: "light" | "dark" | "system",

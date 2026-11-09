@@ -5,8 +5,6 @@ import {
 	useHydrated,
 	useRouter,
 } from "@tanstack/react-router";
-import { createIsomorphicFn } from "@tanstack/react-start";
-import { getRequestUrl } from "@tanstack/react-start/server";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { ArrowLeftIcon, FingerprintPatternIcon } from "lucide-react";
 import {
@@ -20,6 +18,7 @@ import type {
 	AuthenticationOperation,
 	AuthenticationOutcome,
 } from "../auth/authentication";
+import { getAuthenticationState } from "../auth/authentication-state.functions";
 import { authClient } from "../auth/client";
 import {
 	passkeyAuthenticationSupported,
@@ -30,6 +29,7 @@ import { useAppForm } from "../components/app-form";
 import { type FeedbackKind, FormFeedback } from "../components/form-feedback";
 import { useLocaleChangeBlocker } from "../components/locale-safety";
 import { useMutationFeedback } from "../components/mutation-feedback";
+import { TwoFactorSignIn } from "../components/two-factor-sign-in";
 import { Button } from "../components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "../components/ui/field";
 import {
@@ -37,11 +37,15 @@ import {
 	InputOTPGroup,
 	InputOTPSlot,
 } from "../components/ui/input-otp";
+import { currentOrigin } from "../lib/origin";
 
-const currentOrigin = createIsomorphicFn()
-	.server(() => getRequestUrl().origin)
-	.client(() => window.location.origin);
 export const Route = createFileRoute("/login")({
+	loader: async () => ({
+		twoFactorPending: (await getAuthenticationState()).twoFactorPending,
+	}),
+	staleTime: 0,
+	gcTime: 0,
+	headers: () => ({ "Cache-Control": "private, no-store" }),
 	validateSearch: (search: Record<string, unknown> & SearchSchemaInput) =>
 		loginSearch(search, currentOrigin()),
 	head: () => ({ meta: [{ title: `${m.sign_in()} · ${m.app_title()}` }] }),
@@ -52,6 +56,8 @@ type Action = "send" | "resend" | "verify" | "check" | "passkey";
 type Message = { kind: FeedbackKind; text: string };
 
 function Login() {
+	const loaded = Route.useLoaderData();
+	const [factorDismissed, setFactorDismissed] = useState(false);
 	const { redirect } = Route.useSearch();
 	const { authentication } = Route.useRouteContext();
 	const identity = useSyncExternalStore(
@@ -153,6 +159,10 @@ function Login() {
 			codeForm.reset();
 			setFeedback(null);
 			await router.navigate({ href: redirect, replace: true });
+		} else if (outcome.status === "two-factor-required") {
+			setFactorDismissed(false);
+			setUncertain(false);
+			setMessage(null);
 		} else if (outcome.status === "uncertain") {
 			setUncertain(true);
 			setMessage({ kind: "warning", text: m.signin_uncertain() });
@@ -195,7 +205,13 @@ function Login() {
 		setMessage({ kind: "warning", text: m.signin_uncertain() });
 	}, [identity.recovery]);
 	useEffect(() => {
-		if (!hydrated || phase !== "email") return;
+		if (
+			!hydrated ||
+			phase !== "email" ||
+			identity.twoFactorPending ||
+			(loaded.twoFactorPending && !factorDismissed)
+		)
+			return;
 		if (
 			authentication.getSnapshot().pending ||
 			authentication.getSnapshot().recovery
@@ -251,7 +267,14 @@ function Login() {
 				if (conditional.current === attempt) conditional.current = null;
 			});
 		return attempt.cancel;
-	}, [hydrated, phase, authentication]);
+	}, [
+		hydrated,
+		phase,
+		authentication,
+		identity.twoFactorPending,
+		loaded.twoFactorPending,
+		factorDismissed,
+	]);
 
 	function begin(kind: "send" | "resend") {
 		if (!hydrated || operation.current || authentication.getSnapshot().pending)
@@ -388,6 +411,10 @@ function Login() {
 				});
 				return {
 					ok: !result.error,
+					twoFactorRequired:
+						!!result.data &&
+						"twoFactorRedirect" in result.data &&
+						result.data.twoFactorRedirect === true,
 					code: result.error?.code,
 					httpStatus: result.error?.status,
 				};
@@ -460,12 +487,55 @@ function Login() {
 	function changeEmail() {
 		if (operation.current || authentication.getSnapshot().pending) return;
 		authentication.clearRecovery();
+		setFactorDismissed(true);
 		lifetime.current.generation++;
 		codeForm.reset();
 		setCodeInvalid(false);
 		setUncertain(false);
 		setMessage(null);
 		setPhase("email");
+	}
+	async function verifySecondFactor(code: string, backup: boolean) {
+		if (operation.current || authentication.getSnapshot().pending) return;
+		conditional.current?.cancel();
+		const state = lifetime.current;
+		const generation = ++state.generation;
+		const current = () => state.mounted && state.generation === generation;
+		const lease = authentication.begin("two-factor");
+		if (!lease) return;
+		const attempt = { cancel: lease.cancel };
+		request.current = attempt;
+		try {
+			const outcome = await lease.submit(async (signal) => {
+				const result = backup
+					? await authClient.twoFactor.verifyBackupCode({
+							code,
+							trustDevice: false,
+							fetchOptions: { signal, retry: 0 },
+						})
+					: await authClient.twoFactor.verifyTotp({
+							code,
+							trustDevice: false,
+							fetchOptions: { signal, retry: 0 },
+						});
+				return {
+					ok: !result.error,
+					code: result.error?.code,
+					httpStatus: result.error?.status,
+				};
+			}, sentEmail || undefined);
+			if (!current()) return;
+			if (outcome.status === "rejected")
+				return outcome.httpStatus === 429
+					? m.code_rate_limited()
+					: m.two_factor_invalid();
+			await presentAuthentication(outcome, current);
+		} catch {
+			if (current()) return m.signin_uncertain();
+		} finally {
+			lease.finish();
+			if (request.current === attempt) request.current = null;
+		}
 	}
 	const pendingText =
 		action === "passkey"
@@ -476,6 +546,13 @@ function Login() {
 					? m.checking_signin()
 					: m.sending_code();
 
+	if (
+		!uncertain &&
+		(identity.twoFactorPending || (loaded.twoFactorPending && !factorDismissed))
+	)
+		return (
+			<TwoFactorSignIn onVerify={verifySecondFactor} onBack={changeEmail} />
+		);
 	return (
 		<main className="mx-auto my-8 flex w-[calc(100%_-_2rem)] max-w-md flex-col gap-6 rounded-lg border bg-card p-5 text-card-foreground sm:my-16">
 			<div>

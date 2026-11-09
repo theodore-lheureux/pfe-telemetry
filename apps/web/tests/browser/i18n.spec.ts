@@ -15,6 +15,7 @@ import {
 	editMemberRole,
 	expect,
 	openPreferences,
+	openProjectGrant,
 	openSettingsSection,
 	settingsUrl,
 	test,
@@ -371,6 +372,7 @@ for (const locale of ["en", "fr"] as const) {
 				),
 			);
 			await page.goto(settingsUrl(projectURL, "project-members"));
+			await openProjectGrant(page, "collaborator@example.invalid", locale);
 			await page
 				.getByLabel(
 					m.project_role_for(

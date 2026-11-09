@@ -16,7 +16,7 @@ import { PublicPreferences } from "../components/appearance-settings";
 import { LocaleSafety } from "../components/locale-safety";
 import { MutationFeedback } from "../components/mutation-feedback";
 import { BrandLogo } from "../components/recount/brand-logo";
-import { RouteNotFound } from "../components/route-feedback";
+import { RouteError, RouteNotFound } from "../components/route-feedback";
 import { AppearanceContext } from "../lib/appearance";
 import { clearValidation, localizeValidation } from "../lib/input-validation";
 import { getInitialTheme, themeCookie } from "../lib/theme";
@@ -45,6 +45,7 @@ export const Route = createRootRouteWithContext<{
 	component: Outlet,
 	shellComponent: RootDocument,
 	notFoundComponent: RouteNotFound,
+	errorComponent: RouteError,
 });
 
 function RootDocument({ children }: { children: ReactNode }) {

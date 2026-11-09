@@ -12,6 +12,7 @@ function state(
 	email = "a@example.invalid",
 ): AuthenticationState {
 	return {
+		twoFactorPending: false,
 		observedAt: new Date(observed),
 		freshAgeSeconds: 600,
 		session: id
@@ -31,6 +32,68 @@ function deferred<T>() {
 	});
 	return { promise, resolve };
 }
+
+test("a native second-factor challenge is not treated as an authenticated session", async () => {
+	let current = state(null);
+	const controller = createAuthenticationController({
+		readState: async () => current,
+		clearPrivateIdentity: () => {},
+		refreshIdentity: async () => {},
+	});
+	const first = controller.begin("verify");
+	if (!first) throw new Error("Expected first factor");
+	expect(
+		await first.submit(async () => {
+			current = { ...state(null), twoFactorPending: true };
+			return { ok: true, twoFactorRequired: true };
+		}),
+	).toEqual({ status: "two-factor-required" });
+	expect(controller.getSnapshot().twoFactorPending).toBe(true);
+	expect(controller.getSnapshot().passkeyPromptFor).toBeNull();
+	const invalid = controller.begin("two-factor");
+	if (!invalid) throw new Error("Expected second factor");
+	expect(
+		(
+			await invalid.submit(async () => ({
+				ok: false,
+				code: "INVALID_CODE",
+				httpStatus: 401,
+			}))
+		).status,
+	).toBe("rejected");
+	expect(controller.getSnapshot().twoFactorPending).toBe(true);
+	const valid = controller.begin("two-factor");
+	if (!valid) throw new Error("Expected second-factor retry");
+	expect(
+		(
+			await valid.submit(async () => {
+				current = state("verified", 1001, 1002);
+				return { ok: true };
+			})
+		).status,
+	).toBe("authenticated");
+	expect(controller.getSnapshot().twoFactorPending).toBe(false);
+});
+
+test("lost email verification responses recover a server-confirmed pending challenge", async () => {
+	let current = state(null);
+	const controller = createAuthenticationController({
+		readState: async () => current,
+		clearPrivateIdentity: () => {},
+		refreshIdentity: async () => {},
+	});
+	const operation = controller.begin("verify");
+	if (!operation) throw new Error("Expected first factor");
+	expect(
+		(
+			await operation.submit(async () => {
+				current = { ...state(null), twoFactorPending: true };
+				throw new Error("Response lost");
+			})
+		).status,
+	).toBe("two-factor-required");
+	expect(controller.getSnapshot().recovery).toBeNull();
+});
 test("submitted authentication retains ownership after cancellation and refreshes identity without a UI owner", async () => {
 	const response = deferred<{ ok: boolean }>();
 	const states = [state("a"), state("b", 1001, 1002, "b@example.invalid")];

@@ -5,18 +5,21 @@ import {
 } from "./authentication-state";
 import { settleIdentityRefresh } from "./refresh";
 
-type Method = "verify" | "passkey";
+type Method = "verify" | "passkey" | "two-factor";
 export type AuthenticationOutcome =
 	| { status: "authenticated" }
+	| { status: "two-factor-required" }
 	| { status: "rejected"; code?: string; httpStatus?: number }
 	| { status: "uncertain" }
 	| { status: "canceled" };
 export interface AuthenticationReply {
+	twoFactorRequired?: boolean;
 	ok: boolean;
 	code?: string;
 	httpStatus?: number;
 }
 export interface AuthenticationSnapshot {
+	twoFactorPending: boolean;
 	action: Method | "check" | null;
 	pending: boolean;
 	revision: number;
@@ -51,6 +54,7 @@ export function createAuthenticationController(services: {
 	verificationTimeoutMs?: number;
 }): AuthenticationController {
 	let snapshot: AuthenticationSnapshot = {
+		twoFactorPending: false,
 		action: null,
 		pending: false,
 		revision: 0,
@@ -119,12 +123,22 @@ export function createAuthenticationController(services: {
 		) {
 			publish({
 				recovery: null,
+				twoFactorPending: false,
 				passkeyPromptFor:
-					recovery.method === "verify"
+					recovery.method === "verify" || recovery.method === "two-factor"
 						? (current.session?.user.id ?? null)
 						: null,
 			});
 			return { status: "authenticated" };
+		}
+		if (
+			reply?.twoFactorRequired ||
+			(current?.twoFactorPending &&
+				recovery.method !== "two-factor" &&
+				(!reply || reply.ok))
+		) {
+			publish({ recovery: null, twoFactorPending: true });
+			return { status: "two-factor-required" };
 		}
 		if (
 			reply &&
@@ -134,7 +148,11 @@ export function createAuthenticationController(services: {
 			reply.httpStatus < 500 &&
 			reply.httpStatus !== 408
 		) {
-			publish({ recovery: null });
+			publish({
+				recovery: null,
+				twoFactorPending:
+					current?.twoFactorPending ?? snapshot.twoFactorPending,
+			});
 			return {
 				status: "rejected",
 				code: reply.code,
@@ -202,6 +220,8 @@ export function createAuthenticationController(services: {
 						transport.abort();
 					}
 					try {
+						// Retire other tabs' operations as soon as a response can have changed authentication cookies.
+						clear();
 						const outcome = await reconcile({ baseline, email, method }, reply);
 						operation.settle();
 						await refresh();
@@ -232,7 +252,7 @@ export function createAuthenticationController(services: {
 				throw new Error("Authentication could not be confirmed");
 		},
 		clearRecovery() {
-			if (!active) publish({ recovery: null });
+			if (!active) publish({ recovery: null, twoFactorPending: false });
 		},
 	};
 }

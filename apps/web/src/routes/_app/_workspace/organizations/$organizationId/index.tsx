@@ -1,6 +1,7 @@
 import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageHeading } from "@/components/workspace";
 
@@ -43,6 +44,20 @@ function Projects() {
 								className="flex h-full flex-col gap-3 rounded-lg border bg-card p-5 text-card-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
 							>
 								<span className="font-semibold">{project.name}</span>
+								{project.projectGroup && (
+									<span className="text-sm text-muted-foreground">
+										{project.projectGroup}
+									</span>
+								)}
+								{project.tags.length > 0 && (
+									<span className="flex flex-wrap gap-1">
+										{project.tags.map((tag) => (
+											<Badge key={tag} variant="outline">
+												{tag}
+											</Badge>
+										))}
+									</span>
+								)}
 								<span className="text-sm text-muted-foreground">
 									{project.slug} · {roleLabel(project.role)}
 								</span>

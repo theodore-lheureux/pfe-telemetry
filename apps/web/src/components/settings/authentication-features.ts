@@ -47,8 +47,8 @@ export const authenticationFeatures = [
 
 export const twoFactorFeature = {
 	id: "two-factor-authentication",
-	label: m.settings_two_factor,
-	description: m.settings_two_factor_description,
+	label: m.organization_enforce_two_factor,
+	description: m.organization_enforce_two_factor_description,
 	ticket: "PFE-68",
 	url: "https://linear.app/pfe-telemetry/issue/PFE-68/add-two-factor-authentication-and-organization-enforcement",
 };

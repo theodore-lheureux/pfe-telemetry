@@ -26,6 +26,10 @@ export const project = appSchema.table(
 			.references(() => organization.id, { onDelete: "cascade" }),
 		name: text("name").notNull(),
 		slug: text("slug").notNull(),
+		tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+		projectGroup: text("project_group").notNull().default(""),
+		timeZone: text("time_zone").notNull().default("UTC"),
+		weekStartsOn: integer("week_starts_on").notNull().default(0),
 		createdBy: text("created_by").references(() => user.id, {
 			onDelete: "set null",
 		}),
@@ -38,6 +42,19 @@ export const project = appSchema.table(
 			.notNull(),
 	},
 	(table) => [
+		check(
+			"project_tags_bounded",
+			sql`cardinality(${table.tags}) <= 20 AND array_position(${table.tags}, NULL) IS NULL`,
+		),
+		check("project_group_bounded", sql`length(${table.projectGroup}) <= 80`),
+		check(
+			"project_time_zone_bounded",
+			sql`length(${table.timeZone}) BETWEEN 1 AND 100`,
+		),
+		check(
+			"project_week_start_valid",
+			sql`${table.weekStartsOn} BETWEEN 0 AND 6`,
+		),
 		unique("project_organization_slug_unique").on(
 			table.organizationId,
 			table.slug,

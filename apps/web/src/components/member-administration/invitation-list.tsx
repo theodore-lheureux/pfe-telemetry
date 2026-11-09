@@ -1,8 +1,15 @@
-import { formatDate } from "@recount/i18n";
 import { roleLabel, statusLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
+import { Link } from "@tanstack/react-router";
+import { type ColumnDef, useTable } from "@tanstack/react-table";
+import { CheckIcon, CopyIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { currentOrigin } from "../../lib/origin";
 import type { OrganizationRole } from "../../organizations/contracts";
+import type { MemberSummary } from "../../organizations/member-contracts";
 import { FormFeedback } from "../form-feedback";
+import { UserAvatar } from "../identity-avatar";
+import { SessionTime } from "../settings/session-time";
 import {
 	AlertDialog,
 	AlertDialogCancel,
@@ -12,15 +19,11 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "../ui/alert-dialog";
+import { Avatar, AvatarFallback } from "../ui/avatar";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "../ui/table";
+import { Table, TableBody, TableCell, TableRow } from "../ui/table";
+import { MemberTableHeader, memberTableFeatures } from "./member-table";
 import type {
 	Invitation,
 	useOrganizationInvitations,
@@ -31,36 +34,67 @@ export function InvitationList({
 	asOf,
 	organizationRole,
 	state,
+	members,
+	userId,
 }: {
 	invitations: Invitation[];
 	asOf: number;
 	organizationRole: OrganizationRole;
 	state: ReturnType<typeof useOrganizationInvitations>;
+	members: MemberSummary[];
+	userId: string;
 }) {
 	const { pending, disabled, cancelId, heading, failed, message } = state;
+	const origin = currentOrigin();
+	const [copied, setCopied] = useState("");
+	const [copyFailed, setCopyFailed] = useState(false);
+	const columns = useMemo<ColumnDef<typeof memberTableFeatures, Invitation>[]>(
+		() => [
+			{
+				accessorKey: "email",
+				header: m.invitation_invitee(),
+				enableSorting: false,
+			},
+			{ accessorKey: "role", header: m.settings_level(), enableSorting: false },
+			{
+				id: "creator",
+				accessorFn: (invitation) =>
+					members.find((member) => member.userId === invitation.inviterId)
+						?.name ?? "",
+				header: m.invitation_created_by(),
+			},
+			{ accessorKey: "createdAt", header: m.invitation_created() },
+			{ id: "link", header: m.invitation_link(), enableSorting: false },
+			{
+				id: "actions",
+				header: () => <span className="sr-only">{m.actions()}</span>,
+				enableSorting: false,
+			},
+		],
+		[members],
+	);
+	const table = useTable({
+		features: memberTableFeatures,
+		data: invitations,
+		columns,
+		getRowId: (invitation) => invitation.id,
+	});
 	return (
 		<div className="rounded-md border bg-card text-card-foreground">
 			<Table aria-label={m.invitations()}>
-				<TableHeader>
-					<TableRow>
-						<TableHead>{m.email_address()}</TableHead>
-						<TableHead>{m.settings_level()}</TableHead>
-						<TableHead>{m.settings_status()}</TableHead>
-						<TableHead>{m.expires()}</TableHead>
-						<TableHead>
-							<span className="sr-only">{m.actions()}</span>
-						</TableHead>
-					</TableRow>
-				</TableHeader>
+				<MemberTableHeader table={table} />
 				<TableBody>
 					{!invitations.length && (
 						<TableRow>
-							<TableCell colSpan={5} className="text-muted-foreground">
+							<TableCell colSpan={6} className="text-muted-foreground">
 								{m.no_invitations()}
 							</TableCell>
 						</TableRow>
 					)}
-					{invitations.map((invitation) => {
+					{table.getRowModel().rows.map(({ original: invitation }) => {
+						const creator = members.find(
+							(member) => member.userId === invitation.inviterId,
+						);
 						const expired = invitation.expiresAt.getTime() <= asOf;
 						const liveForEmail = invitations.some(
 							(entry) =>
@@ -71,18 +105,74 @@ export function InvitationList({
 						return (
 							<TableRow key={invitation.id} className="h-14">
 								<TableCell className="font-medium">
-									{invitation.email}
+									<div className="flex items-center gap-3">
+										<Avatar className="size-8">
+											<AvatarFallback>
+												{invitation.email[0]?.toUpperCase()}
+											</AvatarFallback>
+										</Avatar>
+										<div>
+											{invitation.email}
+											{expired && (
+												<p className="text-xs text-muted-foreground">
+													{statusLabel("expired")}
+												</p>
+											)}
+										</div>
+									</div>
 								</TableCell>
-								<TableCell>{roleLabel(invitation.role)}</TableCell>
 								<TableCell>
-									{statusLabel(
-										invitation.status === "pending" && expired
-											? "expired"
-											: invitation.status,
+									<Badge variant="outline">{roleLabel(invitation.role)}</Badge>
+								</TableCell>
+								<TableCell>
+									{creator ? (
+										<div className="flex items-center gap-2">
+											<UserAvatar user={creator} className="size-7" />
+											<span>
+												{creator.userId === userId
+													? m.you_label()
+													: creator.name || creator.email}
+											</span>
+										</div>
+									) : (
+										m.unknown_session_value()
 									)}
 								</TableCell>
 								<TableCell className="whitespace-nowrap">
-									{formatDate(invitation.expiresAt)}
+									<SessionTime value={invitation.createdAt} relative />
+								</TableCell>
+								<TableCell>
+									<div className="flex max-w-80 items-center gap-1">
+										<Button
+											variant="ghost"
+											size="icon-sm"
+											aria-label={m.settings_copy()}
+											onClick={async () => {
+												try {
+													await navigator.clipboard.writeText(
+														`${origin}/invitations/${encodeURIComponent(invitation.id)}`,
+													);
+													setCopied(invitation.id);
+													setCopyFailed(false);
+												} catch {
+													setCopyFailed(true);
+												}
+											}}
+										>
+											{copied === invitation.id ? (
+												<CheckIcon aria-hidden="true" />
+											) : (
+												<CopyIcon aria-hidden="true" />
+											)}
+										</Button>
+										<Link
+											to="/invitations/$invitationId"
+											params={{ invitationId: invitation.id }}
+											className="truncate text-sm underline-offset-4 hover:underline"
+										>
+											{origin}/invitations/{invitation.id}
+										</Link>
+									</div>
 								</TableCell>
 								<TableCell>
 									<div className="flex items-center justify-end gap-2">
@@ -178,6 +268,16 @@ export function InvitationList({
 					})}
 				</TableBody>
 			</Table>
+			<p
+				role="status"
+				className={copyFailed ? "p-2 text-xs text-destructive" : "sr-only"}
+			>
+				{copyFailed
+					? m.settings_copy_failed()
+					: copied
+						? m.settings_copied()
+						: ""}
+			</p>
 		</div>
 	);
 }

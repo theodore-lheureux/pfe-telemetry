@@ -18,6 +18,17 @@ export function formatSessionTime(
 		return relativeFormat.format(-Math.trunc(elapsed / 60_000), "minute");
 	if (relative && distance < 86_400_000)
 		return relativeFormat.format(-Math.trunc(elapsed / 3_600_000), "hour");
+	if (relative) {
+		const [unit, duration] =
+			distance < 7 * 86_400_000
+				? (["day", 86_400_000] as const)
+				: distance < 30 * 86_400_000
+					? (["week", 7 * 86_400_000] as const)
+					: distance < 365 * 86_400_000
+						? (["month", 30 * 86_400_000] as const)
+						: (["year", 365 * 86_400_000] as const);
+		return relativeFormat.format(-Math.trunc(elapsed / duration), unit);
+	}
 	const day = new Date(date).setHours(0, 0, 0, 0);
 	const today = new Date(now).setHours(0, 0, 0, 0);
 	const yesterday = new Date(now);

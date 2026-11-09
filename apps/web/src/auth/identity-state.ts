@@ -1,8 +1,20 @@
-import type { AuthQueryAtom } from "better-auth/client";
+import {
+	type AuthQueryAtom,
+	getGlobalBroadcastChannel,
+} from "better-auth/client";
 import { authClient } from "./client";
 
 function identityAtom(name: "session" | "listPasskeys") {
 	return authClient.$store.atoms[name] as AuthQueryAtom<unknown>;
+}
+
+export function broadcastBetterAuthIdentity() {
+	if (typeof window !== "undefined")
+		getGlobalBroadcastChannel().post({
+			event: "session",
+			data: { trigger: "getSession" },
+			clientId: crypto.randomUUID(),
+		});
 }
 
 export function clearBetterAuthIdentity() {
@@ -16,6 +28,7 @@ export function clearBetterAuthIdentity() {
 			isRefetching: false,
 		});
 	}
+	broadcastBetterAuthIdentity();
 }
 
 export async function refreshBetterAuthIdentity() {

@@ -38,7 +38,7 @@ export const Route = createFileRoute(
 function Executions() {
 	const page = Route.useLoaderData();
 	const params = Route.useParams();
-	const { user } = Route.useRouteContext();
+	const { user, project } = Route.useRouteContext();
 	return (
 		<>
 			<PageHeading title={m.executions()} />
@@ -63,8 +63,13 @@ function Executions() {
 							</p>
 							<p className="text-sm">
 								{m.interval_display({
-									from: formatDate(entry.startedAt),
-									to: formatDate(entry.endedAt),
+									from: formatDate(
+										entry.startedAt,
+										undefined,
+										project.timeZone,
+									),
+									to: formatDate(entry.endedAt, undefined, project.timeZone),
+									timeZone: project.timeZone,
 								})}
 							</p>
 						</li>

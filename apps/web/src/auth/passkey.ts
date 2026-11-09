@@ -4,9 +4,10 @@ import {
 	startRegistration,
 	WebAuthnAbortService,
 } from "@simplewebauthn/browser";
+import { accountContextHeader } from "./account-context";
 import { authClient } from "./client";
 
-export async function registerPasskey(signal: AbortSignal) {
+export async function registerPasskey(signal: AbortSignal, userId: string) {
 	if (
 		!window.isSecureContext ||
 		typeof PublicKeyCredential !== "function" ||
@@ -25,7 +26,7 @@ export async function registerPasskey(signal: AbortSignal) {
 		if (signal.aborted) throw new Error("Registration retired");
 		return await authClient.passkey.verifyRegistration({
 			response,
-			fetchOptions: { signal },
+			fetchOptions: { signal, headers: { [accountContextHeader]: userId } },
 		});
 	} finally {
 		signal.removeEventListener("abort", cancel);
@@ -73,7 +74,7 @@ export async function preparePasskey(
 				if (signal.aborted) return { status: "canceled" };
 				// The installed manual-only helper enters native get synchronously, before its first await.
 				const assertion = await startAuthentication({
-					optionsJSON: options.data,
+					optionsJSON: { ...options.data, userVerification: "required" },
 					useBrowserAutofill: false,
 				});
 				return signal.aborted
@@ -87,6 +88,7 @@ export async function preparePasskey(
 		const publicKey = PublicKeyCredential.parseRequestOptionsFromJSON(
 			options.data,
 		);
+		publicKey.userVerification = "required";
 		const credential = await navigator.credentials.get({
 			publicKey: conditional
 				? { ...publicKey, allowCredentials: [] }

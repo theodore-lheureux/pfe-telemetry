@@ -99,6 +99,10 @@ export async function requireProject(
 			organizationId: project.organizationId,
 			name: project.name,
 			slug: project.slug,
+			tags: project.tags,
+			projectGroup: project.projectGroup,
+			timeZone: project.timeZone,
+			weekStartsOn: project.weekStartsOn,
 			assignedRole: projectMember.role,
 		})
 		.from(project)
@@ -128,6 +132,10 @@ export async function requireProject(
 		organizationId: entry.organizationId,
 		name: entry.name,
 		slug: entry.slug,
+		tags: entry.tags,
+		projectGroup: entry.projectGroup,
+		timeZone: entry.timeZone,
+		weekStartsOn: entry.weekStartsOn,
 		role,
 	} satisfies ProjectSummary;
 }

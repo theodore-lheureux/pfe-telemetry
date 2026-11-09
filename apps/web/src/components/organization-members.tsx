@@ -1,73 +1,129 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
-import { ArrowDownUpIcon, DownloadIcon, SearchIcon } from "lucide-react";
-import { useState } from "react";
-import type { OrganizationSummary } from "../organizations/contracts";
-import type { MemberSummary } from "../organizations/member-contracts";
+import { useHydrated } from "@tanstack/react-router";
+import { type ColumnDef, useTable } from "@tanstack/react-table";
+import { DownloadIcon, SearchIcon } from "lucide-react";
+import { useMemo } from "react";
+import type {
+	OrganizationSummary,
+	ProjectSummary,
+} from "../organizations/contracts";
+import type { OrganizationMemberSummary } from "../organizations/member-contracts";
 import { FormFeedback } from "./form-feedback";
 import { MemberRow } from "./member-administration/member-row";
+import {
+	MemberTableHeader,
+	memberTableFeatures,
+} from "./member-administration/member-table";
 import { useOrganizationMembers } from "./member-administration/use-organization-members";
 import { SettingsSection } from "./settings/settings-section";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "./ui/table";
+import { Table, TableBody, TableCell, TableRow } from "./ui/table";
 
 export function OrganizationMembers({
 	organization,
 	members,
 	userId,
+	projects,
 }: {
 	organization: OrganizationSummary;
-	members: MemberSummary[];
+	members: OrganizationMemberSummary[];
 	userId: string;
+	projects: ProjectSummary[];
 }) {
 	const state = useOrganizationMembers(organization, userId);
+	const hydrated = useHydrated();
 	const owners = members.filter((member) => member.role === "owner").length;
-	const [query, setQuery] = useState("");
-	const [sort, setSort] = useState<{
-		column: "name" | "role" | "joinedAt";
-		descending: boolean;
-	}>({ column: "role", descending: false });
-	const collator = new Intl.Collator(getLocale(), {
-		sensitivity: "base",
-		numeric: true,
-	});
-	const roleOrder = { owner: 0, admin: 1, member: 2 };
-	const visible = members
-		.filter((member) =>
-			`${member.name} ${member.email}`
-				.toLocaleLowerCase(getLocale())
-				.includes(query.trim().toLocaleLowerCase(getLocale())),
-		)
-		.sort((a, b) => {
-			const compared =
-				sort.column === "role"
-					? roleOrder[a.role] - roleOrder[b.role]
-					: sort.column === "joinedAt"
-						? a.joinedAt.getTime() - b.joinedAt.getTime()
-						: collator.compare(a.name || a.email, b.name || b.email);
-			return (
-				(sort.descending ? -compared : compared) ||
-				collator.compare(a.email, b.email)
-			);
+	const locale = getLocale();
+	const columns = useMemo<
+		ColumnDef<typeof memberTableFeatures, OrganizationMemberSummary>[]
+	>(() => {
+		const collator = new Intl.Collator(locale, {
+			sensitivity: "base",
+			numeric: true,
 		});
+		return [
+			{
+				id: "member",
+				accessorFn: (member) => `${member.name} ${member.email}`,
+				header: m.settings_member(),
+				sortFn: (a, b) =>
+					collator.compare(
+						a.original.name || a.original.email,
+						b.original.name || b.original.email,
+					),
+			},
+			{
+				id: "role",
+				accessorFn: (member) =>
+					({ owner: 3, admin: 2, member: 1 })[member.role],
+				header: m.settings_level(),
+				enableGlobalFilter: false,
+			},
+			{
+				id: "projects",
+				accessorFn: (member) =>
+					member.projectAccess.map((project) => project.name).join(" "),
+				header: m.member_project_access(),
+			},
+			{
+				id: "twoFactor",
+				accessorFn: (member) => Number(member.twoFactorEnabled),
+				header: m.member_two_factor(),
+				enableGlobalFilter: false,
+			},
+			{
+				accessorKey: "joinedAt",
+				header: m.settings_joined(),
+				enableGlobalFilter: false,
+			},
+			{
+				accessorKey: "lastSignedInAt",
+				header: m.member_last_sign_in(),
+				enableGlobalFilter: false,
+				sortUndefined: "last",
+			},
+			{
+				id: "actions",
+				header: () => <span className="sr-only">{m.actions()}</span>,
+				enableSorting: false,
+				enableGlobalFilter: false,
+			},
+		];
+	}, [locale]);
+	const table = useTable({
+		features: memberTableFeatures,
+		data: members,
+		columns,
+		getRowId: (member) => member.id,
+		initialState: { sorting: [{ id: "role", desc: true }] },
+		globalFilterFn: "includesString",
+	});
+	const visible = table.getRowModel().rows.map((row) => row.original);
 	function download() {
 		const csv = (value: string) =>
 			`"${(/^[\s]*[=+@-]/.test(value) ? "'" : "") + value.replaceAll('"', '""')}"`;
 		const rows = [
-			[m.name(), m.email_address(), m.settings_level(), m.settings_joined()],
+			[
+				m.name(),
+				m.email_address(),
+				m.settings_level(),
+				m.settings_joined(),
+				m.member_project_access(),
+				m.member_two_factor(),
+				m.member_last_sign_in(),
+			],
 			...visible.map((member) => [
 				member.name,
 				member.email,
 				member.role,
 				member.joinedAt.toISOString(),
+				member.projectAccess.map((project) => project.name).join("; "),
+				member.twoFactorEnabled
+					? m.two_factor_enabled()
+					: m.two_factor_disabled(),
+				member.lastSignedInAt?.toISOString() ?? "",
 			]),
 		];
 		const url = URL.createObjectURL(
@@ -89,21 +145,11 @@ export function OrganizationMembers({
 			description={m.settings_members_description()}
 			headingRef={state.heading}
 		>
-			<p className="text-sm text-muted-foreground">
-				{m.to_replace_an_owner_an_existing_owner_must()}
-			</p>
-			{owners === 1 &&
-				members.some(
-					(member) => member.userId === userId && member.role === "owner",
-				) && (
-					<p className="text-sm text-muted-foreground">
-						{m.promote_a_replacement_owner_before_leaving_or_changing()}
-					</p>
-				)}
 			<FormFeedback
 				message={state.confirm ? "" : state.message}
 				pending={state.pending && !state.confirm}
 				kind={state.failed ? "error" : "success"}
+				reserveLine={false}
 			/>
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				<div className="relative w-full max-w-xs">
@@ -113,61 +159,22 @@ export function OrganizationMembers({
 					/>
 					<Input
 						type="search"
-						value={query}
-						onChange={(event) => setQuery(event.target.value)}
+						disabled={!hydrated}
+						value={table.state.globalFilter ?? ""}
+						onChange={(event) => table.setGlobalFilter(event.target.value)}
 						className="pl-9"
 						aria-label={m.settings_search_members()}
 						placeholder={m.settings_search_members()}
 					/>
 				</div>
-				<Button variant="outline" onClick={download}>
+				<Button variant="outline" onClick={download} disabled={!hydrated}>
 					<DownloadIcon aria-hidden="true" />
 					{m.settings_download_members()}
 				</Button>
 			</div>
 			<div className="rounded-md border bg-card text-card-foreground">
 				<Table aria-label={m.organization_members()}>
-					<TableHeader>
-						<TableRow>
-							{(
-								[
-									["name", m.settings_member()],
-									["role", m.settings_level()],
-									["joinedAt", m.settings_joined()],
-								] as const
-							).map(([column, label]) => (
-								<TableHead
-									key={column}
-									aria-sort={
-										sort.column === column
-											? sort.descending
-												? "descending"
-												: "ascending"
-											: "none"
-									}
-								>
-									<Button
-										variant="ghost"
-										size="sm"
-										className="-ml-2"
-										aria-label={m.settings_sort_by({ column: label })}
-										onClick={() =>
-											setSort({
-												column,
-												descending: sort.column === column && !sort.descending,
-											})
-										}
-									>
-										{label}
-										<ArrowDownUpIcon aria-hidden="true" className="size-3.5" />
-									</Button>
-								</TableHead>
-							))}
-							<TableHead className="w-12">
-								<span className="sr-only">{m.actions()}</span>
-							</TableHead>
-						</TableRow>
-					</TableHeader>
+					<MemberTableHeader table={table} />
 					<TableBody>
 						{visible.map((member) => (
 							<MemberRow
@@ -177,11 +184,13 @@ export function OrganizationMembers({
 								organizationRole={organization.role}
 								owners={owners}
 								state={state}
+								projects={projects}
+								userId={userId}
 							/>
 						))}
 						{!visible.length && (
 							<TableRow>
-								<TableCell colSpan={4} className="text-muted-foreground">
+								<TableCell colSpan={7} className="text-muted-foreground">
 									{m.settings_no_members()}
 								</TableCell>
 							</TableRow>

@@ -22,6 +22,7 @@ export interface InvitationSummary {
 	role: OrganizationRole;
 	status: string;
 	expiresAt: Date;
+	createdAt: Date;
 	inviterId: string;
 }
 

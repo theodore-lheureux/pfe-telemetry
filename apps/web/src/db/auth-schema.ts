@@ -19,6 +19,8 @@ export const user = appSchema.table("user", {
 	email: text("email").notNull().unique(),
 	emailVerified: boolean("email_verified").default(false).notNull(),
 	image: text("image"),
+	lastSignedInAt: timestamp("last_signed_in_at", { withTimezone: true }),
+	twoFactorEnabled: boolean("two_factor_enabled").default(false).notNull(),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at")
 		.defaultNow()
@@ -165,6 +167,21 @@ export const passkey = appSchema.table(
 		index("passkey_credentialID_idx").on(table.credentialID),
 	],
 );
+
+export const twoFactor = appSchema.table("two_factor", {
+	id: text("id").primaryKey(),
+	userId: text("user_id")
+		.notNull()
+		.unique()
+		.references(() => user.id, { onDelete: "cascade" }),
+	secret: text("secret").notNull(),
+	backupCodes: text("backup_codes").notNull(),
+	verified: boolean("verified").default(true).notNull(),
+	failedVerificationCount: integer("failed_verification_count")
+		.default(0)
+		.notNull(),
+	lockedUntil: timestamp("locked_until", { withTimezone: true }),
+});
 
 export const rateLimit = appSchema.table("rate_limit", {
 	id: text("id").primaryKey(),

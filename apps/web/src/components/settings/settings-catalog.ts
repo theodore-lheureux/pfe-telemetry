@@ -1,16 +1,4 @@
 import { m } from "@recount/i18n/messages";
-import {
-	FingerprintPatternIcon,
-	KeyRoundIcon,
-	type LucideIcon,
-	PaletteIcon,
-	Settings2Icon,
-	ShieldCheckIcon,
-	Trash2Icon,
-	TriangleAlertIcon,
-	UserRoundIcon,
-	UsersIcon,
-} from "lucide-react";
 import type {
 	OrganizationSummary,
 	ProjectSummary,
@@ -31,7 +19,6 @@ interface Setting {
 }
 interface Page {
 	scope: Scope;
-	icon: LucideIcon;
 	label: () => string;
 	permission?: Permission;
 	settings: Setting[];
@@ -40,7 +27,6 @@ interface Page {
 const catalog = {
 	project: {
 		scope: "project",
-		icon: Settings2Icon,
 		label: m.settings_general,
 		settings: [
 			{ id: "project-slug", label: m.slug },
@@ -54,16 +40,26 @@ const catalog = {
 	},
 	"project-customization": {
 		scope: "project",
-		icon: PaletteIcon,
 		label: m.settings_customization,
 		settings: [
 			{ id: "project-details", label: m.settings_project_details },
 			{ id: "entity-name", label: m.name, permission: "project-admin" },
+			{
+				id: "project-tags",
+				label: m.project_tags,
+				keywords: [m.project_add_tag],
+			},
+			{ id: "project-group", label: m.project_group },
+			{
+				id: "project-time-zone",
+				label: m.project_time_zone,
+				keywords: [m.project_date_time],
+			},
+			{ id: "project-week-start", label: m.project_week_start },
 		],
 	},
 	"project-danger": {
 		scope: "project",
-		icon: TriangleAlertIcon,
 		label: m.settings_danger_zone,
 		permission: "project-admin",
 		settings: [
@@ -73,8 +69,7 @@ const catalog = {
 	},
 	"project-members": {
 		scope: "project",
-		icon: ShieldCheckIcon,
-		label: m.project_members,
+		label: m.project_access_control,
 		permission: "project-admin",
 		settings: [
 			{
@@ -82,11 +77,12 @@ const catalog = {
 				label: m.project_access,
 				keywords: [m.project_members],
 			},
+			{ id: "project-default-access", label: m.project_default_access },
+			{ id: "project-inherited-roles", label: m.project_roles },
 		],
 	},
 	credentials: {
 		scope: "project",
-		icon: KeyRoundIcon,
 		label: m.collector_credentials,
 		permission: "project-admin",
 		settings: [
@@ -106,7 +102,6 @@ const catalog = {
 	},
 	organization: {
 		scope: "organization",
-		icon: Settings2Icon,
 		label: m.settings_general,
 		settings: [
 			{ id: "organization-name", label: m.name },
@@ -116,7 +111,6 @@ const catalog = {
 	},
 	"organization-authentication": {
 		scope: "organization",
-		icon: FingerprintPatternIcon,
 		label: m.settings_authentication,
 		settings: [
 			{ id: "available-authentication", label: m.settings_current_auth },
@@ -125,7 +119,6 @@ const catalog = {
 	},
 	"organization-delete": {
 		scope: "organization",
-		icon: Trash2Icon,
 		label: m.settings_delete_organization,
 		settings: [
 			{ id: "delete-organization", label: m.settings_delete_organization },
@@ -133,7 +126,6 @@ const catalog = {
 	},
 	"organization-members": {
 		scope: "organization",
-		icon: UsersIcon,
 		label: m.members,
 		settings: [
 			{ id: "members-heading", label: m.organization_members },
@@ -147,7 +139,6 @@ const catalog = {
 	},
 	user: {
 		scope: "user",
-		icon: UserRoundIcon,
 		label: m.user_profile,
 		settings: [
 			{
@@ -157,6 +148,15 @@ const catalog = {
 			},
 			{ id: "entity-name", label: m.name, keywords: [m.save_name] },
 			{ id: "profile-email", label: m.email_address },
+			{
+				id: "two-factor-authentication",
+				label: m.settings_two_factor,
+				keywords: [
+					m.two_factor_setup,
+					m.two_factor_disable,
+					m.two_factor_regenerate,
+				],
+			},
 			{
 				id: "passkeys",
 				label: m.passkeys,
@@ -177,7 +177,6 @@ const catalog = {
 	},
 	appearance: {
 		scope: "user",
-		icon: PaletteIcon,
 		label: m.appearance_language,
 		settings: [
 			{
@@ -218,7 +217,6 @@ export function getSettingsGroups(context: {
 				return [
 					{
 						section,
-						icon: page.icon,
 						label: page.label(),
 						settings: page.settings
 							.filter((setting) => permitted(setting.permission))

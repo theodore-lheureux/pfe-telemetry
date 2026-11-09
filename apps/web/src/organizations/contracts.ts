@@ -8,6 +8,7 @@ export type FailureReason =
 	| "INVALID_EXECUTION_WINDOW"
 	| "INVALID_EXPIRY"
 	| "INVALID_NAME"
+	| "INVALID_PROJECT_SETTING"
 	| "HOSTS_REQUIRED"
 	| "HOSTS_UNIQUE"
 	| "INVALID_IDENTIFIER"
@@ -27,7 +28,21 @@ export interface ProjectSummary {
 	name: string;
 	slug: string;
 	role: ProjectRole;
+	tags: string[];
+	projectGroup: string;
+	timeZone: string;
+	weekStartsOn: number;
 }
+
+export type ProjectCustomizationChange =
+	| { action: "add-tag"; tag: string }
+	| { action: "remove-tag"; tag: string }
+	| { action: "group"; projectGroup: string }
+	| { action: "time-zone"; timeZone: string }
+	| { action: "week-start"; weekStartsOn: number };
+
+export type ProjectCustomizationInput = ProjectReference &
+	ProjectCustomizationChange;
 
 export interface OrganizationInput {
 	name: string;

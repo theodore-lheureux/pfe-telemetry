@@ -2,7 +2,14 @@ import { m } from "@recount/i18n/messages";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-import { data, editMemberRole, expect, settingsUrl, test } from "./fixtures";
+import {
+	data,
+	editMemberRole,
+	expect,
+	openProjectGrant,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 for (const locale of ["en", "fr"] as const) {
 	test(`typed member and grant forms keep pending drafts and uncertain writes explicit in ${locale}`, async ({
@@ -74,12 +81,13 @@ for (const locale of ["en", "fr"] as const) {
 					await expect(ssr.getByLabel(label, { exact: true })).toHaveCount(0);
 					continue;
 				}
-				const select = ssr.getByLabel(label, { exact: true });
-				await expect(select).toBeDisabled();
-				await expect(select.locator("xpath=ancestor::form")).toHaveAttribute(
-					"method",
-					"post",
-				);
+				await expect(
+					ssr.getByRole("button", {
+						name: m.project_add_member({}, options),
+						exact: true,
+					}),
+				).toBeDisabled();
+				await expect(ssr.getByLabel(label, { exact: true })).toHaveCount(0);
 			}
 		} finally {
 			await noScript.close();
@@ -88,6 +96,7 @@ for (const locale of ["en", "fr"] as const) {
 		for (const kind of ["member", "grant"] as const) {
 			await page.goto(kind === "member" ? membersUrl : grantsUrl);
 			if (kind === "member") await editMemberRole(page, email, locale);
+			else await openProjectGrant(page, email, locale);
 			const select = page.getByLabel(
 				kind === "member"
 					? m.role_for({ email }, options)
@@ -221,6 +230,7 @@ for (const kind of ["member", "grant"] as const) {
 		);
 		await page.goto(url);
 		if (kind === "member") await editMemberRole(page, email);
+		else await openProjectGrant(page, email);
 		const select = page.getByLabel(
 			kind === "member" ? `Role for ${email}` : `Project role for ${email}`,
 			{ exact: true },

@@ -36,9 +36,11 @@ export function formatSample(value: number) {
 function Series({
 	series,
 	result,
+	timeZone,
 }: {
 	series: TelemetrySeries;
 	result: TelemetryResult;
+	timeZone: string;
 }) {
 	const id = useId();
 	const values = series.segments
@@ -100,7 +102,7 @@ function Series({
 					<thead>
 						<tr>
 							<th>{m.continuity_segment()}</th>
-							<th>{m.bucket_start_utc()}</th>
+							<th>{m.bucket_start({ timeZone })}</th>
 							<th>{m.sample_nanoseconds()}</th>
 							<th>{series.unit}</th>
 						</tr>
@@ -112,7 +114,7 @@ function Series({
 									<td className="font-mono text-xs">
 										{segment.id.slice(0, 12)}
 									</td>
-									<td>{formatDate(point.bucketMs)}</td>
+									<td>{formatDate(point.bucketMs, undefined, timeZone)}</td>
 									<td className="font-mono text-xs">{point.timeNs}</td>
 									<td>
 										{point.integer !== null
@@ -132,7 +134,13 @@ function Series({
 		</section>
 	);
 }
-export function ResourceCharts({ result }: { result: TelemetryResult }) {
+export function ResourceCharts({
+	result,
+	timeZone = "UTC",
+}: {
+	result: TelemetryResult;
+	timeZone?: string;
+}) {
 	return (
 		<div className="space-y-4">
 			<p className="text-sm text-muted-foreground">
@@ -140,7 +148,12 @@ export function ResourceCharts({ result }: { result: TelemetryResult }) {
 			</p>
 			{result.series.length ? (
 				result.series.map((series) => (
-					<Series key={series.id} series={series} result={result} />
+					<Series
+						key={series.id}
+						series={series}
+						result={result}
+						timeZone={timeZone}
+					/>
 				))
 			) : (
 				<p role="status">{m.no_node_cpu_or_memory_samples_match_this()}</p>

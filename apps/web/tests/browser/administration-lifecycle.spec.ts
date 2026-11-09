@@ -13,6 +13,7 @@ import {
 	editMemberRole,
 	expect,
 	openInvitationForm,
+	openProjectGrant,
 	openSettingsSection,
 	settingsUrl,
 	test,
@@ -267,7 +268,7 @@ for (const child of [
 		await expect(page).toHaveURL(`${workspace.origin}${destination}`);
 		await expect(
 			page.getByRole("heading", {
-				name: child.project ? "Project access" : "Organization members",
+				name: child.project ? "Access control" : "Organization members",
 				exact: true,
 			}),
 		).toBeVisible();
@@ -606,6 +607,7 @@ for (const kind of ["invitation", "grant"] as const) {
 				.getByRole("button", { name: "Send invitation", exact: true })
 				.click();
 		} else {
+			await openProjectGrant(page, "target@example.invalid");
 			await page
 				.getByRole("button", {
 					name: "Save project grant for target@example.invalid",

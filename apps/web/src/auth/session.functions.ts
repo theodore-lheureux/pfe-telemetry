@@ -18,6 +18,7 @@ export const getCurrentUser = createServerFn({ method: "GET" }).handler(
 					name: session.user.name,
 					image: session.user.image,
 					gravatarUrl: gravatarUrl(session.user.email),
+					twoFactorEnabled: !!session.user.twoFactorEnabled,
 				}
 			: null;
 	},

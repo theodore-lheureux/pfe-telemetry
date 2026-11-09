@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { UserRoundIcon } from "lucide-react";
 import {
 	getSettingsGroups,
 	searchSettings,
@@ -21,6 +20,10 @@ const project: ProjectSummary = {
 	name: "Private project value",
 	slug: "private",
 	role: "viewer",
+	tags: [],
+	projectGroup: "",
+	timeZone: "UTC",
+	weekStartsOn: 0,
 };
 
 test("setting search includes individual controls and excludes unauthorized and private data", () => {
@@ -54,7 +57,6 @@ test("setting search normalizes French accents without indexing DOM or values", 
 			pages: [
 				{
 					section: "user",
-					icon: UserRoundIcon,
 					label: "Profil",
 					settings: [
 						{ id: "passkeys", label: "Clés d’accès", keywords: "Renommer" },

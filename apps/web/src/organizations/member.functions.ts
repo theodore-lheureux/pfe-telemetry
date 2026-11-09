@@ -13,7 +13,13 @@ export const listOrganizationMembers = createServerFn({ method: "GET" })
 	.validator(parseOrganizationReference)
 	.handler(({ data, context: { identity, database, auth, headers } }) =>
 		withActor(identity, (actor) =>
-			members.listMembers(database, auth, headers, actor, data.organizationId),
+			members.listOrganizationMembers(
+				database,
+				auth,
+				headers,
+				actor,
+				data.organizationId,
+			),
 		),
 	);
 export const listProjectGrantCandidates = createServerFn({ method: "GET" })

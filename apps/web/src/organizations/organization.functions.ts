@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { withActor } from "../auth/actor.server";
 import { privateOperation } from "../auth/private-operation";
 import * as organizations from "./organizations.server";
+import { parseProjectCustomization } from "./project-customization";
 import * as projects from "./projects.server";
 import {
 	parseCreateProjectInput,
@@ -81,6 +82,15 @@ export const listProjectMembers = createServerFn({ method: "GET" })
 	.handler(({ data, context: { identity, database } }) =>
 		withActor(identity, (actor) =>
 			projects.listProjectMembers(database, actor, data),
+		),
+	);
+
+export const updateProjectCustomization = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
+	.validator(parseProjectCustomization)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			projects.updateProjectCustomization(database, actor, data),
 		),
 	);
 export const setProjectMember = createServerFn({ method: "POST" })

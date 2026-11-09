@@ -54,6 +54,7 @@ export const Route = createFileRoute(
 });
 
 function Execution() {
+	const { project } = Route.useRouteContext();
 	const { entry, telemetry } = Route.useLoaderData();
 	const from = telemetry.data?.from ?? entry.startedAt;
 	const to =
@@ -69,8 +70,9 @@ function Execution() {
 			</PageHeading>
 			<p>
 				{m.recorded_interval({
-					from: formatDate(entry.startedAt),
-					to: formatDate(entry.endedAt),
+					from: formatDate(entry.startedAt, undefined, project.timeZone),
+					to: formatDate(entry.endedAt, undefined, project.timeZone),
+					timeZone: project.timeZone,
 				})}
 			</p>
 			{entry.canEdit && (
@@ -96,7 +98,7 @@ function Execution() {
 					<p>{operationMessage(telemetry.error)}</p>
 				</div>
 			) : (
-				<ResourceCharts result={telemetry.data} />
+				<ResourceCharts result={telemetry.data} timeZone={project.timeZone} />
 			)}
 		</>
 	);
