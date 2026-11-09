@@ -32,3 +32,8 @@ Une exécution ne suit pas l’état d’une tâche, en cours ou terminée. Elle
 ## Données manquantes
 
 Recount ne comble jamais les trous. Quand une mesure manque, le graphique affiche un vide plutôt qu’un zéro. Les mesures gardent leur horodatage d’origine, même quand elles arrivent en retard.
+
+## Prochaines étapes
+
+- [Connectez une machine](/fr/docs/quick-start/) et enregistrez votre première exécution.
+- [Configurez le collecteur](/fr/docs/collector/) pour vos machines.

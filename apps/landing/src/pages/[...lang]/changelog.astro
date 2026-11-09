@@ -1,8 +1,10 @@
 ---
 import { getCollection, render } from "astro:content";
+import Icon from "../../components/Icon.astro";
 import { type Lang, langPaths } from "../../i18n";
 import { strings } from "../../i18n/strings";
 import Page from "../../layouts/Page.astro";
+import { icons } from "../../lib/site";
 
 export const getStaticPaths = langPaths;
 
@@ -23,14 +25,26 @@ const format = new Intl.DateTimeFormat(lang === "fr" ? "fr-CA" : "en", {
 			await Promise.all(
 				entries.map(async (entry) => {
 					const { Content } = await render(entry);
+					const anchor = entry.id.slice(lang.length + 1);
 					return (
-						<li class="grid gap-2 border-t py-10 sm:grid-cols-[160px_1fr] sm:gap-8">
-							<time datetime={entry.data.date.toISOString().slice(0, 10)} class="text-muted-foreground">
+						<li id={anchor} class="group grid scroll-mt-20 gap-2 border-t py-10 sm:grid-cols-[160px_1fr] sm:gap-8">
+							<time datetime={entry.data.date.toISOString().slice(0, 10)} class="text-muted-foreground sm:pt-0.5">
 								{format.format(entry.data.date)}
 							</time>
-							<article class="prose">
-								<h2>{entry.data.title}</h2>
-								<Content />
+							<article>
+								<h2 class="flex items-center gap-2 font-medium text-xl tracking-tight">
+									{entry.data.title}
+									<a
+										href={`#${anchor}`}
+										aria-label={t.permalink}
+										class="rounded-sm text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+									>
+										<Icon svg={icons.link} class="size-4" />
+									</a>
+								</h2>
+								<div class="changelog prose mt-3">
+									<Content />
+								</div>
 							</article>
 						</li>
 					);
@@ -39,3 +53,17 @@ const format = new Intl.DateTimeFormat(lang === "fr" ? "fr-CA" : "en", {
 		}
 	</ol>
 </Page>
+
+<style>
+	/* Change groups (New, Improved, Fixed) read as small labels, like the pricing table's. */
+	.changelog :global(h3) {
+		margin-top: 1.5rem;
+		font-size: 13px;
+		font-weight: 500;
+		letter-spacing: 0;
+		color: var(--primary);
+	}
+	.changelog :global(h3 + ul) {
+		margin-top: 0.5rem;
+	}
+</style>

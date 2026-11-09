@@ -32,3 +32,8 @@ An execution doesn't track whether a job is running or finished. It records the 
 ## Missing data
 
 Recount never fills in gaps. When a reading is missing, the chart shows a gap instead of a zero. Measurements keep their original timestamps, even when they arrive late.
+
+## Next steps
+
+- [Connect a machine](/docs/quick-start/) and record your first execution.
+- [Configure the collector](/docs/collector/) for your machines.

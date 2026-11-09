@@ -44,3 +44,8 @@ Each queue is tied to one ingestion address and one token. If you change either,
 2. Run `recount-collector --drain` with the old token to send anything still queued.
 3. Rotate the credential and replace the token file.
 4. Start the collector again with a new queue folder.
+
+## Next steps
+
+- [Record an execution](/docs/quick-start/#5-record-an-execution) to see what a machine was doing.
+- [Host Recount yourself](/docs/self-hosting/) if your data must stay on your network.

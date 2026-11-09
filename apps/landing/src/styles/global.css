@@ -79,6 +79,17 @@
 }
 
 @layer base {
+	/* Even line breaks: no one-word last lines in paragraphs, balanced headings. */
+	p,
+	li {
+		text-wrap: pretty;
+	}
+	h1,
+	h2,
+	h3 {
+		text-wrap: balance;
+	}
+
 	* {
 		@apply border-border outline-ring/50;
 	}

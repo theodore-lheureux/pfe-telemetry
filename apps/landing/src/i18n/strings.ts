@@ -50,6 +50,8 @@ const en = {
 		title: "Features",
 		intro:
 			"Built to give you a clear, accurate record of how your machines are used.",
+		docsLink: "Read the docs",
+		pricingLink: "See pricing",
 		items: [
 			{
 				title: "Reliable",
@@ -356,9 +358,12 @@ const en = {
 	changelog: {
 		title: "Changelog",
 		intro: "New features and improvements in Recount.",
+		permalink: "Link to this entry",
 	},
 	legal: {
 		updated: "Last updated",
+		contents: "On this page",
+		sectionLink: "Link to this section",
 	},
 };
 
@@ -413,6 +418,8 @@ const fr: Strings = {
 		title: "Fonctionnalités",
 		intro:
 			"Conçu pour vous donner un portrait clair et exact de l’utilisation de vos machines.",
+		docsLink: "Lire la documentation",
+		pricingLink: "Voir les tarifs",
 		items: [
 			{
 				title: "Fiable",
@@ -730,9 +737,12 @@ const fr: Strings = {
 	changelog: {
 		title: "Nouveautés",
 		intro: "Les nouvelles fonctionnalités et améliorations de Recount.",
+		permalink: "Lien vers cette entrée",
 	},
 	legal: {
 		updated: "Dernière mise à jour :",
+		contents: "Sur cette page",
+		sectionLink: "Lien vers cette section",
 	},
 };
 

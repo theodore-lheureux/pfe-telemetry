@@ -1,25 +1,74 @@
 ---
+import Container from "../components/Container.astro";
 import Footer from "../components/Footer.astro";
 import Header from "../components/Header.astro";
+import HeroMosaic from "../components/HeroMosaic.astro";
+import Icon from "../components/Icon.astro";
 import Layout from "../layouts/Layout.astro";
-import { buttonClass } from "../lib/site";
+import { icons } from "../lib/site";
+
+// One static page serves every missing path, so it is in English with a French line.
+const destinations = [
+	{ href: "/", title: "Home", text: "What Recount is and how it works." },
+	{
+		href: "/docs/",
+		title: "Documentation",
+		text: "Connect a machine and learn the basics.",
+	},
+	{
+		href: "/pricing/",
+		title: "Pricing",
+		text: "Cloud, self-hosted and Enterprise.",
+	},
+	{ href: "/changelog/", title: "Changelog", text: "What's new in Recount." },
+];
 ---
 
-<Layout title="Page not found · Recount" description="This page doesn't exist." lang="en" translated={false}>
+<Layout title="Page not found · Recount" description="This page doesn't exist." lang="en" translated={false} noindex>
 	<Header lang="en" />
-	<main class="mx-auto flex min-h-[calc(100svh-3.5rem-200px)] max-w-[1240px] flex-col items-start justify-center px-4 py-24 sm:px-6 lg:px-8">
-		<p class="font-medium text-primary">404</p>
-		<h1 class="mt-2 font-medium text-4xl tracking-tight">Page not found</h1>
-		<p class="mt-4 max-w-[48ch] text-base text-muted-foreground leading-relaxed">
-			The page you were looking for doesn't exist or has moved.
-		</p>
-		<p lang="fr" class="mt-2 max-w-[48ch] text-muted-foreground leading-relaxed">
-			Cette page n’existe pas ou a été déplacée. <a href="/fr/" class="text-primary underline underline-offset-2">Retour à l’accueil</a>
-		</p>
-		<div class="mt-8 flex flex-wrap gap-2">
-			<a href="/" class={buttonClass("primary")}>Back to home</a>
-			<a href="/docs/" class={buttonClass("outline")}>Read the docs</a>
+	<main class="relative isolate overflow-hidden border-b">
+		<div aria-hidden="true" class="lost-art absolute inset-0 -z-10 opacity-30">
+			<HeroMosaic />
 		</div>
+		<Container class="py-24">
+			<p class="font-medium text-primary">404</p>
+			<h1 class="mt-2 font-medium text-4xl tracking-tight">Page not found</h1>
+			<p class="mt-4 max-w-[48ch] text-base text-muted-foreground leading-relaxed">
+				The page you were looking for doesn't exist or has moved.
+			</p>
+			<p lang="fr" class="mt-2 max-w-[60ch] text-muted-foreground leading-relaxed">
+				Cette page n’existe pas ou a été déplacée.{" "}
+				<a href="/fr/" class="font-medium text-foreground underline underline-offset-2 hover:text-primary">Retour à l’accueil</a>
+			</p>
+			<ul class="mt-12 grid max-w-[720px] gap-3 sm:grid-cols-2">
+				{
+					destinations.map((item) => (
+						<li>
+							<a
+								href={item.href}
+								class="group flex h-full items-start justify-between gap-4 rounded-md border bg-card p-4 transition-colors hover:border-primary"
+							>
+								<span>
+									<span class="block font-medium">{item.title}</span>
+									<span class="mt-1 block text-muted-foreground">{item.text}</span>
+								</span>
+								<Icon
+									svg={icons.chevron}
+									class="mt-0.5 size-4 shrink-0 -rotate-90 text-muted-foreground transition-colors group-hover:text-primary"
+								/>
+							</a>
+						</li>
+					))
+				}
+			</ul>
+		</Container>
 	</main>
 	<Footer lang="en" translated={false} />
 </Layout>
+
+<style>
+	/* The tiles stay at the far right, well away from the text. */
+	.lost-art {
+		mask-image: linear-gradient(to right, transparent 60%, black 95%);
+	}
+</style>

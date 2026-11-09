@@ -48,3 +48,8 @@ C’est l’adresse de Recount Cloud. Si vous [hébergez Recount vous-même](/fr
 Dans le projet, ouvrez **Exécutions** et choisissez **Enregistrer l’exécution**. Choisissez la source, éventuellement un hôte, ainsi qu’un début et une fin. Une période peut durer jusqu’à sept jours.
 
 Ouvrez l’exécution enregistrée pour voir la télémétrie de la machine pendant cette période.
+
+## Prochaines étapes
+
+- [Faites fonctionner le collecteur sur chaque machine à surveiller](/fr/docs/collector/), en arrière-plan.
+- [Découvrez comment s’agencent projets, rôles et exécutions](/fr/docs/concepts/).
