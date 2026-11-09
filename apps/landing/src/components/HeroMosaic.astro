@@ -50,6 +50,12 @@ import { MARK_PATHS } from "../lib/mark";
 		out float vLight;
 		out float vFade;
 		out float vPulse;
+		out float vSpill;
+		out float vSpark;
+		// How much a side faces the nearest lit line, 0 to 1.
+		out float vFacing;
+		// 0 at the base of a side, 1 at its top.
+		out float vHeight;
 
 		float hash(vec2 p) {
 			return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -67,26 +73,43 @@ import { MARK_PATHS } from "../lib/mark";
 			return fract(sin(n * 91.345) * 47453.5453);
 		}
 
-		// A wall of pillars along one grid line lights up one pillar after another, holds,
-		// then fades as a whole. Each cycle picks its line, orientation and direction from
-		// the cycle number, so the pattern doesn't visibly repeat. Returns 0 to 1.
-		float wall(vec2 cell, float t, float seed) {
-			const float period = 12.0;
-			const float span = 14.0;
-			const float speed = 7.0;
+		// Now and then a band of light runs along a whole grid line from its far end: each
+		// pillar switches on, glows for about a second, then dims behind the band. Each cycle picks its line and
+		// orientation from the cycle number, so the pattern doesn't visibly repeat.
+		// Returns (lit, spill, spark, side): lit for pillars on the line, spill for light
+		// falling on the next few lines, spark for the switch-on flash, and side, the grid
+		// direction from this pillar toward the line (+1 or -1 along the line's normal axis,
+		// with the axis in the sign of the fourth component's magnitude: 1 = y, 2 = x).
+		vec4 wall(vec2 cell, float t, float seed) {
+			// One line at a time: a sweep (about 6 s) plus its tail, then a short pause.
+			const float period = 9.5;
+			// Half the length of a line, in cells: about the radius where the plane fades out.
+			const float reach = 26.0;
+			const float speed = 9.0;
 			float cycle = floor(t / period);
 			float phase = t - cycle * period;
-			float pick = hash1(cycle * 13.1 + seed);
-			bool rows = pick < 0.5;
+			bool rows = hash1(cycle * 13.1 + seed) < 0.5;
 			float line = floor(mix(-4.0, 8.0, hash1(cycle * 7.7 + seed + 3.0)) + 0.5);
-			if (abs((rows ? cell.y : cell.x) - line) > 0.5) return 0.0;
-			float dir = hash1(cycle * 3.3 + seed + 9.0) < 0.5 ? 1.0 : -1.0;
-			float origin = mix(-2.0, 4.0, hash1(cycle * 5.9 + seed + 1.0)) - dir * span * 0.5;
-			float progress = ((rows ? cell.x : cell.y) - origin) * dir;
-			if (progress < 0.0 || progress > span) return 0.0;
-			float lit = smoothstep(0.0, 0.9, phase * speed - progress);
-			float done = span / speed;
-			return lit * (1.0 - smoothstep(done + 0.6, done + 2.0, phase));
+			float offset = line - (rows ? cell.y : cell.x);
+			float across = abs(offset);
+			if (across > 2.5) return vec4(0.0);
+			// Columns start at the far end of the plane, rows at the right edge.
+			float progress = reach - (rows ? cell.x : cell.y);
+			if (progress < 0.0 || progress > 2.0 * reach) return vec4(0.0);
+			float behind = phase * speed - progress;
+			// Seconds since this pillar was reached by the band.
+			float since = behind / speed;
+			// Ease on over about half a second; dim slowly, like a light rather than paint.
+			float on = smoothstep(0.0, 0.5, since);
+			float off = 1.0 - smoothstep(0.8, 1.7, since);
+			float lit = on * off;
+			float axis = rows ? 1.0 : 2.0;
+			if (across > 0.5) {
+				float spill = lit * 0.7 * exp(-1.1 * (across - 1.0));
+				return vec4(0.0, spill, 0.0, axis * sign(offset));
+			}
+			float spark = smoothstep(0.0, 0.35, since) * exp(-2.2 * max(since - 0.35, 0.0));
+			return vec4(lit, 0.0, spark * off, 0.0);
 		}
 
 		void main() {
@@ -99,9 +122,21 @@ import { MARK_PATHS } from "../lib/mark";
 			// Every tile stands at least a little; hills add height on top. About 5% of tiles
 			// stay flush to keep the grid readable.
 			float base = 3.0 + 6.0 * jitter;
-			vec2 cell = floor(center / ${CELL}.0 + 0.5);
-			vPulse = max(wall(cell, time, 0.0), wall(cell, time + 6.0, 17.0));
-			float lift = (base + level * (22.0 + 16.0 * jitter)) * step(0.05, jitter) + 5.0 * vPulse;
+			// Grid cell of this pillar. With an even tile count, centers sit exactly halfway
+			// between whole cells, so round with a quarter-cell bias: floor(x + 0.5) there flips
+			// between neighbours on float error and split lit lines.
+			vec2 cell = floor(center / ${CELL}.0 + 0.25);
+			vec4 light = wall(cell, time, 0.0);
+			vPulse = light.x;
+			vSpark = light.z;
+			vSpill = light.y;
+			// Grid direction toward the lit line, and this face's outward normal.
+			vec2 toward = abs(light.w) < 1.5 ? vec2(0.0, sign(light.w)) : vec2(sign(light.w), 0.0);
+			vec2 normal = part.y < 0.5 ? vec2(0.0) : part.y < 1.5 ? vec2(0.0, -1.0) : part.y < 2.5 ? vec2(1.0, 0.0) : part.y < 3.5 ? vec2(0.0, 1.0) : vec2(-1.0, 0.0);
+			vFacing = part.y < 0.5 ? 0.0 : max(dot(normal, toward), 0.0);
+			vHeight = part.x;
+			float lift = (base + level * (22.0 + 16.0 * jitter)) * step(0.05, jitter);
+			lift += 5.0 * vPulse + 3.0 * vSpark;
 			vGlow = 0.28 * level;
 			vFace = part.y;
 			// Sides are shaded by the direction they face: front, right, back, left.
@@ -120,7 +155,10 @@ import { MARK_PATHS } from "../lib/mark";
 		uniform vec3 logoTint;
 		uniform vec3 glow;
 		uniform vec3 pulse;
+		uniform vec3 ink;
 		uniform sampler2D mark;
+		in float vFacing;
+		in float vHeight;
 		in vec2 vUv;
 		flat in int vShade;
 		flat in float vLogo;
@@ -129,6 +167,8 @@ import { MARK_PATHS } from "../lib/mark";
 		in float vLight;
 		in float vFade;
 		in float vPulse;
+		in float vSpill;
+		in float vSpark;
 		out vec4 color;
 
 		void main() {
@@ -141,13 +181,31 @@ import { MARK_PATHS } from "../lib/mark";
 			float alpha = (vFace > 0.5 ? 1.0 : 1.0 - smoothstep(-edge, edge, dist)) * vFade;
 			if (alpha < 0.01) discard;
 			vec3 fill = fills[vShade];
-			if (vLogo > 0.5 && vFace < 0.5) {
-				float m = texture(mark, (vUv - 0.5) / 0.78 + 0.5).a;
-				fill = mix(fill, logoTint, m * 0.9);
-			}
+			float m = vLogo > 0.5 && vFace < 0.5 ? texture(mark, (vUv - 0.5) / 0.78 + 0.5).a : 0.0;
+			fill = mix(fill, logoTint, m * 0.9);
 			vec3 rgb = mix(fill, glow, vGlow) * vLight;
-			// Lit walls: the top glows most, the sides keep a little of their shading.
-			rgb = mix(rgb, pulse * (vFace < 0.5 ? 1.0 : vLight), vPulse * 0.75);
+
+			// Light cast by a nearby wall: it falls on the tops of neighbouring pillars and on
+			// the sides that face the wall, strongest near their top edge. Sides facing away stay
+			// in their own shade.
+			if (vSpill > 0.0) {
+				float reach = vFace < 0.5 ? 0.18 : vFacing * (0.15 + 0.35 * vHeight);
+				rgb = mix(rgb, max(rgb, pulse), vSpill * reach);
+			}
+
+			if (vPulse > 0.0) {
+				// Lit pillars are emitters, not painted surfaces: flat tones with no directional
+				// shadow, a hot core on the top face and a brighter flash at the head of the sweep.
+				vec3 hot = mix(pulse, vec3(1.0), 0.4);
+				float core = vFace < 0.5 ? 1.0 - smoothstep(0.1, 0.75, length(vUv - 0.5) * 1.5) : 0.0;
+				vec3 emit = vFace < 0.5 ? mix(pulse, hot, 0.1 + 0.3 * core) : pulse * (vLight > 0.8 ? 0.9 : 0.78);
+				emit = mix(emit, hot, vSpark * 0.45);
+				emit = mix(emit, ink, m * 0.22);
+				// A soft bright rim along the top edge and up the sides, in place of an outline.
+				float rim = vFace < 0.5 ? smoothstep(-0.14, 0.0, dist) : smoothstep(0.6, 1.0, vHeight);
+				emit = mix(emit, hot, rim * 0.35);
+				rgb = mix(rgb, emit, vPulse * 0.85);
+			}
 			color = vec4(rgb * alpha, alpha);
 		}`;
 
@@ -240,10 +298,10 @@ import { MARK_PATHS } from "../lib/mark";
 				const y1 = cy + half;
 				// uv v runs top to bottom so the mark texture (drawn y-down) reads upright.
 				quad([[x0, y0, 1, 0, 1], [x1, y0, 1, 1, 1], [x1, y1, 1, 1, 0], [x0, y1, 1, 0, 0]], cx, cy, shade, logo, 0, jitter);
-				quad([[x0, y0, 0, 0, 0], [x1, y0, 0, 0, 0], [x1, y0, 1, 0, 0], [x0, y0, 1, 0, 0]], cx, cy, shade, logo, 1, jitter);
-				quad([[x1, y0, 0, 0, 0], [x1, y1, 0, 0, 0], [x1, y1, 1, 0, 0], [x1, y0, 1, 0, 0]], cx, cy, shade, logo, 2, jitter);
-				quad([[x1, y1, 0, 0, 0], [x0, y1, 0, 0, 0], [x0, y1, 1, 0, 0], [x1, y1, 1, 0, 0]], cx, cy, shade, logo, 3, jitter);
-				quad([[x0, y1, 0, 0, 0], [x0, y0, 0, 0, 0], [x0, y0, 1, 0, 0], [x0, y1, 1, 0, 0]], cx, cy, shade, logo, 4, jitter);
+				quad([[x0, y0, 0, 0, 0], [x1, y0, 0, 1, 0], [x1, y0, 1, 1, 0], [x0, y0, 1, 0, 0]], cx, cy, shade, logo, 1, jitter);
+				quad([[x1, y0, 0, 0, 0], [x1, y1, 0, 1, 0], [x1, y1, 1, 1, 0], [x1, y0, 1, 0, 0]], cx, cy, shade, logo, 2, jitter);
+				quad([[x1, y1, 0, 0, 0], [x0, y1, 0, 1, 0], [x0, y1, 1, 1, 0], [x1, y1, 1, 0, 0]], cx, cy, shade, logo, 3, jitter);
+				quad([[x0, y1, 0, 0, 0], [x0, y0, 0, 1, 0], [x0, y0, 1, 1, 0], [x0, y1, 1, 0, 0]], cx, cy, shade, logo, 4, jitter);
 			}
 		}
 		return {
@@ -341,6 +399,8 @@ import { MARK_PATHS } from "../lib/mark";
 			const dark = background[0] + background[1] + background[2] < 1.5;
 			const bright = primary.map((channel) => Math.min(1, channel * 1.6)) as Rgb;
 			gl!.uniform3fv(uniform("pulse"), dark ? primary : bright);
+			// A deep teal for the mark on lit pillars.
+			gl!.uniform3fv(uniform("ink"), mix(primary, [0, 0, 0], dark ? 0.62 : 0.5));
 		}
 
 		gl.enable(gl.DEPTH_TEST);

@@ -1,11 +1,14 @@
 ---
 import type { Lang } from "../i18n";
 import { strings } from "../i18n/strings";
+import { MARK_PATHS } from "../lib/mark";
 import Container from "./Container.astro";
 
-// Abstract step drawings built from the Tide Core reference components: unit tiles with
-// 4px corners and a 4px usage meter, line charts with 1.5px smooth lines, horizontal
-// gridlines only, muted series, and teal reserved for the selection.
+// The three steps as one story, drawn with the Tide Core reference components: 4px
+// corners, 1px rules, thin bars, horizontal gridlines only, Lucide icons, muted
+// series, and teal reserved for Recount, the selection and the machine being followed.
+// 1. Three machines feed Recount. 2. A moment is marked on the timeline. 3. That moment,
+// opened: every machine in its window, web-01 in teal.
 interface Props {
 	lang: Lang;
 }
@@ -13,59 +16,130 @@ interface Props {
 const t = strings[Astro.props.lang].how;
 const W = 240;
 const H = 140;
+const MOMENT = "v2.4";
 
-// One activity series over the whole timeline, with a change inside the selected window.
-const series = [
-	22, 24, 23, 26, 25, 24, 27, 26, 25, 27, 26, 30, 44, 58, 52, 61, 47, 33, 28,
-	26, 27, 25, 26, 24,
+// Lucide icons (lucide.dev, ISC licence), inner markup of 24×24 stroke icons.
+const ICONS = {
+	server:
+		'<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+	database:
+		'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+	cpu: '<rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/>',
+};
+
+// Activity for three machines over 09:00–15:00. web-01 is the one followed through.
+const MACHINES = [
+	{
+		name: "web-01",
+		icon: ICONS.server,
+		values: [
+			22, 24, 23, 26, 25, 24, 27, 26, 25, 27, 26, 30, 44, 58, 52, 61, 47, 33,
+			28, 26, 27, 25, 26, 24,
+		],
+	},
+	{
+		name: "db-01",
+		icon: ICONS.database,
+		values: [
+			18, 19, 18, 20, 19, 21, 20, 19, 20, 22, 24, 28, 36, 40, 38, 41, 35, 27,
+			23, 21, 20, 19, 20, 19,
+		],
+	},
+	{
+		name: "ci-runner",
+		icon: ICONS.cpu,
+		values: [
+			10, 11, 10, 10, 12, 11, 10, 11, 10, 11, 12, 13, 16, 20, 24, 22, 19, 15,
+			13, 12, 11, 11, 10, 10,
+		],
+	},
 ];
+const points = MACHINES[0].values.length;
 const win = { from: 10.5, to: 17.5 };
+const indexAt = (hours: number) => ((hours - 9) / 6) * (points - 1);
+const timeLabel = (hours: number) =>
+	`${String(Math.floor(hours)).padStart(2, "0")}:${hours % 1 ? "30" : "00"}`;
 
-// Smooth line through points (Catmull-Rom to Bézier), like the kit's monotone lines.
-function smooth(points: [number, number][]) {
-	let d = `M${points[0][0].toFixed(1)} ${points[0][1].toFixed(1)}`;
-	for (let i = 0; i < points.length - 1; i++) {
-		const [p0, p1, p2, p3] = [
-			points[i - 1] ?? points[i],
-			points[i],
-			points[i + 1],
-			points[i + 2] ?? points[i + 1],
-		];
-		const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
-		const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
-		d += `C${c1[0].toFixed(1)} ${c1[1].toFixed(1)} ${c2[0].toFixed(1)} ${c2[1].toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
-	}
-	return d;
-}
+// Plot area for step two.
+const plot = { left: 22, right: W - 22, top: 38, bottom: 104 };
+const yOf = (v: number) => plot.bottom - (v / 66) * (plot.bottom - plot.top);
+const gridlines = [plot.top, (plot.top + plot.bottom) / 2, plot.bottom];
 
-const plot = { left: 20, right: W - 20, top: 24, bottom: H - 24 };
-const yOf = (v: number) => plot.bottom - (v / 70) * (plot.bottom - plot.top);
-const gridlines = [0, 1, 2, 3].map(
-	(k) => plot.top + (k * (plot.bottom - plot.top)) / 3,
-);
-
-// Step two: the full timeline.
+// Step two: web-01 over the whole timeline, with the moment selected and named.
 const xFull = (i: number) =>
-	plot.left + (i / (series.length - 1)) * (plot.right - plot.left);
-const fullLine = smooth(series.map((v, i) => [xFull(i), yOf(v)]));
-const selX0 = xFull(win.from);
-const selX1 = xFull(win.to);
-
-// Step three: the selected window, zoomed to fill the plot.
-const zoomIndices = series
-	.map((_, i) => i)
-	.filter((i) => i >= Math.floor(win.from) && i <= Math.ceil(win.to));
-const xZoom = (i: number) =>
-	plot.left + ((i - win.from) / (win.to - win.from)) * (plot.right - plot.left);
-const zoomLine = smooth(zoomIndices.map((i) => [xZoom(i), yOf(series[i])]));
-
-// Step one: a 3×2 grid of unit tiles with usage meters.
-const tiles = [0.62, 0.38, 0.81, 0.27, 0.55, 0.7].map((fill, k) => ({
-	x: 24 + (k % 3) * 68,
-	y: 26 + Math.floor(k / 3) * 48,
-	fill,
-	label: 22 + ((k * 7) % 3) * 6,
+	plot.left + (i / (points - 1)) * (plot.right - plot.left);
+// One thin bar per time bucket; the buckets inside the moment are teal.
+const barWidth = ((plot.right - plot.left) / (points - 1)) * 0.45;
+const inMoment = (i: number) => i >= win.from && i <= win.to;
+const bars = MACHINES[0].values.map((v, i) => ({
+	x: xFull(i) - barWidth / 2,
+	y: yOf(v),
+	height: plot.bottom - yOf(v),
+	selected: inMoment(i),
 }));
+// A thin bracket spans exactly the teal bars, with the moment's tag centred on it.
+const selected = bars.filter((bar) => bar.selected);
+const bracket = {
+	x0: selected[0].x,
+	x1: selected[selected.length - 1].x + barWidth,
+	y: Math.min(...selected.map((bar) => bar.y)) - 6,
+};
+const tagX = (bracket.x0 + bracket.x1) / 2;
+const fullTicks = [9, 11, 13, 15].map((hours, k, all) => ({
+	x: xFull(indexAt(hours)),
+	label: timeLabel(hours),
+	anchor: k === 0 ? "start" : k === all.length - 1 ? "end" : "middle",
+}));
+
+// Step three: the moment opened, one row of thin bars per machine (small multiples), on
+// a shared scale so the rows compare. web-01 is teal; the others are muted.
+const rowStep = 0.25;
+const samples = Array.from(
+	{ length: Math.round((win.to - win.from) / rowStep) + 1 },
+	(_, j) => win.from + j * rowStep,
+);
+const valueAt = (values: number[], at: number) => {
+	const i = Math.floor(at);
+	const f = at - i;
+	return (
+		values[i] + (values[Math.min(i + 1, values.length - 1)] - values[i]) * f
+	);
+};
+const strip = { left: 66, right: W - 22 };
+const stripBar = ((strip.right - strip.left) / (samples.length - 1)) * 0.5;
+const xStrip = (at: number) =>
+	strip.left +
+	((at - win.from) / (win.to - win.from)) * (strip.right - strip.left);
+const rows = MACHINES.map((machine, k) => {
+	const baseline = 52 + k * 24;
+	return {
+		name: machine.name,
+		lead: k === 0,
+		baseline,
+		bars: samples.map((at) => {
+			const height = (valueAt(machine.values, at) / 66) * 20;
+			return { x: xStrip(at) - stripBar / 2, y: baseline - height, height };
+		}),
+	};
+});
+// Ticks across the whole window (about 11:45 to 13:35), on the half hours.
+const zoomTicks = [12, 12.5, 13, 13.5].map((hours) => ({
+	x: xStrip(indexAt(hours)),
+	label: timeLabel(hours),
+}));
+
+// Step one: the machines as labelled nodes, each linked to Recount.
+const node = { x: 172, y: 52, size: 36 };
+const machineNodes = MACHINES.map((machine, k) => {
+	const y = 28 + k * 31;
+	const from = { x: 98, y: y + 11 };
+	const to = { x: node.x, y: node.y + node.size / 2 };
+	return {
+		...machine,
+		y,
+		path: `M${from.x} ${from.y}C${from.x + 38} ${from.y} ${to.x - 38} ${to.y} ${to.x} ${to.y}`,
+	};
+});
 ---
 
 <section aria-labelledby="how-it-works" class="scroll-mt-14 border-b bg-card">
@@ -82,31 +156,115 @@ const tiles = [0.62, 0.38, 0.81, 0.27, 0.55, 0.7].map((fill, k) => ({
 					<li class="flex flex-col">
 						<div aria-hidden="true" class="step-panel relative aspect-[12/7] overflow-hidden rounded-md border bg-background">
 							<svg viewBox={`0 0 ${W} ${H}`} class="absolute inset-0 size-full" fill="none">
-								{i === 0 &&
-									tiles.map((t) => (
-										<g>
-											<rect x={t.x + 0.5} y={t.y + 0.5} width="59" height="39" rx="4" class="fill-card stroke-border" />
-											<rect x={t.x + 8} y={t.y + 9} width={t.label} height="4" rx="2" class="fill-input" />
-											<rect x={t.x + 8} y={t.y + 27} width="44" height="4" rx="2" class="fill-border" />
-											<rect x={t.x + 8} y={t.y + 27} width={44 * t.fill} height="4" rx="2" class="fill-muted-foreground" />
-										</g>
-									))}
-								{i > 0 &&
-									gridlines.map((y) => <line x1={plot.left} x2={plot.right} y1={y + 0.5} y2={y + 0.5} class="stroke-border" />)}
-								{i === 1 && (
+								<text x="12" y="17" class="figure-label fill-muted-foreground">
+									{String(i + 1).padStart(2, "0")}
+								</text>
+
+								{i === 0 && (
 									<>
-										<rect x={selX0} y={plot.top - 8} width={selX1 - selX0} height={plot.bottom - plot.top + 16} rx="2" class="fill-accent" fill-opacity="0.7" />
-										<path d={fullLine} class="stroke-muted-foreground" stroke-width="1.5" stroke-linejoin="round" />
-										<rect x={selX0 + 0.5} y={plot.top - 7.5} width={selX1 - selX0 - 1} height={plot.bottom - plot.top + 15} rx="2" class="stroke-primary" />
+										{machineNodes.map((m) => (
+											<path d={m.path} class="stroke-border" stroke-width="1" />
+										))}
+										{machineNodes.map((m) => (
+											<g>
+												<rect x="20.5" y={m.y + 0.5} width="77" height="21" rx="4" class="fill-card stroke-border" />
+												<g
+													transform={`translate(27 ${m.y + 5.5}) scale(0.4167)`}
+													class="stroke-muted-foreground"
+													stroke-width="2.2"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+													set:html={m.icon}
+												/>
+												<text x="41" y={m.y + 13.5} class="figure-label fill-foreground">
+													{m.name}
+												</text>
+											</g>
+										))}
+										<rect
+											x={node.x + 0.5}
+											y={node.y + 0.5}
+											width={node.size - 1}
+											height={node.size - 1}
+											rx="4"
+											class="fill-card stroke-primary"
+										/>
+										<g transform={`translate(${node.x + 7} ${node.y + 7}) scale(0.92)`} class="fill-primary">
+											{MARK_PATHS.map((d) => (
+												<path d={d} />
+											))}
+										</g>
+										<text x={node.x + node.size / 2} y={node.y + node.size + 13} text-anchor="middle" class="figure-label fill-foreground">
+											Recount
+										</text>
 									</>
 								)}
+
+								{i === 1 &&
+									gridlines.map((y) => (
+										<line x1={plot.left} x2={plot.right} y1={y + 0.5} y2={y + 0.5} class="stroke-border" />
+									))}
+
+								{i === 1 && (
+									<>
+										{bars.map((bar) => (
+											<rect
+												x={bar.x}
+												y={bar.y}
+												width={barWidth}
+												height={bar.height}
+												rx="1"
+												class={bar.selected ? "fill-primary" : "fill-muted-foreground"}
+												fill-opacity={bar.selected ? 1 : 0.35}
+											/>
+										))}
+										<path
+											d={`M${bracket.x0} ${bracket.y + 4}V${bracket.y}H${bracket.x1}V${bracket.y + 4}`}
+											class="stroke-primary"
+											stroke-width="1"
+										/>
+										<rect x={tagX - 12} y={bracket.y - 14} width="24" height="11" rx="2" class="fill-primary" />
+										<text x={tagX} y={bracket.y - 6} text-anchor="middle" class="figure-label fill-primary-foreground">
+											{MOMENT}
+										</text>
+										{fullTicks.map((tick) => (
+											<text x={tick.x} y={plot.bottom + 13} text-anchor={tick.anchor} class="figure-label fill-muted-foreground">
+												{tick.label}
+											</text>
+										))}
+									</>
+								)}
+
 								{i === 2 && (
 									<>
-										<rect x={plot.left - 8.5} y={plot.top - 8.5} width={plot.right - plot.left + 17} height={plot.bottom - plot.top + 17} rx="4" class="stroke-primary" />
-										<clipPath id="zoom-frame">
-											<rect x={plot.left - 8} y={plot.top - 8} width={plot.right - plot.left + 16} height={plot.bottom - plot.top + 16} rx="4" />
-										</clipPath>
-										<path d={zoomLine} clip-path="url(#zoom-frame)" class="stroke-primary" stroke-width="1.5" stroke-linejoin="round" />
+										<rect x={W - 36} y="8" width="24" height="11" rx="2" class="fill-primary" />
+										<text x={W - 24} y="16" text-anchor="middle" class="figure-label fill-primary-foreground">
+											{MOMENT}
+										</text>
+										{rows.map((row) => (
+											<g>
+												<text x="22" y={row.baseline - 2} class:list={["figure-label", row.lead ? "fill-foreground" : "fill-muted-foreground"]}>
+													{row.name}
+												</text>
+												<line x1={strip.left} x2={strip.right} y1={row.baseline + 0.5} y2={row.baseline + 0.5} class="stroke-border" />
+												{row.bars.map((bar) => (
+													<rect
+														x={bar.x}
+														y={bar.y}
+														width={stripBar}
+														height={bar.height}
+														rx="0.75"
+														class={row.lead ? "fill-primary" : "fill-muted-foreground"}
+														fill-opacity={row.lead ? 1 : 0.4}
+													/>
+												))}
+											</g>
+										))}
+										{zoomTicks.map((tick) => (
+											<text x={tick.x} y="117" text-anchor="middle" class="figure-label fill-muted-foreground">
+												{tick.label}
+											</text>
+										))}
 									</>
 								)}
 							</svg>
@@ -124,9 +282,22 @@ const tiles = [0.62, 0.38, 0.81, 0.27, 0.55, 0.7].map((fill, k) => ({
 </section>
 
 <style>
-	.step-panel {
+	/* A faint dot grid that frames each drawing: it fades out toward the middle, so the
+	   same treatment works behind the nodes and behind the charts. */
+	.step-panel::before {
+		content: "";
+		position: absolute;
+		inset: 0;
 		background-image: radial-gradient(circle, var(--border) 1px, transparent 1.2px);
 		background-size: 12px 12px;
 		background-position: center;
+		opacity: 0.7;
+		mask-image: radial-gradient(ellipse 70% 75% at 50% 50%, transparent 45%, black 100%);
+	}
+	/* Small figure labels: monospace, set in SVG units so they scale with the drawing. */
+	.figure-label {
+		font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+		font-size: 7px;
+		letter-spacing: 0.02em;
 	}
 </style>

@@ -59,7 +59,8 @@ const iconButton =
 			</button>
 		</nav>
 	</Container>
-	<div id="mobile-menu" data-menu hidden class="border-t bg-background md:hidden">
+	<!-- Overlays the page below the header, so opening it doesn't move the content. -->
+	<div id="mobile-menu" data-menu hidden class="absolute inset-x-0 top-full border-t border-b bg-background shadow-md md:hidden">
 		<Container class="flex flex-col py-2">
 			{
 				links.map((link) => (
@@ -96,6 +97,12 @@ const iconButton =
 	button?.addEventListener("click", () => setOpen(button.getAttribute("aria-expanded") !== "true"));
 	menu?.addEventListener("click", (event) => {
 		if ((event.target as Element).closest("a")) setOpen(false);
+	});
+	// Tapping anywhere outside the open menu closes it.
+	document.addEventListener("click", (event) => {
+		if (button?.getAttribute("aria-expanded") !== "true") return;
+		const target = event.target as Node;
+		if (!menu?.contains(target) && !button.contains(target)) setOpen(false);
 	});
 	document.addEventListener("keydown", (event) => {
 		if (event.key === "Escape" && button?.getAttribute("aria-expanded") === "true") {
