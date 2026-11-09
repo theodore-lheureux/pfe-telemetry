@@ -63,6 +63,7 @@ export function CreateCredentialForm({
 					<form.AppField name="name">
 						{(field) => (
 							<field.TextField
+								id="credential-name"
 								label={m.credential_name()}
 								required
 								maxLength={120}
@@ -73,6 +74,7 @@ export function CreateCredentialForm({
 					<form.AppField name="sourceId">
 						{(field) => (
 							<field.TextField
+								id="credential-source"
 								label={m.source_id()}
 								required
 								maxLength={128}
@@ -84,6 +86,7 @@ export function CreateCredentialForm({
 					<form.AppField name="rootId">
 						{(field) => (
 							<field.TextField
+								id="credential-root"
 								label={m.enrolled_root_id()}
 								required
 								maxLength={128}
@@ -94,6 +97,7 @@ export function CreateCredentialForm({
 					<form.AppField name="expiresAt">
 						{(field) => (
 							<field.TextField
+								id="credential-expiry"
 								label={m.expires_at_your_local_time_optional()}
 								type="datetime-local"
 							/>
@@ -107,6 +111,7 @@ export function CreateCredentialForm({
 							<form.AppField name="maximumSubmissionAge">
 								{(field) => (
 									<field.TextField
+										id="credential-maximum-age"
 										label={m.maximum_submission_age_seconds()}
 										type="number"
 										required
@@ -119,6 +124,7 @@ export function CreateCredentialForm({
 							<form.AppField name="allowedClockSkew">
 								{(field) => (
 									<field.TextField
+										id="credential-clock-skew"
 										label={m.allowed_clock_skew_seconds()}
 										type="number"
 										required

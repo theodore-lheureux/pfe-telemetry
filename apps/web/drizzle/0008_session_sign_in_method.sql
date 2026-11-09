@@ -1,0 +1,1 @@
+ALTER TABLE "app"."session" ADD COLUMN "sign_in_method" text;

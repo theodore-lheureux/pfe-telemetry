@@ -2,7 +2,7 @@ import { m } from "@recount/i18n/messages";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-import { data, expect, test } from "./fixtures";
+import { data, expect, settingsUrl, test } from "./fixtures";
 
 for (const locale of ["en", "fr"] as const) {
 	test(`typed member and grant forms keep pending drafts and uncertain writes explicit in ${locale}`, async ({
@@ -45,8 +45,14 @@ for (const locale of ["en", "fr"] as const) {
 			.addCookies([
 				{ name: "recount_locale", value: locale, url: workspace.origin },
 			]);
-		const membersUrl = `${workspace.origin}/organizations/${organization.id}/members`;
-		const grantsUrl = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/settings/members`;
+		const membersUrl = settingsUrl(
+			`${workspace.origin}/organizations/${organization.id}`,
+			"organization-members",
+		);
+		const grantsUrl = settingsUrl(
+			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
+			"project-members",
+		);
 		const noScript = await browser.newContext({
 			javaScriptEnabled: false,
 			storageState: await page.context().storageState(),
@@ -111,7 +117,7 @@ for (const locale of ["en", "fr"] as const) {
 			await expect(select).toBeDisabled();
 			await expect(
 				page.getByLabel(m.language({}, options), { exact: true }),
-			).toBeDisabled();
+			).toHaveCount(0);
 			release();
 			await expect(page.getByRole("alert")).toContainText(
 				kind === "member"
@@ -198,7 +204,10 @@ for (const kind of ["member", "grant"] as const) {
 			},
 		});
 		await workspace.signIn(page, "owner@example.invalid");
-		const url = `${workspace.origin}/organizations/${organization.id}${kind === "member" ? "/members" : `/projects/${project.id}/settings/members`}`;
+		const url = settingsUrl(
+			`${workspace.origin}/organizations/${organization.id}${kind === "member" ? "" : `/projects/${project.id}`}`,
+			kind === "member" ? "organization-members" : "project-members",
+		);
 		await page.goto(url);
 		const select = page.getByLabel(
 			kind === "member" ? `Role for ${email}` : `Project role for ${email}`,

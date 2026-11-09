@@ -64,6 +64,12 @@ test("submitted authentication retains ownership after cancellation and refreshe
 	expect(clears >= 2).toBe(true);
 	expect(refreshes).toBe(1);
 	expect(controller.getSnapshot().pending).toBe(false);
+	expect(controller.getSnapshot().passkeyPromptFor).toBe("b@example.invalid");
+	const revision = controller.getSnapshot().revision;
+	controller.dismissPasskeyPrompt(revision - 1);
+	expect(controller.getSnapshot().passkeyPromptFor).toBe("b@example.invalid");
+	controller.dismissPasskeyPrompt(revision);
+	expect(controller.getSnapshot().passkeyPromptFor).toBeNull();
 });
 test("pre-submit cancellation prevents verification rather than turning it into an authentication mutation", async () => {
 	let posts = 0;

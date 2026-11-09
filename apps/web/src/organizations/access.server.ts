@@ -47,6 +47,7 @@ export async function requireOrganization(
 			id: organization.id,
 			name: organization.name,
 			slug: organization.slug,
+			logo: organization.logo,
 			memberId: member.id,
 			role: member.role,
 		})

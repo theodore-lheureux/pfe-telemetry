@@ -60,6 +60,10 @@ export function LanguageSwitcher() {
 				}}
 			>
 				<AlertDialogContent
+					onEscapeKeyDown={(event) => {
+						event.preventDefault();
+						setRequested(null);
+					}}
 					onCloseAutoFocus={(event) => {
 						event.preventDefault();
 						document.getElementById("language")?.focus();

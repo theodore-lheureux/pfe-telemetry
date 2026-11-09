@@ -1,6 +1,8 @@
 import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
 import { useLocation, useRouteContext } from "@tanstack/react-router";
+import { cn } from "cn";
+import type { ReactNode } from "react";
 import { operationMessage } from "../lib/operation-message";
 import type {
 	OperationResult,
@@ -12,6 +14,10 @@ import { Button } from "./ui/button";
 import { useAppMutation } from "./use-app-mutation";
 
 interface EntityFormProps<T> {
+	children?: ReactNode;
+	className?: string;
+	requireChanged?: boolean;
+	reserveFeedbackLine?: boolean;
 	name?: string;
 	slug?: boolean;
 	receiptBacked?: boolean;
@@ -38,6 +44,10 @@ export function EntityForm<T>(props: EntityFormProps<T>) {
 }
 
 function EntityFields<T>({
+	children,
+	className,
+	requireChanged = false,
+	reserveFeedbackLine = true,
 	name = "",
 	slug,
 	submitLabel,
@@ -86,6 +96,7 @@ function EntityFields<T>({
 			form.reset({ name: result.input.name, slug: result.input.slug });
 	}
 	const submitting = useSelector(form.store, (state) => state.isSubmitting);
+	const unchanged = useSelector(form.store, (state) => state.isDefaultValue);
 	const pending = submitting || mutation.pending;
 	const disabled =
 		mutation.disabled ||
@@ -100,7 +111,10 @@ function EntityFields<T>({
 				event.stopPropagation();
 				if (!disabled) void form.handleSubmit();
 			}}
-			className="flex max-w-xl flex-col gap-4 rounded-lg border bg-card p-5 text-card-foreground"
+			className={cn(
+				"flex max-w-xl flex-col gap-4 rounded-lg border bg-card p-5 text-card-foreground",
+				className,
+			)}
 			aria-busy={pending}
 		>
 			<form.AppField
@@ -141,10 +155,11 @@ function EntityFields<T>({
 					)}
 				</form.AppField>
 			)}
+			{children}
 			<div>
 				<Button
 					type="submit"
-					disabled={disabled}
+					disabled={disabled || (requireChanged && unchanged)}
 					pending={pending}
 					pendingLabel={m.saving()}
 				>
@@ -152,6 +167,7 @@ function EntityFields<T>({
 				</Button>
 			</div>
 			<FormFeedback
+				reserveLine={reserveFeedbackLine}
 				id="entity-message"
 				message={mutation.message}
 				kind={mutation.kind}

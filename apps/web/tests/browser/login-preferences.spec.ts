@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import * as organizationDomain from "../../src/organizations/organizations.server";
-import { data, expect, test } from "./fixtures";
+import { data, expect, settingsUrl, test } from "./fixtures";
 
 test("email-first login exposes localized errors and quiet footer preferences", async ({
 	page,
@@ -424,7 +424,7 @@ test("a selected saved passkey completes real verification and returns to the te
 			automaticPresenceSimulation: true,
 		},
 	});
-	await page.goto(`${workspace.origin}/account`);
+	await page.goto(settingsUrl(workspace.origin, "user"));
 	await page.getByLabel("Passkey name", { exact: true }).fill("Autofill key");
 	await page
 		.getByRole("button", { name: "Add a passkey", exact: true })

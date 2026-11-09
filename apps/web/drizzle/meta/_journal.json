@@ -57,6 +57,13 @@
       "when": 1794112905071,
       "tag": "0007_create_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794215060172,
+      "tag": "0008_session_sign_in_method",
+      "breakpoints": true
     }
   ]
 }

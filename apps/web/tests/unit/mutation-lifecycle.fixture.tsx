@@ -58,8 +58,11 @@ function Editor() {
 				});
 			refreshResult = await result.refresh(async (follow) => {
 				if (!navigateAfterSave) return;
-				follow(router.buildLocation({ to: "/account" }).href);
-				await router.navigate({ to: "/account" });
+				follow(
+					router.buildLocation({ to: "/settings", search: { section: "user" } })
+						.href,
+				);
+				await router.navigate({ to: "/settings", search: { section: "user" } });
 			});
 		} finally {
 			settled++;
@@ -116,7 +119,9 @@ const root = createRootRouteWithContext<{
 			<LocaleSafety>
 				<MutationFeedback>
 					<Link to="/">Editor</Link>
-					<Link to="/account">Other</Link>
+					<Link to="/settings" search={{ section: "user" }}>
+						Other
+					</Link>
 					<Link to="/" hash="content">
 						Fragment
 					</Link>
@@ -138,7 +143,7 @@ const edit = createRoute({
 });
 const other = createRoute({
 	getParentRoute: () => root,
-	path: "/account",
+	path: "/settings",
 	component: () => <h1>Other page</h1>,
 });
 const router = createRouter({

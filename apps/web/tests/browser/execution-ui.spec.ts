@@ -4,7 +4,7 @@ import * as executionDomain from "../../src/executions/executions.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 
-import { data, expect, test } from "./fixtures";
+import { data, expect, openPreferences, test } from "./fixtures";
 
 test("a completed execution keeps its saved acknowledgement and link after Skip to content", async ({
 	page,
@@ -279,6 +279,7 @@ for (const failure of ["unknown-write", "refresh", "refresh-away"] as const) {
 			if (failure === "refresh-away") {
 				await page.getByRole("link", { name: "Go home", exact: true }).click();
 				await expect(page.getByText(/^Execution recorded/)).toHaveCount(0);
+				await openPreferences(page);
 				await page.getByLabel("Language", { exact: true }).selectOption("fr");
 				await expect(
 					page.getByRole("alertdialog", {

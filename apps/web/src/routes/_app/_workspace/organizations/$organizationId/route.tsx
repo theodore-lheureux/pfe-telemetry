@@ -1,11 +1,4 @@
-import { m } from "@recount/i18n/messages";
-import {
-	createFileRoute,
-	Link,
-	Outlet,
-	useParams,
-} from "@tanstack/react-router";
-import { navClass, ProjectSwitcher } from "@/components/workspace";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import {
 	getOrganization,
 	listProjects,
@@ -28,47 +21,5 @@ export const Route = createFileRoute(
 	},
 	staleTime: 0,
 	gcTime: 0,
-	component: Organization,
+	component: Outlet,
 });
-function Organization() {
-	const { organization, projects } = Route.useRouteContext();
-	const { projectId } = useParams({ strict: false });
-	const params = { organizationId: organization.id };
-	return (
-		<>
-			<div className="flex flex-wrap items-end justify-between gap-4 border-b pb-4">
-				<ProjectSwitcher
-					key={`${organization.id}/${projectId ?? "all"}`}
-					projects={projects}
-					organizationId={organization.id}
-					projectId={projectId}
-				/>
-				<nav aria-label={m.organization()} className="flex flex-wrap gap-1">
-					<Link
-						to="/organizations/$organizationId"
-						params={params}
-						activeOptions={{ exact: true }}
-						className={navClass}
-					>
-						{m.projects()}
-					</Link>
-					<Link
-						to="/organizations/$organizationId/settings"
-						params={params}
-						className={navClass}
-					>
-						{m.organization_settings()}
-					</Link>
-					<Link
-						to="/organizations/$organizationId/members"
-						params={params}
-						className={navClass}
-					>
-						{m.members()}
-					</Link>
-				</nav>
-			</div>
-			<Outlet />
-		</>
-	);
-}

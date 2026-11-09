@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { passkey } from "../../src/db/schema";
-import { expect, test } from "./fixtures";
+import { expect, openSettingsSection, settingsUrl, test } from "./fixtures";
 
 const gates = new Set<() => void>();
 test.afterEach(async () => {
@@ -124,7 +124,7 @@ for (const committed of [false, true]) {
 		).toBeVisible({ timeout: 30_000 });
 		release.resolve();
 		await delivered.promise;
-		await page.getByRole("link", { name: /^Account/ }).click();
+		await openSettingsSection(page, "User settings");
 		await expect(
 			page.getByText("deadline-b@example.invalid", { exact: true }),
 		).toBeVisible();
@@ -189,7 +189,7 @@ test("a committed OTP settles and reconciles identity after Login navigates away
 	await expect(
 		page.getByRole("heading", { name: "Your organizations", exact: true }),
 	).toBeVisible({ timeout: 30_000 });
-	await page.getByRole("link", { name: /^Account/ }).click();
+	await openSettingsSection(page, "User settings");
 	await expect(
 		page.getByText("late-otp@example.invalid", { exact: true }),
 	).toBeVisible();
@@ -277,7 +277,7 @@ for (const failFresh of [false, true]) {
 			},
 		]);
 		await restoreCookie(page, workspace.origin, a.headers);
-		await page.goto(`${workspace.origin}/account`);
+		await page.goto(settingsUrl(workspace.origin, "user"));
 		await expect(
 			page.getByText("Private A key", { exact: true }),
 		).toBeVisible();
@@ -330,7 +330,7 @@ for (const failFresh of [false, true]) {
 		).toBeVisible({ timeout: 30_000 });
 		release.resolve();
 		await delivered.promise;
-		await page.getByRole("link", { name: /^Account/ }).click();
+		await openSettingsSection(page, "User settings");
 		await expect(
 			page.getByText("keys-b@example.invalid", { exact: true }),
 		).toBeVisible();
@@ -380,7 +380,7 @@ test("manual passkeys still verify without native credential JSON helpers", asyn
 			value: undefined,
 		});
 	});
-	await page.goto(`${workspace.origin}/account`);
+	await page.goto(settingsUrl(workspace.origin, "user"));
 	await page
 		.getByLabel("Passkey name", { exact: true })
 		.fill("Compatible browser key");
@@ -436,7 +436,7 @@ test("pagehide does not abort submitted verification and identity is reconciled 
 		page.getByRole("heading", { name: "Your organizations", exact: true }),
 	).toBeVisible();
 	expect(failed).toBe(false);
-	await page.getByRole("link", { name: /^Account/ }).click();
+	await openSettingsSection(page, "User settings");
 	await expect(
 		page.getByText("pagehide@example.invalid", { exact: true }),
 	).toBeVisible();

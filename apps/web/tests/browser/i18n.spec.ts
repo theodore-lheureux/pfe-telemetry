@@ -9,7 +9,15 @@ import {
 } from "../../src/db/schema";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
-import { data, expect, test } from "./fixtures";
+import {
+	closePreferences,
+	data,
+	expect,
+	openPreferences,
+	openSettingsSection,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 test.use({ timezoneId: "America/Toronto" });
 
@@ -133,7 +141,10 @@ for (const locale of ["en", "fr"] as const) {
 				{ name: "recount_locale", value: locale, url: workspace.origin },
 			]);
 		await page.goto(
-			`${workspace.origin}/organizations/${organization.id}/members`,
+			settingsUrl(
+				`${workspace.origin}/organizations/${organization.id}`,
+				"organization-members",
+			),
 		);
 		const options = { locale };
 		const leave = page.getByRole("button", {
@@ -179,9 +190,10 @@ for (const locale of ["en", "fr"] as const) {
 			.getByRole("button", { name: m.confirm_leave({}, options), exact: true })
 			.click();
 		await received;
+		// The modal confirmation makes settings inaccessible while the write is pending.
 		await expect(
-			page.getByLabel(m.language({}, options), { exact: true }),
-		).toBeDisabled();
+			page.getByRole("button", { name: m.settings({}, options), exact: true }),
+		).toHaveCount(0);
 		await expect(
 			dialog.getByRole("button", {
 				name: m.saving({}, options),
@@ -197,9 +209,11 @@ for (const locale of ["en", "fr"] as const) {
 		await expect(dialog).toBeVisible();
 		await page.keyboard.press("Escape");
 		await expect(leave).toBeFocused();
+		await openPreferences(page, locale);
 		await expect(
 			page.getByLabel(m.language({}, options), { exact: true }),
 		).toBeEnabled();
+		await closePreferences(page);
 	});
 	test(`all application features render and mutate in ${locale}`, async ({
 		page,
@@ -274,9 +288,7 @@ for (const locale of ["en", "fr"] as const) {
 				),
 			).map((organization) => organization.name),
 		).toEqual(["Locale lab"]);
-		await page
-			.getByRole("link", { name: text(m.organization_settings), exact: true })
-			.click();
+		await openSettingsSection(page, text(m.organization_settings), locale);
 		await expect(
 			page.getByText(text(m.role_owner), { exact: true }),
 		).toBeVisible();
@@ -293,9 +305,7 @@ for (const locale of ["en", "fr"] as const) {
 			page.getByRole("heading", { name: text(m.executions), exact: true }),
 		).toBeVisible();
 		const projectURL = page.url().replace(/\/executions\/?$/, "");
-		await page
-			.getByRole("link", { name: text(m.project_settings), exact: true })
-			.click();
+		await openSettingsSection(page, text(m.project_settings), locale);
 		await page.getByLabel(text(m.name), { exact: true }).fill("   ");
 		await page.getByRole("button", { name: text(m.save_project) }).click();
 		await expect(
@@ -322,7 +332,7 @@ for (const locale of ["en", "fr"] as const) {
 			const collaboratorMember = await workspace.auth.api.addMember({
 				body: { organizationId, userId: collaborator.userId, role: "member" },
 			});
-			await page.goto(`${orgURL}/members`);
+			await page.goto(settingsUrl(orgURL, "organization-members"));
 			const role = page.getByLabel(
 				m.role_for({ email: "collaborator@example.invalid" }, options),
 				{ exact: true },
@@ -357,7 +367,7 @@ for (const locale of ["en", "fr"] as const) {
 					},
 				),
 			);
-			await page.goto(`${projectURL}/settings/members`);
+			await page.goto(settingsUrl(projectURL, "project-members"));
 			await page
 				.getByLabel(
 					m.project_role_for(
@@ -392,7 +402,7 @@ for (const locale of ["en", "fr"] as const) {
 			).toBeFocused();
 			await page.keyboard.press("Escape");
 			await expect(removeGrant).toBeFocused();
-			await page.goto(`${orgURL}/members`);
+			await page.goto(settingsUrl(orgURL, "organization-members"));
 			await page
 				.getByLabel(text(m.email_address), { exact: true })
 				.fill("recipient@example.invalid");
@@ -498,7 +508,7 @@ for (const locale of ["en", "fr"] as const) {
 			await otherContext.close();
 		}
 
-		await page.goto(`${projectURL}/settings/credentials`);
+		await page.goto(settingsUrl(projectURL, "credentials"));
 		await expect(
 			page.getByRole("heading", { name: text(m.run_a_linux_collector) }),
 		).toBeVisible();
@@ -540,7 +550,7 @@ for (const locale of ["en", "fr"] as const) {
 		const secret = await token.inputValue();
 		await expect(
 			page.getByLabel(text(m.language), { exact: true }),
-		).toBeDisabled();
+		).toHaveCount(0);
 		await page
 			.getByRole("button", {
 				name: text(m.i_saved_the_token_hide_it),
@@ -593,9 +603,11 @@ for (const locale of ["en", "fr"] as const) {
 		const credentialSSR = await page.reload();
 		expect((await credentialSSR?.text())?.includes(secret)).toBe(false);
 		await expect(token).toHaveCount(0);
+		await openPreferences(page, locale);
 		await expect(
 			page.getByLabel(text(m.language), { exact: true }),
 		).toBeEnabled();
+		await closePreferences(page);
 		const rotate = page.getByRole("button", {
 			name: m.rotate_named({ name: "Locale credential" }, options),
 			exact: true,
@@ -645,7 +657,7 @@ for (const locale of ["en", "fr"] as const) {
 				.click();
 			await expect(rotate).toBeEnabled();
 		}
-		await page.goto(`${workspace.origin}/account`);
+		await page.goto(settingsUrl(workspace.origin, "user"));
 		await expect(
 			page.getByRole("heading", {
 				name: text(m.account_security),

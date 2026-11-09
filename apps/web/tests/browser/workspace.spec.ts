@@ -2,7 +2,15 @@ import { eq } from "drizzle-orm";
 import { member } from "../../src/db/schema";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-import { data, expect, test } from "./fixtures";
+import {
+	chooseOrganization,
+	chooseProject,
+	data,
+	expect,
+	openSettingsSection,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 test("onboards, creates and renames private projects, switches tenants and signs out", async ({
 	page,
@@ -41,20 +49,21 @@ test("onboards, creates and renames private projects, switches tenants and signs
 		page.getByText("No executions recorded on this page."),
 	).toBeVisible();
 	const projectURL = page.url().replace(/\/executions\/?$/, "");
-	await page
-		.getByRole("link", { name: "Project settings", exact: true })
-		.click();
+	await openSettingsSection(page, "Project settings");
 	await page.getByLabel("Name", { exact: true }).fill("GPU comparison");
 	await page.getByRole("button", { name: "Save project" }).click();
 	await expect(page.getByText("Changes saved.", { exact: true })).toBeVisible();
 	await expect(
-		page.getByRole("option", { name: "GPU comparison" }),
-	).toHaveCount(1);
+		page.getByRole("button", {
+			name: "Switch project, organization or account",
+			exact: true,
+		}),
+	).toContainText("GPU comparison");
 	await page.reload();
 	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
 		"GPU comparison",
 	);
-	await page.getByRole("link", { name: "Projects", exact: true }).click();
+	await openSettingsSection(page, "Projects");
 	await expect(
 		page.getByRole("link", { name: /GPU comparison/ }),
 	).toBeVisible();
@@ -77,9 +86,7 @@ test("onboards, creates and renames private projects, switches tenants and signs
 	await expect(page.locator("#entity-name-error")).toHaveText(
 		"Enter a name, not just spaces.",
 	);
-	await page
-		.getByRole("link", { name: "New organization", exact: true })
-		.click();
+	await openSettingsSection(page, "New organization");
 	await expect(
 		page.getByRole("heading", { name: "Create organization", exact: true }),
 	).toBeVisible();
@@ -91,17 +98,11 @@ test("onboards, creates and renames private projects, switches tenants and signs
 	await expect(
 		page.getByRole("heading", { name: "Second lab", exact: true }),
 	).toBeVisible();
-	await page
-		.getByRole("combobox", { name: "Organization", exact: true })
-		.selectOption({ label: "Research lab" });
-	await page.getByRole("button", { name: "Switch organization" }).click();
+	await chooseOrganization(page, "Research lab");
 	await expect(
 		page.getByRole("heading", { name: "Research lab", exact: true }),
 	).toBeVisible();
-	await page
-		.getByRole("combobox", { name: "Project", exact: true })
-		.selectOption({ label: "GPU comparison" });
-	await page.getByRole("button", { name: "Switch project" }).click();
+	await chooseProject(page, "GPU comparison");
 	await expect(page).toHaveURL(`${projectURL}/executions`);
 	const missing = await page.goto(
 		`${projectURL}/executions/not-a-real-execution`,
@@ -110,14 +111,18 @@ test("onboards, creates and renames private projects, switches tenants and signs
 	await expect(
 		page.getByRole("heading", { name: "Page not found" }),
 	).toBeVisible();
+	await expect(page.locator("[data-public-header], footer")).toHaveCount(0);
 	await page.goto(`${projectURL}/executions`);
 	await expect(
-		page.getByRole("button", { name: "Switch organization", exact: true }),
+		page.getByRole("button", {
+			name: "Switch project, organization or account",
+			exact: true,
+		}),
 	).toBeEnabled();
 	await page.evaluate(() => {
 		document.body.dataset.testDocument = "same-account-transition-document";
 	});
-	await page.getByRole("link", { name: /Account/ }).click();
+	await openSettingsSection(page, "User settings");
 	await expect(
 		page.getByRole("heading", { name: "Passkeys", exact: true }),
 	).toBeVisible();
@@ -161,7 +166,9 @@ test("protects direct links, uses effective roles and handles membership revocat
 	workspace,
 }) => {
 	await page.goto(
-		`${workspace.origin}/organizations/private/projects/00000000-0000-0000-0000-000000000000/settings`,
+		settingsUrl(
+			`${workspace.origin}/organizations/private/projects/00000000-0000-0000-0000-000000000000`,
+		),
 	);
 	await expect(page).toHaveURL(/\/login(?:\?|$)/);
 	await expect(page.getByLabel("Email address")).toBeEnabled();
@@ -211,7 +218,7 @@ test("protects direct links, uses effective roles and handles membership revocat
 			}),
 		),
 	);
-	await page.goto(`${projectURL}/settings`);
+	await page.goto(settingsUrl(projectURL));
 	await expect(page.getByRole("button", { name: "Save project" })).toHaveCount(
 		0,
 	);
@@ -240,19 +247,23 @@ test("protects direct links, uses effective roles and handles membership revocat
 		page.getByRole("heading", { name: "Page not found" }),
 	).toBeVisible();
 	await expect(page.getByLabel("Name", { exact: true })).toHaveCount(0);
-	const inaccessible = await page.goto(`${projectURL}/settings`);
+	const inaccessible = await page.goto(settingsUrl(projectURL));
 	expect(inaccessible?.status()).toBe(404);
 	await workspace.signIn(page, "owner@example.invalid");
-	await page.goto(`${projectURL}/settings`);
+	await page.goto(settingsUrl(projectURL));
 	await expect(
 		page.getByRole("button", { name: "Save project" }),
 	).toBeVisible();
 	const invalid = await page.goto(
-		`${workspace.origin}/organizations/${organization.id}/projects/not-a-uuid/settings`,
+		settingsUrl(
+			`${workspace.origin}/organizations/${organization.id}/projects/not-a-uuid`,
+		),
 	);
 	expect(invalid?.status()).toBe(404);
 	const crossTenant = await page.goto(
-		`${workspace.origin}/organizations/another-organization/projects/${project.id}/settings`,
+		settingsUrl(
+			`${workspace.origin}/organizations/another-organization/projects/${project.id}`,
+		),
 	);
 	expect(crossTenant?.status()).toBe(404);
 });
@@ -300,7 +311,7 @@ test("does not mistake transport failures for empty results and rechecks access 
 		),
 	);
 	const projectURL = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}`;
-	await page.goto(`${projectURL}/settings`);
+	await page.goto(settingsUrl(projectURL));
 	await page.route("**/_serverFn/**", (route) =>
 		route.request().method() === "POST" ? route.abort() : route.continue(),
 	);
@@ -382,7 +393,7 @@ test("returns passkey sign-in to the validated tenant destination", async ({
 			automaticPresenceSimulation: true,
 		},
 	});
-	await page.goto(`${workspace.origin}/account`);
+	await page.goto(settingsUrl(workspace.origin, "user"));
 	await page
 		.getByLabel("Passkey name", { exact: true })
 		.fill("Browser test key");
@@ -412,7 +423,7 @@ test("preserves a local destination through email-code sign-in without SMTP deli
 	page,
 	workspace,
 }) => {
-	const destination = "/account";
+	const destination = "/settings?section=user";
 	await workspace.enableCodeDelivery(page);
 	await page.goto(
 		`${workspace.origin}/login?${new URLSearchParams({ redirect: destination })}`,
@@ -426,7 +437,7 @@ test("preserves a local destination through email-code sign-in without SMTP deli
 	await workspace.submitReceivedCode(page, "return@example.invalid");
 	await expect(page).toHaveURL(`${workspace.origin}${destination}`);
 	await expect(
-		page.getByRole("heading", { name: "Account security", exact: true }),
+		page.getByRole("heading", { name: "Profile", exact: true }),
 	).toBeVisible();
 });
 
@@ -454,7 +465,9 @@ test("acknowledges a saved mutation when subsequent metadata reads fail, then re
 		),
 	);
 	await page.goto(
-		`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/settings`,
+		settingsUrl(
+			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
+		),
 	);
 	let writes = 0;
 	await page.route("**/_serverFn/**", (route) => {
@@ -471,6 +484,7 @@ test("acknowledges a saved mutation when subsequent metadata reads fail, then re
 	await expect(
 		page.getByRole("heading", { name: "Something went wrong" }),
 	).toBeVisible();
+	await expect(page.locator("[data-public-header], footer")).toHaveCount(0);
 	await expect(page.getByRole("status")).toContainText(
 		"Your change was saved, but the page could not refresh.",
 	);

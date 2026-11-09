@@ -18,6 +18,7 @@ export interface OrganizationSummary {
 	name: string;
 	slug: string;
 	role: OrganizationRole;
+	logo?: string | null;
 }
 
 export interface ProjectSummary {
@@ -69,6 +70,7 @@ export type OperationResult<T> =
 			error: {
 				code:
 					| "UNAUTHENTICATED"
+					| "SESSION_NOT_FRESH"
 					| "FORBIDDEN"
 					| "NOT_FOUND"
 					| "INVALID_INPUT"

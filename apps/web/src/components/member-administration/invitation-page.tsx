@@ -80,7 +80,11 @@ export function InvitationPage({
 								? m.your_session_has_ended_sign_in_again_to()
 								: m.this_invitation_is_invalid_expired_canceled_or_has()}
 					</p>
-					<Link to="/account" className="underline">
+					<Link
+						to="/settings"
+						search={{ section: "user" }}
+						className="underline"
+					>
 						{m.manage_your_account_or_sign_out()}
 					</Link>
 					<Link

@@ -4,7 +4,13 @@ import { m } from "@recount/i18n/messages";
 import { collectorCredential } from "../../src/db/credentials-schema";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-import { data, expect, test } from "./fixtures";
+import {
+	data,
+	expect,
+	openSettingsSection,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 for (const locale of ["en", "fr"] as const) {
 	for (const committed of [false, true]) {
@@ -217,13 +223,13 @@ test("a receipt-backed retry is retired before document restoration or a later a
 	await expect(
 		page.getByRole("button", { name: "Create project", exact: true }),
 	).toBeDisabled();
-	await page.getByRole("link", { name: /^Account/ }).click();
+	await openSettingsSection(page, "User settings");
 	await expect(
 		page.getByText("retired-retry@example.invalid", { exact: true }),
 	).toBeVisible();
 	await workspace.signIn(page, "later-account@example.invalid");
-	await page.getByRole("link", { name: "Organizations", exact: true }).click();
-	await page.getByRole("link", { name: /^Account/ }).click();
+	await openSettingsSection(page, "Organizations");
+	await openSettingsSection(page, "User settings");
 	await expect(
 		page.getByText("later-account@example.invalid", { exact: true }),
 	).toBeVisible();
@@ -268,7 +274,9 @@ test("a later name submission keeps its field and feedback when an older respons
 			}),
 		),
 	);
-	const url = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/settings`;
+	const url = settingsUrl(
+		`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
+	);
 	await page.goto(url);
 	let release!: () => void;
 	let ready!: () => void;
@@ -459,9 +467,9 @@ test("an abandoned entity save cannot invalidate or navigate away from a newer s
 		.getByRole("button", { name: "Create project", exact: true })
 		.click();
 	await responseReady;
-	await page.getByRole("link", { name: /^Account/ }).click();
+	await openSettingsSection(page, "User settings");
 	await expect(
-		page.getByRole("heading", { name: "Account security", exact: true }),
+		page.getByRole("heading", { name: "Profile", exact: true }),
 	).toBeVisible();
 	await expect(
 		page.getByText("No passkeys registered yet.", { exact: true }),
@@ -497,7 +505,7 @@ test("an abandoned entity save cannot invalidate or navigate away from a newer s
 				requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
 			),
 	);
-	await expect(page).toHaveURL(`${workspace.origin}/account`);
+	await expect(page).toHaveURL(settingsUrl(workspace.origin, "user"));
 	await expect(
 		page.getByText("Your change was saved. Refreshing the page…", {
 			exact: true,
@@ -560,7 +568,10 @@ test("invitation controls stay pending until acknowledged-write reads finish", a
 		),
 	);
 	await page.goto(
-		`${workspace.origin}/organizations/${organization.id}/members`,
+		settingsUrl(
+			`${workspace.origin}/organizations/${organization.id}`,
+			"organization-members",
+		),
 	);
 	let ready!: () => void;
 	let release!: () => void;
@@ -640,7 +651,10 @@ test("internal Dates survive SSR hydration and client RPC navigation", async ({
 			errors.push(message.text());
 	});
 	const response = await page.goto(
-		`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/settings/credentials`,
+		settingsUrl(
+			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
+			"credentials",
+		),
 	);
 	expect(await response?.text()).toContain(expiresAt.toISOString());
 	await expect(
@@ -649,15 +663,11 @@ test("internal Dates survive SSR hydration and client RPC navigation", async ({
 	await expect(
 		page.getByRole("button", { name: "Create credential", exact: true }),
 	).toBeEnabled();
-	await page
-		.getByRole("link", { name: "Project settings", exact: true })
-		.click();
+	await openSettingsSection(page, "Project settings");
 	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
 		"Dates project",
 	);
-	await page
-		.getByRole("link", { name: "Collector credentials", exact: true })
-		.click();
+	await openSettingsSection(page, "Collector credentials");
 	await expect(
 		page.locator(`time[datetime="${expiresAt.toISOString()}"]`),
 	).toBeVisible();

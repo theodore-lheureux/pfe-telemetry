@@ -3,7 +3,7 @@ import { invitation, member } from "../../src/db/schema";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-import { data, expect, test } from "./fixtures";
+import { data, expect, settingsUrl, test } from "./fixtures";
 
 test("manages native memberships and restricts administrator owner controls", async ({
 	page,
@@ -38,7 +38,10 @@ test("manages native memberships and restricts administrator owner controls", as
 		},
 	});
 	await workspace.signIn(page, "owner@example.invalid");
-	const url = `${workspace.origin}/organizations/${org.id}/members`;
+	const url = settingsUrl(
+		`${workspace.origin}/organizations/${org.id}`,
+		"organization-members",
+	);
 	await page.goto(url);
 	await expect(
 		page.getByText(
@@ -157,7 +160,10 @@ test("effective project administrators grant access and can give up their own ad
 	);
 	await workspace.signIn(page, "manager@example.invalid");
 	await page.goto(
-		`${workspace.origin}/organizations/${org.id}/projects/${project.id}/settings/members`,
+		settingsUrl(
+			`${workspace.origin}/organizations/${org.id}/projects/${project.id}`,
+			"project-members",
+		),
 	);
 	await expect(
 		page.getByText("Implicit administrator · Organization Owner", {
@@ -395,7 +401,12 @@ test("invitation details stay private; expiry, rejection and cancellation are te
 		},
 	});
 	await workspace.signIn(page, "owner@example.invalid");
-	await page.goto(`${workspace.origin}/organizations/${org.id}/members`);
+	await page.goto(
+		settingsUrl(
+			`${workspace.origin}/organizations/${org.id}`,
+			"organization-members",
+		),
+	);
 	await page
 		.getByRole("button", {
 			name: "Cancel invitation to recipient@example.invalid",
@@ -444,7 +455,12 @@ test("stale organization administration is rejected and the controls are refresh
 		body: { organizationId: org.id, userId: target.userId, role: "member" },
 	});
 	await workspace.signIn(page, "admin@example.invalid");
-	await page.goto(`${workspace.origin}/organizations/${org.id}/members`);
+	await page.goto(
+		settingsUrl(
+			`${workspace.origin}/organizations/${org.id}`,
+			"organization-members",
+		),
+	);
 	await expect(
 		page.getByLabel("Role for target@example.invalid", { exact: true }),
 	).toBeVisible();
@@ -515,7 +531,12 @@ test("a successful membership write survives a failed loader refresh", async ({
 		body: { organizationId: org.id, userId: target.userId, role: "member" },
 	});
 	await workspace.signIn(page, "owner@example.invalid");
-	await page.goto(`${workspace.origin}/organizations/${org.id}/members`);
+	await page.goto(
+		settingsUrl(
+			`${workspace.origin}/organizations/${org.id}`,
+			"organization-members",
+		),
+	);
 	let writes = 0;
 	page.on("request", (request) => {
 		if (request.method() === "POST" && request.url().includes("/_serverFn/"))
@@ -575,7 +596,12 @@ test("recovers pending invitation delivery with native resend and renews expired
 			}),
 		),
 	);
-	await page.goto(`${workspace.origin}/organizations/${org.id}/members`);
+	await page.goto(
+		settingsUrl(
+			`${workspace.origin}/organizations/${org.id}`,
+			"organization-members",
+		),
+	);
 	await page
 		.getByLabel("Email address", { exact: true })
 		.fill("delivery@example.invalid");

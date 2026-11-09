@@ -88,7 +88,7 @@ test("a current saved operation can follow its typed destination and release its
 	await expect
 		.poll(() => page.evaluate(() => window.mutationTest.settled()))
 		.toBe(1);
-	await expect(page).toHaveURL(/\/account$/);
+	await expect(page).toHaveURL(/\/settings\?section=user$/);
 	await expect(page.getByRole("heading", { name: "Other page" })).toBeVisible();
 	await expect(
 		page.getByRole("button", { name: "Dismiss notice" }),

@@ -22,14 +22,10 @@ html[data-variant="core"] [data-slot="native-select"] {
 	font-weight: var(--ui-weight);
 }
 
-/* Subtle kit separators are not sufficient to identify editable fields. */
 html[data-variant="core"]
-:is(
-	[data-slot="input"],
-	[data-slot="textarea"],
-	[data-slot="native-select"],
-	[data-slot="checkbox"]:not([data-state="checked"])
-):not(:disabled):not([aria-invalid="true"]):not(:focus-visible) {
+	[data-slot="checkbox"]:not([data-state="checked"]):not(:disabled):not(
+		[aria-invalid="true"]
+	):not(:focus-visible) {
 	border-color: var(--muted-foreground);
 }
 

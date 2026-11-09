@@ -38,6 +38,7 @@ export const session = appSchema.table(
 			.notNull(),
 		ipAddress: text("ip_address"),
 		userAgent: text("user_agent"),
+		signInMethod: text("sign_in_method"),
 		userId: text("user_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),

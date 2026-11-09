@@ -2,7 +2,16 @@ import type { Page } from "@playwright/test";
 import { m } from "@recount/i18n/messages";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-import { data, expect, test } from "./fixtures";
+import {
+	chooseProject,
+	closePreferences,
+	data,
+	expect,
+	openPreferences,
+	openSettingsSection,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 let state: {
 	origin: string;
@@ -84,7 +93,10 @@ test.beforeEach(async ({ page, workspace }) => {
 });
 
 function path(projectId = state.projectId) {
-	return `/organizations/${state.organizationId}/projects/${projectId}/settings/credentials`;
+	return settingsUrl(
+		`/organizations/${state.organizationId}/projects/${projectId}`,
+		"credentials",
+	);
 }
 
 async function setSessionCookie(page: Page, cookie: string) {
@@ -249,14 +261,16 @@ test("French credential confirmation blocks closing while pending and retains a 
 		.click();
 	await expect(page.locator("#collector-token")).toBeVisible();
 	const language = page.getByLabel(m.language({}, locale), { exact: true });
-	await expect(language).toBeDisabled();
+	await expect(language).toHaveCount(0);
 	await page
 		.getByRole("button", {
 			name: m.i_saved_the_token_hide_it({}, locale),
 			exact: true,
 		})
 		.click();
+	await openPreferences(page, "fr");
 	await expect(language).toBeEnabled();
+	await closePreferences(page);
 	await page
 		.getByRole("button", {
 			name: m.rotate_named({ name: "Source FR" }, locale),
@@ -290,7 +304,9 @@ test("French credential confirmation blocks closing while pending and retains a 
 		await expect(
 			dialog.getByRole("button", { name: m.cancel({}, locale), exact: true }),
 		).toBeDisabled();
-		await expect(language).toBeDisabled();
+		await expect(
+			page.getByRole("button", { name: m.settings({}, locale), exact: true }),
+		).toHaveCount(0);
 		await page.keyboard.press("Escape");
 		await expect(dialog).toBeVisible();
 		release();
@@ -319,7 +335,9 @@ test("French credential confirmation blocks closing while pending and retains a 
 				exact: true,
 			})
 			.click();
+		await openPreferences(page, "fr");
 		await expect(language).toBeEnabled();
+		await closePreferences(page);
 		expect(posts).toBe(1);
 	} finally {
 		release();
@@ -376,16 +394,12 @@ test("viewers cannot list or mutate, while an explicit project admin can manage"
 		await expect(
 			page.getByRole("button", { name: "Create credential", exact: true }),
 		).toHaveCount(0);
-		await page
-			.getByRole("link", { name: "Project settings", exact: true })
-			.click();
+		await openSettingsSection(page, "Project settings");
 		await page.goBack();
 		await expect(
 			page.getByText("You have read access.", { exact: false }),
 		).toBeVisible();
-		await admin
-			.getByRole("link", { name: "Project settings", exact: true })
-			.click();
+		await openSettingsSection(admin, "Project settings");
 		await expect(
 			admin.getByRole("heading", { name: "Project settings", exact: true }),
 		).toBeVisible();
@@ -415,7 +429,9 @@ test("viewers cannot list or mutate, while an explicit project admin can manage"
 		expect(access.ok()).toBe(true);
 		expect((await access.text()).includes('"viewer"')).toBe(true);
 		await expect(admin).toHaveURL(
-			`${state.origin}/organizations/${state.organizationId}/projects/${state.projectId}/settings`,
+			settingsUrl(
+				`${state.origin}/organizations/${state.organizationId}/projects/${state.projectId}`,
+			),
 		);
 		expect(calls).toBe(0);
 		await credentialsLink.click();
@@ -434,27 +450,12 @@ test("project switching and history never restore a dismissed scope's reveal", a
 	await signIn(page);
 	await create(page, "Scope source");
 	await expect(tokenField(page)).toBeVisible();
-	await page
-		.getByRole("combobox", { name: "Project", exact: true })
-		.selectOption(state.otherProjectId);
-	await page
-		.getByRole("button", { name: "Switch project", exact: true })
-		.click();
-	await expect(page).toHaveURL(
-		`${state.origin}/organizations/${state.organizationId}/projects/${state.otherProjectId}/executions`,
-	);
+	await chooseProject(page, "Other project");
+	await expect(page).toHaveURL(state.origin + path(state.otherProjectId));
 	await expect(
 		page.getByRole("link", { name: "Collector credentials", exact: true }),
 	).toHaveAttribute("href", path(state.otherProjectId));
-	await page
-		.getByRole("link", { name: "Collector credentials", exact: true })
-		.click();
-	await expect(page).toHaveURL(state.origin + path(state.otherProjectId));
 	await expect(tokenField(page)).toHaveCount(0);
-	await page.goBack();
-	await expect(page).toHaveURL(
-		`${state.origin}/organizations/${state.organizationId}/projects/${state.otherProjectId}/executions`,
-	);
 	await page.goBack();
 	await expect(page).toHaveURL(state.origin + path());
 	await expect(
@@ -492,15 +493,8 @@ test("late mutation completion cannot reveal into another project and duplicate 
 		await expect(
 			page.getByRole("button", { name: m.creating_credential(), exact: true }),
 		).toBeDisabled();
-		await page
-			.getByRole("combobox", { name: "Project", exact: true })
-			.selectOption(state.otherProjectId);
-		await page
-			.getByRole("button", { name: "Switch project", exact: true })
-			.click();
-		await expect(page).toHaveURL(
-			`${state.origin}/organizations/${state.organizationId}/projects/${state.otherProjectId}/executions`,
-		);
+		await chooseProject(page, "Other project");
+		await expect(page).toHaveURL(state.origin + path(state.otherProjectId));
 		await expect(
 			page.getByRole("link", { name: "Collector credentials", exact: true }),
 		).toHaveAttribute("href", path(state.otherProjectId));
@@ -590,7 +584,7 @@ test("signout and a different account cannot recover the previous one-time revea
 	await signIn(page);
 	await create(page, "Account source");
 	await expect(tokenField(page)).toBeVisible();
-	await page.getByRole("link", { name: /^Account/ }).click();
+	await openSettingsSection(page, "User settings");
 	await page.getByRole("button", { name: "Sign out", exact: true }).click();
 	await expect(page).toHaveURL(/\/login/);
 	await page.context().clearCookies();

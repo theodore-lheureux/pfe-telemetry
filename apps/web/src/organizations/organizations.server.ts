@@ -18,6 +18,7 @@ export async function listOrganizations(database: Database, actor: Actor) {
 			id: organization.id,
 			name: organization.name,
 			slug: organization.slug,
+			logo: organization.logo,
 			role: member.role,
 		})
 		.from(member)
@@ -40,6 +41,7 @@ export async function getOrganization(
 		id: entry.id,
 		name: entry.name,
 		slug: entry.slug,
+		logo: entry.logo,
 		role: entry.role,
 	} satisfies OrganizationSummary;
 }
@@ -59,6 +61,7 @@ export async function createOrganization(
 		id: created.id,
 		name: created.name,
 		slug: created.slug,
+		logo: created.logo ?? null,
 		role: "owner",
 	} satisfies OrganizationSummary;
 }

@@ -21,6 +21,7 @@ export interface AuthenticationSnapshot {
 	pending: boolean;
 	revision: number;
 	recovery: AuthenticationRecovery | null;
+	passkeyPromptFor: string | null;
 }
 export interface AuthenticationOperation {
 	signal: AbortSignal;
@@ -39,6 +40,7 @@ export interface AuthenticationController {
 	recover: () => Promise<AuthenticationOutcome>;
 	beforePrivateRead: () => Promise<void>;
 	clearRecovery: () => void;
+	dismissPasskeyPrompt: (revision: number) => void;
 }
 
 export function createAuthenticationController(services: {
@@ -53,6 +55,7 @@ export function createAuthenticationController(services: {
 		pending: false,
 		revision: 0,
 		recovery: null,
+		passkeyPromptFor: null,
 	};
 	const listeners = new Set<() => void>();
 	let active: {
@@ -68,7 +71,7 @@ export function createAuthenticationController(services: {
 	};
 	const clear = () => {
 		services.clearPrivateIdentity();
-		publish({ revision: snapshot.revision + 1 });
+		publish({ revision: snapshot.revision + 1, passkeyPromptFor: null });
 	};
 	const refresh = async () => {
 		await settleIdentityRefresh(
@@ -114,7 +117,13 @@ export function createAuthenticationController(services: {
 			current &&
 			provesNewAuthentication(recovery.baseline, current, recovery.email)
 		) {
-			publish({ recovery: null });
+			publish({
+				recovery: null,
+				passkeyPromptFor:
+					recovery.method === "verify"
+						? (current.session?.user.id ?? null)
+						: null,
+			});
 			return { status: "authenticated" };
 		}
 		if (
@@ -137,6 +146,9 @@ export function createAuthenticationController(services: {
 	}
 	return {
 		getSnapshot: () => snapshot,
+		dismissPasskeyPrompt(revision) {
+			if (revision === snapshot.revision) publish({ passkeyPromptFor: null });
+		},
 		subscribe(listener) {
 			listeners.add(listener);
 			return () => listeners.delete(listener);

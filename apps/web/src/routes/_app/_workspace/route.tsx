@@ -1,5 +1,4 @@
-import { createFileRoute, Outlet, useParams } from "@tanstack/react-router";
-import { OrganizationSwitcher } from "@/components/workspace";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { listOrganizations } from "@/organizations/organization.functions";
 import { routeData } from "@/organizations/route-data";
 
@@ -9,20 +8,5 @@ export const Route = createFileRoute("/_app/_workspace")({
 	}),
 	staleTime: 0,
 	gcTime: 0,
-	component: Workspace,
+	component: Outlet,
 });
-
-function Workspace() {
-	const { organizations } = Route.useRouteContext();
-	const { organizationId } = useParams({ strict: false });
-	return (
-		<>
-			<OrganizationSwitcher
-				key={organizationId ?? "all"}
-				organizations={organizations}
-				organizationId={organizationId}
-			/>
-			<Outlet />
-		</>
-	);
-}

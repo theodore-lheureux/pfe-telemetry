@@ -5,7 +5,15 @@ import { m } from "@recount/i18n/messages";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 import tokens from "../fixtures/recount-tokens.json" with { type: "json" };
-import { data, expect, test } from "./fixtures";
+import {
+	closePreferences,
+	data,
+	expect,
+	openPreferences,
+	openSettingsSection,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 const artifactDirectory = process.env.RECOUNT_ARTIFACT_DIR;
 
@@ -150,6 +158,9 @@ test("cookie SSR, hydration, translated toggle and form state stay consistent", 
 				exact: true,
 			}),
 		).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: m.theme_switch_light({}, options) }),
+		).toBeEnabled();
 		await expect(page.locator("html")).toHaveAttribute(
 			"data-theme",
 			"tide-dark",
@@ -193,8 +204,14 @@ test("real workspace, credentials and administration retain Core geometry and ke
 	const paths = {
 		auth: "/login",
 		workspace: "/",
-		credentials: `/organizations/${organization.id}/projects/${project.id}/settings/credentials`,
-		admin: `/organizations/${organization.id}/members`,
+		credentials: settingsUrl(
+			`/organizations/${organization.id}/projects/${project.id}`,
+			"credentials",
+		),
+		admin: settingsUrl(
+			`/organizations/${organization.id}`,
+			"organization-members",
+		),
 	};
 	if (artifactDirectory) await mkdir(artifactDirectory, { recursive: true });
 	const results: object[] = [];
@@ -210,24 +227,29 @@ test("real workspace, credentials and administration retain Core geometry and ke
 			for (const width of [1440, 768, 375, 320]) {
 				await page.setViewportSize({ width, height: 1000 });
 				await page.goto(workspace.origin + path);
+				if (screen !== "auth") await openPreferences(page);
 				await expect(
 					page.getByRole("button", {
 						name: dark ? "Switch to light" : "Switch to dark",
 					}),
 				).toBeEnabled();
-				const readyControl = page.getByLabel(
+				if (screen !== "auth") await closePreferences(page);
+				const readyControl =
 					screen === "workspace"
-						? "Organization"
-						: screen === "credentials"
-							? "Credential name"
-							: "Email address",
-					{ exact: true },
-				);
+						? page.getByRole("button", {
+								name: "Switch project, organization or account",
+								exact: true,
+							})
+						: page.getByLabel(
+								screen === "credentials" ? "Credential name" : "Email address",
+								{ exact: true },
+							);
 				await expect(readyControl).toBeEnabled();
-				await expect(readyControl).toHaveCSS(
-					"border-color",
-					dark ? "rgb(157, 178, 185)" : "rgb(71, 90, 98)",
-				);
+				if (screen !== "workspace")
+					await expect(readyControl).toHaveCSS(
+						"border-color",
+						dark ? "rgb(88, 113, 122)" : "rgb(131, 145, 150)",
+					);
 				for (const button of await page
 					.locator('[data-slot="button"]:enabled')
 					.all())
@@ -395,15 +417,14 @@ test("real workspace, credentials and administration retain Core geometry and ke
 	await page.keyboard.press("Enter");
 	await expect(token).toBeVisible();
 	const initialToken = await token.inputValue();
+	await openPreferences(page);
 	await page
 		.getByRole("button", { name: "Switch to light", exact: true })
 		.click();
-	expect((await token.inputValue()) === initialToken).toBe(true);
-	await expect(page.getByLabel("Language", { exact: true })).toBeDisabled();
-	await page
-		.getByRole("button", { name: "I saved the token — hide it", exact: true })
-		.click();
+	await expect(page.getByLabel("Language", { exact: true })).toBeEnabled();
+	await closePreferences(page);
 	await expect(token).toHaveCount(0);
+	expect((await page.content()).includes(initialToken)).toBe(false);
 	const rotate = page.getByRole("button", {
 		name: `Rotate ${credentialName}`,
 		exact: true,
@@ -442,19 +463,25 @@ test("real workspace, credentials and administration retain Core geometry and ke
 	}));
 	expect(focus.shadow).not.toBe("none");
 	expect(focus.border).toBe("rgb(15, 118, 110)");
+	await openPreferences(page);
 	await page
 		.getByRole("button", { name: "Switch to dark", exact: true })
 		.click();
+	await closePreferences(page);
 	await rotate.click();
 	await expect(dialog).toHaveCSS("background-color", "rgb(19, 36, 41)");
 	await page.keyboard.press("Escape");
-	await page
-		.getByRole("link", { name: "Recount · Go home", exact: true })
-		.click();
+	await openSettingsSection(page, "Organizations");
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "tide-dark");
 	await page.goBack();
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "tide-dark");
 	await page.goto(workspace.origin);
+	await expect(
+		page.getByRole("button", {
+			name: "Switch project, organization or account",
+			exact: true,
+		}),
+	).toBeEnabled();
 	await page.route("**/_serverFn/**", (route) => route.abort());
 	await page.getByRole("link", { name: new RegExp(organization.name) }).click();
 	await expect(

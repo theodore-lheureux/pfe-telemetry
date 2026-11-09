@@ -6,7 +6,15 @@ import { invitation, member } from "../../src/db/schema";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-import { data, expect, test } from "./fixtures";
+import {
+	chooseOrganization,
+	chooseProject,
+	data,
+	expect,
+	openSettingsSection,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 let builtServerFunctionManifest:
 	| ReadonlyMap<string, readonly string[]>
@@ -202,11 +210,19 @@ for (const child of [
 				}),
 			),
 		);
-		const parent = `/organizations/${org.id}${child.project ? `/projects/${project.id}/settings` : ""}`;
-		const destination = `${parent}/members`;
+		const parent = child.project
+			? settingsUrl(`/organizations/${org.id}/projects/${project.id}`)
+			: settingsUrl(`/organizations/${org.id}`, "organization");
+		const destination = settingsUrl(
+			`/organizations/${org.id}${child.project ? `/projects/${project.id}` : ""}`,
+			child.project ? "project-members" : "organization-members",
+		);
 		await page.goto(`${workspace.origin}${parent}`);
 		await expect(
-			page.getByRole("button", { name: "Switch organization", exact: true }),
+			page.getByRole("button", {
+				name: "Switch project, organization or account",
+				exact: true,
+			}),
 		).toBeEnabled({ timeout: 20_000 });
 		const rpc = await serverFunctionPath(page, child.module, child.operation);
 		const rpcMatcher = `${new URL(rpc, workspace.origin).href}*`;
@@ -298,21 +314,9 @@ test("a delayed self-project demotion cannot replace a newer organization page",
 		),
 	);
 	await page.goto(`${workspace.origin}/organizations/${second.id}`);
-	await page
-		.getByRole("combobox", { name: "Organization", exact: true })
-		.selectOption(first.id);
-	await page
-		.getByRole("button", { name: "Switch organization", exact: true })
-		.click();
-	await page
-		.getByRole("combobox", { name: "Project", exact: true })
-		.selectOption(project.id);
-	await page
-		.getByRole("button", { name: "Switch project", exact: true })
-		.click();
-	await page
-		.getByRole("link", { name: "Project members", exact: true })
-		.click();
+	await chooseOrganization(page, first.name);
+	await chooseProject(page, project.name);
+	await openSettingsSection(page, "Project members");
 	const held = await holdSuccessfulWrite(page);
 	await page
 		.getByLabel("Project role for manager@example.invalid", { exact: true })
@@ -383,16 +387,11 @@ test("a delayed organization leave cannot navigate away from another organizatio
 		body: { organizationId: second.id, userId: person.userId, role: "member" },
 	});
 	await page.goto(`${workspace.origin}/organizations/${second.id}`);
-	await page
-		.getByRole("combobox", { name: "Organization", exact: true })
-		.selectOption(first.id);
-	await page
-		.getByRole("button", { name: "Switch organization", exact: true })
-		.click();
+	await chooseOrganization(page, first.name);
 	await expect(
 		page.getByRole("heading", { name: "First lab", exact: true }),
 	).toBeVisible();
-	await page.getByRole("link", { name: "Members", exact: true }).click();
+	await openSettingsSection(page, "Members");
 	const held = await holdSuccessfulWrite(page);
 	await page
 		.getByRole("button", {
@@ -501,7 +500,10 @@ test("an old invitation response stays retired after navigating away and back", 
 			}),
 		),
 	);
-	const path = `${workspace.origin}/organizations/${first.id}/members`;
+	const path = settingsUrl(
+		`${workspace.origin}/organizations/${first.id}`,
+		"organization-members",
+	);
 	await page.goto(path);
 	const held = await holdSuccessfulWrite(page);
 	await page
@@ -511,25 +513,21 @@ test("an old invitation response stays retired after navigating away and back", 
 		.getByRole("button", { name: "Send invitation", exact: true })
 		.click();
 	await held.ready;
-	await page
-		.getByRole("combobox", { name: "Organization", exact: true })
-		.selectOption(second.id);
-	await page
-		.getByRole("button", { name: "Switch organization", exact: true })
-		.click();
+	await chooseOrganization(page, second.name);
 	await expect(
-		page.getByRole("heading", { name: "Second lab", exact: true }),
-	).toBeVisible();
-	await page
-		.getByRole("combobox", { name: "Organization", exact: true })
-		.selectOption(first.id);
-	await page
-		.getByRole("button", { name: "Switch organization", exact: true })
-		.click();
+		page.getByRole("button", {
+			name: "Switch project, organization or account",
+			exact: true,
+		}),
+	).toContainText(second.name);
+	await chooseOrganization(page, first.name);
 	await expect(
-		page.getByRole("heading", { name: "First lab", exact: true }),
-	).toBeVisible();
-	await page.getByRole("link", { name: "Members", exact: true }).click();
+		page.getByRole("button", {
+			name: "Switch project, organization or account",
+			exact: true,
+		}),
+	).toContainText(first.name);
+	await openSettingsSection(page, "Members");
 	await expect(
 		page.getByRole("button", {
 			name: "Resend invitation to recipient@example.invalid",
@@ -576,7 +574,10 @@ for (const kind of ["invitation", "grant"] as const) {
 		});
 		await workspace.signIn(page, "owner@example.invalid");
 		await page.goto(
-			`${workspace.origin}/organizations/${org.id}${kind === "grant" ? `/projects/${project.id}/settings` : ""}/members`,
+			settingsUrl(
+				`${workspace.origin}/organizations/${org.id}${kind === "grant" ? `/projects/${project.id}` : ""}`,
+				kind === "grant" ? "project-members" : "organization-members",
+			),
 		);
 		let writes = 0;
 		page.on("request", (request) => {
@@ -682,7 +683,12 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 				},
 			});
 			await workspace.signIn(page, "owner@example.invalid");
-			await page.goto(`${workspace.origin}/organizations/${first.id}/members`);
+			await page.goto(
+				settingsUrl(
+					`${workspace.origin}/organizations/${first.id}`,
+					"organization-members",
+				),
+			);
 			await expect(
 				page.getByRole("button", {
 					name: "Save role for target@example.invalid",
@@ -737,15 +743,13 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 					.getByRole("button", { name: "Dismiss notice", exact: true })
 					.click();
 			if (leave) {
-				await page
-					.getByRole("combobox", { name: "Organization", exact: true })
-					.selectOption(second.id);
-				await page
-					.getByRole("button", { name: "Switch organization", exact: true })
-					.click();
+				await chooseOrganization(page, second.name);
 				await expect(
-					page.getByRole("heading", { name: "Second lab", exact: true }),
-				).toBeVisible();
+					page.getByRole("button", {
+						name: "Switch project, organization or account",
+						exact: true,
+					}),
+				).toContainText(second.name);
 				if (transition === "navigate")
 					await page
 						.getByRole("button", { name: "Dismiss notice", exact: true })
@@ -841,7 +845,12 @@ test("a saved membership write is acknowledged when its refresh becomes not-foun
 	).find((entry) => entry.userId === owner.userId);
 	if (!ownerMember) throw new Error("Expected canonical owner");
 	await workspace.signIn(page, "owner@example.invalid");
-	await page.goto(`${workspace.origin}/organizations/${org.id}/members`);
+	await page.goto(
+		settingsUrl(
+			`${workspace.origin}/organizations/${org.id}`,
+			"organization-members",
+		),
+	);
 	await page.route("**/_serverFn/**", async (route) => {
 		if (route.request().method() !== "POST") {
 			await route.continue();
@@ -894,7 +903,10 @@ test("fragment navigation retires the old response without leaving retained invi
 			}),
 		),
 	);
-	const path = `${workspace.origin}/organizations/${org.id}/members`;
+	const path = settingsUrl(
+		`${workspace.origin}/organizations/${org.id}`,
+		"organization-members",
+	);
 	await page.goto(path);
 	const held = await holdSuccessfulWrite(page);
 	await page
@@ -969,7 +981,12 @@ test.describe("composed collector credential lifetime", () => {
 					}),
 				),
 			);
-			await page.goto(`${workspace.origin}/organizations/${org.id}/members`);
+			await page.goto(
+				settingsUrl(
+					`${workspace.origin}/organizations/${org.id}`,
+					"organization-members",
+				),
+			);
 			const held = await holdSuccessfulWrite(page);
 			await page
 				.getByLabel("Email address", { exact: true })
@@ -978,15 +995,8 @@ test.describe("composed collector credential lifetime", () => {
 				.getByRole("button", { name: "Send invitation", exact: true })
 				.click();
 			await held.ready;
-			await page
-				.getByRole("combobox", { name: "Project", exact: true })
-				.selectOption(project.id);
-			await page
-				.getByRole("button", { name: "Switch project", exact: true })
-				.click();
-			await page
-				.getByRole("link", { name: "Collector credentials", exact: true })
-				.click();
+			await chooseProject(page, project.name);
+			await openSettingsSection(page, "Collector credentials");
 			await page
 				.getByLabel("Credential name", { exact: true })
 				.fill("Reveal source");
@@ -1022,7 +1032,10 @@ test.describe("composed collector credential lifetime", () => {
 			);
 			await held.release();
 			await expect(page).toHaveURL(
-				`${workspace.origin}/organizations/${org.id}/projects/${project.id}/settings/credentials`,
+				settingsUrl(
+					`${workspace.origin}/organizations/${org.id}/projects/${project.id}`,
+					"credentials",
+				),
 			);
 			await expect(tokenField).toBeVisible();
 			expect((await tokenField.inputValue()) === token).toBe(true);

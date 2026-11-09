@@ -21,6 +21,7 @@ import {
 	type AuthEmailDelivery,
 	createAuthEmailDelivery,
 } from "./email-delivery.server";
+import { sessionSignInMethod } from "./session-details.server";
 import { AUTH_FRESH_AGE_SECONDS } from "./session-policy";
 
 const credentialSecurity = {
@@ -112,6 +113,21 @@ export function createAuth(
 		session: {
 			freshAge: AUTH_FRESH_AGE_SECONDS,
 			cookieCache: { enabled: false },
+			additionalFields: {
+				signInMethod: { type: "string", required: false, input: false },
+			},
+		},
+		databaseHooks: {
+			session: {
+				create: {
+					before: async (session, context) => ({
+						data: {
+							...session,
+							signInMethod: sessionSignInMethod(context?.path),
+						},
+					}),
+				},
+			},
 		},
 		rateLimit: { enabled: true, storage: "database" },
 		advanced: {

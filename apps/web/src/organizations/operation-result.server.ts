@@ -83,11 +83,14 @@ export async function operationResult<T>(
 			return {
 				data: null,
 				error: {
-					code: duplicate
-						? "CONFLICT"
-						: unavailable
-							? "NOT_FOUND"
-							: (statusCodes[error.statusCode] ?? "INVALID_INPUT"),
+					code:
+						error.body?.code === "SESSION_NOT_FRESH"
+							? "SESSION_NOT_FRESH"
+							: duplicate
+								? "CONFLICT"
+								: unavailable
+									? "NOT_FOUND"
+									: (statusCodes[error.statusCode] ?? "INVALID_INPUT"),
 					message: error.body?.message ?? "Organization operation failed",
 				},
 			};

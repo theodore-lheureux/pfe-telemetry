@@ -7,14 +7,203 @@ import type { Locale } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
+import {
+	type SettingsSection,
+	settingsPath,
+} from "../../src/components/settings-links";
 import type { OperationResult } from "../../src/organizations/contracts";
-
 import { trustedCodeSignIn } from "../auth-actors";
 import { createTestDatabase } from "../database";
+
+export function settingsUrl(scope: string, section?: SettingsSection) {
+	const relative = scope.startsWith("/");
+	const url = new URL(scope, "http://fixture.invalid");
+	const parts = url.pathname.split("/");
+	const organizationId = parts[1] === "organizations" ? parts[2] : undefined;
+	const projectId = parts[3] === "projects" ? parts[4] : undefined;
+	const path = settingsPath(
+		section ??
+			(projectId ? "project" : organizationId ? "organization" : "user"),
+		{ organizationId, projectId },
+	);
+	return relative ? path : `${url.origin}${path}`;
+}
 
 export function data<T>(result: OperationResult<T>): T {
 	if (result.error) throw new Error(result.error.message);
 	return result.data;
+}
+
+const preferencesHistory = new WeakMap<Page, number>();
+
+async function expandSettingsNavigation(page: Page, locale: Locale) {
+	const summary = page
+		.getByRole("navigation", {
+			name: m.settings_navigation({}, { locale }),
+			exact: true,
+		})
+		.getByRole("button", {
+			name: new RegExp(`^${m.settings({}, { locale })} ·`),
+		});
+	if (
+		(await summary.isVisible()) &&
+		(await summary.getAttribute("aria-expanded")) === "false"
+	)
+		await summary.click();
+}
+
+export async function openPreferences(page: Page, locale: Locale = "en") {
+	const original = page.url();
+	await openWorkspaceMenu(page, locale);
+	await page
+		.getByRole("menuitem", {
+			name: m.user_settings({}, { locale }),
+			exact: true,
+		})
+		.click();
+	await expect(
+		page.getByRole("heading", {
+			name: m.user_profile({}, { locale }),
+			exact: true,
+		}),
+	).toBeVisible();
+	const profile = page.url();
+	await expandSettingsNavigation(page, locale);
+	await page
+		.getByRole("navigation", {
+			name: m.settings_navigation({}, { locale }),
+			exact: true,
+		})
+		.getByRole("link", {
+			name: m.appearance_language({}, { locale }),
+			exact: true,
+		})
+		.click();
+	await expect(
+		page.getByRole("heading", {
+			name: m.appearance({}, { locale }),
+			exact: true,
+			level: 1,
+		}),
+	).toBeVisible();
+	preferencesHistory.set(
+		page,
+		Number(original !== profile) + Number(profile !== page.url()),
+	);
+}
+
+export async function closePreferences(page: Page) {
+	const count = preferencesHistory.get(page) ?? 1;
+	preferencesHistory.delete(page);
+	for (let index = 0; index < count; index++) await page.goBack();
+}
+
+export async function openWorkspaceMenu(page: Page, locale: Locale = "en") {
+	const trigger = page.getByRole("button", {
+		name: m.switch_workspace({}, { locale }),
+		exact: true,
+	});
+	if (
+		(page.viewportSize()?.width ?? 1280) < 768 &&
+		!(await page
+			.locator('[data-slot="sidebar"][data-mobile="true"][data-state="open"]')
+			.count())
+	)
+		await page
+			.getByRole("button", {
+				name: m.open_navigation({}, { locale }),
+				exact: true,
+				includeHidden: true,
+			})
+			.click();
+	await trigger.click();
+}
+
+export async function chooseOrganization(
+	page: Page,
+	name: string,
+	locale: Locale = "en",
+) {
+	await openWorkspaceMenu(page, locale);
+	await page
+		.getByRole("menuitem", {
+			name: m.choose_organization({}, { locale }),
+			exact: true,
+		})
+		.click();
+	await page
+		.getByRole("combobox", {
+			name: m.search_organizations({}, { locale }),
+			exact: true,
+		})
+		.fill(name);
+	await page.getByRole("option", { name, exact: true }).click();
+}
+
+export async function chooseProject(
+	page: Page,
+	name: string,
+	locale: Locale = "en",
+) {
+	await openWorkspaceMenu(page, locale);
+	await page
+		.getByRole("menuitem", {
+			name: m.choose_project({}, { locale }),
+			exact: true,
+		})
+		.click();
+	await page
+		.getByRole("combobox", {
+			name: m.search_projects({}, { locale }),
+			exact: true,
+		})
+		.fill(name);
+	await page.getByRole("option", { name, exact: true }).click();
+}
+
+export async function openSettingsSection(
+	page: Page,
+	name: string,
+	locale: Locale = "en",
+) {
+	if (name === m.organizations({}, { locale }))
+		return chooseOrganization(
+			page,
+			m.all_organizations({}, { locale }),
+			locale,
+		);
+	if (name === m.projects({}, { locale }))
+		return chooseProject(page, m.all_visible_projects({}, { locale }), locale);
+	const link = page
+		.getByRole("navigation", {
+			name: m.settings_navigation({}, { locale }),
+			exact: true,
+		})
+		.getByRole("link", { name, exact: true });
+	if (await link.count()) {
+		await expandSettingsNavigation(page, locale);
+		return link.click();
+	}
+	await openWorkspaceMenu(page, locale);
+	const parent =
+		name === m.collector_credentials({}, { locale })
+			? m.project_settings({}, { locale })
+			: name === m.members({}, { locale })
+				? m.organization_settings({}, { locale })
+				: name === m.appearance_language({}, { locale })
+					? m.user_settings({}, { locale })
+					: name;
+	await page.getByRole("menuitem", { name: parent, exact: true }).click();
+	if (parent !== name) {
+		await expect(
+			page.getByRole("navigation", {
+				name: m.settings_navigation({}, { locale }),
+				exact: true,
+			}),
+		).toBeVisible();
+		await expandSettingsNavigation(page, locale);
+		await link.click();
+	}
 }
 
 async function createWorkspace(parallelIndex: number) {
@@ -296,6 +485,12 @@ export const test = base.extend<{
 	// Retire the browser's connections before draining its isolated application.
 	page: async ({ page, workspace: _workspace }, use) => {
 		try {
+			await page.route("https://gravatar.com/avatar/**", (route) =>
+				route.fulfill({ status: 404, body: "" }),
+			);
+			await page.route("https://avatars.example.invalid/**", (route) =>
+				route.fulfill({ status: 404, body: "" }),
+			);
 			await use(page);
 		} finally {
 			await page.context().close();
