@@ -1,0 +1,190 @@
+---
+- name: Run a workload on the selected compute nodes
+  hosts: compute
+  gather_facts: true
+  gather_subset: ["!all", hardware]
+  vars:
+    recount_workload: cpu
+    recount_duration: 10
+    recount_workers: 1
+    recount_memory_mb: 64
+    recount_io_mb: 64
+    recount_results_root: "{{ playbook_dir }}/../.state/results"
+    recount_tool: "{{ 'fio' if recount_workload == 'io' else 'stress-ng' }}"
+    recount_commands:
+      cpu:
+        - stress-ng
+        - --cpu
+        - "{{ recount_workers | string }}"
+        - --cpu-method
+        - sqrt
+        - --timeout
+        - "{{ recount_duration }}s"
+        - --metrics-brief
+        - --yaml
+        - "{{ recount_output_file }}"
+      memory:
+        - stress-ng
+        - --vm
+        - "{{ recount_workers | string }}"
+        - --vm-bytes
+        - "{{ recount_memory_mb }}M"
+        - --vm-keep
+        - --timeout
+        - "{{ recount_duration }}s"
+        - --metrics-brief
+        - --yaml
+        - "{{ recount_output_file }}"
+      io:
+        - fio
+        - --output-format=json
+        - "--output={{ recount_output_file }}"
+        - "--directory={{ recount_guest_run.path }}"
+        - "--runtime={{ recount_duration }}"
+        - "--size={{ recount_io_mb }}M"
+        - "--numjobs={{ recount_workers }}"
+        - "{{ recount_guest_run.path }}/sequential-write.fio"
+  tasks:
+    - name: Validate workload parameters
+      ansible.builtin.assert:
+        that:
+          - not ansible_check_mode
+          - recount_workload in ['cpu', 'memory', 'io']
+          - recount_duration | string is match('^[0-9]+$')
+          - recount_duration | int >= 1 and recount_duration | int <= 300
+          - recount_workers | string is match('^[0-9]+$')
+          - recount_workers | int >= 1 and recount_workers | int <= 4
+          - recount_memory_mb | string is match('^[0-9]+$')
+          - recount_memory_mb | int >= 16 and recount_memory_mb | int <= 256
+          - recount_io_mb | string is match('^[0-9]+$')
+          - recount_io_mb | int >= 16 and recount_io_mb | int * recount_workers | int <= 256
+        fail_msg: "Use normal execution with cpu, memory, or io; duration 1-300 seconds; 1-4 workers; 16-256 MiB of memory; and at most 256 MiB of I/O files per node."
+
+    - name: Create the local results directory
+      ansible.builtin.file:
+        path: "{{ recount_results_root }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Allocate a results directory for this run
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ recount_results_root }}"
+        prefix: "{{ recount_workload }}-"
+      register: recount_results
+      delegate_to: localhost
+      run_once: true
+
+    - name: Create the local node results directory
+      ansible.builtin.file:
+        path: "{{ recount_results.path }}/{{ inventory_hostname }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Read the workload tool version
+      ansible.builtin.command:
+        argv: ["{{ recount_tool }}", --version]
+      register: recount_tool_version
+      changed_when: false
+
+    - name: Allocate the guest working directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: /var/tmp
+        prefix: recount-workload-
+      register: recount_guest_run
+
+    - name: Select the result file and command
+      ansible.builtin.set_fact:
+        recount_output_file: "{{ recount_guest_run.path }}/result.{{ 'json' if recount_workload == 'io' else 'yaml' }}"
+
+    - name: Run the workload and collect its results
+      block:
+        - name: Copy the I/O profile
+          ansible.builtin.copy:
+            src: sequential-write.fio
+            dest: "{{ recount_guest_run.path }}/sequential-write.fio"
+            mode: "0644"
+          when: recount_workload == 'io'
+
+        - name: Start the workload
+          ansible.builtin.command:
+            argv: "{{ recount_commands[recount_workload] }}"
+          async: "{{ recount_duration | int + 60 }}"
+          poll: 0
+          register: recount_job
+
+        - name: Wait for workload completion
+          ansible.builtin.async_status:
+            jid: "{{ recount_job.ansible_job_id }}"
+          register: recount_job_result
+          until: recount_job_result.finished
+          retries: "{{ (recount_duration | int + 90) // 2 }}"
+          delay: 2
+      always:
+        - name: Save the run context and process result
+          ansible.builtin.copy:
+            dest: "{{ recount_results.path }}/{{ inventory_hostname }}/run.json"
+            mode: "0644"
+            content: "{{ recount_run_context | to_nice_json }}\n"
+          vars:
+            recount_run_context:
+              run_id: "{{ recount_results.path | basename }}"
+              workload: "{{ recount_workload }}"
+              duration_seconds: "{{ recount_duration | int }}"
+              workers: "{{ recount_workers | int }}"
+              memory_mb: "{{ recount_memory_mb | int if recount_workload == 'memory' else none }}"
+              io_file_mb: "{{ recount_io_mb | int if recount_workload == 'io' else none }}"
+              command: "{{ recount_commands[recount_workload] }}"
+              tool_version: "{{ recount_tool_version.stdout | trim }}"
+              host_observed_at_utc: "{{ ansible_facts.date_time.iso8601 }}"
+              node:
+                inventory_name: "{{ inventory_hostname }}"
+                hostname: "{{ ansible_facts.hostname }}"
+                machine_id: "{{ ansible_facts.machine_id }}"
+                architecture: "{{ ansible_facts.architecture }}"
+                kernel: "{{ ansible_facts.kernel }}"
+                logical_cpus: "{{ ansible_facts.processor_vcpus }}"
+                memory_mb: "{{ ansible_facts.memtotal_mb }}"
+              process: "{{ recount_job_result | default(recount_job | default({})) }}"
+          delegate_to: localhost
+
+        - name: Check for tool output
+          ansible.builtin.stat:
+            path: "{{ recount_output_file }}"
+          register: recount_output_stat
+
+        - name: Fetch the tool output
+          ansible.builtin.fetch:
+            src: "{{ recount_output_file }}"
+            dest: "{{ recount_results.path }}/{{ inventory_hostname }}/"
+            flat: true
+          when: recount_output_stat.stat.exists
+
+        - name: Archive the I/O profile
+          ansible.builtin.copy:
+            src: sequential-write.fio
+            dest: "{{ recount_results.path }}/{{ inventory_hostname }}/sequential-write.fio"
+            mode: "0644"
+          delegate_to: localhost
+          when: recount_workload == 'io'
+
+        - name: Remove the completed async job record
+          ansible.builtin.async_status:
+            jid: "{{ recount_job.ansible_job_id }}"
+            mode: cleanup
+          when: recount_job_result is defined and recount_job_result.finished | default(false)
+
+        - name: Remove the guest working directory
+          ansible.builtin.file:
+            path: "{{ recount_guest_run.path }}"
+            state: absent
+          when: recount_job is not defined or (recount_job_result is defined and recount_job_result.finished | default(false))
+
+        - name: Report the local results directory
+          ansible.builtin.debug:
+            msg: "Results: {{ recount_results.path }}"
+          run_once: true

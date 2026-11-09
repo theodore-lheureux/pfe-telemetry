@@ -1,0 +1,67 @@
+# Two independent Linux kernels. Host services run in Docker Compose.
+require "ipaddr"
+Vagrant.require_version ">= 2.4.9", "< 3.0"
+
+def environment_integer(name, default, minimum, maximum)
+  value = Integer(ENV.fetch(name, default.to_s), 10)
+  raise "#{name} must be between #{minimum} and #{maximum}" unless (minimum..maximum).cover?(value)
+  value
+end
+
+port = environment_integer("RECOUNT_INGESTION_PORT", 14317, 1024, 65535)
+prometheus_port = environment_integer("RECOUNT_LAB_PROMETHEUS_PORT", 9090, 1024, 65535)
+cpus = environment_integer("RECOUNT_LAB_NODE_CPUS", 1, 1, 4)
+memory = environment_integer("RECOUNT_LAB_NODE_MEMORY_MB", 1024, 512, 4096)
+prefix = ENV.fetch("RECOUNT_LAB_VM_PREFIX", "recount-lab")
+raise "Invalid lab VM prefix" unless prefix.match?(/\A[A-Za-z0-9][A-Za-z0-9_.-]*\z/)
+
+def private_address(name)
+  value = ENV.fetch(name) { raise "Set #{name} in the selected ignored lab configuration" }
+  address = IPAddr.new(value)
+  raise "#{name} must be an IPv4 address" unless address.ipv4? && address.to_s == value
+  value
+end
+
+nodes = {
+  "node1" => { "recount_hostname" => "recount-compute-1", "recount_private_ip" => private_address("RECOUNT_LAB_NODE1_ADDRESS") },
+  "node2" => { "recount_hostname" => "recount-compute-2", "recount_private_ip" => private_address("RECOUNT_LAB_NODE2_ADDRESS") }
+}
+raise "Lab node addresses must differ" if nodes["node1"]["recount_private_ip"] == nodes["node2"]["recount_private_ip"]
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "bento/ubuntu-26.04"
+  config.vm.box_version = "202606.01.0"
+  config.vm.box_architecture = :auto
+  config.vm.box_check_update = false
+  config.vm.boot_timeout = 300
+  # Avoid exposing the repository or host home directory in the guests.
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  nodes.each do |name, variables|
+    config.vm.define name do |node|
+      node.vm.hostname = variables.fetch("recount_hostname")
+      node.vm.network "private_network", ip: variables.fetch("recount_private_ip"), netmask: "255.255.255.0", virtualbox__intnet: prefix
+      node.vm.provider "virtualbox" do |provider|
+        provider.name = "#{prefix}-#{name}"
+        provider.gui = false
+        provider.cpus = cpus
+        provider.memory = memory
+        # 10.0.2.2 on the NAT interface maps to the host loopback interface.
+        provider.customize ["modifyvm", :id, "--nat-localhostreachable1", "on"]
+      end
+    end
+  end
+
+  config.vm.provision "ansible", run: "always" do |ansible|
+    ansible.playbook = "ansible/site.yml"
+    ansible.config_file = "ansible/ansible.cfg"
+    ansible.groups = {
+      "compute" => nodes.keys,
+      "compute:vars" => {
+        "recount_ingestion_address" => "10.0.2.2:#{port}",
+        "recount_prometheus_url" => "http://10.0.2.2:#{prometheus_port}"
+      }
+    }
+    ansible.host_vars = nodes
+  end
+end

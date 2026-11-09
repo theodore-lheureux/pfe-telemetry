@@ -14,9 +14,9 @@ pre-commit:
     - "**/.tanstack/**"
     - "**/.venv/**"
     - "**/target/**"
-    - infra/test-environment/.state/**
-    - infra/test-environment/.vagrant/**
-    - infra/test-environment/monitoring/grafana/dashboards/node-exporter-full.json
+    - "**/.state/**"
+    - "**/.vagrant/**"
+    - infra/lab/monitoring/grafana/dashboards/node-exporter-full.json
   jobs:
     - name: web-and-config
       glob: "**/*.{ts,tsx,json,jsonc,css}"
@@ -26,10 +26,10 @@ pre-commit:
       run: bun --bun run prettier --check {staged_files}
     - name: just-format
       glob: "**/justfile"
-      run: just --fmt --check && just --justfile infra/test-environment/justfile --fmt --check
+      run: just --fmt --check && just --justfile infra/local/justfile --fmt --check && just --justfile infra/lab/justfile --fmt --check
     - name: ansible-syntax
-      glob: "infra/test-environment/ansible/**/*.yml"
-      run: uv run --locked ansible-playbook --syntax-check --inventory compute, infra/test-environment/ansible/*.yml
+      glob: "infra/lab/ansible/**/*.yml"
+      run: uv run --locked ansible-playbook --syntax-check --inventory compute, infra/lab/ansible/*.yml
     - name: rust-format
       glob:
         - "**/*.rs"
@@ -37,7 +37,7 @@ pre-commit:
         - rust-toolchain.toml
       run: cargo fmt --all -- --check
     - name: vagrant-syntax
-      glob: "infra/test-environment/Vagrantfile"
+      glob: "infra/lab/Vagrantfile"
       run: ruby -c {staged_files}
 
 # Compilation and type checks happen before pushing, rather than on every commit.

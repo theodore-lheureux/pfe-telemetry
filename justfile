@@ -1,32 +1,30 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set positional-arguments
 
-# Manage the local VMs, ingestion server, and monitoring.
-mod env 'infra/test-environment/justfile'
+# Reusable backends and explicit packaged-runtime operations.
+mod local 'infra/local/justfile'
 
-# Ingest telemetry through Kafka and query ClickHouse.
-mod telemetry 'infra/telemetry/justfile'
-
-mod app 'infra/application/justfile'
+# Optional Linux VMs, workloads and monitoring.
+mod lab 'infra/lab/justfile'
 
 default:
     @just --list
 
-# Install the dependencies from the root lockfiles and create local settings
+# Install locked application dependencies and missing ignored configuration only.
 setup: config
     bun install --frozen-lockfile
-    uv sync --locked
-    cargo check --locked --workspace
+    cargo fetch --locked
 
-# Create missing configuration files
 config:
-    @for directory in apps/web infra/test-environment infra/telemetry infra/application; do if [ ! -e "$directory/.env" ]; then cp "$directory/.env.example" "$directory/.env"; fi; done
+    @for directory in apps/web infra/local; do if [ ! -e "$directory/.env" ] && [ ! -L "$directory/.env" ]; then (umask 077; set -C; cat "$directory/.env.example" > "$directory/.env"); fi; done
 
+# Native Bun web development; arguments are forwarded to Vite.
 dev *args:
-    bun run dev "$@"
+    bun run --filter @recount/web dev "$@"
 
+# Build the web application and landing site; Rust packages use Cargo directly.
 build:
-    bun run build
+    bun run --filter @recount/web build
     bun run --filter @recount/landing build
 
 # Astro landing site and documentation; arguments are forwarded to Astro.
@@ -40,26 +38,49 @@ landing-deploy:
 typecheck:
     bun run typecheck
 
-test-web:
-    bun run --filter @pfe/web test
-
 db-generate *args:
-    bun run --filter @pfe/web db:generate "$@"
+    bun run --filter @recount/web db:generate "$@"
 
 db-check:
-    bun run --filter @pfe/web db:check
+    bun run --filter @recount/web db:check
 
 db-migrate:
-    bun run --filter @pfe/web db:migrate
+    bun run --filter @recount/web db:migrate
 
 email-dev:
-    bun run --filter @pfe/transactional dev
+    bun run --filter @recount/transactional dev
 
-test-db:
-    bun run --filter @pfe/web test:db
+# Native ingestion API; use flags or exported service-specific environment.
+ingestion-api *args:
+    cargo run --locked -p recount-ingestion-api -- "$@"
 
-server:
-    cargo run --locked -p pfe-server
+# Native normalizer; options precede the optional bootstrap subcommand.
+normalizer *args:
+    cargo run --locked -p recount-normalizer -- "$@"
+
+# Ordinary host-compatible tests, without live-service or image setup.
+test:
+    cargo test --locked --workspace --all-targets
+    bun run --filter @recount/web test
+    bun --no-env-file test infra/local
+
+# Select a dependency-specific leaf; native test-tool arguments remain available.
+test-integration +args:
+    just --justfile tests/justfile "$@"
+
+# Standard host Node Playwright with native Bun application fixtures.
+test-browser *args:
+    bun run i18n:compile
+    cd apps/web && node ../../node_modules/@playwright/test/cli.js test "$@"
+
+test-linux *args:
+    just --justfile tests/justfile linux "$@"
+
+test-runtime *args:
+    just --justfile tests/justfile runtime "$@"
+
+test-recovery *args:
+    just --justfile tests/justfile recovery "$@"
 
 check-web:
     bun --bun run biome check . --error-on-warnings
@@ -68,39 +89,32 @@ check-web:
 check-docs:
     bun --bun run prettier --check '**/*.{md,yaml,yml}'
     just --fmt --check
-    just --justfile infra/test-environment/justfile --fmt --check
-    just --justfile infra/telemetry/justfile --fmt --check
-    just --justfile infra/application/justfile --fmt --check
+    just --justfile infra/local/justfile --fmt --check
+    just --justfile infra/lab/justfile --fmt --check
 
-check-environment:
-    ruby -c infra/test-environment/Vagrantfile
-    uv run --locked ansible-playbook --syntax-check --inventory compute, infra/test-environment/ansible/*.yml
-    docker compose --env-file infra/test-environment/.env.example --file infra/test-environment/compose.yaml config --quiet
-    docker compose --env-file infra/telemetry/.env.example --file infra/telemetry/compose.yaml config --quiet
-    POSTGRES_PASSWORD=configuration-check docker compose --env-file infra/application/.env.example --file infra/application/compose.yaml config --quiet
+check-local:
+    docker compose --env-file infra/local/.env.example --file infra/local/compose.yaml config --quiet
+    docker compose --env-file infra/local/.env.example --file infra/local/compose.yaml --file infra/local/compose.apps.yaml config --quiet
+    bun --no-env-file test infra/local
+    bun --no-env-file run tsc --project infra/local/tsconfig.json
 
 check-rust:
     cargo fmt --all -- --check
     cargo clippy --locked --workspace --all-targets -- -D warnings
 
-check: check-web check-docs check-environment check-rust
+check: check-web check-docs check-local check-rust
 
 lint:
     bun --bun run biome lint . --error-on-warnings
-    ruby -c infra/test-environment/Vagrantfile
     cargo clippy --locked --workspace --all-targets -- -D warnings
-
-test:
-    cargo test --locked --workspace
 
 format:
     bun --bun run biome format --write .
     bun --bun run prettier --write '**/*.{md,yaml,yml}'
     cargo fmt --all
     just --fmt
-    just --justfile infra/test-environment/justfile --fmt
-    just --justfile infra/telemetry/justfile --fmt
-    just --justfile infra/application/justfile --fmt
+    just --justfile infra/local/justfile --fmt
+    just --justfile infra/lab/justfile --fmt
 
 format-check: check-docs
     bun --bun run biome format .

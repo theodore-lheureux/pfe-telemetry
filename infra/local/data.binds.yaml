@@ -1,0 +1,20 @@
+# Use only pre-existing, explicitly selected data directories.
+services:
+  postgres:
+    volumes:
+      - type: bind
+        source: ${RECOUNT_POSTGRES_DATA_DIRECTORY:?Set the existing absolute PostgreSQL data path}
+        target: /var/lib/postgresql
+        bind: { create_host_path: false }
+  kafka:
+    volumes:
+      - type: bind
+        source: ${RECOUNT_KAFKA_DATA_DIRECTORY:?Set the existing absolute Kafka data path}
+        target: /var/lib/kafka/data
+        bind: { create_host_path: false }
+  clickhouse:
+    volumes:
+      - type: bind
+        source: ${RECOUNT_CLICKHOUSE_DATA_DIRECTORY:?Set the existing case-sensitive ClickHouse data path}
+        target: /var/lib/clickhouse
+        bind: { create_host_path: false }

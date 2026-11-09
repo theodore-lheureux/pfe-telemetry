@@ -13,10 +13,11 @@
       "!!**/.tanstack",
       "!!**/.venv",
       "!!**/target",
-      "!!infra/test-environment/.state",
-      "!!infra/test-environment/.vagrant",
-      "!!infra/test-environment/monitoring/grafana/dashboards/node-exporter-full.json",
+      "!!infra/lab/.state",
+      "!!**/.vagrant",
+      "!!infra/lab/monitoring/grafana/dashboards/node-exporter-full.json",
       "!!apps/web/src/routeTree.gen.ts",
+      "!!docs/*.svg",
       "!!bun.lock"
     ]
   },

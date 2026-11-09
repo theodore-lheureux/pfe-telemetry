@@ -1,13 +1,14 @@
-.git
-node_modules
-**/node_modules
-target
-.venv
-.ansible
-dist
-**/dist
-**/.output
-**/.tanstack
+# Runtime images consume only host-built artifacts and application Dockerfiles.
+# Run infra/local/artifacts.ts before Buildx Bake; no source compilation in Docker.
+**
+!apps/
+!apps/*/
+!apps/*/Dockerfile
+!.state/
+!.state/artifacts/
+!.state/artifacts/**
 **/.env
 **/.env.*
-infra
+**/*.token
+**/id_rsa
+**/id_ed25519

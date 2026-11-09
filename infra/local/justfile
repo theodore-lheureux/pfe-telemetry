@@ -1,0 +1,71 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set positional-arguments
+set dotenv-filename := ".env"
+set dotenv-load
+
+default:
+    @just --justfile "{{ justfile() }}" --list local
+
+# Native trusted exporter; output must not already exist.
+prepare-clickhouse output:
+    cargo run --locked --manifest-path ../../Cargo.toml -p recount-telemetry-validation --example recount-schema-export -- --source-root ../.. --output "$1" --bootstrap kafka:9092
+    docker build --file ../clickhouse/Dockerfile --tag "${RECOUNT_CLICKHOUSE_IMAGE:-recount-clickhouse:local}" "$1"
+
+# Validate prebuilt target-specific inputs, then package without compiling in Docker.
+package arch *services:
+    bun --no-env-file artifacts.ts "$@"
+    cd ../.. && docker buildx bake --file infra/local/docker-bake.hcl --set "*.platform=linux/$1" --load "${@:2}"
+
+# Finite first creation of one explicitly selected empty data role.
+init service:
+    bun --no-env-file initialize.ts "$1"
+
+data-identity service:
+    bun --no-env-file data.ts inspect "$1"
+    docker compose run --rm --no-deps --entrypoint /bin/sh "$1" /etc/recount/data-entrypoint.sh "$1" --identity
+
+# Reuse unchanged backends; apply declared changes. No builds, topic creation or offset seeds.
+up:
+    bun --no-env-file data.ts start
+    docker compose up --no-build --no-deps --detach --wait --wait-timeout 180 postgres kafka
+    docker compose run --rm --no-deps kafka-topics verify
+    docker compose up --no-build --no-deps --detach --wait --wait-timeout 180 clickhouse
+
+topics-create:
+    docker compose run --rm --no-deps kafka-topics create
+
+topics-verify:
+    docker compose run --rm --no-deps kafka-topics verify
+
+provision-ingestion:
+    test -n "${RECOUNT_INGESTION_PASSWORD:?Set RECOUNT_INGESTION_PASSWORD}"
+    docker compose exec -T --env RECOUNT_INGESTION_PASSWORD postgres psql --username=recount --dbname=recount < ingestion-role.sql
+
+# Explicit fresh group only, with consumers stopped and retained earliest zero.
+initialize-clickhouse-offsets:
+    docker compose run --rm --no-deps --env RECOUNT_CONFIRM_EMPTY_CLICKHOUSE_GROUP=recount-clickhouse --entrypoint /bin/bash kafka-topics /etc/recount/initialize-clickhouse-offsets.sh
+
+# Native bootstrap; pass normalizer flags before its bootstrap subcommand.
+initialize-normalizer-offsets *args:
+    RECOUNT_KAFKA_BOOTSTRAP="127.0.0.1:${RECOUNT_KAFKA_HOST_PORT:-19092}" cargo run --locked --manifest-path ../../Cargo.toml -p recount-normalizer -- "$@" bootstrap
+
+# Start/update packaged apps after local up selects the backends. No backend changes here.
+apps-up:
+    bun --no-env-file data.ts start
+    docker compose run --rm --no-deps kafka-topics verify
+    COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:compose.apps.yaml" docker compose up --no-build --no-deps --detach --wait --wait-timeout 180 ingestion-api normalizer web
+
+apps-stop:
+    COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:compose.apps.yaml" docker compose stop ingestion-api normalizer web
+
+status:
+    docker compose ps --all
+
+stop:
+    docker compose stop postgres kafka clickhouse
+
+query sql:
+    docker compose exec -T clickhouse sh -c 'exec clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "$1"' sh "$1"
+
+compose +args:
+    docker compose "$@"

@@ -1,0 +1,246 @@
+name: recount
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "2m", max-file: "3" }
+
+x-topic-interface: &topic-interface
+  RECOUNT_KAFKA_BOOTSTRAP: kafka:9092
+  RECOUNT_RAW_TOPIC: ${RECOUNT_RAW_TOPIC:-recount.metrics.raw}
+  RECOUNT_NORMALIZED_TOPIC: ${RECOUNT_NORMALIZED_TOPIC:-recount.metrics.normalized}
+  RECOUNT_RAW_PARTITIONS: ${RECOUNT_RAW_PARTITIONS:-3}
+  RECOUNT_NORMALIZED_PARTITIONS: ${RECOUNT_NORMALIZED_PARTITIONS:-3}
+  RECOUNT_RAW_RETENTION_MS: ${RECOUNT_RAW_RETENTION_MS:-21600000}
+  RECOUNT_NORMALIZED_RETENTION_MS: ${RECOUNT_NORMALIZED_RETENTION_MS:-21600000}
+  RECOUNT_RAW_RETENTION_BYTES: ${RECOUNT_RAW_RETENTION_BYTES:-134217728}
+  RECOUNT_NORMALIZED_RETENTION_BYTES: ${RECOUNT_NORMALIZED_RETENTION_BYTES:-134217728}
+  RECOUNT_RAW_SEGMENT_BYTES: ${RECOUNT_RAW_SEGMENT_BYTES:-16777216}
+  RECOUNT_NORMALIZED_SEGMENT_BYTES: ${RECOUNT_NORMALIZED_SEGMENT_BYTES:-16777216}
+  RECOUNT_RAW_SEGMENT_MS: ${RECOUNT_RAW_SEGMENT_MS:-60000}
+  RECOUNT_NORMALIZED_SEGMENT_MS: ${RECOUNT_NORMALIZED_SEGMENT_MS:-60000}
+  RECOUNT_RAW_BROKER_MAX_BYTES: ${RECOUNT_RAW_BROKER_MAX_BYTES:-6291456}
+  RECOUNT_NORMALIZED_BROKER_MAX_BYTES: ${RECOUNT_NORMALIZED_BROKER_MAX_BYTES:-2097152}
+  RECOUNT_BROKER_MESSAGE_BYTES: ${RECOUNT_BROKER_MESSAGE_BYTES:-6291456}
+  RECOUNT_BROKER_FETCH_BYTES: ${RECOUNT_BROKER_FETCH_BYTES:-6291456}
+
+services:
+  postgres:
+    entrypoint: [/bin/sh, /etc/recount/data-entrypoint.sh, postgres]
+    command: [docker-entrypoint.sh, postgres]
+    image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
+    environment:
+      POSTGRES_USER: recount
+      POSTGRES_DB: recount
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      RECOUNT_DATA_ID: ${RECOUNT_POSTGRES_DATA_ID:-}
+    ports: ["127.0.0.1:${RECOUNT_POSTGRES_PORT:-15432}:5432"]
+    networks: [authority, postgres-access]
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - type: bind
+        source: ./data-entrypoint.sh
+        target: /etc/recount/data-entrypoint.sh
+        read_only: true
+        bind: { create_host_path: false }
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          CMD-SHELL,
+          "pg_isready --host=127.0.0.1 --username=recount --dbname=recount",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    logging: *logging
+
+  kafka:
+    entrypoint: [/bin/sh, /etc/recount/data-entrypoint.sh, kafka]
+    command: [/etc/kafka/docker/run]
+    image: apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+    environment:
+      KAFKA_NODE_ID: 1
+      RECOUNT_DATA_ID: ${RECOUNT_KAFKA_DATA_ID:-}
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,HOST://:19092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://127.0.0.1:${RECOUNT_KAFKA_HOST_PORT:-19092}
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_UNCLEAN_LEADER_ELECTION_ENABLE: "false"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_LOG_RETENTION_MS: ${RECOUNT_BROKER_RETENTION_MS:-21600000}
+      KAFKA_LOG_RETENTION_BYTES: ${RECOUNT_BROKER_RETENTION_BYTES:-134217728}
+      KAFKA_LOG_SEGMENT_BYTES: ${RECOUNT_BROKER_SEGMENT_BYTES:-16777216}
+      KAFKA_LOG_ROLL_MS: ${RECOUNT_BROKER_SEGMENT_MS:-60000}
+      KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 60000
+      KAFKA_MESSAGE_MAX_BYTES: ${RECOUNT_BROKER_MESSAGE_BYTES:-6291456}
+      KAFKA_REPLICA_FETCH_MAX_BYTES: ${RECOUNT_BROKER_FETCH_BYTES:-6291456}
+      KAFKA_REPLICA_FETCH_RESPONSE_MAX_BYTES: ${RECOUNT_BROKER_FETCH_BYTES:-6291456}
+      KAFKA_SOCKET_REQUEST_MAX_BYTES: ${RECOUNT_BROKER_REQUEST_BYTES:-8388608}
+      KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
+    ports: ["127.0.0.1:${RECOUNT_KAFKA_HOST_PORT:-19092}:19092"]
+    networks: [broker, kafka-access]
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - type: bind
+        source: ./data-entrypoint.sh
+        target: /etc/recount/data-entrypoint.sh
+        read_only: true
+        bind: { create_host_path: false }
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1
+    pids_limit: 256
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          CMD,
+          /opt/kafka/bin/kafka-topics.sh,
+          --bootstrap-server,
+          localhost:9092,
+          --list,
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    logging: *logging
+
+  kafka-topics:
+    profiles: [tools]
+    image: apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
+    entrypoint: [/bin/bash, /etc/recount/init-topics.sh]
+    command: [verify]
+    environment: *topic-interface
+    volumes:
+      - type: bind
+        source: ../kafka/init-topics.sh
+        target: /etc/recount/init-topics.sh
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ../kafka/initialize-clickhouse-offsets.sh
+        target: /etc/recount/initialize-clickhouse-offsets.sh
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [broker]
+    mem_limit: 256m
+    memswap_limit: 256m
+    pids_limit: 128
+    restart: "no"
+    logging: *logging
+
+  clickhouse:
+    entrypoint: [/bin/sh, /etc/recount/data-entrypoint.sh, clickhouse]
+    command: [/bin/sh, /etc/recount/clickhouse-entrypoint.sh]
+    stop_grace_period: 60s
+    image: ${RECOUNT_CLICKHOUSE_IMAGE:-recount-clickhouse:local}
+    environment:
+      CLICKHOUSE_USER: telemetry_admin
+      RECOUNT_DATA_ID: ${RECOUNT_CLICKHOUSE_DATA_ID:-}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      CLICKHOUSE_DO_NOT_CHOWN: "1"
+      CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD:?Set CLICKHOUSE_READER_PASSWORD}
+      RECOUNT_NORMALIZED_BROKER_MAX_BYTES: ${RECOUNT_NORMALIZED_BROKER_MAX_BYTES:-2097152}
+      RECOUNT_NORMALIZER_OUTPUT_ROWS:
+      RECOUNT_KAFKA_RECEIVE_BYTES:
+    ports: ["127.0.0.1:${RECOUNT_CLICKHOUSE_PORT:-18123}:8123"]
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - type: bind
+        source: ./data-entrypoint.sh
+        target: /etc/recount/data-entrypoint.sh
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ../clickhouse/entrypoint.sh
+        target: /etc/recount/clickhouse-entrypoint.sh
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${RECOUNT_SCHEMA_DIRECTORY:-./.state/clickhouse}/schema.sql
+        target: /docker-entrypoint-initdb.d/10-schema.sql
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ../clickhouse/verify-schema.sh
+        target: /docker-entrypoint-initdb.d/00-verify-schema.sh
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ../clickhouse/healthcheck.sh
+        target: /etc/recount-healthcheck.sh
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${RECOUNT_SCHEMA_DIRECTORY:-./.state/clickhouse}
+        target: /etc/recount-schema
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${RECOUNT_SCHEMA_DIRECTORY:-./.state/clickhouse}/schemas
+        target: /etc/clickhouse-server/format_schemas
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ../clickhouse/users.xml
+        target: /etc/clickhouse-server/users.d/recount.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${RECOUNT_SCHEMA_DIRECTORY:-./.state/clickhouse}/native-profile.xml
+        target: /etc/clickhouse-server/users.d/native-ingestion.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ../clickhouse/config.xml
+        target: /etc/clickhouse-server/config.d/recount.xml
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${RECOUNT_SCHEMA_DIRECTORY:-./.state/clickhouse}/native-transport.xml
+        target: /etc/clickhouse-server/config.d/native-transport.xml
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [broker, analytics, clickhouse-access]
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 2
+    pids_limit: 512
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, sh, /etc/recount-healthcheck.sh]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    logging: *logging
+
+volumes:
+  postgres-data:
+  kafka-data:
+  clickhouse-data:
+
+networks:
+  authority: { internal: true }
+  broker: { internal: true }
+  analytics: { internal: true }
+  postgres-access:
+  kafka-access:
+  clickhouse-access:

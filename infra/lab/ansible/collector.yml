@@ -1,0 +1,210 @@
+---
+- name: Install the telemetry collector on compute nodes
+  hosts: compute
+  become: true
+  gather_facts: true
+  gather_subset: ["!all", min]
+  vars:
+    recount_collector_endpoint: http://10.0.2.2:14317
+    recount_collector_interval_ms: 1000
+    recount_collector_state: started
+    recount_collector_enabled_on_boot: true
+    recount_collector_queue_name: recount-vm-demo-collector
+    recount_collector_arch: "{{ {'aarch64': 'arm64', 'x86_64': 'amd64'}.get(ansible_facts.architecture, 'unsupported') }}"
+    recount_collector_artifacts: "{{ playbook_dir }}/../../../.state/artifacts/{{ recount_collector_arch }}"
+    recount_collector_binary: "{{ recount_collector_artifacts }}/bin/recount-collector"
+    recount_collector_token_directory: "{{ playbook_dir }}/../.state/tokens"
+    recount_demo_owner_email: "{{ lookup('ansible.builtin.env', 'RECOUNT_DEMO_OWNER_EMAIL') }}"
+    recount_demo_env_file: "{{ playbook_dir }}/../../../apps/web/.env"
+  pre_tasks:
+    - name: Validate the prebuilt collector architecture
+      ansible.builtin.assert:
+        that:
+          - recount_collector_arch in ['arm64', 'amd64']
+          - "recount_collector_arch == {'aarch64': 'arm64', 'x86_64': 'amd64'}.get(ansible_facts.architecture, 'unsupported')"
+          - recount_collector_binary == recount_collector_artifacts + '/bin/recount-collector'
+          - recount_collector_artifacts == playbook_dir + '/../../../.state/artifacts/' + recount_collector_arch
+        fail_msg: Supply a host-built Linux collector for this VM architecture under .state/artifacts/<arch>/bin/recount-collector.
+      when: recount_collector_state == 'started'
+
+    - name: Check the prebuilt Linux collector before enrollment
+      ansible.builtin.command:
+        argv:
+          - bun
+          - --no-env-file
+          - "{{ playbook_dir }}/../../local/artifacts.ts"
+          - "{{ recount_collector_arch }}"
+          - collector
+      delegate_to: localhost
+      become: false
+      changed_when: false
+      when: recount_collector_state == 'started'
+
+    - name: Validate the local demo owner
+      ansible.builtin.assert:
+        that:
+          - recount_demo_owner_email is match('^[^\s@]+@[^\s@]+\.[^\s@]+$')
+        fail_msg: Set RECOUNT_DEMO_OWNER_EMAIL or recount_demo_owner_email to the demo owner's email.
+      run_once: true
+      when: recount_collector_state == 'started'
+
+    - name: Build the exact VM enrollment manifest
+      ansible.builtin.set_fact:
+        recount_demo_nodes: "{{ recount_demo_nodes | default([]) + [{'name': item, 'hostId': hostvars[item].ansible_facts.hostname}] }}"
+      loop: "{{ ansible_play_hosts_all }}"
+      run_once: true
+      when: recount_collector_state == 'started'
+
+    - name: Compile the shared application catalogs
+      ansible.builtin.command:
+        argv: [bun, run, i18n:compile]
+        chdir: "{{ playbook_dir }}/../../.."
+      delegate_to: localhost
+      become: false
+      run_once: true
+      changed_when: false
+      when: recount_collector_state == 'started'
+
+    - name: Provision the local demo account, organization and node credentials
+      ansible.builtin.command:
+        argv:
+          - bun
+          - "--env-file={{ recount_demo_env_file }}"
+          - apps/web/scripts/provision-demo-collectors.ts
+          - --email
+          - "{{ recount_demo_owner_email }}"
+          - --nodes
+          - "{{ recount_demo_nodes | to_json }}"
+          - --state-directory
+          - "{{ recount_collector_token_directory }}"
+        chdir: "{{ playbook_dir }}/../../.."
+      delegate_to: localhost
+      become: false
+      run_once: true
+      register: recount_demo_enrollment
+      changed_when: (recount_demo_enrollment.stdout | from_json).changed
+      no_log: true
+      when: recount_collector_state == 'started'
+  tasks:
+    - name: Validate collector configuration
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.system == 'Linux'
+          - recount_collector_state != 'started' or recount_collector_binary is defined
+          - recount_collector_state in ['started', 'stopped']
+          - recount_collector_interval_ms | int >= 100
+          - recount_collector_interval_ms | int <= 60000
+          - recount_collector_queue_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
+
+    - name: Create the private collector configuration directory
+      ansible.builtin.file:
+        path: /etc/recount-collector
+        state: directory
+        owner: "{{ ansible_user }}"
+        mode: "0700"
+
+    - name: Install the collector executable
+      ansible.builtin.copy:
+        src: "{{ recount_collector_binary }}"
+        dest: /usr/local/bin/recount-collector
+        owner: root
+        group: root
+        mode: "0755"
+      notify: Restart the telemetry collector
+      when: recount_collector_state == 'started'
+
+    - name: Inspect the installed credential without revealing it
+      ansible.builtin.stat:
+        path: /etc/recount-collector/source.token
+        checksum_algorithm: sha256
+      register: recount_installed_token
+      no_log: true
+
+    - name: Inspect the provisioned credential locally
+      ansible.builtin.stat:
+        path: "{{ recount_collector_token_directory }}/{{ inventory_hostname }}.token"
+        checksum_algorithm: sha256
+      register: recount_provisioned_token
+      delegate_to: localhost
+      become: false
+      no_log: true
+      when: recount_collector_state == 'started'
+
+    - name: Preserve an earlier enrollment before switching the service
+      when: recount_collector_state == 'started' and recount_installed_token.stat.exists and recount_installed_token.stat.checksum != recount_provisioned_token.stat.checksum
+      no_log: true
+      block:
+        - name: Read the earlier service configuration privately
+          ansible.builtin.slurp:
+            src: /etc/systemd/system/recount-collector.service
+          register: recount_earlier_service
+
+        - name: Refuse rebinding an existing queue to a different token
+          ansible.builtin.assert:
+            that:
+              - "('StateDirectory=' + recount_collector_queue_name) not in (recount_earlier_service.content | b64decode).splitlines()"
+            fail_msg: Drain the earlier enrollment and select a new private queue name before replacing its token.
+
+        - name: Stop the earlier collector gracefully
+          ansible.builtin.systemd_service:
+            name: recount-collector
+            state: stopped
+
+        - name: Create the private enrollment archive
+          ansible.builtin.file:
+            path: /etc/recount-collector/previous-enrollments
+            state: directory
+            owner: "{{ ansible_user }}"
+            mode: "0700"
+
+        - name: Preserve the earlier token
+          ansible.builtin.copy:
+            src: /etc/recount-collector/source.token
+            dest: "/etc/recount-collector/previous-enrollments/{{ recount_installed_token.stat.checksum }}.token"
+            remote_src: true
+            owner: "{{ ansible_user }}"
+            mode: "0600"
+            force: false
+
+        - name: Preserve the earlier service configuration
+          ansible.builtin.copy:
+            src: /etc/systemd/system/recount-collector.service
+            dest: "/etc/recount-collector/previous-enrollments/{{ recount_installed_token.stat.checksum }}.service"
+            remote_src: true
+            owner: "{{ ansible_user }}"
+            mode: "0600"
+            force: false
+
+    - name: Install this node's source credential
+      ansible.builtin.copy:
+        src: "{{ recount_collector_token_directory }}/{{ inventory_hostname }}.token"
+        dest: /etc/recount-collector/source.token
+        owner: "{{ ansible_user }}"
+        mode: "0600"
+      no_log: true
+      notify: Restart the telemetry collector
+      when: recount_collector_state == 'started'
+
+    - name: Install the telemetry collector service
+      ansible.builtin.template:
+        src: collector.service.j2
+        dest: /etc/systemd/system/recount-collector.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart the telemetry collector
+      when: recount_collector_state == 'started'
+
+    - name: Enable and manage the telemetry collector
+      ansible.builtin.systemd_service:
+        name: recount-collector
+        daemon_reload: true
+        enabled: "{{ recount_collector_enabled_on_boot and recount_collector_state == 'started' }}"
+        state: "{{ recount_collector_state }}"
+
+  handlers:
+    - name: Restart the telemetry collector
+      ansible.builtin.systemd_service:
+        name: recount-collector
+        state: restarted
+      when: recount_collector_state == 'started'

@@ -5,8 +5,8 @@ dist/
 .venv/
 .ansible/
 target/
-infra/test-environment/.state/
-infra/test-environment/.vagrant/
+.state/
+.vagrant/
 apps/web/src/routeTree.gen.ts
 bun.lock
 packages/i18n/src/paraglide/

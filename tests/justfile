@@ -1,0 +1,53 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set positional-arguments
+set working-directory := ".."
+set dotenv-load := false
+
+default:
+    @just --justfile tests/justfile --list
+
+# Application database, authentication and real shipped role grants.
+integration *args:
+    bun run i18n:compile
+    bun --no-env-file test --timeout 30000 apps/web/tests/integration "$@"
+
+# Real PostgreSQL authority, rotation, revocation, expiry and outage.
+authority *args:
+    cargo test --locked -p recount-ingestion-api --lib tests::live::authoritative_postgres_rotation_revocation_expiry_bindings_and_outage_are_live "$@" -- --ignored --exact --nocapture
+
+# Real normalizer bootstrap, backlog progress, replay, rebalance and poison.
+kafka *args:
+    cargo test --locked -p recount-normalizer --test kafka "$@" -- --ignored --test-threads=1 --nocapture
+
+# Real Kafka-to-ClickHouse fixtures; never restart the reused services.
+storage *args:
+    cargo test --locked -p recount-normalizer --test storage "$@" -- --ignored --test-threads=1 --skip unclean_restart --skip invalid_initialized --nocapture
+
+# Real ClickHouse HTTP reader, SELECT-only grants, precision and capacity.
+telemetry *args:
+    bun run i18n:compile
+    bun --no-env-file test --timeout 30000 apps/web/tests/telemetry/clickhouse.test.ts "$@"
+
+# Host Node runs Playwright; each fixture owns a native Bun application.
+browser *args:
+    bun run i18n:compile
+    node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts "$@"
+
+# Explicit packaged collectors through the authorized browser, including restart.
+pipeline *args:
+    bun run i18n:compile
+    node node_modules/@playwright/test/cli.js test --config apps/web/playwright.pipeline.config.ts "$@"
+
+# Prebuilt-image provenance, non-root entrypoints and packaged web hosting.
+runtime *args:
+    bun run i18n:compile
+    bun --no-env-file test --timeout 120000 tests/runtime "$@"
+
+# Exclusive coordinator-owned ClickHouse startup faults and checkpoint replay.
+recovery *args:
+    cargo test --locked -p recount-normalizer --test storage unclean_restart "$@" -- --ignored --test-threads=1 --nocapture
+    cargo test --locked -p recount-normalizer --test storage invalid_initialized "$@" -- --ignored --test-threads=1 --nocapture
+
+# Host-built Linux harnesses only; no compilers or live services in the runner.
+linux build_log:
+    bun tests/linux-artifacts.ts "$1"

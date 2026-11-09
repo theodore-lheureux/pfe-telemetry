@@ -1,0 +1,107 @@
+x-runtime: &runtime
+  init: true
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  mem_limit: 512m
+  memswap_limit: 512m
+  cpus: 1
+  pids_limit: 128
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "2m", max-file: "3" }
+
+x-raw: &raw
+  RECOUNT_KAFKA_BOOTSTRAP: kafka:9092
+  RECOUNT_RAW_TOPIC: ${RECOUNT_RAW_TOPIC:-recount.metrics.raw}
+  RECOUNT_RAW_PARTITIONS: ${RECOUNT_RAW_PARTITIONS:-3}
+  RECOUNT_RAW_BROKER_MAX_BYTES: ${RECOUNT_RAW_BROKER_MAX_BYTES:-6291456}
+
+x-limits: &limits
+  RECOUNT_MAX_REQUEST_BYTES:
+  RECOUNT_MAX_POINTS:
+  RECOUNT_MAX_EXPANDED_ITEMS:
+  RECOUNT_MAX_AUTHORITIES:
+  RECOUNT_MAX_ATTRIBUTE_NODES:
+  RECOUNT_NORMALIZED_MAX_RECORD_BYTES:
+  RECOUNT_NORMALIZED_MAX_OUTPUT_BYTES:
+
+services:
+  ingestion-api:
+    <<: *runtime
+    image: recount-ingestion-api:local
+    ports: ["127.0.0.1:${RECOUNT_INGESTION_PORT:-14317}:4317"]
+    environment:
+      <<: [*raw, *limits]
+      RECOUNT_INGESTION_ADDR: 0.0.0.0:4317
+      RECOUNT_INGESTION_DATABASE_URL: ${RECOUNT_INGESTION_DATABASE_URL:?Set the restricted ingestion database URL}
+      RECOUNT_INGESTION_MAX_IN_FLIGHT:
+    networks: [authority, broker, ingestion-access]
+    healthcheck:
+      test:
+        [
+          CMD,
+          grpc_health_probe,
+          -addr=127.0.0.1:4317,
+          -service=opentelemetry.proto.collector.metrics.v1.MetricsService,
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  normalizer:
+    <<: *runtime
+    stop_grace_period: 20s
+    image: recount-normalizer:local
+    environment:
+      <<: [*raw, *limits]
+      RECOUNT_NORMALIZED_TOPIC: ${RECOUNT_NORMALIZED_TOPIC:-recount.metrics.normalized}
+      RECOUNT_NORMALIZED_PARTITIONS: ${RECOUNT_NORMALIZED_PARTITIONS:-3}
+      RECOUNT_NORMALIZED_BROKER_MAX_BYTES: ${RECOUNT_NORMALIZED_BROKER_MAX_BYTES:-2097152}
+      RECOUNT_NORMALIZER_GROUP:
+      RECOUNT_NORMALIZER_MAX_ACTIVE:
+      RECOUNT_NORMALIZER_RETRY_MS:
+      RECOUNT_NORMALIZER_DELIVERY_MS:
+      RECOUNT_NORMALIZER_SHUTDOWN_MS:
+    networks: [broker]
+
+  web:
+    <<: *runtime
+    stop_grace_period: 60s
+    image: recount-web:local
+    ports: ["127.0.0.1:${NITRO_PORT:-3000}:${NITRO_PORT:-3000}"]
+    environment:
+      NITRO_HOST: 0.0.0.0
+      NITRO_PORT: ${NITRO_PORT:-3000}
+      DATABASE_URL: ${DATABASE_URL:?Set the web application database URL}
+      RECOUNT_DATABASE_POOL_MAX: ${RECOUNT_DATABASE_POOL_MAX:-10}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      RECOUNT_AUTH_ALLOW_SIGN_UP: ${RECOUNT_AUTH_ALLOW_SIGN_UP:-false}
+      SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-resend}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      RECOUNT_CLICKHOUSE_URL: http://clickhouse:8123
+      RECOUNT_CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD:?Set CLICKHOUSE_READER_PASSWORD}
+    networks: [authority, analytics, outbound]
+    tmpfs: [/tmp:rw, nosuid, size=32m]
+    healthcheck:
+      test:
+        [
+          CMD,
+          bun,
+          --eval,
+          'const r = await fetch("http://127.0.0.1:" + (Bun.env.NITRO_PORT || "3000") + "/"); process.exit(r.status < 500 ? 0 : 1)',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+networks:
+  ingestion-access:
+  outbound:
