@@ -1,0 +1,16 @@
+---
+// Recount horizontal lockup from the brand package: the light-on-dark file in Tide dark,
+// the dark-on-light file everywhere else. Inside a link that has its own label, pass
+// `decorative` so screen readers announce the name once.
+interface Props {
+	decorative?: boolean;
+}
+
+const { decorative = false } = Astro.props;
+const img = "h-7 w-auto shrink-0";
+---
+
+<span role={decorative ? undefined : "img"} aria-label={decorative ? undefined : "Recount"} class="inline-flex shrink-0">
+	<img src="/brand/recount-lockup-on-light.svg" alt="" width="120" height="28" class:list={[img, "dark:hidden"]} />
+	<img src="/brand/recount-lockup-on-dark.svg" alt="" width="120" height="28" class:list={[img, "hidden dark:block"]} />
+</span>

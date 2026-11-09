@@ -27,6 +27,15 @@ dev *args:
 
 build:
     bun run build
+    bun run --filter @recount/landing build
+
+# Astro landing site and documentation; arguments are forwarded to Astro.
+landing-dev *args:
+    bun run --filter @recount/landing dev "$@"
+
+# Check, build and deploy the landing site to Cloudflare Workers.
+landing-deploy:
+    bun run --filter @recount/landing deploy
 
 typecheck:
     bun run typecheck

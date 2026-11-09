@@ -1,0 +1,31 @@
+---
+import { type Lang, localePath } from "../i18n";
+import { strings } from "../i18n/strings";
+import { appHref, icons } from "../lib/site";
+import Container from "./Container.astro";
+import PlanCard from "./PlanCard.astro";
+
+interface Props {
+	lang: Lang;
+}
+
+const { lang } = Astro.props;
+const t = strings[lang].deployment;
+---
+
+<section aria-labelledby="deployment" class="scroll-mt-14 border-b">
+	<Container class="py-24">
+		<div class="mx-auto max-w-[52ch] text-center">
+			<h2 id="deployment" class="font-medium text-[28px] tracking-tight">{t.title}</h2>
+			<p class="mt-3 text-base text-muted-foreground leading-relaxed">{t.intro}</p>
+		</div>
+		<div class="mx-auto mt-14 grid max-w-[880px] gap-4 md:grid-cols-2">
+			<PlanCard icon={icons.cloud} {...t.cloud} cta={{ label: t.cloud.cta, href: appHref(lang), variant: "primary", signedInLabel: strings[lang].nav.openApp }} />
+			<PlanCard
+				icon={icons.server}
+				{...t.self}
+				cta={{ label: t.self.cta, href: localePath(lang, "/docs/self-hosting/"), variant: "outline" }}
+			/>
+		</div>
+	</Container>
+</section>

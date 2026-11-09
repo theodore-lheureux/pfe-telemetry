@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-labelledby="recount-icon-title recount-icon-desc">
+<title id="recount-icon-title">Recount</title>
+<desc id="recount-icon-desc">Recount app icon: the Lattice symbol in mist white on a deep Tide teal square.</desc>
+<rect width="512" height="512" rx="112" fill="#0B4F4A"/>
+<g fill="#E3EEF0" transform="translate(64 64) scale(16)"><path d="M3 3h13v13h-4v-3h1V6H6v7h1v3H3z"/><path d="M8 8h4v3h-1v7h7v-7h-1V8h4v13H8z"/></g>
+</svg>

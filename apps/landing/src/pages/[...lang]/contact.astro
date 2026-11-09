@@ -1,0 +1,34 @@
+---
+import Icon from "../../components/Icon.astro";
+import { type Lang, langPaths } from "../../i18n";
+import { strings } from "../../i18n/strings";
+import Page from "../../layouts/Page.astro";
+import { icons } from "../../lib/site";
+
+export const getStaticPaths = langPaths;
+
+const lang = Astro.props.lang as Lang;
+const t = strings[lang].contact;
+const itemIcons = [icons.mail, icons.eye, icons.shield];
+---
+
+<Page lang={lang} title={t.title} description={t.description} heading={t.title} intro={t.intro}>
+	<ul class="flex flex-col border-t">
+		{
+			t.items.map((item, i) => (
+				<li class="flex gap-4 border-b py-6">
+					<span class="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
+						<Icon svg={itemIcons[i]} class="size-[18px]" />
+					</span>
+					<div class="min-w-0">
+						<h2 class="font-medium">{item.label}</h2>
+						<p class="mt-1 text-muted-foreground leading-relaxed">{item.text}</p>
+						<a href={`mailto:${item.email}`} class="mt-2 inline-block font-medium text-primary underline underline-offset-2">
+							{item.email}
+						</a>
+					</div>
+				</li>
+			))
+		}
+	</ul>
+</Page>

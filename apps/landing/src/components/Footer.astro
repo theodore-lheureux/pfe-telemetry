@@ -1,0 +1,185 @@
+---
+import { LANG_LABELS, LANGS, type Lang, localePath, switchPath } from "../i18n";
+import { strings } from "../i18n/strings";
+import { appHref, GITHUB_URL, icons } from "../lib/site";
+import Container from "./Container.astro";
+import GitHubIcon from "./GitHubIcon.astro";
+import Icon from "./Icon.astro";
+
+interface Props {
+	lang: Lang;
+	/** False on pages that only exist in one language; the switcher then links to each home page. */
+	translated?: boolean;
+}
+
+const { lang, translated = true } = Astro.props;
+const t = strings[lang];
+const f = t.footer;
+const p = (path: string) => localePath(lang, path);
+
+const columns = [
+	{
+		title: f.product,
+		links: [
+			{ href: `${p("/")}#how-it-works`, label: t.how.title },
+			{ href: `${p("/")}#features`, label: f.features },
+			{ href: p("/pricing/"), label: t.nav.pricing },
+			{ href: p("/changelog/"), label: t.nav.changelog },
+			{
+				href: appHref(lang),
+				label: t.nav.signIn,
+				signedInLabel: t.nav.openApp,
+			},
+		],
+	},
+	{
+		title: f.docs,
+		links: [
+			{ href: p("/docs/"), label: f.introduction },
+			{ href: p("/docs/quick-start/"), label: f.quickStart },
+			{ href: p("/docs/concepts/"), label: f.concepts },
+			{ href: p("/docs/collector/"), label: f.collector },
+			{ href: p("/docs/self-hosting/"), label: f.selfHosting },
+		],
+	},
+	{
+		title: f.company,
+		links: [
+			{ href: p("/contact/"), label: f.contact },
+			{ href: p("/privacy/"), label: f.privacy },
+			{ href: p("/terms/"), label: f.terms },
+			{ href: GITHUB_URL, label: t.nav.github },
+		],
+	},
+];
+
+const themes = [
+	{ value: "", label: f.system, icon: icons.monitor },
+	{ value: "light", label: f.light, icon: icons.sun },
+	{ value: "dark", label: f.dark, icon: icons.moon },
+];
+const segment =
+	"inline-flex h-7 items-center justify-center rounded-[3px] text-muted-foreground transition-colors hover:text-foreground";
+const active =
+	"aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:shadow-xs aria-[current=true]:bg-card aria-[current=true]:text-foreground aria-[current=true]:shadow-xs";
+---
+
+<footer class="border-t">
+	<Container class="grid grid-cols-2 gap-10 py-14 sm:grid-cols-3 lg:grid-cols-[2fr_1fr_1fr_1fr]">
+		<div class="col-span-2 flex flex-col items-start gap-4 sm:col-span-3 lg:col-span-1">
+			<img src="/brand/recount-symbol-teal.svg" alt="Recount" width="32" height="32" class="size-8 dark:hidden" />
+			<img src="/brand/recount-symbol-on-dark.svg" alt="Recount" width="32" height="32" class="hidden size-8 dark:block" />
+			<p class="max-w-[30ch] text-muted-foreground leading-relaxed">{f.tagline}</p>
+		</div>
+		{
+			columns.map((column) => (
+				<nav aria-label={column.title}>
+					<h2 class="font-medium">{column.title}</h2>
+					<ul class="mt-3 flex flex-col gap-2 text-muted-foreground">
+						{column.links.map((link) => (
+							<li>
+								<a
+									href={link.href}
+									data-app-link={"signedInLabel" in link ? "" : undefined}
+									data-signed-in-label={"signedInLabel" in link ? link.signedInLabel : undefined}
+									class="transition-colors hover:text-foreground"
+								>
+									{link.label}
+								</a>
+							</li>
+						))}
+					</ul>
+				</nav>
+			))
+		}
+	</Container>
+	<div class="border-t">
+		<Container class="flex flex-wrap items-center justify-between gap-4 py-5 text-[13px] text-muted-foreground">
+			<span>© {new Date().getFullYear()} Recount</span>
+			<div class="flex flex-wrap items-center gap-3">
+				<div role="group" aria-label={f.language} class="flex gap-0.5 rounded-md border bg-secondary p-0.5">
+					{
+						LANGS.map((code) => (
+							<a
+								href={translated ? switchPath(Astro.url.pathname, code) : localePath(code, "/")}
+								hreflang={code}
+								lang={code}
+								data-locale={code}
+								aria-current={code === lang ? "true" : undefined}
+								class:list={[segment, active, "px-2.5"]}
+							>
+								{LANG_LABELS[code]}
+							</a>
+						))
+					}
+				</div>
+				<div role="group" aria-label={f.theme} class="flex gap-0.5 rounded-md border bg-secondary p-0.5">
+					{
+						themes.map((theme) => (
+							<button
+								type="button"
+								data-theme-choice={theme.value}
+								aria-pressed="false"
+								aria-label={theme.label}
+								title={theme.label}
+								class:list={[segment, active, "w-7"]}
+							>
+								<Icon svg={theme.icon} class="size-3.5" />
+							</button>
+						))
+					}
+				</div>
+				<a href={GITHUB_URL} aria-label={t.nav.github} class="ml-1 transition-colors hover:text-foreground">
+					<GitHubIcon />
+				</a>
+			</div>
+		</Container>
+	</div>
+</footer>
+
+<script>
+	import { LOCALE_KEY } from "../i18n";
+	import { THEME_KEY } from "../lib/site";
+
+	const root = document.documentElement;
+	const system = matchMedia("(prefers-color-scheme: dark)");
+	const buttons = document.querySelectorAll<HTMLButtonElement>("[data-theme-choice]");
+
+	function stored() {
+		try {
+			const value = localStorage.getItem(THEME_KEY);
+			return value === "light" || value === "dark" ? value : "";
+		} catch {
+			return "";
+		}
+	}
+
+	function apply(choice: string) {
+		const dark = choice === "dark" || (choice === "" && system.matches);
+		root.dataset.theme = dark ? "tide-dark" : "tide";
+		for (const button of buttons) button.setAttribute("aria-pressed", String(button.dataset.themeChoice === choice));
+	}
+
+	apply(stored());
+	for (const button of buttons) {
+		button.addEventListener("click", () => {
+			const choice = button.dataset.themeChoice ?? "";
+			try {
+				localStorage.setItem(THEME_KEY, choice);
+			} catch {}
+			apply(choice);
+		});
+	}
+	system.addEventListener("change", () => {
+		if (stored() === "") apply("");
+	});
+
+	// Remember an explicit language choice so the site stops following the system.
+	for (const link of document.querySelectorAll<HTMLAnchorElement>("[data-locale]")) {
+		link.addEventListener("click", () => {
+			try {
+				localStorage.setItem(LOCALE_KEY, link.dataset.locale ?? "en");
+			} catch {}
+		});
+	}
+</script>

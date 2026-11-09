@@ -1,0 +1,21 @@
+---
+// A Lucide icon from `icons` in lib/site.ts.
+interface Props {
+	svg: string;
+	class?: string;
+}
+
+const { svg, class: className = "size-4" } = Astro.props;
+---
+
+<svg
+	viewBox="0 0 24 24"
+	class={className}
+	fill="none"
+	stroke="currentColor"
+	stroke-width="2"
+	stroke-linecap="round"
+	stroke-linejoin="round"
+	aria-hidden="true"
+	set:html={svg}
+/>

@@ -1,0 +1,31 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "recount-landing",
+  "account_id": "e4977b24a91f7ea3c8d2cfaef0d3de2f",
+  "compatibility_date": "2026-11-01",
+  // Astro builds the static site to dist/. Only /api/* runs the Worker; everything else is
+  // served straight from the assets.
+  "main": "worker/index.ts",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/api/*"]
+  },
+  // Early access signups. Apply migrations with `bun run --cwd apps/landing db:migrate`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "recount-landing",
+      "database_id": "b6a7b53b-b086-4bec-828d-9176abbbec90",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // TURNSTILE_SECRET is a Worker secret (`wrangler secret put TURNSTILE_SECRET`).
+  // Production is only served on the custom domain.
+  "routes": [{ "pattern": "recount.cloud", "custom_domain": true }],
+  "workers_dev": false,
+  // Pull requests upload preview versions served at pr-<number>-recount-landing.<subdomain>.workers.dev.
+  "preview_urls": true
+}

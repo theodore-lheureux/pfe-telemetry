@@ -11,6 +11,7 @@ See [architecture](docs/architecture.md), [ingestion server](docs/ingestion-serv
 ```text
 apps/
   web/                  TanStack Start web application with SSR
+  landing/              Astro landing site and Starlight documentation for recount.cloud
   collector/            Linux procfs collector with persistent OTLP export
   server/               Tonic ingestion and Kafka-to-ClickHouse storage worker
 packages/

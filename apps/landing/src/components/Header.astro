@@ -1,0 +1,110 @@
+---
+import { type Lang, localePath } from "../i18n";
+import { strings } from "../i18n/strings";
+import { appHref, buttonClass, GITHUB_URL, icons } from "../lib/site";
+import BrandLogo from "./BrandLogo.astro";
+import Container from "./Container.astro";
+import GitHubIcon from "./GitHubIcon.astro";
+import Icon from "./Icon.astro";
+
+interface Props {
+	lang: Lang;
+}
+
+const { lang } = Astro.props;
+const t = strings[lang].nav;
+const links = [
+	{ href: localePath(lang, "/docs/"), label: t.docs },
+	{ href: localePath(lang, "/pricing/"), label: t.pricing },
+	{ href: localePath(lang, "/changelog/"), label: t.changelog },
+];
+const current = Astro.url.pathname;
+const iconButton =
+	"inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground";
+---
+
+<header class="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
+	<Container class="flex h-14 items-center justify-between gap-4">
+		<a href={localePath(lang, "/")} aria-label={t.home} class="flex rounded-md">
+			<BrandLogo decorative />
+		</a>
+		<nav aria-label="Main" class="flex items-center gap-1">
+			<div class="hidden items-center gap-1 md:flex">
+				{
+					links.map((link) => (
+						<a
+							href={link.href}
+							aria-current={current === link.href ? "page" : undefined}
+							class="rounded-md px-3 py-1.5 font-medium text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground"
+						>
+							{link.label}
+						</a>
+					))
+				}
+				<a href={GITHUB_URL} aria-label={t.github} class={iconButton}>
+					<GitHubIcon />
+				</a>
+			</div>
+			<a href={appHref(lang)} data-app-link data-signed-in-label={t.openApp} class={buttonClass("outline", "ml-2")}>{t.getStarted}</a>
+			<button
+				type="button"
+				data-menu-button
+				aria-expanded="false"
+				aria-controls="mobile-menu"
+				aria-label={t.menu}
+				class:list={[iconButton, "group md:hidden"]}
+			>
+				<Icon svg={icons.menu} class="size-[18px] group-aria-expanded:hidden" />
+				<Icon svg={icons.x} class="hidden size-[18px] group-aria-expanded:block" />
+			</button>
+		</nav>
+	</Container>
+	<div id="mobile-menu" data-menu hidden class="border-t bg-background md:hidden">
+		<Container class="flex flex-col py-2">
+			{
+				links.map((link) => (
+					<a
+						href={link.href}
+						aria-current={current === link.href ? "page" : undefined}
+						class="rounded-md py-3 font-medium text-base text-muted-foreground transition-colors hover:text-foreground aria-[current=page]:text-foreground"
+					>
+						{link.label}
+					</a>
+				))
+			}
+			<a
+				href={GITHUB_URL}
+				class="flex items-center gap-2 rounded-md py-3 font-medium text-base text-muted-foreground transition-colors hover:text-foreground"
+			>
+				<GitHubIcon />
+				{t.github}
+			</a>
+		</Container>
+	</div>
+</header>
+
+<script>
+	const button = document.querySelector<HTMLButtonElement>("[data-menu-button]");
+	const menu = document.querySelector<HTMLElement>("[data-menu]");
+
+	function setOpen(open: boolean) {
+		if (!button || !menu) return;
+		button.setAttribute("aria-expanded", String(open));
+		menu.hidden = !open;
+	}
+
+	button?.addEventListener("click", () => setOpen(button.getAttribute("aria-expanded") !== "true"));
+	menu?.addEventListener("click", (event) => {
+		if ((event.target as Element).closest("a")) setOpen(false);
+	});
+	document.addEventListener("keydown", (event) => {
+		if (event.key === "Escape" && button?.getAttribute("aria-expanded") === "true") {
+			setOpen(false);
+			button.focus();
+		}
+	});
+	// Close when the layout grows past the phone breakpoint.
+	matchMedia("(min-width: 768px)").addEventListener("change", (event) => {
+		if (event.matches) setOpen(false);
+	});
+</script>

@@ -1,0 +1,153 @@
+---
+import Container from "../../components/Container.astro";
+import Faq from "../../components/Faq.astro";
+import Footer from "../../components/Footer.astro";
+import Header from "../../components/Header.astro";
+import Icon from "../../components/Icon.astro";
+import { type Lang, langPaths, localePath } from "../../i18n";
+import { strings } from "../../i18n/strings";
+import Layout from "../../layouts/Layout.astro";
+import { appHref, buttonClass, icons } from "../../lib/site";
+
+export const getStaticPaths = langPaths;
+
+const lang = Astro.props.lang as Lang;
+const s = strings[lang];
+const t = s.pricing;
+const contact = localePath(lang, "/contact/");
+
+const plans = [
+	{
+		...t.plans.cloud,
+		icon: icons.cloud,
+		href: appHref(lang),
+		primary: true,
+		signedIn: s.nav.openApp,
+	},
+	{
+		...t.plans.self,
+		icon: icons.server,
+		href: localePath(lang, "/docs/self-hosting/"),
+		primary: false,
+	},
+	{ ...t.plans.enterprise, icon: icons.users, href: contact, primary: false },
+];
+---
+
+<Layout title={`${t.title} · Recount`} description={t.description} lang={lang}>
+	<a
+		href="#main"
+		class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2"
+	>
+		{s.nav.skip}
+	</a>
+	<Header lang={lang} />
+	<main id="main">
+		<Container class="pt-20 pb-16">
+			<div class="mx-auto max-w-[60ch] text-center">
+				<h1 class="font-medium text-4xl tracking-tight">{t.title}</h1>
+				<p class="mt-4 text-base text-muted-foreground leading-relaxed">{t.intro}</p>
+			</div>
+
+			<div class="mt-14 grid gap-4 lg:grid-cols-3">
+				{
+					plans.map((plan) => (
+						<div class:list={["flex flex-col rounded-md border bg-card p-6", plan.primary && "border-primary"]}>
+							<div class="flex items-start justify-between gap-4">
+								<span class="flex size-9 items-center justify-center rounded-md bg-accent text-accent-foreground">
+									<Icon svg={plan.icon} class="size-[18px]" />
+								</span>
+								{"badge" in plan && (
+									<span class="rounded-full border px-2 py-0.5 font-medium text-[12px] text-primary">{plan.badge}</span>
+								)}
+							</div>
+							<h2 class="mt-5 font-medium text-lg">{plan.title}</h2>
+							<p class="mt-2">
+								<span class="font-medium text-[32px] tracking-tight">{plan.price}</span>
+								<span class="ml-2 text-muted-foreground">{plan.note}</span>
+							</p>
+							<p class="mt-2 text-muted-foreground leading-relaxed">{plan.text}</p>
+							<a
+								href={plan.href}
+								data-app-link={"signedIn" in plan ? "" : undefined}
+								data-signed-in-label={"signedIn" in plan ? plan.signedIn : undefined}
+								class={buttonClass(plan.primary ? "primary" : "outline", "mt-6 w-full")}
+							>
+								{plan.cta}
+							</a>
+							<ul class="mt-6 flex flex-col gap-2 border-t pt-6">
+								{plan.points.map((point) => (
+									<li class="flex items-center gap-2.5">
+										<Icon svg={icons.check} class="size-4 shrink-0 text-primary" />
+										{point}
+									</li>
+								))}
+							</ul>
+						</div>
+					))
+				}
+			</div>
+		</Container>
+
+		<section aria-labelledby="compare" class="border-t bg-card">
+			<Container class="py-20">
+				<h2 id="compare" class="font-medium text-[28px] tracking-tight">{t.compare.title}</h2>
+				<div class="relative mt-10 overflow-x-auto">
+					<table class="w-full min-w-[640px] border-collapse text-left">
+						<caption class="sr-only">{t.compare.title}</caption>
+						<thead>
+							<tr class="border-b">
+								<th scope="col" class="w-[40%] py-3 pr-4 font-medium text-muted-foreground">{t.compare.feature}</th>
+								{plans.map((plan) => <th scope="col" class="px-4 py-3 font-medium">{plan.title}</th>)}
+							</tr>
+						</thead>
+						{
+							t.compare.groups.map((group) => (
+								<tbody>
+									<tr>
+										<th scope="colgroup" colspan={4} class="pt-8 pb-2 font-medium text-[13px] text-primary">
+											{group.name}
+										</th>
+									</tr>
+									{group.rows.map((row) => (
+										<tr class="border-b">
+											<th scope="row" class="py-3 pr-4 font-normal">{row.name}</th>
+											{row.cells.map((cell) => (
+												<td class="px-4 py-3">
+													{cell === true ? (
+														<>
+															<Icon svg={icons.check} class="size-4 text-primary" />
+															<span class="sr-only">{t.compare.included}</span>
+														</>
+													) : cell === false ? (
+														<>
+															<span aria-hidden="true" class="text-muted-foreground">—</span>
+															<span class="sr-only">{t.compare.notIncluded}</span>
+														</>
+													) : (
+														<span class="text-muted-foreground">{cell}</span>
+													)}
+												</td>
+											))}
+										</tr>
+									))}
+								</tbody>
+							))
+						}
+					</table>
+				</div>
+			</Container>
+		</section>
+
+		<Faq lang={lang} id="pricing-faq" title={t.faq.title} items={t.faq.items} class="border-t" />
+
+		<section aria-labelledby="pricing-cta" class="border-t bg-card">
+			<Container class="flex flex-col items-center py-20 text-center">
+				<h2 id="pricing-cta" class="font-medium text-[28px] tracking-tight">{t.cta.title}</h2>
+				<p class="mt-3 max-w-[46ch] text-base text-muted-foreground leading-relaxed">{t.cta.text}</p>
+				<a href={contact} class={buttonClass("primary", "mt-8")}>{t.cta.button}</a>
+			</Container>
+		</section>
+	</main>
+	<Footer lang={lang} />
+</Layout>

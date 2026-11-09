@@ -1,0 +1,29 @@
+---
+import { getEntry, render } from "astro:content";
+import { type Lang, langPaths } from "../../i18n";
+import { strings } from "../../i18n/strings";
+import Page from "../../layouts/Page.astro";
+
+export const getStaticPaths = langPaths;
+
+const lang = Astro.props.lang as Lang;
+const entry = await getEntry("legal", `${lang}/terms`);
+if (!entry) throw new Error(`Missing legal page ${lang}/terms`);
+const { Content } = await render(entry);
+const format = new Intl.DateTimeFormat(lang === "fr" ? "fr-CA" : "en", {
+	dateStyle: "long",
+	timeZone: "UTC",
+});
+---
+
+<Page
+	lang={lang}
+	title={entry.data.title}
+	description={entry.data.description}
+	heading={entry.data.title}
+	intro={`${strings[lang].legal.updated} ${format.format(entry.data.updated)}`}
+>
+	<div class="prose">
+		<Content />
+	</div>
+</Page>

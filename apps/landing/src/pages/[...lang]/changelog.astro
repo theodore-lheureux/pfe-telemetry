@@ -1,0 +1,41 @@
+---
+import { getCollection, render } from "astro:content";
+import { type Lang, langPaths } from "../../i18n";
+import { strings } from "../../i18n/strings";
+import Page from "../../layouts/Page.astro";
+
+export const getStaticPaths = langPaths;
+
+const lang = Astro.props.lang as Lang;
+const t = strings[lang].changelog;
+const entries = (
+	await getCollection("changelog", (entry) => entry.id.startsWith(`${lang}/`))
+).sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+const format = new Intl.DateTimeFormat(lang === "fr" ? "fr-CA" : "en", {
+	dateStyle: "long",
+	timeZone: "UTC",
+});
+---
+
+<Page lang={lang} title={t.title} description={t.intro} heading={t.title} intro={t.intro}>
+	<ol class="flex flex-col">
+		{
+			await Promise.all(
+				entries.map(async (entry) => {
+					const { Content } = await render(entry);
+					return (
+						<li class="grid gap-2 border-t py-10 sm:grid-cols-[160px_1fr] sm:gap-8">
+							<time datetime={entry.data.date.toISOString().slice(0, 10)} class="text-muted-foreground">
+								{format.format(entry.data.date)}
+							</time>
+							<article class="prose">
+								<h2>{entry.data.title}</h2>
+								<Content />
+							</article>
+						</li>
+					);
+				}),
+			)
+		}
+	</ol>
+</Page>

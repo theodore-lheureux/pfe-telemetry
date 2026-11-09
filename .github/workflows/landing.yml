@@ -1,0 +1,105 @@
+name: Landing site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/landing/**
+      - bun.lock
+      - package.json
+      - .bun-version
+      - .github/workflows/landing.yml
+  pull_request:
+    paths:
+      - apps/landing/**
+      - bun.lock
+      - package.json
+      - .bun-version
+      - .github/workflows/landing.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  LEFTHOOK: "0"
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  publish:
+    name: ${{ github.event_name == 'pull_request' && 'Preview' || 'Deploy' }}
+    # Fork pull requests cannot read the Cloudflare token.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
+      url: ${{ steps.production.outputs.url || steps.preview.outputs.url }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      PUBLIC_APP_URL: ${{ vars.PUBLIC_APP_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      # The site check (scripts/check.mjs) runs under Node.
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bun-version', 'bun.lock') }}
+      - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
+      - run: bun run --cwd apps/landing check
+      - run: bun run --cwd apps/landing build
+
+      - name: Deploy to production
+        id: production
+        if: github.event_name != 'pull_request'
+        working-directory: apps/landing
+        run: |
+          bunx wrangler d1 migrations apply DB --remote
+          bunx wrangler deploy --message "${GITHUB_SHA::7}" | tee "$RUNNER_TEMP/wrangler.log"
+          # Prefer the custom domain once it is attached; otherwise use workers.dev.
+          url=$(grep -oE 'https://recount\.cloud' "$RUNNER_TEMP/wrangler.log" | head -n 1 || true)
+          [ -n "$url" ] || url=$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' "$RUNNER_TEMP/wrangler.log" | head -n 1 || true)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      # Uploads a version without changing production; the alias keeps one URL per pull request.
+      - name: Upload preview version
+        id: preview
+        if: github.event_name == 'pull_request'
+        working-directory: apps/landing
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          bunx wrangler versions upload --preview-alias "pr-$PR_NUMBER" --message "PR #$PR_NUMBER ${HEAD_SHA::7}" | tee "$RUNNER_TEMP/wrangler.log"
+          url=$(grep -oE "https://pr-$PR_NUMBER-[a-z0-9.-]+\.workers\.dev" "$RUNNER_TEMP/wrangler.log" | head -n 1 || true)
+          if [ -z "$url" ]; then
+            echo "Wrangler did not print a preview alias URL." >&2
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Comment preview link
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ steps.preview.outputs.url }}
+        run: |
+          body="Landing site preview for ${HEAD_SHA::7}: $URL"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --edit-last --create-if-none --body "$body"
