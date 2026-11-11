@@ -10,7 +10,7 @@ New organization grants use one canonical role: `owner`, `admin` or `member`. Na
 
 Project roles are `viewer`, `member` and `admin`. Every role grants project read access. Project admins can update project settings and manage explicit project memberships; viewers and members cannot. Only organization owners/admins create projects. The `member` role is available for non-administrative execution actions as those operations are implemented.
 
-Only effective project admins manage [collector credentials and enrollment policy](collector-credentials.md), including listing credentials. Credential identities and lifecycle operations are project-scoped.
+Only effective project admins manage [collector enrollment keys and nodes](collector-enrollment.md), including listing them. Keys, nodes and their lifecycle operations are project-scoped. Collector enrollment and token endpoints authenticate with enrollment keys and node signatures, not user sessions.
 
 Any project reader can read all executions in that project. Execution ownership records attribution and controls permitted modifications, not read visibility. Per-execution private/shared ACLs are not part of this model. Separate projects provide the isolation boundary for unrelated workloads.
 
@@ -32,13 +32,13 @@ The same project scope applies to [execution recordings and telemetry queries](e
 | `listProjectMembers`                      | Effective project admin; explicit grants only                        |
 | `setProjectMember`, `removeProjectMember` | Effective project admin; target must belong to the same organization |
 
-Read operations use GET; mutations use POST. Inputs are validated on the server. Validation and transport failures reject the call; application outcomes use the `data`/`error` union in `contracts.ts`. Unknown or inaccessible organization/project references return `NOT_FOUND`; missing sessions return `UNAUTHENTICATED`. Responses are private and not HTTP-cached.
+Read operations use GET; mutations use POST. Inputs are validated on the server. Validation and transport failures reject the call; application outcomes use the `data`/`error` union in `lib/operation-result.ts`. Unknown or inaccessible organization/project references return `NOT_FOUND`; missing sessions return `UNAUTHENTICATED`. Responses are private and not HTTP-cached.
 
-`OrganizationSummary` includes the current user's organization role. `ProjectSummary.role` is the effective role, including organization owner/admin access. Project-membership responses contain explicit grants, not an expanded list of implicit administrators. Organization IDs and membership IDs are opaque Better Auth strings; project IDs are UUIDs. Organization slugs are globally unique, and project slugs are unique within their organization.
+`OrganizationSummary` includes the current user's organization role. `ProjectSummary.role` is the effective role, including organization owner/admin access. Project-membership responses contain explicit grants, not an expanded list of implicit administrators. Organization IDs and membership IDs are opaque Better Auth strings; project IDs are UUIDs. Organization slugs are globally unique, generated from the name when the organization is created, and never shown; projects have no slug.
 
 Every operation resolves the current session and canonical membership. The active organization stored in a session, route context, client filters and cached roles are not authorization. Queries explicitly scope project IDs to an organization. Removing an organization membership cascades its project grants; rejoining does not restore those grants.
 
-The Start function middleware in `auth/private-operation.ts` resolves a verified session from the incoming request, sets private response headers and supplies trusted identity, request headers and server dependencies. Server functions call domain operations directly through `withActor`; `organizations/operation-result.server.ts` maps expected failures into the public result contract. Middleware context is server-derived, not client-supplied identity or authorization. Unexpected failures retain their causes in server diagnostics and expose only a generic RPC error.
+The Start function middleware in `auth/private-operation.ts` resolves a verified session from the incoming request, sets private response headers and supplies trusted identity, request headers and server dependencies. Server functions call domain operations directly through `withActor`; `lib/operation-result.server.ts` maps expected failures into the public result contract. Middleware context is server-derived, not client-supplied identity or authorization. Unexpected failures retain their causes in server diagnostics and expose only a generic RPC error.
 
 Provisioning and database-backed tests use `actorService` from `auth/actor.server.ts` with explicit auth dependencies and request headers. Each call resolves its own verified session before invoking a domain operation. Domain operations independently check canonical organization/project access; authenticating through middleware or a service does not grant access to a requested tenant.
 
@@ -52,7 +52,7 @@ The browser offers one explicit same-submission retry after an uncertain project
 
 Name/role/grant setters express desired state but do not order competing writes: an old name X can overwrite a newer Y if sent later. They receive no new retry control or automatic retry. Client lifetime checks prevent stale feedback, field resets, refresh and navigation; they do not cancel committed writes or provide database concurrency control.
 
-TanStack Form owns fields, parser-based validators and validation errors, including execution recordings, chart intervals and collector credential creation. Successful submission explicitly parses values again to apply transformations; validation alone does not transform Form's values. Query tracks ordinary nonsecret write settlement, and Router continues to own route reads and refresh. A failed refresh after an acknowledged write stays a saved outcome and cannot unlock another create. `use-mutation-owner.ts` shares actor/navigation ownership with the dedicated invitation workflows. Authentication and one-time collector secrets do not use the ordinary mutation adapter or receipt cache.
+TanStack Form owns fields, parser-based validators and validation errors, including execution recordings, chart intervals and enrollment key creation. Successful submission explicitly parses values again to apply transformations; validation alone does not transform Form's values. Query tracks ordinary nonsecret write settlement, and Router continues to own route reads and refresh. A failed refresh after an acknowledged write stays a saved outcome and cannot unlock another create. `use-mutation-owner.ts` shares actor/navigation ownership with the dedicated invitation workflows. Authentication and one-time collector secrets do not use the ordinary mutation adapter or receipt cache.
 
 Better Auth organization creation remains separate. Its native creation hooks and the current API call do not expose the shared application transaction needed for an atomic receipt. A lost response therefore retains the dedicated uncertain-create behavior, without automatic or same-key retry. Slug uniqueness is not proof that organization and owner creation completed together.
 
@@ -62,17 +62,21 @@ Better Auth organization creation remains separate. Its native creation hooks an
 
 | Operation                                                   | Access                      |
 | ----------------------------------------------------------- | --------------------------- |
-| `createInvitation`, `cancelInvitation`                      | Organization owner/admin    |
+| `createInvitations`, `resendInvitation`, `cancelInvitation` | Organization owner/admin    |
 | `listInvitations`                                           | Organization member         |
 | `inspectInvitation`, `acceptInvitation`, `rejectInvitation` | Matching verified recipient |
 
-All operations require a verified session, including native endpoints. Only owners may invite owners. Invitations expire after 48 hours; check expiry as well as status. Resending a live pending invitation preserves its role; expired invitations receive a new link. Cancel and recreate an invitation to change its role.
+All operations require a verified session, including native endpoints. Only owners may invite owners. Invitations expire after three days; check expiry as well as status. Resending a live pending invitation preserves its role and personalized name/message; expired invitations receive a new link. Cancel and recreate an invitation to change its role.
+
+`createInvitations` accepts one organization ID, 1–10 recipients and an optional shared message. Each recipient supplies a unique `clientId`, email address, organization role and optional `recipientName`. Client IDs correlate results with form rows; they are not authorization or retry tokens. The server validates the complete batch, normalized email uniqueness and owner-role permissions before creating any invitations.
+
+The batch returns ordered `results` with `created`, `rejected` or `not-attempted` status for each recipient. Created results include the invitation summary; rejected results include an application error. Known recipient conflicts do not prevent subsequent recipients from being processed. An authorization or rate-limit failure stops further attempts. Native Better Auth calls retain per-recipient authorization, delivery behavior and shared throttling; batching does not multiply the send allowance. The batch is not an all-or-nothing database transaction. Unexpected failures reject the call and may leave some invitations created, so an unconfirmed request must not be retried automatically.
 
 Email links open `/invitations/$invitationId`. Acceptance requires an explicit POST, creates a canonical membership and does not restore previous project grants. Invitations do not bypass closed registration.
 
 Create/resend attempts are limited to ten per user per minute across HTTP and server calls. A successful response does not guarantee email delivery; use Resend to retry. Canceling or rejecting an invitation does not revoke an existing membership.
 
-Refresh invitation data after changes and membership/session state after acceptance. Preserve the local return URL through sign-in.
+The form makes one batch request and refreshes Router-owned invitation data once. Rows and entered values stay intact during sending, refresh and the closing animation. Partial results mark successful rows read-only; subsequent submissions exclude those rows. Unknown responses and failed refreshes block blind resubmission until the current invitations have been checked. Refresh membership/session state after acceptance and preserve the local return URL through sign-in.
 
 ## Database integrity
 

@@ -50,6 +50,12 @@ db-migrate:
 email-dev:
     bun run --filter @recount/transactional dev
 
+# Run a command in this checkout's reused Linux build container, for Linux-only crates.
+# Example: just linux cargo test --locked -p recount-collector
+linux *args:
+    @docker compose --progress quiet --file infra/linux-build/compose.yaml --project-name "recount-linux-build-$(basename "$PWD")" up --detach --wait build
+    @docker compose --file infra/linux-build/compose.yaml --project-name "recount-linux-build-$(basename "$PWD")" exec build "$@"
+
 # Native ingestion API; use flags or exported service-specific environment.
 ingestion-api *args:
     cargo run --locked -p recount-ingestion-api -- "$@"
@@ -62,7 +68,7 @@ normalizer *args:
 test:
     cargo test --locked --workspace --all-targets
     bun run --filter @recount/web test
-    bun --no-env-file test infra/local
+    just --justfile tests/justfile portable
 
 # Select a dependency-specific leaf; native test-tool arguments remain available.
 test-integration +args:
@@ -70,8 +76,7 @@ test-integration +args:
 
 # Standard host Node Playwright with native Bun application fixtures.
 test-browser *args:
-    bun run i18n:compile
-    cd apps/web && node ../../node_modules/@playwright/test/cli.js test "$@"
+    just --justfile tests/justfile browser "$@"
 
 test-linux *args:
     just --justfile tests/justfile linux "$@"
@@ -88,15 +93,32 @@ check-web:
 
 check-docs:
     bun --bun run prettier --check '**/*.{md,yaml,yml}'
+    just check-justfiles
+
+check-justfiles:
     just --fmt --check
     just --justfile infra/local/justfile --fmt --check
     just --justfile infra/lab/justfile --fmt --check
+    just --justfile tests/justfile --fmt --check
 
 check-local:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Synthetic values render configuration only; these commands never start services.
+    export RECOUNT_COLLECTOR_SIGNING_KEY=compose-validation-only
+    export RECOUNT_INGESTION_COLLECTOR_PUBLIC_KEYS=compose-validation-only
+    export RECOUNT_LIVE_GATEWAY_SECRET=compose-validation-only
     docker compose --env-file infra/local/.env.example --file infra/local/compose.yaml config --quiet
     docker compose --env-file infra/local/.env.example --file infra/local/compose.yaml --file infra/local/compose.apps.yaml config --quiet
-    bun --no-env-file test infra/local
+    docker compose --env-file infra/local/.env.example --file infra/local/compose.yaml --file infra/local/compose.apps.yaml --file infra/local/compose.watch.yaml config --quiet
+    just --justfile tests/justfile portable
+    just check-tooling-types
+
+check-tooling-types:
+    bun --no-env-file apps/web/scripts/compile-telemetry.ts
+    bun run i18n:compile
     bun --no-env-file run tsc --project infra/local/tsconfig.json
+    bun --no-env-file run tsc --project tests/tsconfig.json
 
 check-rust:
     cargo fmt --all -- --check
@@ -115,6 +137,7 @@ format:
     just --fmt
     just --justfile infra/local/justfile --fmt
     just --justfile infra/lab/justfile --fmt
+    just --justfile tests/justfile --fmt
 
 format-check: check-docs
     bun --bun run biome format .

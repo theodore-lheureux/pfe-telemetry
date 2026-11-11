@@ -6,14 +6,19 @@ set dotenv-load := false
 default:
     @just --justfile tests/justfile --list
 
+# Ordinary host tooling, landing policy and catalog validation; no live services.
+portable *args:
+    bun --no-env-file test infra/local tests/tooling apps/landing/tests packages/i18n/scripts/catalogs.test.ts "$@"
+
 # Application database, authentication and real shipped role grants.
 integration *args:
+    bun --no-env-file apps/web/scripts/compile-telemetry.ts
     bun run i18n:compile
     bun --no-env-file test --timeout 30000 apps/web/tests/integration "$@"
 
 # Real PostgreSQL authority, rotation, revocation, expiry and outage.
 authority *args:
-    cargo test --locked -p recount-ingestion-api --lib tests::live::authoritative_postgres_rotation_revocation_expiry_bindings_and_outage_are_live "$@" -- --ignored --exact --nocapture
+    cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live "$@" -- --ignored --exact --nocapture
 
 # Real normalizer bootstrap, backlog progress, replay, rebalance and poison.
 kafka *args:

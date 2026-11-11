@@ -14,7 +14,7 @@ The web application uses TanStack Start and shadcn/ui, with shared English/Frenc
 | Kafka                      | Retain raw and normalized records separately and track each downstream group's progress.                                                                                         |
 | ClickHouse                 | Consume normalized Protobuf through its native Kafka engine and a non-aggregating materialized view into point rows.                                                             |
 | TanStack Start application | Manage application state and independently authorize private server operations before querying ClickHouse with a read-only account.                                              |
-| PostgreSQL                 | Maintain Better Auth memberships/sessions, projects, execution windows and indexed collector credential/root/resource grants.                                                    |
+| PostgreSQL                 | Maintain Better Auth memberships/sessions, projects, execution windows and collector enrollment keys and nodes.                                                                  |
 
 The deployable Rust services are `apps/collector`, `apps/ingestion-api` and `apps/normalizer`. The normalizer needs Kafka only, not PostgreSQL or ClickHouse credentials. There is no Rust storage service, direct ClickHouse application writer or PostgreSQL telemetry acceptance ledger. Pure generated schema/identity/projection code lives in `crates/telemetry-schema`; semantic and resource-policy checks live in `crates/telemetry-validation`.
 
@@ -29,7 +29,8 @@ flowchart LR
     normalized --> native["ClickHouse Kafka source and non-aggregating MV"]
     native --> points["ReplacingMergeTree: telemetry.metric_points"]
     web["TanStack Start application"] -->|Authorized read-only queries| points
-    ingest -->|Credential and bounded grant reads| postgres["PostgreSQL: application and authority"]
+    ingest -->|Revoked node IDs every 30 s| postgres["PostgreSQL: application and authority"]
+    collectors -->|Enrollment and access tokens| web
     web -->|Sessions, projects and executions| postgres
 ```
 
@@ -49,11 +50,11 @@ Invalid retained input or a failed publication takes explicit global handler fai
 
 ## Identity, authority and privacy
 
-Project, reporting source, observed resource, stream and sample are distinct identities. A source may report several resources, and credential rotation does not create a new source or observed resource. The ingestion API checks current credential digest, revocation and expiry on every submission, then fetches only the bounded distinct root and independent-resource authority keys requested by that submission.
+Project, reporting source, observed resource, stream and sample are distinct identities. Each enrolled node is one source. A source may report several resources, and token renewal does not create a new source or observed resource. The ingestion API verifies each submission's signed node access token in memory, rejects nodes on its periodically refreshed revocation list, and grants the token's host root without a per-submission database lookup.
 
-An enrolled root grants reporting within its namespace and explicitly allowed adapter/local kinds. The Linux adapter derives process-local identity from root, boot, namespace, PID and start ticks without enrolling/querying every PID. Independent VMs/devices require exact typed bindings. Neither a payload parent/placement assertion nor an empty grant list expands authority; root scope is not physical attestation. The normalizer validates accepted stored context without refreshing current credentials, grant policy or upload age.
+An enrolled root grants reporting within its namespace and explicitly allowed adapter/local kinds. The Linux adapter derives process-local identity from root, boot, namespace, PID and start ticks without enrolling/querying every PID. Independent VMs and devices require exact typed bindings, which node tokens do not grant. Neither a payload parent/placement assertion nor an empty grant list expands authority; root scope is not physical attestation. The normalizer validates accepted stored context without refreshing node state, grant policy or upload age.
 
-Private application reads independently authorize project access through Better Auth's canonical memberships. Route context and browser guards are not authorization boundaries. Keep ingestion's read-only authority role separate from the application's database role and ClickHouse query credential. See [collector credentials](collector-credentials.md) and [application access](application-access.md).
+Private application reads independently authorize project access through Better Auth's canonical memberships. Route context and browser guards are not authorization boundaries. Keep ingestion's read-only authority role separate from the application's database role and ClickHouse query credential. See [collector enrollment](collector-enrollment.md) and [application access](application-access.md).
 
 The isolated development network uses plaintext OTLP/Kafka; production transport security is not supplied by that isolation. Do not log tokens or payloads. The Linux collector excludes arguments, environment variables, executable paths, application files and process memory. Retention/access policies apply to pending buffers, retained raw records and analytical projections alike.
 

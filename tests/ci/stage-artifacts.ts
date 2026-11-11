@@ -2,27 +2,14 @@ import {
 	appendFile,
 	chmod,
 	copyFile,
-	cp,
 	mkdir,
 	readFile,
 	realpath,
 	stat,
 } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import {
-	validateArtifacts,
-	validateWebRuntime,
-} from "../../infra/local/artifacts";
-
-export async function stageWeb(destination: string) {
-	await mkdir(destination);
-	validateWebRuntime("apps/web/.output");
-	await cp("apps/web/.output", destination, {
-		recursive: true,
-		verbatimSymlinks: true,
-	});
-	validateWebRuntime(destination);
-}
+import { validateArtifacts } from "../../infra/local/artifacts";
+import { stageWeb } from "../../tooling/stage-web";
 
 if (import.meta.main) {
 	const [arch, log] = process.argv.slice(2);

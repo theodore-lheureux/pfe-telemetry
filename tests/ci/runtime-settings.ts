@@ -1,4 +1,6 @@
-import { appendFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { appendFile, readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 if (process.env.CI !== "true" || !process.env.GITHUB_ENV)
 	throw new Error(
@@ -46,6 +48,49 @@ const networks = JSON.parse(
 );
 if (!networks[`${project}_broker`])
 	throw new Error("Missing owned broker network");
+const allocation = JSON.parse(
+	output(["compose", "--profile", "tools", "config", "--format", "json"]),
+);
+const topics = allocation.services["kafka-topics"].environment as Record<
+	string,
+	string
+>;
+const schemaMount = allocation.services.clickhouse.volumes.find(
+	(mount: { target: string }) => mount.target === "/etc/recount-schema",
+);
+if (schemaMount?.type !== "bind")
+	throw new Error("Expected selected schema bundle bind");
+const schema = await readFile(join(schemaMount.source, "schema.sql"), "utf8");
+const pinned = output([
+	"exec",
+	id,
+	"cat",
+	"/usr/share/recount-schema/SHA256SUMS",
+]);
+const hashes = [...pinned.matchAll(/^([a-f0-9]{64}) {2}schema\.sql$/gm)];
+if (
+	hashes.length !== 1 ||
+	hashes[0][1] !== createHash("sha256").update(schema).digest("hex")
+)
+	throw new Error(
+		"Selected schema differs from the running image's pinned schema",
+	);
+function schemaSetting(name: string) {
+	const matches = [
+		...schema.matchAll(
+			new RegExp(`^\\s*${name} = '([A-Za-z0-9_.-]+)',?$`, "gm"),
+		),
+	];
+	if (matches.length !== 1)
+		throw new Error(`Expected one pinned schema setting: ${name}`);
+	return matches[0][1];
+}
+const nativeGroup = schemaSetting("kafka_group_name");
+if (schemaSetting("kafka_topic_list") !== topics.RECOUNT_NORMALIZED_TOPIC)
+	throw new Error("Schema bundle disagrees with the selected topic allocation");
+for (const key of ["RECOUNT_RAW_PARTITIONS", "RECOUNT_NORMALIZED_PARTITIONS"])
+	if (!/^[1-9][0-9]*$/.test(String(topics[key])))
+		throw new Error("Expected positive selected partition counts");
 const settings: Record<string, string | undefined> = {
 	RECOUNT_STORAGE_TEST_CONTAINER_ID: id,
 	RECOUNT_STORAGE_TEST_COMPOSE_PROJECT: project,
@@ -66,13 +111,15 @@ const settings: Record<string, string | undefined> = {
 	RECOUNT_PIPELINE_DATABASE_PORT: "5432",
 	RECOUNT_PIPELINE_HOST_ROOT: process.cwd(),
 	RECOUNT_PIPELINE_BOOTSTRAP: "kafka:9092",
-	RECOUNT_PIPELINE_RAW_TOPIC: process.env.RECOUNT_RAW_TOPIC,
-	RECOUNT_PIPELINE_NORMALIZED_TOPIC: process.env.RECOUNT_NORMALIZED_TOPIC,
+	RECOUNT_PIPELINE_RAW_TOPIC: topics.RECOUNT_RAW_TOPIC,
+	RECOUNT_PIPELINE_NORMALIZED_TOPIC: topics.RECOUNT_NORMALIZED_TOPIC,
 	RECOUNT_PIPELINE_NORMALIZER_GROUP: process.env.RECOUNT_NORMALIZER_GROUP,
 	RECOUNT_PIPELINE_KAFKA_CONTAINER_ID: brokerId,
-	RECOUNT_PIPELINE_NATIVE_GROUP: "recount-clickhouse",
-	RECOUNT_PIPELINE_RAW_PARTITIONS: "3",
-	RECOUNT_PIPELINE_NORMALIZED_PARTITIONS: "3",
+	RECOUNT_PIPELINE_NATIVE_GROUP: nativeGroup,
+	RECOUNT_PIPELINE_RAW_PARTITIONS: String(topics.RECOUNT_RAW_PARTITIONS),
+	RECOUNT_PIPELINE_NORMALIZED_PARTITIONS: String(
+		topics.RECOUNT_NORMALIZED_PARTITIONS,
+	),
 	RECOUNT_RUNTIME_DATABASE_NETWORK: `${project}_authority`,
 	RECOUNT_RUNTIME_DATABASE_HOST: "postgres",
 	RECOUNT_RUNTIME_DATABASE_PORT: "5432",

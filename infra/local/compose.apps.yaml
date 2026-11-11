@@ -1,3 +1,8 @@
+x-console-environment: &console-environment
+  FORCE_COLOR: "1"
+  CLICOLOR_FORCE: "1"
+  TERM: xterm-256color
+
 x-runtime: &runtime
   init: true
   read_only: true
@@ -13,6 +18,7 @@ x-runtime: &runtime
     options: { max-size: "2m", max-file: "3" }
 
 x-raw: &raw
+  <<: *console-environment
   RECOUNT_KAFKA_BOOTSTRAP: kafka:9092
   RECOUNT_RAW_TOPIC: ${RECOUNT_RAW_TOPIC:-recount.metrics.raw}
   RECOUNT_RAW_PARTITIONS: ${RECOUNT_RAW_PARTITIONS:-3}
@@ -36,7 +42,10 @@ services:
       <<: [*raw, *limits]
       RECOUNT_INGESTION_ADDR: 0.0.0.0:4317
       RECOUNT_INGESTION_DATABASE_URL: ${RECOUNT_INGESTION_DATABASE_URL:?Set the restricted ingestion database URL}
+      RECOUNT_INGESTION_COLLECTOR_PUBLIC_KEYS: ${RECOUNT_INGESTION_COLLECTOR_PUBLIC_KEYS:?Set the collector token public key}
       RECOUNT_INGESTION_MAX_IN_FLIGHT:
+      RECOUNT_LIVE_TOPIC: ${RECOUNT_LIVE_TOPIC:-recount.metrics.live}
+      RECOUNT_LIVE_PARTITIONS: ${RECOUNT_LIVE_PARTITIONS:-8}
     networks: [authority, broker, ingestion-access]
     healthcheck:
       test:
@@ -74,12 +83,14 @@ services:
     ports: ["127.0.0.1:${NITRO_PORT:-3000}:${NITRO_PORT:-3000}"]
     environment:
       NITRO_HOST: 0.0.0.0
+      <<: *console-environment
       NITRO_PORT: ${NITRO_PORT:-3000}
       DATABASE_URL: ${DATABASE_URL:?Set the web application database URL}
       RECOUNT_DATABASE_POOL_MAX: ${RECOUNT_DATABASE_POOL_MAX:-10}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       RECOUNT_AUTH_ALLOW_SIGN_UP: ${RECOUNT_AUTH_ALLOW_SIGN_UP:-false}
+      RECOUNT_COLLECTOR_SIGNING_KEY: ${RECOUNT_COLLECTOR_SIGNING_KEY:?RECOUNT_COLLECTOR_SIGNING_KEY is required}
       SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_USER: ${SMTP_USER:-resend}
@@ -87,8 +98,10 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-}
       RECOUNT_CLICKHOUSE_URL: http://clickhouse:8123
       RECOUNT_CLICKHOUSE_READER_PASSWORD: ${CLICKHOUSE_READER_PASSWORD:?Set CLICKHOUSE_READER_PASSWORD}
-    networks: [authority, analytics, outbound]
-    tmpfs: [/tmp:rw, nosuid, size=32m]
+      RECOUNT_LIVE_GATEWAY_URL: http://live:3002
+      RECOUNT_LIVE_GATEWAY_SECRET: ${RECOUNT_LIVE_GATEWAY_SECRET:?Set a shared Live gateway secret}
+    networks: [authority, analytics, live-access, outbound]
+    tmpfs: ["/tmp:rw,nosuid,size=32m"]
     healthcheck:
       test:
         [
@@ -102,6 +115,35 @@ services:
       retries: 12
       start_period: 10s
 
+  live:
+    <<: *runtime
+    image: recount-web:local
+    command: [bun, live/index.mjs]
+    stop_grace_period: 20s
+    environment:
+      <<: *console-environment
+      RECOUNT_LIVE_GATEWAY_HOST: 0.0.0.0
+      RECOUNT_LIVE_GATEWAY_PORT: 3002
+      RECOUNT_LIVE_GATEWAY_SECRET: ${RECOUNT_LIVE_GATEWAY_SECRET:?Set a shared Live gateway secret}
+      RECOUNT_ACTIVITY_KAFKA_BROKERS: kafka:9092
+      RECOUNT_RAW_TOPIC: ${RECOUNT_RAW_TOPIC:-recount.metrics.raw}
+      RECOUNT_LIVE_TOPIC: ${RECOUNT_LIVE_TOPIC:-recount.metrics.live}
+      RECOUNT_LIVE_PARTITIONS: ${RECOUNT_LIVE_PARTITIONS:-8}
+    networks: [broker, live-access]
+    healthcheck:
+      test:
+        [
+          CMD,
+          bun,
+          --eval,
+          'const r = await fetch("http://127.0.0.1:3002/health", {headers:{Authorization:"Bearer " + Bun.env.RECOUNT_LIVE_GATEWAY_SECRET}}); process.exit(r.ok ? 0 : 1)',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
 networks:
+  live-access: { internal: true }
   ingestion-access:
   outbound:

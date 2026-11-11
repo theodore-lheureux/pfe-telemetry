@@ -43,9 +43,7 @@ jobs:
       - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
       - run: just check-web check-docs check-local db-check
       - run: docker buildx bake --file infra/local/docker-bake.hcl --set '*.platform=linux/amd64' --print
-      - run: just --justfile tests/justfile --fmt --check
-      - run: bun --no-env-file run tsc --project tests/tsconfig.json
-      - run: bun --no-env-file test apps/web/tests/unit tests/tooling
+      - run: bun --no-env-file test apps/web/tests/unit
       - run: just build
       - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.bun-cache.outputs.cache-hit != 'true'
@@ -91,4 +89,4 @@ jobs:
         with:
           just-version: "1.58.0"
       - run: uv sync --locked
-      - run: just lab check
+      - run: just --no-dotenv lab syntax

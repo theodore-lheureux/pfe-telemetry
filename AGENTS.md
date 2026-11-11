@@ -19,7 +19,8 @@
 - Reuse one initialized Compose stack for PostgreSQL, Kafka and ClickHouse across development and test runs. Do not rebuild or recreate infrastructure for each retry.
 - Run Playwright with the host's standard Node runner and the web application natively with Bun. Run the ingestion API and normalizer natively where supported; keep Linux collector sampling in reused Linux containers or existing VMs.
 - Isolate tests with disposable databases, browser contexts, projects and explicit topic/group namespaces as needed. Preserve tenant/session isolation; do not reset shared checkpoints or data to make a test pass.
-- Build artifacts on the host. Treat Docker packaging, production-image smoke checks and Linux-specific collector/export tests as final validation gates rather than the default iteration loop. Do not compile application sources inside Docker.
+- Build host-supported crates and the web application on the host. Build, lint and test Linux-only code, such as the collector's sampling and export paths, in the reused Linux build container with named volumes for the Cargo registry and Linux target directory; do not recreate it per run or install a cross-toolchain for this loop.
+- Treat Docker packaging, production-image smoke checks and the full pipeline as final validation gates rather than the default iteration loop. Release artifacts come from CI's native Linux runners.
 - Optimize measured setup/teardown and parsing overhead, not coverage. Cache only immutable build metadata, close browser contexts and owned application resources, and keep security assertions and functional timeouts intact. Increase parallelism only after checking ports and resource pressure.
 - Remove only identified obsolete project containers when cleanup is authorized. Preserve volumes, images, networks, unrelated services and user state unless their removal is explicitly requested; never use a global prune as test cleanup.
 - Keep shared tooling, CI and documentation independent of a contributor's machine. Put absolute paths, disk/mount layouts, local network allocations and tool installation paths in ignored local configuration. Use Docker named volumes by default and select artifact architecture from the build target, not the developer's CPU.
@@ -28,6 +29,8 @@
 
 - Prefer appropriate shadcn/ui components using the existing `apps/web/components.json` configuration. Keep native form semantics, typed Router links and accessible async confirmation behavior.
 - Support English and French throughout the UI and transactional emails with shared compiled catalogs and locale-aware formatting. Resolve locale per request; pass email locale explicitly. Keep technical identifiers, commands and protocol values unchanged.
+- Position form dialogs near the top of the viewport, with responsive width and scrollable content. Avoid repeating the same information in the title, description, field label and action: simple single-field dialogs need one clear title, an accessible field label (visually hidden when redundant), and concise Cancel/Save actions. Add descriptions only when they explain a constraint or consequence.
+- Build dialog buttons with `DialogActions` or `AlertDialogActions` from `apps/web/src/components/dialog-actions.tsx`: an outline cancel comes first and the confirming action last. Stack alternative full-width actions with `ActionStack`, and keep a field's label and input in their own group. Biome rejects hand-built dialog footers.
 
 ## Naming
 
@@ -65,6 +68,10 @@
 
 - Follow [organization and project access](docs/application-access.md). Projects are private except for explicit project members and organization owners/admins; project read access includes all executions.
 - Use Better Auth's canonical memberships. Preserve tenant-qualified keys and the transactional owner guard when changing schemas; the guard counter is not an authorization source.
+
+## Rust imports
+
+- Keep `use` declarations at the top of their enclosing module. Put test-only imports in the test module and preserve platform gates. Use local imports only when narrower scope provides a clear benefit; prefer descriptive aliases for conflicting names.
 
 ## Rust dependencies
 

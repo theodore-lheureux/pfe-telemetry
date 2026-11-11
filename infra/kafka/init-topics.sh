@@ -1,18 +1,32 @@
 #!/bin/bash
 set -euo pipefail
 
-mode=${1:?usage: init-topics.sh create|verify}
-[[ $# == 1 && ( "$mode" == create || "$mode" == verify ) ]] || { echo 'Expected create or verify' >&2; exit 1; }
+mode=${1:?usage: init-topics.sh create|create-live|verify}
+[[ $# == 1 && ( "$mode" == create || "$mode" == create-live || "$mode" == verify ) ]] || { echo 'Expected create, create-live or verify' >&2; exit 1; }
+live_only=false
+if [[ "$mode" == create-live ]]; then live_only=true; mode=create; fi
 
 bootstrap=${RECOUNT_KAFKA_BOOTSTRAP:?}
 raw=${RECOUNT_RAW_TOPIC:?}
 normalized=${RECOUNT_NORMALIZED_TOPIC:?}
+live=${RECOUNT_LIVE_TOPIC:-recount.metrics.live}
+export RECOUNT_LIVE_PARTITIONS=${RECOUNT_LIVE_PARTITIONS:-8}
+export RECOUNT_LIVE_RETENTION_MS=${RECOUNT_LIVE_RETENTION_MS:-300000}
+export RECOUNT_LIVE_RETENTION_BYTES=${RECOUNT_LIVE_RETENTION_BYTES:-16777216}
+export RECOUNT_LIVE_SEGMENT_BYTES=${RECOUNT_LIVE_SEGMENT_BYTES:-1048576}
+export RECOUNT_LIVE_SEGMENT_MS=${RECOUNT_LIVE_SEGMENT_MS:-60000}
+export RECOUNT_LIVE_BROKER_MAX_BYTES=${RECOUNT_LIVE_BROKER_MAX_BYTES:-65536}
 tool=/opt/kafka/bin
 
-for value in "$raw" "$normalized"; do
+for value in "$raw" "$normalized" "$live"; do
     [[ "$value" =~ ^[a-zA-Z0-9._-]+$ ]] || { echo 'Invalid topic name' >&2; exit 1; }
 done
 [[ "$raw" != "$normalized" ]] || { echo 'Topics must differ' >&2; exit 1; }
+[[ "$live" != "$raw" && "$live" != "$normalized" ]] || { echo 'Live topic must be separate' >&2; exit 1; }
+for name in RECOUNT_LIVE_PARTITIONS RECOUNT_LIVE_RETENTION_MS RECOUNT_LIVE_RETENTION_BYTES RECOUNT_LIVE_SEGMENT_BYTES RECOUNT_LIVE_SEGMENT_MS RECOUNT_LIVE_BROKER_MAX_BYTES; do
+    [[ "${!name}" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid positive bound: $name" >&2; exit 1; }
+done
+(( RECOUNT_LIVE_PARTITIONS <= 256 && RECOUNT_LIVE_BROKER_MAX_BYTES >= 65536 )) || { echo 'Invalid Live partition or record bounds' >&2; exit 1; }
 for name in RECOUNT_RAW_PARTITIONS RECOUNT_NORMALIZED_PARTITIONS RECOUNT_RAW_RETENTION_MS RECOUNT_NORMALIZED_RETENTION_MS RECOUNT_RAW_RETENTION_BYTES RECOUNT_NORMALIZED_RETENTION_BYTES RECOUNT_RAW_SEGMENT_BYTES RECOUNT_NORMALIZED_SEGMENT_BYTES RECOUNT_RAW_SEGMENT_MS RECOUNT_NORMALIZED_SEGMENT_MS RECOUNT_RAW_BROKER_MAX_BYTES RECOUNT_NORMALIZED_BROKER_MAX_BYTES RECOUNT_BROKER_MESSAGE_BYTES RECOUNT_BROKER_FETCH_BYTES; do
     [[ "${!name}" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid positive bound: $name" >&2; exit 1; }
 done
@@ -39,5 +53,8 @@ ensure_topic() {
     echo "Verified $topic ($actual partitions)"
 }
 
-ensure_topic "$raw" "$RECOUNT_RAW_PARTITIONS" RECOUNT_RAW
-ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED
+if [[ "$live_only" == false ]]; then
+    ensure_topic "$raw" "$RECOUNT_RAW_PARTITIONS" RECOUNT_RAW
+    ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED
+fi
+ensure_topic "$live" "$RECOUNT_LIVE_PARTITIONS" RECOUNT_LIVE

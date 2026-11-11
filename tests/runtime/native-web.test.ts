@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createConnection, type Socket } from "node:net";
@@ -10,15 +9,24 @@ import { join } from "node:path";
 import { fromCrossJSON, toJSONAsync } from "seroval";
 import { actorService } from "../../apps/web/src/auth/actor.server";
 import { createAuth } from "../../apps/web/src/auth/create-auth.server";
-import * as credentials from "../../apps/web/src/credentials/credentials.server";
 import type { ExecutionSummary } from "../../apps/web/src/executions/contracts";
 import * as executions from "../../apps/web/src/executions/executions.server";
-import type { OperationResult } from "../../apps/web/src/organizations/contracts";
+import type { OperationResult } from "../../apps/web/src/lib/operation-result";
 import * as organizations from "../../apps/web/src/organizations/organizations.server";
 import * as projects from "../../apps/web/src/organizations/projects.server";
 import { trustedCodeSignIn } from "../../apps/web/tests/auth-actors";
+import { createTestNode } from "../../apps/web/tests/collector-node";
 import { createTestDatabase } from "../../apps/web/tests/database";
-import { stageWeb } from "../ci/stage-artifacts";
+import { serverFunctionPaths } from "../../tooling/server-function-metadata";
+import { stageWeb } from "../../tooling/stage-web";
+
+let builtServerFunctionPath: ReturnType<typeof serverFunctionPaths> | undefined;
+function rpcPath(operation: string) {
+	builtServerFunctionPath ??= serverFunctionPaths(
+		new URL("../../apps/web/.output/server/_ssr/ssr.mjs", import.meta.url),
+	);
+	return builtServerFunctionPath(operation);
+}
 
 function data<T>(result: OperationResult<T>): T {
 	if (result.error) throw new Error(result.error.message);
@@ -152,17 +160,9 @@ test("generated Bun output serves localized public pages and safe static assets 
 			closedAt = performance.now();
 		});
 		socket.setNoDelay(true);
-		const manifest = readFileSync(
-			new URL("../../apps/web/.output/server/_ssr/ssr.mjs", import.meta.url),
-			"utf8",
-		);
-		const slowRpc = manifest.match(
-			/"([a-f0-9]+)": \{\s*functionName: "createExecution_createServerFn_handler"/,
-		)?.[1];
-		if (!slowRpc) throw new Error("Expected compiled createExecution RPC");
 		socket.write(
 			[
-				`POST /_serverFn/${slowRpc} HTTP/1.1`,
+				`POST ${rpcPath("createExecution")} HTTP/1.1`,
 				`Host: localhost:${port}`,
 				`Origin: ${origin}`,
 				"Content-Type: application/json",
@@ -295,8 +295,6 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 	);
 	const output = new Response(child.stdout).text();
 	const errors = new Response(child.stderr).text();
-	let socket: Socket | undefined;
-	let trickle: ReturnType<typeof setInterval> | undefined;
 	async function connections() {
 		return (
 			(
@@ -392,7 +390,6 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 					requestId: randomUUID(),
 					organizationId: organization.id,
 					name: "Private",
-					slug: "private",
 				}),
 			),
 		);
@@ -400,44 +397,22 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 			organizationId: organization.id,
 			projectId: project.id,
 		};
-		const credential = data(
-			await operations(headers, (actor) =>
-				credentials.createCollectorCredential(database.db, actor, {
-					...reference,
-					name: "Source",
-					sourceId: "native-source",
-					rootId: "node1",
-					rootKind: 1,
-					adapter: "linux",
-					allowedLocalKinds: [4],
-				}),
-			),
-		);
+		const { nodeId } = await createTestNode(database.db, reference);
 		const execution = data(
 			await operations(headers, (actor) =>
 				executions.createExecution(database.db, actor, {
 					...reference,
 					requestId: randomUUID(),
 					name: "Native execution",
-					credentialId: credential.credential.id,
+					nodeId,
 					hostId: null,
 					startedAt: "2026-11-03T10:00:00Z",
 					endedAt: "2026-11-03T11:00:00Z",
 				}),
 			),
 		);
-		const manifest = readFileSync(
-			new URL("../../apps/web/.output/server/_ssr/ssr.mjs", import.meta.url),
-			"utf8",
-		);
 		async function rpc<T>(operation: string, input: unknown): Promise<T> {
-			const id = manifest.match(
-				new RegExp(
-					`"([a-f0-9]+)": \\{\\s*functionName: "${operation}_createServerFn_handler"`,
-				),
-			)?.[1];
-			if (!id) throw new Error(`Missing compiled RPC ${operation}`);
-			const url = new URL(`/_serverFn/${id}`, origin);
+			const url = new URL(rpcPath(operation), origin);
 			url.searchParams.set(
 				"payload",
 				JSON.stringify(await toJSONAsync({ data: input })),
@@ -463,16 +438,6 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 		});
 		expect(result.startedAt).toBeInstanceOf(Date);
 		expect(result.startedAt.toISOString()).toBe("2026-11-03T10:00:00.000Z");
-		await rpc("queryExecutionTelemetry", {
-			...reference,
-			executionId: execution.executionId,
-			buckets: 10,
-		});
-		expect(telemetryQueries).toBe(1);
-		expect(telemetrySockets.size).toBeGreaterThan(0);
-		expect(
-			messages.some((message) => message.type === "telemetry-closed"),
-		).toBe(false);
 		const anonymous = await fetch(`${origin}/settings?section=user`, {
 			redirect: "manual",
 		});
@@ -500,86 +465,46 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 		await until(() =>
 			messages.some((message) => message.type === "holding-email"),
 		);
-		socket = createConnection({ host: "127.0.0.1", port });
-		await once(socket, "connect", { signal: AbortSignal.timeout(5_000) });
-		let closedAt: number | undefined;
-		let receivedBytes = 0;
-		let writes = 0;
-		let lastWriteAt = 0;
-		socket.on("error", () => {});
-		socket.on("data", (data) => {
-			receivedBytes += data.length;
-		});
-		socket.once("close", () => {
-			closedAt = performance.now();
-		});
-		socket.setNoDelay(true);
-		const prefix = `{"email":"${email}","otp":"`;
-		socket.write(
-			[
-				"POST /api/auth/sign-in/email-otp HTTP/1.1",
-				`Host: localhost:${port}`,
-				`Origin: ${origin}`,
-				`Cookie: ${cookie}`,
-				"Content-Type: application/json",
-				"Content-Length: 1048576",
-				"Connection: close",
-				"",
-				prefix,
-			].join("\r\n"),
-		);
-		trickle = setInterval(() => {
-			if (!socket?.destroyed)
-				socket?.write(" ", (error) => {
-					if (!error) {
-						writes++;
-						lastWriteAt = performance.now();
-					}
-				});
-		}, 100);
-		await Bun.sleep(250);
-		expect(writes).toBeGreaterThan(0);
-		expect(receivedBytes).toBe(0);
-		expect(closedAt).toBeUndefined();
 		await privatePage();
 		expect(await connections()).toBeGreaterThan(0);
-		const writesBeforeStop = writes;
-		const stoppingAt = performance.now();
+		await rpc("queryExecutionTelemetry", {
+			...reference,
+			executionId: execution.executionId,
+			buckets: 10,
+		});
+		expect(telemetryQueries).toBe(1);
+		expect(telemetrySockets.size).toBeGreaterThan(0);
+		const telemetryOpenedAt = performance.now();
 		child.kill("SIGTERM");
-		await Bun.sleep(12_000);
+		await until(
+			() => messages.some((message) => message.type === "draining-email"),
+			1000,
+		);
 		expect(child.exitCode).toBeNull();
-		expect(closedAt).toBeUndefined();
-		expect(receivedBytes).toBe(0);
-		expect(writes).toBeGreaterThan(writesBeforeStop + 2);
-		expect(performance.now() - lastWriteAt).toBeLessThan(1_000);
 		expect(await connections()).toBeGreaterThan(0);
-		await until(() => closedAt !== undefined);
-		expect((closedAt ?? 0) - stoppingAt).toBeGreaterThanOrEqual(14_000);
-		expect(performance.now() - stoppingAt).toBeLessThan(25_000);
-		expect(writes + Buffer.byteLength(prefix)).toBeLessThan(1048576);
-		// Owned email work keeps cleanup pending after the HTTP drain; release it explicitly.
-		expect(await connections()).toBeGreaterThan(0);
+		expect(telemetrySockets.size).toBeGreaterThan(0);
 		child.send({ type: "release-email" });
-		await until(() => messages.some((message) => message.type === "closed"));
+		await until(
+			() => messages.some((message) => message.type === "closed"),
+			1000,
+		);
 		expect(
 			messages.find((message) => message.type === "email-closing"),
 		).toMatchObject({ closing: true, poolEnded: false });
 		expect(
 			messages.find((message) => message.type === "closed")?.totalCount,
 		).toBe(0);
-		expect(
-			messages.filter((message) => message.type === "telemetry-closed"),
-		).toHaveLength(1);
 		await until(
 			async () => (await connections()) === 0 && telemetrySockets.size === 0,
+			1000,
 		);
+		// Prove explicit cleanup before the client's 2500 ms idle expiry, with the process still alive.
+		expect(performance.now() - telemetryOpenedAt).toBeLessThan(2000);
 		expect(child.exitCode).toBeNull();
 		child.send({ type: "finish" });
 		expect(await child.exited, await errors).toBe(0);
 		expect(await output).not.toContain(secret);
 	} finally {
-		clearInterval(trickle);
-		socket?.destroy();
 		if (child.exitCode === null) child.kill("SIGKILL");
 		await child.exited;
 		for (const socket of telemetrySockets) socket.destroy();

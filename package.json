@@ -10,7 +10,7 @@
   "scripts": {
     "prepare": "bun --bun run lefthook install",
     "i18n:compile": "bun run --filter @recount/i18n compile",
-    "typecheck": "bun run i18n:compile && bun run --cwd packages/i18n typecheck && bun run --cwd packages/transactional typecheck && bun run --cwd apps/web tsc --noEmit && bun run --cwd apps/landing check",
+    "typecheck": "bun run i18n:compile && bun run --cwd packages/i18n typecheck && bun run --cwd packages/transactional tsc --noEmit && bun run --cwd apps/web typecheck && bun run --cwd apps/landing check",
     "hooks:install": "bun --bun run lefthook install"
   },
   "devDependencies": {

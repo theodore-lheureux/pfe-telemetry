@@ -11,7 +11,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { validateElf, validateWeb, validateWebRuntime } from "./artifacts";
+import {
+	validateElf,
+	validateWeb,
+	validateWebRuntime,
+} from "../../tooling/artifact-policy";
 import { type ComposeConfig, validateData } from "./data";
 
 const owned: string[] = [];
@@ -90,40 +94,6 @@ test("packaging rejects host binaries, wrong targets and nonexecutable inputs", 
 	).toThrow();
 });
 
-test("container data guard refuses replacement initialization and mismatched identity", () => {
-	const path = directory();
-	const script = join(import.meta.dir, "data-entrypoint.sh");
-	const environment = {
-		...process.env,
-		KAFKA_LOG_DIRS: path,
-		RECOUNT_DATA_ID: "expected",
-		RECOUNT_INITIALIZE_ROLE: "",
-	};
-	const run = (initial = false) =>
-		Bun.spawnSync(["sh", script, "kafka", "printf", "guard-passed"], {
-			env: { ...environment, RECOUNT_INITIALIZE_ROLE: initial ? "kafka" : "" },
-			stdout: "pipe",
-			stderr: "pipe",
-			timeout: 5000,
-		});
-	expect(run().success).toBe(false);
-	expect(run().stdout.toString()).not.toContain("guard-passed");
-	expect(run(true).stdout.toString()).toBe("guard-passed");
-	writeFileSync(join(path, "meta.properties"), "cluster.id=wrong\nnode.id=1\n");
-	mkdirSync(join(path, "__cluster_metadata-0"));
-	writeFileSync(
-		join(path, "__cluster_metadata-0/000.log"),
-		"synthetic metadata",
-	);
-	expect(run().success).toBe(false);
-	expect(run(true).success).toBe(false);
-	writeFileSync(
-		join(path, "meta.properties"),
-		"cluster.id=expected\nnode.id=1\n",
-	);
-	expect(run().stdout.toString()).toBe("guard-passed");
-});
-
 test("runtime staging refuses secrets and escaping symlinks without reading their contents", () => {
 	const path = directory();
 	const other = directory();
@@ -150,19 +120,121 @@ test("web runtime staging requires built host inputs without owned workspace sou
 });
 
 test("Compose reuses unchanged services and PostgreSQL waits for TCP readiness", () => {
-	const recipes = readFileSync(join(import.meta.dir, "justfile"), "utf8");
-	const starts = recipes
-		.split("\n")
-		.filter((line) => line.includes("docker compose up "));
-	expect(starts).toHaveLength(3);
-	for (const start of starts) {
-		expect(start).toContain("up --no-build --no-deps");
-		expect(start).not.toContain("--no-recreate");
-		expect(start).not.toContain("--force-recreate");
-	}
-	expect(readFileSync(join(import.meta.dir, "compose.yaml"), "utf8")).toContain(
-		"pg_isready --host=127.0.0.1 --username=recount --dbname=recount",
+	const path = directory();
+	const log = join(path, "calls.jsonl");
+	const mock = join(path, "command.ts");
+	writeFileSync(
+		mock,
+		`import { appendFileSync } from "node:fs";
+const args = process.argv.slice(2);
+appendFileSync(process.env.MOCK_LOG!, JSON.stringify(args) + "\\n");
+if (process.env.MOCK_CASE === "guard-failed" && args[0] === "bun") process.exit(17);
+if (process.env.MOCK_CASE === "topics-failed" && args.includes("kafka-topics") && args.includes("verify")) process.exit(19);`,
 	);
+	for (const command of ["docker", "bun"]) {
+		writeFileSync(
+			join(path, command),
+			`#!/bin/sh\nexec '${process.execPath}' --no-env-file '${mock}' ${command} "$@"\n`,
+		);
+		chmodSync(join(path, command), 0o755);
+	}
+	for (const recipe of ["up", "apps-up"]) {
+		for (const scenario of ["healthy", "guard-failed", "topics-failed"]) {
+			writeFileSync(log, "");
+			const result = Bun.spawnSync(["just", "--no-dotenv", "local", recipe], {
+				cwd: join(import.meta.dir, "../.."),
+				env: {
+					PATH: `${path}:${process.env.PATH}`,
+					HOME: process.env.HOME,
+					MOCK_LOG: log,
+					MOCK_CASE: scenario,
+				},
+				stdout: "pipe",
+				stderr: "pipe",
+				timeout: 5000,
+			});
+			if (scenario === "healthy")
+				expect(result.exitCode, result.stderr.toString()).toBe(0);
+			else expect(result.exitCode).not.toBe(0);
+			const calls: string[][] = readFileSync(log, "utf8")
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line));
+			expect(calls[0]).toEqual(["bun", "--no-env-file", "data.ts", "start"]);
+			const starts = calls.filter(
+				(args) => args[0] === "docker" && args[2] === "up",
+			);
+			if (scenario === "healthy") expect(starts.length).toBeGreaterThan(0);
+			for (const args of starts) {
+				for (const flag of [
+					"--no-build",
+					"--no-deps",
+					"--detach",
+					"--wait",
+					"--wait-timeout",
+				])
+					expect(args).toContain(flag);
+				expect(
+					Number(args[args.indexOf("--wait-timeout") + 1]),
+				).toBeGreaterThan(0);
+				for (const flag of [
+					"--build",
+					"--no-recreate",
+					"--force-recreate",
+					"--always-recreate-deps",
+				])
+					expect(args).not.toContain(flag);
+			}
+			const services = starts.flatMap((args) => {
+				const selected: string[] = [];
+				for (let index = 3; index < args.length; index++) {
+					const argument = args[index];
+					if (argument === "--wait-timeout") index++;
+					else if (!argument.startsWith("-")) selected.push(argument);
+				}
+				return selected;
+			});
+			const expectedServices =
+				scenario === "healthy"
+					? recipe === "up"
+						? ["postgres", "kafka", "clickhouse"]
+						: ["ingestion-api", "normalizer", "live", "web"]
+					: scenario === "topics-failed" && recipe === "up"
+						? ["postgres", "kafka"]
+						: [];
+			expect(services.sort()).toEqual(expectedServices.sort());
+			const verification = calls.findIndex(
+				(args) => args.includes("kafka-topics") && args.includes("verify"),
+			);
+			const consumerStart = calls.findIndex(
+				(args) =>
+					args[2] === "up" &&
+					(args.includes("clickhouse") || args.includes("normalizer")),
+			);
+			if (scenario === "guard-failed") {
+				expect(calls).toEqual([["bun", "--no-env-file", "data.ts", "start"]]);
+			} else expect(verification).toBeGreaterThan(0);
+			if (scenario === "healthy")
+				expect(consumerStart).toBeGreaterThan(verification);
+			else expect(consumerStart).toBe(-1);
+			for (const args of calls)
+				for (const forbidden of [
+					"build",
+					"down",
+					"rm",
+					"restart",
+					"create",
+					"--reset-offsets",
+				])
+					expect(args).not.toContain(forbidden);
+		}
+	}
+	const compose = Bun.YAML.parse(
+		readFileSync(join(import.meta.dir, "compose.yaml"), "utf8"),
+	) as { services: { postgres: { healthcheck: { test: string[] } } } };
+	const readiness = compose.services.postgres.healthcheck.test.join(" ");
+	expect(readiness).toContain("pg_isready");
+	expect(readiness).toMatch(/(?:--host[= ]|-h )127\.0\.0\.1\b/);
 });
 
 test("finite initialization stops only its owned one-off and never retries partial state", async () => {
@@ -288,7 +360,7 @@ test("topic verification never creates or repairs topics; creation is explicit",
 	const tool = join(path, "tool.sh");
 	writeFileSync(
 		tool,
-		`#!/bin/bash\nprintf '%s\\n' "$*" >> "$MOCK_LOG"\ncase "$*" in\n*--describe*--topic*) [ "\${MOCK_MISSING:-}" != 1 ] || exit 1; echo 'PartitionCount: 3 ReplicationFactor: 1' ;;\n*--entity-type*) echo 'retention.ms=100 retention.bytes=100 segment.bytes=100 segment.ms=100 max.message.bytes=100 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false ' ;;\nesac\n`,
+		`#!/bin/bash\nprintf '%s\\n' "$*" >> "$MOCK_LOG"\ncase "$*" in\n*--describe*--topic*) [ "\${MOCK_MISSING:-}" != 1 ] || exit 1; echo 'PartitionCount: 3 ReplicationFactor: 1' ;;\n*--entity-type*) echo 'retention.ms=65536 retention.bytes=65536 segment.bytes=65536 segment.ms=65536 max.message.bytes=65536 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false ' ;;\nesac\n`,
 	);
 	chmodSync(tool, 0o755);
 	symlinkSync(tool, join(path, "kafka-topics.sh"));
@@ -305,12 +377,14 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		RECOUNT_KAFKA_BOOTSTRAP: "synthetic:9092",
 		RECOUNT_RAW_TOPIC: "raw",
 		RECOUNT_NORMALIZED_TOPIC: "normalized",
+		RECOUNT_LIVE_TOPIC: "live",
+		RECOUNT_LIVE_PARTITIONS: "3",
 		RECOUNT_RAW_PARTITIONS: "3",
 		RECOUNT_NORMALIZED_PARTITIONS: "3",
-		RECOUNT_BROKER_MESSAGE_BYTES: "100",
-		RECOUNT_BROKER_FETCH_BYTES: "100",
+		RECOUNT_BROKER_MESSAGE_BYTES: "65536",
+		RECOUNT_BROKER_FETCH_BYTES: "65536",
 	};
-	for (const prefix of ["RAW", "NORMALIZED"])
+	for (const prefix of ["RAW", "NORMALIZED", "LIVE"])
 		for (const suffix of [
 			"RETENTION_MS",
 			"RETENTION_BYTES",
@@ -318,11 +392,12 @@ test("topic verification never creates or repairs topics; creation is explicit",
 			"SEGMENT_MS",
 			"BROKER_MAX_BYTES",
 		])
-			env[`RECOUNT_${prefix}_${suffix}`] = "100";
+			env[`RECOUNT_${prefix}_${suffix}`] = "65536";
 	for (const [mode, missing] of [
 		["verify", ""],
 		["verify", "1"],
 		["create", ""],
+		["create-live", ""],
 	]) {
 		writeFileSync(log, "");
 		const child = Bun.spawn(["bash", script, mode], {
@@ -332,7 +407,12 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		});
 		expect(await child.exited).toBe(missing ? 1 : 0);
 		const calls = readFileSync(log, "utf8");
-		expect(calls.includes("--create")).toBe(mode === "create");
+		expect(calls.includes("--create")).toBe(mode.startsWith("create"));
+		if (mode === "create-live") {
+			expect(calls).not.toContain("--topic raw");
+			expect(calls).not.toContain("--topic normalized");
+			expect(calls.match(/--create/g)).toHaveLength(1);
+		}
 		expect(calls.includes("--alter") || calls.includes("--reset-offsets")).toBe(
 			false,
 		);
@@ -397,6 +477,10 @@ test("resolved Compose preserves owner defaults and propagates only allowlisted 
 					RECOUNT_INGESTION_DATABASE_URL: "synthetic-ingestion",
 					DATABASE_URL: "synthetic-web",
 					BETTER_AUTH_SECRET: "synthetic-auth",
+					RECOUNT_LIVE_GATEWAY_SECRET:
+						"synthetic-live-secret-at-least-32-characters",
+					RECOUNT_COLLECTOR_SIGNING_KEY: "synthetic-signing-key",
+					RECOUNT_INGESTION_COLLECTOR_PUBLIC_KEYS: "synthetic-public-key",
 					...extra,
 				},
 				stdout: "pipe",

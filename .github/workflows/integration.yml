@@ -77,16 +77,26 @@ jobs:
           save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
       - run: bun run i18n:compile
+      - run: bun apps/web/scripts/compile-telemetry.ts
       - run: psql --version
       - run: bun --no-env-file test --timeout 30000 apps/web/tests/integration
       - name: Real PostgreSQL authority, rotation, revocation, expiry and outage
-        run: cargo test --locked -p recount-ingestion-api --lib tests::live::authoritative_postgres_rotation_revocation_expiry_bindings_and_outage_are_live -- --ignored --exact --nocapture
+        run: cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live -- --ignored --exact --nocapture
       - name: Create this job's empty normalizer topics
         run: |
           docker exec '${{ job.services.kafka.id }}' /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic "$RECOUNT_NORMALIZER_TEST_RAW_TOPIC" --partitions 3 --replication-factor 1 --config max.message.bytes=6291456
           docker exec '${{ job.services.kafka.id }}' /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic "$RECOUNT_NORMALIZER_TEST_NORMALIZED_TOPIC" --partitions 3 --replication-factor 1 --config max.message.bytes=2097152
       - name: Real normalizer progress, bootstrap, replay, rebalance and poison
         run: cargo test --locked -p recount-normalizer --test kafka -- --ignored --test-threads=1 --nocapture
+      - name: Live notification references and raw acceptance during notification failure
+        env:
+          RECOUNT_LIVE_TEST_KAFKA_BOOTSTRAP: localhost:9092
+        run: cargo test --locked -p recount-ingestion-api --test live_notifications -- --ignored --nocapture
+      - name: Shared SSE shards, tenant isolation and inspection after gateway restart
+        env:
+          RECOUNT_ACTIVITY_TEST_ALLOW_PUBLISH: "1"
+          RECOUNT_ACTIVITY_KAFKA_BROKERS: localhost:9092
+        run: bun --no-env-file test apps/web/tests/integration/live-gateway.test.ts
 
   browser:
     name: Host Node browser and native Bun web
@@ -181,13 +191,6 @@ jobs:
       RECOUNT_PIPELINE_ISOLATED: "true"
       RECOUNT_PIPELINE_RESTART_CLICKHOUSE: "true"
       RECOUNT_BROWSER_BUILT: "true"
-      RECOUNT_MAX_REQUEST_BYTES: "4194304"
-      RECOUNT_MAX_POINTS: "16384"
-      RECOUNT_MAX_EXPANDED_ITEMS: "262144"
-      RECOUNT_MAX_AUTHORITIES: "256"
-      RECOUNT_MAX_ATTRIBUTE_NODES: "128"
-      RECOUNT_NORMALIZED_MAX_RECORD_BYTES: "1048576"
-      RECOUNT_NORMALIZED_MAX_OUTPUT_BYTES: "16777216"
       RECOUNT_RAW_BROKER_MAX_BYTES: "6291456"
       RECOUNT_NORMALIZED_BROKER_MAX_BYTES: "2097152"
       RECOUNT_NORMALIZER_OUTPUT_ROWS: "128"
@@ -244,8 +247,8 @@ jobs:
           drained=false
           for attempt in {1..20}; do
             echo "Checking owned native consumer drain ($attempt/20)"
-            offsets=$(docker compose exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --group recount-clickhouse --describe)
-            if awk -v topic="$RECOUNT_NORMALIZED_TOPIC" '$1=="recount-clickhouse" && $2==topic {count++; if ($6!="0") bad=1} END {exit !(count==3 && !bad)}' <<< "$offsets"; then
+            offsets=$(docker compose exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --group "$RECOUNT_PIPELINE_NATIVE_GROUP" --describe)
+            if awk -v group="$RECOUNT_PIPELINE_NATIVE_GROUP" -v topic="$RECOUNT_PIPELINE_NORMALIZED_TOPIC" -v partitions="$RECOUNT_PIPELINE_NORMALIZED_PARTITIONS" '$1==group && $2==topic {count++; if ($6!="0") bad=1} END {exit !(count==partitions && !bad)}' <<< "$offsets"; then
               drained=true
               break
             fi

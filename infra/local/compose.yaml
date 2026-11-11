@@ -1,13 +1,26 @@
 name: recount
 
+x-console-environment: &console-environment
+  FORCE_COLOR: "1"
+  CLICOLOR_FORCE: "1"
+  TERM: xterm-256color
+
 x-logging: &logging
   driver: json-file
   options: { max-size: "2m", max-file: "3" }
 
 x-topic-interface: &topic-interface
+  <<: *console-environment
   RECOUNT_KAFKA_BOOTSTRAP: kafka:9092
   RECOUNT_RAW_TOPIC: ${RECOUNT_RAW_TOPIC:-recount.metrics.raw}
   RECOUNT_NORMALIZED_TOPIC: ${RECOUNT_NORMALIZED_TOPIC:-recount.metrics.normalized}
+  RECOUNT_LIVE_TOPIC: ${RECOUNT_LIVE_TOPIC:-recount.metrics.live}
+  RECOUNT_LIVE_PARTITIONS: ${RECOUNT_LIVE_PARTITIONS:-8}
+  RECOUNT_LIVE_RETENTION_MS: ${RECOUNT_LIVE_RETENTION_MS:-300000}
+  RECOUNT_LIVE_RETENTION_BYTES: ${RECOUNT_LIVE_RETENTION_BYTES:-16777216}
+  RECOUNT_LIVE_SEGMENT_BYTES: ${RECOUNT_LIVE_SEGMENT_BYTES:-1048576}
+  RECOUNT_LIVE_SEGMENT_MS: ${RECOUNT_LIVE_SEGMENT_MS:-60000}
+  RECOUNT_LIVE_BROKER_MAX_BYTES: ${RECOUNT_LIVE_BROKER_MAX_BYTES:-65536}
   RECOUNT_RAW_PARTITIONS: ${RECOUNT_RAW_PARTITIONS:-3}
   RECOUNT_NORMALIZED_PARTITIONS: ${RECOUNT_NORMALIZED_PARTITIONS:-3}
   RECOUNT_RAW_RETENTION_MS: ${RECOUNT_RAW_RETENTION_MS:-21600000}
@@ -30,6 +43,7 @@ services:
     image: postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
     environment:
       POSTGRES_USER: recount
+      <<: *console-environment
       POSTGRES_DB: recount
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
       RECOUNT_DATA_ID: ${RECOUNT_POSTGRES_DATA_ID:-}
@@ -65,6 +79,7 @@ services:
     image: apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
     environment:
       KAFKA_NODE_ID: 1
+      <<: *console-environment
       RECOUNT_DATA_ID: ${RECOUNT_KAFKA_DATA_ID:-}
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://:9092,HOST://:19092,CONTROLLER://:9093
@@ -152,6 +167,7 @@ services:
     image: ${RECOUNT_CLICKHOUSE_IMAGE:-recount-clickhouse:local}
     environment:
       CLICKHOUSE_USER: telemetry_admin
+      <<: *console-environment
       RECOUNT_DATA_ID: ${RECOUNT_CLICKHOUSE_DATA_ID:-}
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_ADMIN_PASSWORD:?Set CLICKHOUSE_ADMIN_PASSWORD}
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"

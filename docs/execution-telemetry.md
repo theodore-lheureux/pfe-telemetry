@@ -1,6 +1,6 @@
 # Execution recordings and telemetry
 
-Project readers can open every execution in their project. A recording selects an enrolled source, optional exact host and fixed half-open interval of at most seven days. PostgreSQL retains that selection independently of credential rotation or revocation. Creator attribution controls renaming, not read visibility: members rename their own recordings, project admins rename any, and viewers cannot write. Listings use 50-item UUID keyset pages.
+Project readers can open every execution in their project. A recording selects an enrolled node as its source, optional exact host and fixed half-open interval of at most seven days. PostgreSQL retains that selection independently of node revocation or deletion. Creator attribution controls renaming, not read visibility: members rename their own recordings, project admins rename any, and viewers cannot write. Listings use 50-item UUID keyset pages.
 
 The charts show source-labelled **node context**, not execution workload consumption. A recording's one-source/optional-host selection is not a resource hierarchy or proof of workload attribution. The collector supplies no authoritative execution lifecycle signal; recordings have no inferred running or completed status. Overlapping recordings can show the same samples.
 

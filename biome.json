@@ -66,6 +66,14 @@
           }
         }
       }
+    },
+    {
+      "includes": [
+        "apps/web/src/**/*.tsx",
+        "!apps/web/src/components/ui/**",
+        "!apps/web/src/components/dialog-actions.tsx"
+      ],
+      "plugins": ["./apps/web/lint/dialog-actions.grit"]
     }
   ]
 }

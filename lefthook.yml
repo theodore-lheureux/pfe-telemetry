@@ -26,7 +26,7 @@ pre-commit:
       run: bun --bun run prettier --check {staged_files}
     - name: just-format
       glob: "**/justfile"
-      run: just --fmt --check && just --justfile infra/local/justfile --fmt --check && just --justfile infra/lab/justfile --fmt --check
+      run: just check-justfiles
     - name: ansible-syntax
       glob: "infra/lab/ansible/**/*.yml"
       run: uv run --locked ansible-playbook --syntax-check --inventory compute, infra/lab/ansible/*.yml
@@ -44,13 +44,17 @@ pre-commit:
 pre-push:
   parallel: true
   jobs:
-    - name: web-types
+    - name: types
       glob:
+        - "infra/local/**/*.ts"
+        - "tests/**"
+        - "tooling/**"
         - "apps/web/**"
+        - "apps/landing/**"
         - "packages/**"
         - package.json
         - bun.lock
-      run: bun run typecheck
+      run: just typecheck check-tooling-types
     - name: rust-clippy
       glob:
         - "**/*.rs"

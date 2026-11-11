@@ -37,6 +37,9 @@ topics-create:
 topics-verify:
     docker compose run --rm --no-deps kafka-topics verify
 
+live-topic-create:
+    docker compose run --rm --no-deps kafka-topics create-live
+
 provision-ingestion:
     test -n "${RECOUNT_INGESTION_PASSWORD:?Set RECOUNT_INGESTION_PASSWORD}"
     docker compose exec -T --env RECOUNT_INGESTION_PASSWORD postgres psql --username=recount --dbname=recount < ingestion-role.sql
@@ -53,10 +56,14 @@ initialize-normalizer-offsets *args:
 apps-up:
     bun --no-env-file data.ts start
     docker compose run --rm --no-deps kafka-topics verify
-    COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:compose.apps.yaml" docker compose up --no-build --no-deps --detach --wait --wait-timeout 180 ingestion-api normalizer web
+    COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:compose.apps.yaml" docker compose up --no-build --no-deps --detach --wait --wait-timeout 180 ingestion-api normalizer live web
 
 apps-stop:
-    COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:compose.apps.yaml" docker compose stop ingestion-api normalizer web
+    COMPOSE_FILE="${COMPOSE_FILE:-compose.yaml}:compose.apps.yaml" docker compose stop ingestion-api normalizer live web
+
+# Host-built bundles, read-only runtime mount and Compose watch; only web changes.
+web-watch:
+    bun --no-env-file web-watch.ts
 
 status:
     docker compose ps --all

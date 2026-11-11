@@ -19,14 +19,14 @@ packages, integration targets and test names directly. Live Rust tests are
 ignored in ordinary runs and require explicit selection and allocation settings.
 An ignored test is not evidence that its live boundary passed.
 
-| Boundary                                                     | Command                                                                                                                                                               | Required allocation                                                                                                                      |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Application database, auth and shipped ingestion grants      | `bun --no-env-file test --timeout 30000 apps/web/tests/integration`                                                                                                   | `TEST_DATABASE_URL`, an administrator URL permitting disposable databases and scoped roles; host `psql` for the shipped provisioning SQL |
-| Ingestion authority, rotation, revocation, expiry and outage | `cargo test --locked -p recount-ingestion-api --lib tests::live::authoritative_postgres_rotation_revocation_expiry_bindings_and_outage_are_live -- --ignored --exact` | `TEST_DATABASE_URL` and locked web dependencies                                                                                          |
-| Normalizer progress, bootstrap, replay, rebalance and poison | `cargo test --locked -p recount-normalizer --test kafka -- --ignored --test-threads=1`                                                                                | Explicit normalizer settings below                                                                                                       |
-| Real ClickHouse HTTP reader                                  | `bun --no-env-file test --timeout 30000 apps/web/tests/telemetry/clickhouse.test.ts`                                                                                  | ClickHouse administrator and restricted-reader credentials, plus `RECOUNT_CONTRACT_FIXTURE`                                              |
-| Native Kafka-to-ClickHouse storage                           | `cargo test --locked -p recount-normalizer --test storage -- --ignored --test-threads=1 --skip unclean_restart --skip invalid_initialized`                            | Explicit storage settings below; no service restart authority                                                                            |
-| Browser with native Bun web                                  | `node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts`                                                                               | `TEST_DATABASE_URL`; installed Playwright Chromium                                                                                       |
+| Boundary                                                     | Command                                                                                                                                           | Required allocation                                                                                                                      |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Application database, auth and shipped ingestion grants      | `bun --no-env-file test --timeout 30000 apps/web/tests/integration`                                                                               | `TEST_DATABASE_URL`, an administrator URL permitting disposable databases and scoped roles; host `psql` for the shipped provisioning SQL |
+| Ingestion authority, rotation, revocation, expiry and outage | `cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live -- --ignored --exact` | `TEST_DATABASE_URL` and locked web dependencies                                                                                          |
+| Normalizer progress, bootstrap, replay, rebalance and poison | `cargo test --locked -p recount-normalizer --test kafka -- --ignored --test-threads=1`                                                            | Explicit normalizer settings below                                                                                                       |
+| Real ClickHouse HTTP reader                                  | `bun --no-env-file test --timeout 30000 apps/web/tests/telemetry/clickhouse.test.ts`                                                              | ClickHouse administrator and restricted-reader credentials, plus `RECOUNT_CONTRACT_FIXTURE`                                              |
+| Native Kafka-to-ClickHouse storage                           | `cargo test --locked -p recount-normalizer --test storage -- --ignored --test-threads=1 --skip unclean_restart --skip invalid_initialized`        | Explicit storage settings below; no service restart authority                                                                            |
+| Browser with native Bun web                                  | `node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts`                                                           | `TEST_DATABASE_URL`; installed Playwright Chromium                                                                                       |
 
 Build the fixture natively and discover its executable from Cargo's JSON output,
 not an assumed `target/` directory:
@@ -167,8 +167,8 @@ They require `RECOUNT_RUNTIME_TEST_ALLOW_CONTAINERS=1`. The schema test uses
 `RECOUNT_SCHEMA_DIRECTORY` and `RECOUNT_CLICKHOUSE_IMAGE`. Image smoke tests use
 `RECOUNT_RUNTIME_{COLLECTOR,INGESTION_API,NORMALIZER,WEB}_IMAGE`,
 `TEST_DATABASE_URL`, and the container-visible
-`RECOUNT_RUNTIME_DATABASE_{HOST,PORT,NETWORK}`. Images must consume host-built
-artifacts; application compilation never runs inside Docker.
+`RECOUNT_RUNTIME_DATABASE_{HOST,PORT,NETWORK}`. Images package prebuilt
+artifacts; image builds never compile application sources.
 
 The packaged web test signs in through the canonical fixture auth API and checks
 authenticated private SSR. Only the container's database URL receives a unique
@@ -192,16 +192,35 @@ sampling through the ingestion API and normalizer, verifies both hosts through
 the authorized English/French browser, restarts ClickHouse and checks isolation.
 Missing configuration or disabled restart fails this gate instead of skipping it.
 
-On a non-Linux host, the optional Linux-artifact runner consumes a host-produced
-`cargo test --no-run --message-format=json` log:
+On a non-Linux host, build, lint and test Linux-only crates in the reused Linux
+build container defined by `infra/linux-build/compose.yaml`:
+
+```sh
+just linux cargo test --locked -p recount-collector
+just linux cargo clippy --locked -p recount-collector --all-targets
+```
+
+The recipe starts the container once per checkout and runs each command in it.
+The checkout is mounted at `/workspace`; named volumes keep the Cargo registry,
+the toolchain and the Linux target directory `/target` between runs, so the
+container is never rebuilt for a retry. Built executables, such as
+`/target/debug/recount-collector`, can run in the same container against
+services on the host through `host.docker.internal`.
+
+The Linux-artifact runner remains for prebuilt Linux test executables. It
+consumes a `cargo test --no-run --message-format=json` log:
 
 ```sh
 bun tests/linux-artifacts.ts path/to/build.jsonl
 ```
 
-It selects the platform from ELF headers and runs the prebuilt harnesses with
-bounded Docker resources and no network. Live tests remain separate native
-commands.
+It selects the platform from ELF headers and snapshots the prebuilt executables
+into a content-addressed runtime image. No application sources are compiled in
+Docker, and executables do not run through host filesystem bind mounts. One
+isolated container runs all harnesses with bounded resources and no network;
+its scratch `TMPDIR` does not hide embedded Cargo executable paths. Owned
+containers and temporary staging files are cleaned up; image layers remain cached.
+Live tests remain separate native commands.
 
 ## Assertion owners
 

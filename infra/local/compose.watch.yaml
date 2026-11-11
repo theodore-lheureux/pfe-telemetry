@@ -1,0 +1,27 @@
+services:
+  live:
+    working_dir: /recount-watch/current
+    command: [bun, live/index.mjs]
+    volumes:
+      - type: bind
+        source: ../../.state/local-web-watch
+        target: /recount-watch
+        read_only: true
+        bind: { create_host_path: false }
+    develop:
+      watch:
+        - action: restart
+          path: ../../.state/local-web-watch/ready
+  web:
+    working_dir: /recount-watch/current
+    command: [bun, server/index.mjs]
+    volumes:
+      - type: bind
+        source: ../../.state/local-web-watch
+        target: /recount-watch
+        read_only: true
+        bind: { create_host_path: false }
+    develop:
+      watch:
+        - action: restart
+          path: ../../.state/local-web-watch/ready
