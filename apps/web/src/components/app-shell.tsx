@@ -5,7 +5,7 @@ import {
 	useMatch,
 	useMatchRoute,
 } from "@tanstack/react-router";
-import { ListIcon, RadioIcon, SettingsIcon } from "lucide-react";
+import { LineChartIcon, ListIcon, RadioIcon, SettingsIcon } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { rememberWorkspacePreference } from "../organizations/workspace-preference";
@@ -197,6 +197,34 @@ function AppShellContent({
 														>
 															<RadioIcon aria-hidden="true" />
 															<span>{m.activity_title()}</span>
+														</Link>
+													</SidebarMenuButton>
+												</SidebarMenuItem>
+												<SidebarMenuItem>
+													<SidebarMenuButton
+														asChild
+														tooltip={m.insights()}
+														isActive={
+															!!matchRoute({
+																to: "/organizations/$organizationId/projects/$projectId/insights",
+																params: {
+																	organizationId: project.organizationId,
+																	projectId: project.id,
+																},
+																fuzzy: true,
+															})
+														}
+													>
+														<Link
+															to="/organizations/$organizationId/projects/$projectId/insights"
+															params={{
+																organizationId: project.organizationId,
+																projectId: project.id,
+															}}
+															onClick={() => setOpenMobile(false)}
+														>
+															<LineChartIcon aria-hidden="true" />
+															<span>{m.insights()}</span>
 														</Link>
 													</SidebarMenuButton>
 												</SidebarMenuItem>

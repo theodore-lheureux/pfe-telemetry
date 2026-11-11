@@ -69,3 +69,16 @@ html[data-variant="core"] :is(.font-semibold, .font-bold) {
 		background-color: transparent;
 	}
 }
+
+/* Categorical series colors for analytics charts, in fixed order and validated for
+   color-vision deficiency on the card surface in each mode. */
+:root {
+	--viz-1: light-dark(#2a78d6, #3987e5);
+	--viz-2: light-dark(#eb6834, #d95926);
+	--viz-3: light-dark(#1baf7a, #199e70);
+	--viz-4: light-dark(#eda100, #c98500);
+	--viz-5: light-dark(#e87ba4, #d55181);
+	--viz-6: light-dark(#008300, #008300);
+	--viz-7: light-dark(#6250d6, #9085e9);
+	--viz-8: light-dark(#e34948, #e66767);
+}

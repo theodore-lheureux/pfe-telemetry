@@ -373,7 +373,7 @@ for (const locale of ["en", "fr"] as const) {
 			);
 		}
 		async function expectProjectLinks(root: ReturnType<typeof page.locator>) {
-			await expect(root.getByRole("link")).toHaveCount(3);
+			await expect(root.getByRole("link")).toHaveCount(4);
 			await expect(
 				root.getByRole("link", {
 					name: m.activity_title({}, options),
@@ -382,6 +382,12 @@ for (const locale of ["en", "fr"] as const) {
 			).toHaveAttribute(
 				"href",
 				`/organizations/${organization.id}/projects/${project.id}/activity`,
+			);
+			await expect(
+				root.getByRole("link", { name: m.insights({}, options), exact: true }),
+			).toHaveAttribute(
+				"href",
+				`/organizations/${organization.id}/projects/${project.id}/insights`,
 			);
 			await expect(
 				root.getByRole("link", {
