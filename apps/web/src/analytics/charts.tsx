@@ -1,14 +1,18 @@
 import { getLocale } from "@recount/i18n/runtime";
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import {
 	Area,
+	Bar,
 	CartesianGrid,
 	ComposedChart,
 	Line,
+	ReferenceArea,
+	ReferenceLine,
 	Tooltip,
 	XAxis,
 	YAxis,
 } from "recharts";
+import { useDisplayTimeZone } from "../components/time-display";
 import { type ChartConfig, ChartContainer } from "../components/ui/chart";
 import { cn } from "../lib/utils";
 
@@ -65,12 +69,16 @@ function TooltipCard({
 	label,
 	series,
 	format,
+	gapLabel,
+	timeZone,
 }: {
 	active?: boolean;
 	payload?: readonly { payload?: unknown }[];
 	label?: unknown;
 	series: ChartSeries[];
 	format: (value: number) => string;
+	gapLabel?: (key: string, bucketMs: number) => string | null;
+	timeZone: string;
 }) {
 	if (!active || !payload?.length || typeof label !== "number") return null;
 	const row = payload[0]?.payload as Record<string, number | null>;
@@ -81,6 +89,7 @@ function TooltipCard({
 				{new Intl.DateTimeFormat(locale, {
 					dateStyle: "medium",
 					timeStyle: "short",
+					timeZone,
 				}).format(label)}
 			</p>
 			{series.map((entry) => {
@@ -101,9 +110,13 @@ function TooltipCard({
 							/>
 							{entry.label}
 						</span>
-						<span className="font-mono tabular-nums">
-							{value === null ? "—" : format(value)}
-						</span>
+						{value === null ? (
+							<span className="text-muted-foreground italic">
+								{gapLabel?.(entry.key, label) ?? "—"}
+							</span>
+						) : (
+							<span className="font-mono tabular-nums">{format(value)}</span>
+						)}
 					</div>
 				);
 			})}
@@ -111,20 +124,72 @@ function TooltipCard({
 	);
 }
 
+export type ChartType = "auto" | "line" | "area" | "bar" | "stacked";
+
 export function TimeseriesChart({
 	series,
 	bucketSeconds,
 	format,
 	label,
 	className,
+	type = "auto",
+	logScale = false,
+	beginAtZero = true,
+	goal,
+	domain,
+	bands = [],
+	bandLabel,
+	gapLabel,
+	onZoom,
+	legend = true,
+	highlight = null,
 }: {
 	series: ChartSeries[];
 	bucketSeconds: number;
 	format: (value: number) => string;
 	label: string;
 	className?: string;
+	/** `auto` fills a single series and draws several as lines. */
+	type?: ChartType;
+	logScale?: boolean;
+	beginAtZero?: boolean;
+	/** A dashed horizontal reference line. */
+	goal?: number;
+	/** The time axis bounds in ms; defaults to the data's extent. */
+	domain?: [number, number];
+	/** Shaded time spans, such as periods when no node reported. */
+	bands?: { from: number; to: number }[];
+	bandLabel?: string;
+	/** Why a series has no value in a bucket, shown in the tooltip. */
+	gapLabel?: (key: string, bucketMs: number) => string | null;
+	/** Dragging across the chart selects a span, from the first bucket's start to the last one's end. */
+	onZoom?: (from: number, to: number) => void;
+	/** Lists the series under the chart; off when a table beside it already names them. */
+	legend?: boolean;
+	/** A series key to emphasize; the others fade. */
+	highlight?: string | null;
 }) {
 	const gradient = useId().replace(/:/g, "");
+	const timeZone = useDisplayTimeZone();
+	// Opacity for a series: faded while another one is highlighted.
+	const emphasis = (key: string) =>
+		highlight === null || highlight === key ? 1 : 0.15;
+	const [selection, setSelection] = useState<{
+		start: number;
+		end: number;
+	} | null>(null);
+	const bucketAt = (state: { activeLabel?: unknown } | null | undefined) => {
+		const at = Number(state?.activeLabel);
+		return Number.isFinite(at) ? at : null;
+	};
+	const finishZoom = () => {
+		if (selection && selection.start !== selection.end)
+			onZoom?.(
+				Math.min(selection.start, selection.end),
+				Math.max(selection.start, selection.end) + bucketSeconds * 1000,
+			);
+		setSelection(null);
+	};
 	const locale = getLocale();
 	const now = Date.now();
 	const rows = useMemo(
@@ -133,11 +198,14 @@ export function TimeseriesChart({
 	);
 	const current = series.filter((entry) => !entry.comparison);
 	// A single current series gets a soft area; several stay lines so fills never overlap.
-	const filled = current.length === 1;
+	const filled = type === "area" || (type === "auto" && current.length === 1);
+	const bars = type === "bar" || type === "stacked";
 	const span = rows.length
 		? (rows.at(-1)?.bucketMs ?? 0) - (rows[0]?.bucketMs ?? 0)
 		: 0;
+	// Times read in the display time zone, like every other time in the app.
 	const time = new Intl.DateTimeFormat(locale, {
+		timeZone,
 		...(span > 86_400_000
 			? { month: "short", day: "numeric" }
 			: { hour: "2-digit", minute: "2-digit" }),
@@ -152,13 +220,27 @@ export function TimeseriesChart({
 		<div className={cn("flex flex-col gap-3", className)}>
 			<ChartContainer
 				config={config}
-				className="aspect-auto h-72 w-full"
+				className={cn(
+					"aspect-auto h-72 w-full",
+					onZoom && "cursor-crosshair select-none",
+				)}
 				role="img"
 				aria-label={label}
 			>
 				<ComposedChart
 					data={rows}
 					margin={{ left: 4, right: 12, top: 8, bottom: 0 }}
+					onMouseDown={(state) => {
+						const at = bucketAt(state);
+						if (onZoom && at !== null) setSelection({ start: at, end: at });
+					}}
+					onMouseMove={(state) => {
+						const at = bucketAt(state);
+						if (selection && at !== null)
+							setSelection({ ...selection, end: at });
+					}}
+					onMouseUp={finishZoom}
+					onMouseLeave={() => setSelection(null)}
 				>
 					<defs>
 						<linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
@@ -175,11 +257,43 @@ export function TimeseriesChart({
 						</linearGradient>
 					</defs>
 					<CartesianGrid vertical={false} strokeDasharray="3 4" />
+					{bands.map((band) => (
+						<ReferenceArea
+							key={band.from}
+							x1={band.from}
+							x2={band.to}
+							fill="var(--muted-foreground)"
+							fillOpacity={0.08}
+							strokeOpacity={0}
+							ifOverflow="hidden"
+							label={
+								bandLabel && band.to - band.from >= (span || 1) / 12
+									? {
+											value: bandLabel,
+											position: "insideTop",
+											fontSize: 11,
+											fill: "var(--muted-foreground)",
+										}
+									: undefined
+							}
+						/>
+					))}
+					{selection && selection.start !== selection.end && (
+						<ReferenceArea
+							x1={Math.min(selection.start, selection.end)}
+							x2={Math.max(selection.start, selection.end)}
+							fill="var(--primary)"
+							fillOpacity={0.12}
+							stroke="var(--primary)"
+							strokeOpacity={0.4}
+							ifOverflow="hidden"
+						/>
+					)}
 					<XAxis
 						dataKey="bucketMs"
 						type="number"
 						scale="time"
-						domain={["dataMin", "dataMax"]}
+						domain={domain ?? ["dataMin", "dataMax"]}
 						tickLine={false}
 						axisLine={false}
 						tickMargin={8}
@@ -191,12 +305,36 @@ export function TimeseriesChart({
 						axisLine={false}
 						tickCount={5}
 						width={72}
+						// A log axis cannot start at zero; non-positive values fall outside it.
+						scale={logScale ? "log" : "auto"}
+						domain={
+							logScale
+								? ["auto", "auto"]
+								: beginAtZero
+									? [0, "auto"]
+									: ["auto", "auto"]
+						}
+						allowDataOverflow={logScale}
 						tickFormatter={(value: number) => format(value)}
 					/>
+					{goal !== undefined && Number.isFinite(goal) && (
+						<ReferenceLine
+							y={goal}
+							stroke="var(--muted-foreground)"
+							strokeDasharray="6 4"
+							ifOverflow="extendDomain"
+						/>
+					)}
 					<Tooltip
 						cursor={{ stroke: "var(--border)", strokeWidth: 1 }}
 						content={(props) => (
-							<TooltipCard {...props} series={series} format={format} />
+							<TooltipCard
+								{...props}
+								series={series}
+								format={format}
+								gapLabel={gapLabel}
+								timeZone={timeZone}
+							/>
 						)}
 					/>
 					{series.map((entry) =>
@@ -206,10 +344,20 @@ export function TimeseriesChart({
 								dataKey={entry.key}
 								type="linear"
 								stroke={entry.color}
-								strokeOpacity={0.45}
+								strokeOpacity={0.45 * emphasis(entry.key)}
 								strokeWidth={2}
 								strokeDasharray="4 4"
 								dot={false}
+								isAnimationActive={false}
+							/>
+						) : bars ? (
+							<Bar
+								key={entry.key}
+								dataKey={entry.key}
+								fill={entry.color}
+								fillOpacity={emphasis(entry.key)}
+								stackId={type === "stacked" ? "stack" : undefined}
+								radius={type === "stacked" ? 0 : [3, 3, 0, 0]}
 								isAnimationActive={false}
 							/>
 						) : filled ? (
@@ -218,8 +366,12 @@ export function TimeseriesChart({
 								dataKey={entry.key}
 								type="linear"
 								stroke={entry.color}
+								strokeOpacity={emphasis(entry.key)}
 								strokeWidth={2}
-								fill={`url(#${gradient})`}
+								fill={current.length === 1 ? `url(#${gradient})` : entry.color}
+								fillOpacity={
+									(current.length === 1 ? 1 : 0.12) * emphasis(entry.key)
+								}
 								dot={false}
 								activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
 								isAnimationActive={false}
@@ -230,6 +382,7 @@ export function TimeseriesChart({
 								dataKey={entry.key}
 								type="linear"
 								stroke={entry.color}
+								strokeOpacity={emphasis(entry.key)}
 								strokeWidth={2}
 								dot={false}
 								activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
@@ -237,12 +390,13 @@ export function TimeseriesChart({
 							/>
 						),
 					)}
-					{current.map((entry) => (
+					{(bars ? [] : current).map((entry) => (
 						<Line
 							key={`${entry.key}${TAIL}`}
 							dataKey={`${entry.key}${TAIL}`}
 							type="linear"
 							stroke={entry.color}
+							strokeOpacity={emphasis(entry.key)}
 							strokeWidth={2}
 							strokeDasharray="4 4"
 							dot={false}
@@ -253,7 +407,7 @@ export function TimeseriesChart({
 					))}
 				</ComposedChart>
 			</ChartContainer>
-			{(series.length > 1 || current.length > 1) && (
+			{legend && (series.length > 1 || current.length > 1) && (
 				<ul className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
 					{series.map((entry) => (
 						<li key={entry.key} className="flex items-center gap-1.5">

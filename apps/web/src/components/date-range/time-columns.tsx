@@ -1,7 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useEffect, useRef } from "react";
-import { cn } from "../lib/utils";
+import { cn } from "../../lib/utils";
 
 /** Whether the locale writes hours on a 12-hour clock, with its day-period names. */
 function clock(locale: string) {

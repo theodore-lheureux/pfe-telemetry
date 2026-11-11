@@ -2,14 +2,10 @@ import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { CalendarIcon, ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
-import { useDisplayTimeZone } from "../components/time-display";
-import { Button } from "../components/ui/button";
-import {
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-} from "../components/ui/popover";
-import { cn } from "../lib/utils";
+import { cn } from "../../lib/utils";
+import { useDisplayTimeZone } from "../time-display";
+import { Button } from "../ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { type DateRange, rangeLabel, wallTime } from "./date-range";
 import { DateTimePanel } from "./date-time-panel";
 import { JumpPanel } from "./jump-panel";
@@ -17,14 +13,23 @@ import { type CustomView, RangeMenu } from "./range-menu";
 
 type View = "menu" | CustomView;
 
+// Custom date panels size themselves: two months for a day range, one month with time.
+const PANEL_WIDTH: Partial<Record<View, string>> = {
+	menu: "w-72",
+	jump: "w-96",
+};
+
 /** A PostHog-style time range: presets, "in the last N units", custom ranges and jumps. */
 export function DateRangePicker({
 	value,
 	disabled,
+	maxDays,
 	onChange,
 }: {
 	value: DateRange;
 	disabled: boolean;
+	/** Hides presets longer than this; custom ranges are checked by the server. */
+	maxDays?: number;
 	onChange: (value: DateRange) => void;
 }) {
 	const locale = getLocale(),
@@ -77,13 +82,13 @@ export function DateRangePicker({
 				align="start"
 				className={cn(
 					"max-w-[calc(100vw-2rem)] gap-0 p-0",
-					// Custom panels size themselves: two months for a day range, one month with time.
-					view === "menu" ? "w-72" : view === "jump" ? "w-96" : "w-auto",
+					PANEL_WIDTH[view] ?? "w-auto",
 				)}
 			>
 				{view === "menu" && (
 					<RangeMenu
 						value={value}
+						maxDays={maxDays}
 						onChoose={choose}
 						onChange={onChange}
 						onCustom={setView}

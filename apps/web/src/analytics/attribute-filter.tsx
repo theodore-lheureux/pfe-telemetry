@@ -1,13 +1,6 @@
 import { m } from "@recount/i18n/messages";
-import { ArrowLeftIcon, PlusIcon } from "lucide-react";
+import { ArrowLeftIcon, ListFilterPlusIcon, PlusIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
-import type {
-	AttributeDefinition,
-	Filter,
-	FilterOperator,
-} from "../analytics/contracts";
-import { attributeField, isFieldKey } from "../analytics/fields";
-import { attributeLabel } from "../analytics/metric-names";
 import { Button } from "../components/ui/button";
 import {
 	Command,
@@ -28,6 +21,9 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "../components/ui/popover";
+import type { AttributeDefinition, Filter, FilterOperator } from "./contracts";
+import { attributeField, isFieldKey } from "./fields";
+import { attributeLabel } from "./metric-names";
 
 type Operator = Extract<FilterOperator, "eq" | "neq" | "exists" | "not_exists">;
 const OPERATORS: Operator[] = ["eq", "neq", "exists", "not_exists"];
@@ -43,12 +39,15 @@ export function AttributeFilter({
 	attributes,
 	loading,
 	disabled,
+	trigger = "button",
 	onOpen,
 	onAdd,
 }: {
 	attributes: AttributeDefinition[] | undefined;
 	loading: boolean;
 	disabled: boolean;
+	/** `button` for toolbars, `ghost` for panel sections, `icon` inside a series row. */
+	trigger?: "button" | "ghost" | "icon";
 	onOpen: () => void;
 	onAdd: (filter: Filter) => void;
 }) {
@@ -97,10 +96,28 @@ export function AttributeFilter({
 			}}
 		>
 			<PopoverTrigger asChild>
-				<Button variant="outline" disabled={disabled}>
-					<PlusIcon aria-hidden="true" />
-					{m.activity_attribute_filter()}
-				</Button>
+				{trigger === "icon" ? (
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						aria-label={m.activity_attribute_filter()}
+						title={m.activity_attribute_filter()}
+						disabled={disabled}
+					>
+						<ListFilterPlusIcon aria-hidden="true" />
+					</Button>
+				) : (
+					<Button
+						variant={trigger === "ghost" ? "ghost" : "outline"}
+						size={trigger === "ghost" ? "sm" : "default"}
+						disabled={disabled}
+					>
+						<PlusIcon aria-hidden="true" />
+						{trigger === "ghost"
+							? m.insight_filter_add()
+							: m.activity_attribute_filter()}
+					</Button>
+				)}
 			</PopoverTrigger>
 			<PopoverContent className="w-80 p-0" align="start">
 				{field ? (

@@ -1,5 +1,13 @@
+import { cn } from "cn";
 import type { ReactNode } from "react";
-import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "./ui/empty";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "./ui/empty";
 
 export function PageHeading({
 	title,
@@ -37,6 +45,44 @@ export function EmptyState({
 					{children}
 				</EmptyContent>
 			)}
+		</Empty>
+	);
+}
+
+/** A centred empty or error state with an icon, such as a chart with nothing to show. */
+export function IconEmptyState({
+	icon,
+	title,
+	description,
+	alert,
+	className,
+}: {
+	icon: ReactNode;
+	title: string;
+	description?: ReactNode;
+	/** Announces the description, for failures. */
+	alert?: boolean;
+	className?: string;
+}) {
+	return (
+		<Empty
+			className={cn(
+				"border border-dashed",
+				alert && "border-destructive/40",
+				className,
+			)}
+		>
+			<EmptyHeader>
+				<EmptyMedia variant="icon">{icon}</EmptyMedia>
+				<EmptyTitle>
+					<h2>{title}</h2>
+				</EmptyTitle>
+				{description && (
+					<EmptyDescription role={alert ? "alert" : undefined}>
+						{description}
+					</EmptyDescription>
+				)}
+			</EmptyHeader>
 		</Empty>
 	);
 }

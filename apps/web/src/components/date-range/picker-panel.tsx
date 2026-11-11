@@ -1,7 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { XIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { Button } from "../components/ui/button";
+import { Button } from "../ui/button";
 
 /** A panel header with a title and a button that closes the whole picker. */
 export function PanelHeader({

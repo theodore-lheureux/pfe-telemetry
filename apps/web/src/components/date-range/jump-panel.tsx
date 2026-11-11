@@ -1,12 +1,9 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { type FormEvent, useId, useState } from "react";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import {
-	NativeSelect,
-	NativeSelectOption,
-} from "../components/ui/native-select";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import {
 	type DateRange,
 	JUMP_WINDOWS,

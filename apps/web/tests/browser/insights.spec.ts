@@ -54,6 +54,17 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
         LIMIT 50000`,
 			query_params: { project: project.id },
 		});
+		// The same points an hour earlier, so the previous period has data to compare with
+		// even when the local stack was recreated recently.
+		await clickhouse.command({
+			query: `INSERT INTO telemetry.metric_points
+        SELECT * REPLACE (
+            time_unix_nano - 3600000000000 AS time_unix_nano,
+            toUInt32(intDiv(time_unix_nano - 3600000000000, 86400000000000)) AS event_day)
+        FROM telemetry.metric_points
+        WHERE project_id = {project:String}`,
+			query_params: { project: project.id },
+		});
 		await page.goto(
 			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/insights`,
 		);
@@ -95,7 +106,9 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 			page.getByRole("img", { name: "Memory used over time" }),
 		).toBeVisible();
 		await page.getByRole("link", { name: "Explore", exact: true }).click();
-		await page.getByRole("combobox", { name: "Metric", exact: true }).click();
+		await page
+			.getByRole("combobox", { name: "Choose a metric", exact: true })
+			.click();
 		await page.screenshot({
 			path: testInfo.outputPath("insights-metric-picker.png"),
 		});
@@ -104,35 +117,115 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 			.click();
 		// Known metrics show their friendly name and a description.
 		await expect(
-			page.getByRole("combobox", { name: "Metric", exact: true }),
-		).toHaveText("Node CPU time");
-		await expect(
-			page.getByText("CPU time the node spent in each mode", { exact: false }),
+			page.getByRole("combobox", { name: "Node CPU time", exact: true }),
 		).toBeVisible();
-		// Counters default to a per-second rate, summed across series.
-		await expect(page.getByLabel("Calculation", { exact: true })).toHaveValue(
-			"rate",
+		await page
+			.getByRole("button", { name: "About this metric", exact: true })
+			.hover();
+		await expect(
+			page
+				.getByRole("tooltip")
+				.getByText("CPU time the node spent in each mode", { exact: false }),
+		).toBeVisible();
+		// Counters default to a per-second rate; averaging a counter is not offered.
+		const calculation = page.getByRole("combobox", {
+			name: "Calculation",
+			exact: true,
+		});
+		await expect(calculation).toHaveText("Rate per second");
+		await calculation.click();
+		await expect(page.getByRole("option", { name: "Average" })).toHaveCount(0);
+		await page.keyboard.press("Escape");
+		await expect(
+			page.getByRole("img", { name: "Insight chart", exact: true }),
+		).toBeVisible();
+		// A second series and a formula: the busy share of CPU time.
+		await page.getByRole("button", { name: "Add series", exact: true }).click();
+		await page
+			.getByRole("combobox", { name: "Choose a metric", exact: true })
+			.click();
+		await page
+			.getByRole("option", { name: /recount\.node\.cpu\.time/ })
+			.click();
+		await page.getByLabel("Formula mode", { exact: true }).click();
+		await page.getByLabel("Formula 1", { exact: true }).fill("A / B * 100");
+		const results = page.getByRole("table", { name: "Results" });
+		await expect(
+			results.getByRole("cell", { name: "A / B * 100", exact: true }),
+		).toBeVisible();
+		await expect(results.getByRole("row")).toHaveCount(2);
+		// The editor's state is in the URL, so a reload restores it.
+		await page.reload();
+		await expect(page.getByLabel("Formula 1", { exact: true })).toHaveValue(
+			"A / B * 100",
+		);
+		await page.getByLabel("Formula mode", { exact: true }).click();
+		await page.getByRole("combobox", { name: "Group by", exact: true }).click();
+		await page.getByRole("option", { name: "Node", exact: true }).click();
+		await expect
+			.poll(() => results.getByRole("row").count())
+			.toBeGreaterThan(2);
+		await page
+			.getByRole("combobox", { name: "Comparison", exact: true })
+			.click();
+		await page
+			.getByRole("option", { name: "Previous period", exact: true })
+			.click();
+		await expect(
+			results.getByRole("cell", { name: /\(previous\)/ }).first(),
+		).toBeVisible();
+		// A calculated metric fills in named series and a formula from the picker.
+		await page
+			.getByRole("combobox", { name: "Comparison", exact: true })
+			.click();
+		await page
+			.getByRole("option", { name: "No comparison", exact: true })
+			.click();
+		await page.getByRole("button", { name: "Add series", exact: true }).click();
+		await page
+			.getByRole("combobox", { name: "Choose a metric", exact: true })
+			.click();
+		await page.getByRole("option", { name: /^CPU usage/ }).click();
+		await expect(page.getByLabel("Formula 1", { exact: true })).toHaveValue(
+			"A",
+		);
+		await expect(page.getByLabel("Formula 2", { exact: true })).toHaveValue(
+			"B",
+		);
+		await expect(page.getByLabel("Formula 3", { exact: true })).toHaveValue(
+			"C / D * 100",
 		);
 		await expect(
-			page.getByRole("img", { name: "Chart of Node CPU time" }),
-		).toBeVisible();
-		await page.getByLabel("Group by", { exact: true }).selectOption("node");
-		const table = page.getByRole("table");
-		// Grouping replaces the single combined series with one row per node.
+			page.getByLabel("Formula 3 name", { exact: true }),
+		).toHaveValue("CPU usage");
 		await expect(
-			table.getByRole("cell", { name: "All", exact: true }),
-		).toHaveCount(0);
-		await expect.poll(() => table.getByRole("row").count()).toBeGreaterThan(2);
+			results.getByRole("cell", { name: /^CPU usage · / }).first(),
+		).toBeVisible();
+		// Dragging across the chart narrows the range to the selected span.
+		const range = page.getByRole("button", { name: /^Time range: / });
+		await expect(range).toHaveAccessibleName(/Last hour/);
+		const chart = page.getByRole("img", { name: "Insight chart", exact: true });
+		const box = await chart.boundingBox();
+		if (!box) throw new Error("chart has no box");
+		const y = box.y + box.height / 2;
+		await page.mouse.move(box.x + box.width * 0.4, y);
+		await page.mouse.down();
+		await page.mouse.move(box.x + box.width * 0.6, y, { steps: 8 });
+		await page.mouse.up();
+		await expect(range).not.toHaveAccessibleName(/Last hour/);
+		// Edits are history steps: ⌘Z, ⇧⌘Z and the browser's Back move between them.
+		await page.keyboard.press("ControlOrMeta+z");
+		await expect(range).toHaveAccessibleName(/Last hour/);
+		await page.keyboard.press("ControlOrMeta+Shift+z");
+		await expect(range).not.toHaveAccessibleName(/Last hour/);
+		await page.goBack();
+		await expect(range).toHaveAccessibleName(/Last hour/);
+		await page.goForward();
+		await expect(range).not.toHaveAccessibleName(/Last hour/);
 		await page.screenshot({
 			path: testInfo.outputPath("insights-grouped.png"),
 			fullPage: true,
 		});
-		// Averaging a counter is not offered; only its rate and increase are.
-		await expect(
-			page
-				.getByLabel("Calculation", { exact: true })
-				.locator("option", { hasText: "Average" }),
-		).toHaveCount(0);
 	} finally {
 		for (const table of [
 			"metric_points",

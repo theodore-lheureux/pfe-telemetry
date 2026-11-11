@@ -7,17 +7,12 @@ import {
 	ArrowUpIcon,
 	LayoutDashboardIcon,
 	RefreshCwIcon,
+	TriangleAlertIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { formatMeasurement } from "../activity/format";
+import { LoadingBar } from "../components/loading-bar";
 import { Button } from "../components/ui/button";
-import {
-	Empty,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from "../components/ui/empty";
 import { Label } from "../components/ui/label";
 import {
 	NativeSelect,
@@ -32,11 +27,11 @@ import {
 	TableHeader,
 	TableRow,
 } from "../components/ui/table";
+import { IconEmptyState } from "../components/workspace";
 import { type OperationResult, unwrapOperation } from "../lib/operation-result";
-import { cn } from "../lib/utils";
 import type { ProjectReference } from "../organizations/contracts";
 import { getFleetOverview } from "./analytics.functions";
-import { Sparkline, TimeseriesChart } from "./charts";
+import { TimeseriesChart } from "./charts";
 import { InsightsHeader } from "./insights-header";
 import type {
 	Overview,
@@ -44,6 +39,7 @@ import type {
 	OverviewRange,
 	OverviewStat,
 } from "./overview.server";
+import { StatCard } from "./stat-card";
 
 const RANGES: { value: OverviewRange; label: () => string }[] = [
 	{ value: "1h", label: m.insight_range_1h },
@@ -123,41 +119,25 @@ function StatTile({
 	locale: string;
 	onSelect: () => void;
 }) {
+	const previous =
+		metric.previous === null
+			? m.overview_no_prior()
+			: m.overview_vs_prior({
+					value: formatStat(metric.stat, metric.previous, locale),
+				});
 	return (
-		<button
-			type="button"
-			aria-pressed={selected}
-			aria-label={m.overview_select_stat({ stat: STAT_LABEL[metric.stat]() })}
-			onClick={onSelect}
-			className={cn(
-				"flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card text-left transition-colors hover:border-ring focus-visible:outline-2 focus-visible:outline-ring",
-				selected && "border-primary ring-1 ring-primary",
-			)}
-		>
-			<div className="flex flex-col gap-1 px-4 pt-3">
-				<div className="flex items-center justify-between gap-2">
-					<span className="text-sm font-medium">
-						{STAT_LABEL[metric.stat]()}
-					</span>
-					<Delta metric={metric} locale={locale} />
-				</div>
-				<span className="text-3xl font-semibold tracking-tight tabular-nums">
-					{formatStat(metric.stat, metric.current, locale)}
-				</span>
-				<span className="text-xs text-muted-foreground">
-					{metric.previous === null
-						? m.overview_no_prior()
-						: m.overview_vs_prior({
-								value: formatStat(metric.stat, metric.previous, locale),
-							})}
-				</span>
-			</div>
-			<div className="mt-2 h-12">
-				{hydrated && (
-					<Sparkline points={metric.series} bucketSeconds={bucketSeconds} />
-				)}
-			</div>
-		</button>
+		<StatCard
+			title={STAT_LABEL[metric.stat]()}
+			value={formatStat(metric.stat, metric.current, locale)}
+			aside={<Delta metric={metric} locale={locale} />}
+			detail={previous}
+			points={metric.series}
+			bucketSeconds={bucketSeconds}
+			hydrated={hydrated}
+			selected={selected}
+			selectLabel={m.overview_select_stat({ stat: STAT_LABEL[metric.stat]() })}
+			onSelect={onSelect}
+		/>
 	);
 }
 
@@ -252,141 +232,158 @@ export function FleetOverview({
 					</Button>
 				</div>
 			</div>
-			{overview.isError ? (
-				<div
-					role="alert"
-					className="rounded-md border border-destructive/40 p-4 text-sm"
-				>
-					{m.overview_unavailable()}
-				</div>
-			) : !data?.available ? (
-				<Empty className="border border-dashed bg-card">
-					<EmptyHeader>
-						<EmptyMedia variant="icon">
-							<LayoutDashboardIcon aria-hidden="true" />
-						</EmptyMedia>
-						<EmptyTitle>
-							<h2>{m.overview_empty()}</h2>
-						</EmptyTitle>
-						<EmptyDescription>
-							{m.overview_empty_description()}
-						</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
-			) : (
-				<div aria-busy={overview.isFetching} className="flex flex-col gap-5">
-					<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-						{data.metrics.map((metric) => (
-							<StatTile
-								key={metric.stat}
-								metric={metric}
-								selected={metric.stat === selected?.stat}
-								bucketSeconds={data.bucketSeconds}
-								hydrated={hydrated}
-								locale={locale}
-								onSelect={() => setStat(metric.stat)}
-							/>
-						))}
-					</div>
-					{selected && (
-						<div className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+			<OverviewState failed={overview.isError} available={!!data?.available}>
+				{data && (
+					<div aria-busy={overview.isFetching} className="flex flex-col gap-5">
+						<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+							{data.metrics.map((metric) => (
+								<StatTile
+									key={metric.stat}
+									metric={metric}
+									selected={metric.stat === selected?.stat}
+									bucketSeconds={data.bucketSeconds}
+									hydrated={hydrated}
+									locale={locale}
+									onSelect={() => setStat(metric.stat)}
+								/>
+							))}
+						</div>
+						{selected && (
+							<div className="relative flex flex-col gap-4 overflow-hidden rounded-lg border bg-card p-4">
+								<LoadingBar active={overview.isFetching} />
+								<div className="flex flex-col gap-1">
+									<h2 className="text-base font-semibold">
+										{STAT_LABEL[selected.stat]()}
+									</h2>
+									<p className="text-sm text-muted-foreground">
+										{STAT_DESCRIPTION[selected.stat]()}
+									</p>
+								</div>
+								{hydrated ? (
+									<TimeseriesChart
+										label={m.overview_chart({
+											stat: STAT_LABEL[selected.stat](),
+										})}
+										bucketSeconds={data.bucketSeconds}
+										format={(value) => formatStat(selected.stat, value, locale)}
+										series={[
+											{
+												key: "current",
+												label: m.overview_this_period(),
+												color: "var(--viz-1)",
+												points: selected.series,
+											},
+											{
+												key: "previous",
+												label: m.overview_previous_period(),
+												color: "var(--viz-1)",
+												points: selected.previousSeries,
+												comparison: true,
+											},
+										]}
+									/>
+								) : (
+									<Skeleton className="h-72 w-full" />
+								)}
+							</div>
+						)}
+						<div className="flex flex-col gap-3">
 							<div className="flex flex-col gap-1">
 								<h2 className="text-base font-semibold">
-									{STAT_LABEL[selected.stat]()}
+									{m.overview_nodes()}
 								</h2>
 								<p className="text-sm text-muted-foreground">
-									{STAT_DESCRIPTION[selected.stat]()}
+									{m.overview_nodes_description()}
 								</p>
 							</div>
-							{hydrated ? (
-								<TimeseriesChart
-									label={m.overview_chart({
-										stat: STAT_LABEL[selected.stat](),
-									})}
-									bucketSeconds={data.bucketSeconds}
-									format={(value) => formatStat(selected.stat, value, locale)}
-									series={[
-										{
-											key: "current",
-											label: m.overview_this_period(),
-											color: "var(--viz-1)",
-											points: selected.series,
-										},
-										{
-											key: "previous",
-											label: m.overview_previous_period(),
-											color: "var(--viz-1)",
-											points: selected.previousSeries,
-											comparison: true,
-										},
-									]}
-								/>
-							) : (
-								<Skeleton className="h-72 w-full" />
-							)}
-						</div>
-					)}
-					<div className="flex flex-col gap-3">
-						<div className="flex flex-col gap-1">
-							<h2 className="text-base font-semibold">{m.overview_nodes()}</h2>
-							<p className="text-sm text-muted-foreground">
-								{m.overview_nodes_description()}
-							</p>
-						</div>
-						<div className="rounded-md border bg-card">
-							<Table aria-label={m.overview_nodes()}>
-								<TableHeader>
-									<TableRow>
-										<TableHead>{m.overview_node()}</TableHead>
-										<TableHead className="text-right">{m.stat_cpu()}</TableHead>
-										<TableHead className="text-right">
-											{m.stat_memory()}
-										</TableHead>
-										<TableHead className="text-right">
-											{m.overview_memory_total()}
-										</TableHead>
-										<TableHead className="text-right">
-											{m.stat_processes()}
-										</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{data.nodes.map((node) => (
-										<TableRow key={node.id}>
-											<TableCell>
-												<span className="font-medium" title={node.id}>
-													{node.hostname ?? node.id}
-												</span>
-											</TableCell>
-											<TableCell>
-												<Meter
-													value={node.cpu}
-													label={formatStat("cpu", node.cpu, locale)}
-												/>
-											</TableCell>
-											<TableCell>
-												<Meter
-													value={node.memory}
-													label={formatStat("memory", node.memory, locale)}
-												/>
-											</TableCell>
-											<TableCell className="text-right font-mono tabular-nums">
-												{node.memoryTotal === null
-													? "—"
-													: formatMeasurement(node.memoryTotal, "By", locale)
-															.text}
-											</TableCell>
-											<TableCell className="text-right font-mono tabular-nums">
-												{formatStat("processes", node.processes, locale)}
-											</TableCell>
+							<div className="rounded-md border bg-card">
+								<Table aria-label={m.overview_nodes()}>
+									<TableHeader>
+										<TableRow>
+											<TableHead>{m.overview_node()}</TableHead>
+											<TableHead className="text-right">
+												{m.stat_cpu()}
+											</TableHead>
+											<TableHead className="text-right">
+												{m.stat_memory()}
+											</TableHead>
+											<TableHead className="text-right">
+												{m.overview_memory_total()}
+											</TableHead>
+											<TableHead className="text-right">
+												{m.stat_processes()}
+											</TableHead>
 										</TableRow>
-									))}
-								</TableBody>
-							</Table>
+									</TableHeader>
+									<TableBody>
+										{data.nodes.map((node) => (
+											<TableRow key={node.id}>
+												<TableCell>
+													<span className="font-medium" title={node.id}>
+														{node.hostname ?? node.id}
+													</span>
+												</TableCell>
+												<TableCell>
+													<Meter
+														value={node.cpu}
+														label={formatStat("cpu", node.cpu, locale)}
+													/>
+												</TableCell>
+												<TableCell>
+													<Meter
+														value={node.memory}
+														label={formatStat("memory", node.memory, locale)}
+													/>
+												</TableCell>
+												<TableCell className="text-right font-mono tabular-nums">
+													{node.memoryTotal === null
+														? "—"
+														: formatMeasurement(node.memoryTotal, "By", locale)
+																.text}
+												</TableCell>
+												<TableCell className="text-right font-mono tabular-nums">
+													{formatStat("processes", node.processes, locale)}
+												</TableCell>
+											</TableRow>
+										))}
+									</TableBody>
+								</Table>
+							</div>
 						</div>
 					</div>
-				</div>
-			)}
+				)}
+			</OverviewState>
 		</section>
 	);
+}
+
+/** Shown instead of the overview when it failed or the project has no node metrics yet. */
+function OverviewState({
+	failed,
+	available,
+	children,
+}: {
+	failed: boolean;
+	available: boolean;
+	children: ReactNode;
+}) {
+	if (failed)
+		return (
+			<IconEmptyState
+				icon={<TriangleAlertIcon aria-hidden="true" />}
+				title={m.overview_unavailable()}
+				alert
+				className="bg-card"
+			/>
+		);
+	if (!available)
+		return (
+			<IconEmptyState
+				icon={<LayoutDashboardIcon aria-hidden="true" />}
+				title={m.overview_empty()}
+				description={m.overview_empty_description()}
+				className="bg-card"
+			/>
+		);
+	return children;
 }

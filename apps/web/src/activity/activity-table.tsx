@@ -9,6 +9,7 @@ import {
 	type ReactNode,
 	useMemo,
 } from "react";
+import { LoadingBar } from "../components/loading-bar";
 import {
 	Table,
 	TableBody,
@@ -92,14 +93,7 @@ export function ActivityTable({
 				{ "--control-height": "28px", "--unit-padding": "8px" } as CSSProperties
 			}
 		>
-			{refreshing && (
-				<div
-					aria-hidden="true"
-					className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-primary/15"
-				>
-					<div className="h-full w-1/3 animate-[navigation-progress_1.1s_ease-in-out_infinite] bg-primary motion-reduce:w-full motion-reduce:animate-none" />
-				</div>
-			)}
+			<LoadingBar active={refreshing} />
 			<Table className="text-[13px] leading-5" aria-label={label}>
 				<TableHeader>
 					{table.getHeaderGroups().map((group) => (

@@ -14,6 +14,7 @@ import {
 	TriangleAlertIcon,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
+import { ProgressStripe } from "./loading-bar";
 import { useOptionalMutationFeedback } from "./mutation-feedback";
 import { Button } from "./ui/button";
 import {
@@ -107,7 +108,7 @@ export function NavigationProgress() {
 				visible ? "opacity-100" : "opacity-0",
 			)}
 		>
-			<div className="h-full w-1/3 animate-[navigation-progress_1.1s_ease-in-out_infinite] bg-primary motion-reduce:w-full motion-reduce:animate-none" />
+			<ProgressStripe />
 		</div>
 	);
 }

@@ -34,6 +34,8 @@ export function MetricPicker({
 	icon,
 	labelled,
 	className,
+	presets = [],
+	onPreset,
 }: {
 	id?: string;
 	metrics: MetricDefinition[] | undefined;
@@ -47,6 +49,15 @@ export function MetricPicker({
 	/** True when a `<Label htmlFor={id}>` names the trigger. */
 	labelled?: boolean;
 	className?: string;
+	/** Calculated entries listed first, such as CPU usage; choosing one calls `onPreset`. */
+	presets?: {
+		id: string;
+		label: string;
+		description: string;
+		/** Why it cannot be chosen now; shown in place of the description. */
+		unavailable?: string;
+	}[];
+	onPreset?: (id: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const names = [...new Set(metrics?.map((metric) => metric.name))];
@@ -90,7 +101,31 @@ export function MetricPicker({
 					<CommandInput placeholder={m.insight_metric_search()} />
 					<CommandList>
 						<CommandEmpty>{m.insight_no_metrics()}</CommandEmpty>
-						<CommandGroup>
+						{presets.length > 0 && (
+							<CommandGroup heading={m.insight_metric_presets()}>
+								{presets.map((preset) => (
+									<CommandItem
+										key={preset.id}
+										value={`${preset.label} ${preset.description}`}
+										disabled={preset.unavailable !== undefined}
+										onSelect={() => {
+											onPreset?.(preset.id);
+											setOpen(false);
+										}}
+									>
+										<span className="flex min-w-0 flex-1 flex-col">
+											<span className="truncate">{preset.label}</span>
+											<span className="truncate text-[11px] text-muted-foreground">
+												{preset.unavailable ?? preset.description}
+											</span>
+										</span>
+									</CommandItem>
+								))}
+							</CommandGroup>
+						)}
+						<CommandGroup
+							heading={presets.length > 0 ? m.insight_metric_raw() : undefined}
+						>
 							{allLabel && (
 								<CommandItem
 									value={allLabel}

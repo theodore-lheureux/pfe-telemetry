@@ -2,6 +2,10 @@ import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useHydrated } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
+import {
+	DEFAULT_RANGE,
+	isDefaultRange,
+} from "../components/date-range/date-range";
 import { TimeDisplay } from "../components/time-display";
 import { Button } from "../components/ui/button";
 import type { OperationResult } from "../lib/operation-result";
@@ -22,7 +26,6 @@ import type {
 	PointCursor,
 	PointPage,
 } from "./contracts";
-import { DEFAULT_RANGE, isDefaultRange } from "./date-range";
 import type { ExplorerSelection } from "./explorer-filters";
 import { ExplorerToolbar } from "./explorer-toolbar";
 import { ActivityInspector } from "./inspector";

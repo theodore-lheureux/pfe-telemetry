@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { parseTimestamp, resolveRange } from "../../src/activity/date-range";
+import {
+	parseTimestamp,
+	resolveRange,
+} from "../../src/components/date-range/date-range";
 
 // 2026-11-11 06:30 in Montréal, a Wednesday.
 const now = new Date("2026-11-11T11:30:00Z");

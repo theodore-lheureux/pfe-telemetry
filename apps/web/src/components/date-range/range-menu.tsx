@@ -2,19 +2,11 @@ import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { MinusIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
-import { Button } from "../components/ui/button";
-import {
-	Command,
-	CommandGroup,
-	CommandItem,
-	CommandList,
-} from "../components/ui/command";
-import { Label } from "../components/ui/label";
-import {
-	NativeSelect,
-	NativeSelectOption,
-} from "../components/ui/native-select";
-import { Separator } from "../components/ui/separator";
+import { Button } from "../ui/button";
+import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+import { Label } from "../ui/label";
+import { NativeSelect, NativeSelectOption } from "../ui/native-select";
+import { Separator } from "../ui/separator";
 import {
 	CALENDAR_PRESETS,
 	type CalendarPreset,
@@ -134,14 +126,44 @@ function LastRange({
 	);
 }
 
+const UNIT_DAYS: Record<RangeUnit, number> = {
+	minutes: 1 / 1440,
+	hours: 1 / 24,
+	days: 1,
+	weeks: 7,
+	months: 31,
+	years: 366,
+};
+const PRESET_DAYS: Record<CalendarPreset, number> = {
+	today: 1,
+	yesterday: 1,
+	this_week: 7,
+	last_week: 7,
+	this_month: 31,
+	last_month: 31,
+	this_year: 366,
+	all_time: Number.POSITIVE_INFINITY,
+};
+
+/** Whether a preset can span no more than `maxDays`. */
+function fits(range: DateRange, maxDays: number | undefined) {
+	if (maxDays === undefined) return true;
+	if (range.kind === "last")
+		return range.count * UNIT_DAYS[range.unit] <= maxDays;
+	return range.kind !== "preset" || PRESET_DAYS[range.preset] <= maxDays;
+}
+
 /** Preset ranges, "in the last N units", and entries that open the custom panels. */
 export function RangeMenu({
 	value,
+	maxDays,
 	onChoose,
 	onChange,
 	onCustom,
 }: {
 	value: DateRange;
+	/** Hides presets longer than this. */
+	maxDays?: number;
 	/** Applies a preset and closes the picker. */
 	onChoose: (value: DateRange) => void;
 	/** Applies a range and keeps the picker open. */
@@ -155,7 +177,7 @@ export function RangeMenu({
 			{/* One list, so arrow keys move through presets and custom entries alike. */}
 			<CommandList className="max-h-[min(36rem,var(--radix-popover-content-available-height))]">
 				<CommandGroup>
-					{PRESETS.map((range) => (
+					{PRESETS.filter((range) => fits(range, maxDays)).map((range) => (
 						<CommandItem
 							key={presetKey(range)}
 							value={presetKey(range)}
