@@ -200,11 +200,14 @@ async function main() {
 			);
 		}
 		if (stopped) return;
+		// The first bundle is published before Compose watch runs, so its restart signal is
+		// missed; recreating web and Live makes them load it even if they were running.
 		if (
 			(await compose(
 				"up",
 				"--no-build",
 				"--no-deps",
+				"--force-recreate",
 				"--detach",
 				"--wait",
 				"--wait-timeout",
