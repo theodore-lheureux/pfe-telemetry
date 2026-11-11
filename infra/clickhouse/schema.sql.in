@@ -2,7 +2,23 @@ CREATE DATABASE IF NOT EXISTS __DATABASE__;
 
 CREATE TABLE __CREATE_GUARD____DATABASE__.metric_points
 (
-__ANALYTICAL_COLUMNS__
+__ANALYTICAL_COLUMNS__,
+    -- One logical series: everything that tells streams apart except continuity markers,
+    -- which counter calculations follow through stream_id. Computed once on insert so
+    -- analyses never read the attribute arrays just to group points into series.
+    series_id UInt64 MATERIALIZED cityHash64(tuple(source_id, resource_id, resource_kind, host_id, device_id,
+        scope_name, scope_version, metric_name, unit,
+        arraySort(a -> a.1, arrayMap(a -> tuple(a.path, a.kind, a.string_value, a.int_value,
+            if(isNull(a.double_value), NULL, reinterpretAsUInt64(assumeNotNull(a.double_value))),
+            a.bool_value, a.bytes_value),
+            arrayFilter(a -> a.path NOT IN ('/recount.host.boot_id', '/recount.collection.epoch_id'), resource_attributes))),
+        arraySort(a -> a.1, arrayMap(a -> tuple(a.path, a.kind, a.string_value, a.int_value,
+            if(isNull(a.double_value), NULL, reinterpretAsUInt64(assumeNotNull(a.double_value))),
+            a.bool_value, a.bytes_value), scope_attributes)),
+        arraySort(a -> a.1, arrayMap(a -> tuple(a.path, a.kind, a.string_value, a.int_value,
+            if(isNull(a.double_value), NULL, reinterpretAsUInt64(assumeNotNull(a.double_value))),
+            a.bool_value, a.bytes_value),
+            arrayFilter(a -> a.path != '/recount.counter.segment_id', point_attributes)))))
 )
 ENGINE = ReplacingMergeTree
 PARTITION BY event_day

@@ -8,29 +8,49 @@ import { ClickHouseLogLevel, createClient } from "@clickhouse/client";
 
 const execute = promisify(execFile);
 
-/** Discovery tables and views from the ClickHouse schema template, for one database. */
-function discoveryStatements(database: string) {
-	const template = readFileSync(
+const template = () =>
+	readFileSync(
 		new URL("../../../../infra/clickhouse/schema.sql.in", import.meta.url),
 		"utf8",
 	);
-	const start = template.indexOf(
+
+const withoutComments = (statement: string) =>
+	statement
+		.split("\n")
+		.filter((line) => !line.trim().startsWith("--"))
+		.join("\n")
+		.trim();
+
+/** The point table from the schema template, with the contract's generated columns. */
+function pointTableStatement(columns: string) {
+	const source = template();
+	const start = source.indexOf(
+		"CREATE TABLE __CREATE_GUARD____DATABASE__.metric_points",
+	);
+	if (start < 0)
+		throw new Error("Point table DDL is missing from the template");
+	return withoutComments(
+		source
+			.slice(start, source.indexOf(";", start))
+			.replace("__CREATE_GUARD____DATABASE__.", "")
+			.replace("__ANALYTICAL_COLUMNS__", columns.trim()),
+	);
+}
+
+/** Discovery tables and views from the ClickHouse schema template, for one database. */
+function discoveryStatements(database: string) {
+	const source = template();
+	const start = source.indexOf(
 		"CREATE TABLE __CREATE_GUARD____DATABASE__.metric_definitions",
 	);
 	if (start < 0)
 		throw new Error("Discovery DDL is missing from the schema template");
-	return template
+	return source
 		.slice(start)
 		.replaceAll("__CREATE_GUARD__", "")
 		.replaceAll("__DATABASE__", database)
 		.split(";")
-		.map((statement) =>
-			statement
-				.split("\n")
-				.filter((line) => !line.trim().startsWith("--"))
-				.join("\n")
-				.trim(),
-		)
+		.map(withoutComments)
 		.filter(Boolean);
 }
 
@@ -96,10 +116,7 @@ export async function createPointFixture() {
 	try {
 		await admin.command({ query: `CREATE DATABASE ${name}` });
 		created = true;
-		await client.command({
-			query: `CREATE TABLE metric_points (${columns}) ENGINE=ReplacingMergeTree
-        PARTITION BY event_day ORDER BY (project_id,source_id,resource_id,metric_name,time_unix_nano,sample_id)`,
-		});
+		await client.command({ query: pointTableStatement(columns) });
 		// The real discovery DDL from the schema template, so tests exercise its views.
 		for (const statement of discoveryStatements(name))
 			await client.command({ query: statement });
