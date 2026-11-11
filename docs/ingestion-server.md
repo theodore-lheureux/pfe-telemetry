@@ -49,20 +49,20 @@ Original-byte preservation is a separate capability. A custom Tonic codec could 
 
 Metrics accept uncompressed/gzip input. Shared structural/output limits must match the normalizer and configured broker capacity, with conservative framing headroom; deterministic excess is terminal `RESOURCE_EXHAUSTED` without `RetryInfo` before publication. The predecode semaphore defaults to one admitted request globally, and a ten-second deadline bounds slow input. These controls do not prove peak decoded memory or production throughput. Ctrl-C and SIGTERM request graceful shutdown.
 
-| Health service name                   | Current status                                                                                    |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `grpc.health.v1.Health`               | `SERVING` while the gRPC server is running.                                                       |
-| Empty name, meaning overall readiness | `SERVING` when current Kafka configuration and all required credential/grant-table reads succeed. |
-| OTLP metrics service name             | Same readiness checks as the empty service name.                                                  |
-| OTLP trace service name               | `NOT_SERVING`; trace exports remain unimplemented.                                                |
+| Health service name                   | Current status                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `grpc.health.v1.Health`               | `SERVING` while the gRPC server is running.                                                 |
+| Empty name, meaning overall readiness | `SERVING` when current Kafka configuration matches and the node revocation list is current. |
+| OTLP metrics service name             | Same readiness checks as the empty service name.                                            |
+| OTLP trace service name               | `NOT_SERVING`; trace exports remain unimplemented.                                          |
 
-Readiness refreshes every five seconds. Kafka checks include exact configured raw partition count and effective topic `max.message.bytes`; authority checks cover credentials, root grants and independent-resource grants using the deployed read-only role. The named health service is liveness only. Neither it nor successful readiness proves downstream native consumption, freshness or end-to-end queryability. The normalizer has separate process-state logs, not a gRPC/HTTP health service.
+Readiness refreshes every five seconds. Kafka checks include exact configured raw partition count and effective topic `max.message.bytes`; the authority check requires a node revocation list loaded within the last five minutes by the deployed read-only role. The named health service is liveness only. Neither it nor successful readiness proves downstream native consumption, freshness or end-to-end queryability. The normalizer has separate process-state logs, not a gRPC/HTTP health service.
 
 ## Security
 
-The isolated development environment uses plaintext OTLP. Production OTLP TLS is not implemented by that isolation; other deployments require a secured transport boundary. Database connections require TLS unless their URL explicitly selects `sslmode=disable`, with no automatic plaintext fallback. Bearer credentials and grants are checked on every submission through bounded indexed reads, not cached authorization or one query per sample.
+The isolated development environment uses plaintext OTLP. Production OTLP TLS is not implemented by that isolation; other deployments require a secured transport boundary. Database connections require TLS unless their URL explicitly selects `sslmode=disable`, with no automatic plaintext fallback. Node access tokens are verified in memory on every submission against configured Ed25519 public keys; revocation comes from a node list refreshed every 30 seconds, so a revoked node is rejected within about 30 seconds.
 
-Root grants permit reporting in an explicit namespace/adapter/local-kind set, while independent resources require exact typed bindings. Payload tenant fields or parent/placement relationships never establish authority or physical attestation. The normalizer can finish already accepted records after credential revocation or upload-age expiry without refreshing admission authority. Batch creation policy is separate from event time: no measurement-age/future cutoff or timestamp rewriting is introduced. See [collector credentials](collector-credentials.md).
+Root grants permit reporting in an explicit namespace/adapter/local-kind set, while independent resources require exact typed bindings. Payload tenant fields or parent/placement relationships never establish authority or physical attestation. The normalizer can finish already accepted records after node revocation or upload-age expiry without refreshing admission authority. Batch creation policy is separate from event time: no measurement-age/future cutoff or timestamp rewriting is introduced. See [collector enrollment](collector-enrollment.md).
 
 Better Auth email-code/passkey sessions and canonical memberships govern human application access, not collector authentication. Every private query independently checks project access before using the separate read-only ClickHouse credential.
 
@@ -70,6 +70,6 @@ Do not log telemetry bodies or credentials. Apply retention and access policies 
 
 ## Validation
 
-Service tests target health/admission behavior, gzip/decoded-size rejection, live credential/grant authority and publication ordering. Pure publisher fixtures do not prove lost Kafka acknowledgements or native storage durability. The normalizer's dedicated real Kafka harness and native ClickHouse failure tests are separate from broker-independent checks; state which exact current-schema path and fault each result exercised.
+Service tests target health/admission behavior, gzip/decoded-size rejection, live node-token and revocation authority and publication ordering. Pure publisher fixtures do not prove lost Kafka acknowledgements or native storage durability. The normalizer's dedicated real Kafka harness and native ClickHouse failure tests are separate from broker-independent checks; state which exact current-schema path and fault each result exercised.
 
 Compile Linux binaries/harnesses on the host and execute them only in Docker, using an explicitly allocated disposable integration slot. Compute-host connectivity probes do not validate telemetry acceptance. Further gates include independent exporter interoperability, ambiguous output/input acknowledgements, partial publication, retention gaps, event-day replay, measured backlog recovery and authorized browser reads. Use the [native-ingestion guide](../infra/README.md#validate-native-ingestion) and [reliability scenarios](ingestion-and-reliability.md#validation-scenarios); do not restore a discarded prototype schema to make an old test pass.

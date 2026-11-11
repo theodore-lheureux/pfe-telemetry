@@ -1,19 +1,17 @@
 use crate::{Category, Issue};
-use recount_telemetry_schema::wire::BatchIdentity;
+use recount_telemetry_schema::{
+    common::KeyValue,
+    identity,
+    point::string_attribute,
+    wire::{BatchIdentity, ResourceKind, ResourceRef},
+};
 
 pub const BATCH_ID: &str = "recount-batch-id";
 pub const BATCH_CREATED: &str = "recount-batch-created-unix-nano";
 pub const PROFILE: &str = "recount-collection-profile";
-pub const CREDENTIAL_PREFIX: &str = "recount_";
 
-pub fn resource_claim(
-    attributes: &[recount_telemetry_schema::common::KeyValue],
-) -> Result<Option<recount_telemetry_schema::wire::ResourceRef>, Issue> {
-    use recount_telemetry_schema::{
-        point::string_attribute,
-        wire::{ResourceKind, ResourceRef},
-    };
-    recount_telemetry_schema::identity::canonical_attributes(attributes)
+pub fn resource_claim(attributes: &[KeyValue]) -> Result<Option<ResourceRef>, Issue> {
+    identity::canonical_attributes(attributes)
         .map_err(|e| Issue::new(Category::Invalid, "resource.attributes", e))?;
     let get = |key: &'static str| -> Result<Option<&str>, Issue> {
         let value = string_attribute(attributes, key);

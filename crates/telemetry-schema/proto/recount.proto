@@ -41,6 +41,45 @@ message ResourceAccess {
 }
 message ResourceBinding { uint32 original_resource = 1; ResourceContext context = 2; }
 enum PayloadKind { PAYLOAD_UNKNOWN = 0; OTLP_METRICS = 1; }
+message NetworkInterface {
+  string name = 1;
+  optional string mac_address = 2;
+  repeated string addresses = 3;
+  bool up = 4;
+  bool loopback = 5;
+}
+// Collector observations are diagnostics, never enrollment or authorization evidence.
+message CollectorConnection {
+  string connection_id = 1;
+  uint64 connected_unix_nano = 2;
+  string local_address = 3;
+  string peer_address = 4;
+  uint64 inventory_observed_unix_nano = 5;
+  optional string hostname = 6;
+  optional string kernel_release = 7;
+  string architecture = 8;
+  repeated NetworkInterface interfaces = 9;
+  string inventory_status = 10;
+  bool inventory_truncated = 11;
+  // Assignment matches, not proof of physical egress through tunnels or routing policy.
+  repeated string local_interface_names = 12;
+}
+message DeliveryObservation {
+  CollectorConnection collector = 1;
+  // Socket peer observed by ingestion; forwarded request headers are not trusted.
+  optional string ingestion_peer_address = 2;
+}
+// Point lineage keeps connection context, not a copy of the full interface inventory.
+message DeliveryContext {
+  optional string collector_connection_id = 1;
+  optional uint64 collector_connected_unix_nano = 2;
+  optional string collector_local_address = 3;
+  optional string collector_peer_address = 4;
+  optional uint64 inventory_observed_unix_nano = 5;
+  optional string collector_hostname = 6;
+  repeated NetworkInterface local_interfaces = 7;
+  optional string ingestion_peer_address = 8;
+}
 message RawRecord {
   SecurityScope security = 1;
   string record_id = 2;
@@ -50,38 +89,29 @@ message RawRecord {
   // Existing generated OTLP ExportMetricsServiceRequest, not another OTLP model.
   bytes otlp_request = 6;
   repeated ResourceBinding bindings = 7;
+  DeliveryObservation delivery = 8;
 }
-message NormalizedPoint {
-  SecurityScope security = 1;
-  bytes sample_id = 2;
-  bytes stream_id = 3;
-  Position original = 4;
-  ResourceContext context = 5;
-  uint64 time_unix_nano = 6;
-  uint64 start_time_unix_nano = 7;
-  optional string continuity = 8;
-  string metric_name = 9;
-  string unit = 10;
-  uint32 flags = 11;
-  // 1 gauge, 2 sum, 3 histogram, 4 exponential histogram, 5 summary.
-  uint32 metric_kind = 12;
-  optional int64 int_value = 13;
-  optional double double_value = 14;
-  // Complete supported OTLP context, each encoded with existing generated types.
-  // Metric has exactly one original observation, including exemplars and metadata.
-  optional bytes otlp_resource = 15;
-  optional bytes otlp_scope = 16;
-  bytes otlp_metric = 17;
-  string resource_schema_url = 18;
-  string scope_schema_url = 19;
-  uint64 received_unix_nano = 20;
-  string record_id = 21;
-  // floor(time_unix_nano / 86400000000000), never receipt-derived.
-  uint32 event_day = 22;
-  BatchIdentity batch = 23;
-  PayloadKind payload_kind = 24;
+message LiveNode {
+  string id = 1;
+  string name = 2;
+  uint64 measured_unix_nano = 3;
 }
-
+// A bounded notification references the confirmed raw record; it contains no payload.
+message LiveNotification {
+  string project_id = 1;
+  string source_id = 2;
+  string record_id = 3;
+  uint64 received_unix_nano = 4;
+  uint64 measured_unix_nano = 5;
+  repeated LiveNode nodes = 6;
+  uint32 resources = 7;
+  uint32 metrics = 8;
+  uint32 points = 9;
+  uint32 bytes = 10;
+  uint32 raw_partition = 11;
+  uint64 raw_offset = 12;
+  bool nodes_truncated = 13;
+}
 // Analytical SQL projection, not another OTLP input model. Field names/types
 // generate the fixture's ClickHouse columns from this descriptor at build time.
 enum MetricKind { METRIC_UNKNOWN = 0; GAUGE = 1; SUM = 2; HISTOGRAM = 3; EXPONENTIAL_HISTOGRAM = 4; SUMMARY = 5; }
@@ -106,6 +136,7 @@ message PointLineage {
   PayloadKind payload_kind = 5;
   repeated Relationship relationships = 6;
   ResourceAccess access = 7;
+  DeliveryContext delivery = 8;
 }
 message AnalyticalPoint {
   string project_id = 1;

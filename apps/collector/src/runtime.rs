@@ -4,23 +4,26 @@ use std::{
     time::{Duration, Instant},
 };
 
-use opentelemetry_proto::tonic::collector::metrics::v1::{
-    ExportMetricsServiceRequest, metrics_service_client::MetricsServiceClient,
-};
+use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use prost::Message;
+use recount_telemetry_validation::{
+    catalogue::{self, Adapter},
+    metadata::{BATCH_CREATED, BATCH_ID, PROFILE},
+};
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::{Notify, mpsc, watch};
 use tokio::task::JoinSet;
 use tokio::time::MissedTickBehavior;
-use tonic::{
-    codec::CompressionEncoding,
-    transport::{Channel, Endpoint},
-};
+use tonic::transport::Endpoint;
 
 use crate::{
     LossReason, LossTracker, Scan,
-    config::{Config, ExportConfig},
+    config::{Config, ExportConfig, queue_destination},
+    delivery::ScanContents,
+    enrollment::{self, Authorization},
     point_count,
     spool::{Batch, MAX_REQUEST_BYTES, Result, Spool, unix_nanos},
+    transport::Client,
 };
 
 type SharedSpool = Arc<tokio::sync::Mutex<Spool>>;
@@ -30,9 +33,21 @@ pub async fn run(config: Config) -> Result<()> {
     let sampler_config = config.sampling();
     let ExportConfig {
         endpoint,
-        authorization,
-        queue_destination,
+        enrollment,
     } = config.export()?;
+    let (node, authorization) = match enrollment {
+        Some(enrollment) => {
+            let machine_id = crate::linux::host_id_or_machine_id(config.host_id.clone())?;
+            // First enrollment retries until the web application answers.
+            let (node, authorization) = tokio::select! {
+                started = enrollment::start(enrollment, &machine_id) => started?,
+                () = shutdown_signal()? => return Ok(()),
+            };
+            (Some(node), Some(authorization))
+        }
+        None => (None, None),
+    };
+    let queue_destination = queue_destination(&config.endpoint, node);
     let Config {
         interval_ms,
         queue_max_bytes: max_bytes,
@@ -130,15 +145,8 @@ async fn supervise(
     Ok(())
 }
 
-fn client(endpoint: Endpoint) -> MetricsServiceClient<Channel> {
-    let channel = endpoint
-        .connect_timeout(Duration::from_secs(3))
-        .timeout(Duration::from_secs(3))
-        .connect_lazy();
-    MetricsServiceClient::new(channel)
-        .send_compressed(CompressionEncoding::Gzip)
-        .accept_compressed(CompressionEncoding::Gzip)
-        .max_encoding_message_size(MAX_REQUEST_BYTES)
+fn client(endpoint: Endpoint) -> Client {
+    Client::new(endpoint)
 }
 
 async fn sample(
@@ -194,50 +202,44 @@ async fn persist(
 async fn enqueue_scan(spool: &mut Spool, scan: Scan, loss: &LossTracker) -> Result<()> {
     if scan.generation() != loss.generation() {
         let epoch = scan.epoch().to_owned();
-        let resources = scan.into_resources();
+        let contents = scan.into_contents();
         spool
             .record_loss(
                 &epoch,
                 LossReason::BufferExpired,
-                point_count(&resources),
+                contents.point_count(),
                 loss,
             )
             .await?;
         return Ok(());
     }
     let epoch = scan.epoch().to_owned();
-    let mut resources = scan.into_resources();
-    let mut window = resources
-        .last()
-        .cloned()
-        .expect("Completed scans contain diagnostics");
-    let is_window = |name: &str| {
-        matches!(
-            name,
-            "recount.collection.scan.duration"
-                | "recount.clock.status"
-                | "recount.clock.uncertainty"
-        )
-    };
-    for scope in &mut window.scope_metrics {
-        scope.metrics.retain(|metric| is_window(&metric.name));
-    }
-    if let Some(diagnostics) = resources.last_mut() {
-        for scope in &mut diagnostics.scope_metrics {
-            scope.metrics.retain(|metric| !is_window(&metric.name));
-        }
-    }
+    enqueue_contents(spool, &epoch, scan.into_contents(), loss, MAX_REQUEST_BYTES).await
+}
+
+async fn enqueue_contents(
+    spool: &mut Spool,
+    epoch: &str,
+    contents: ScanContents,
+    loss: &LossTracker,
+    max_request_bytes: usize,
+) -> Result<()> {
+    let ScanContents {
+        measurements,
+        window,
+        diagnostics,
+    } = contents;
     let window_size = window.encoded_len() + 16;
     let mut request = ExportMetricsServiceRequest {
         resource_metrics: vec![window.clone()],
     };
     let mut size = window_size;
-    for resource in resources {
+    for resource in measurements.into_iter().chain(std::iter::once(diagnostics)) {
         let resource_size = resource.encoded_len() + 16;
-        if resource_size + window_size > MAX_REQUEST_BYTES {
+        if resource_size + window_size > max_request_bytes {
             spool
                 .record_loss(
-                    &epoch,
+                    epoch,
                     LossReason::PermanentRejection,
                     point_count(std::slice::from_ref(&resource)),
                     loss,
@@ -245,8 +247,8 @@ async fn enqueue_scan(spool: &mut Spool, scan: Scan, loss: &LossTracker) -> Resu
                 .await?;
             continue;
         }
-        if size + resource_size > MAX_REQUEST_BYTES {
-            enqueue_request(spool, &epoch, request, loss).await?;
+        if size + resource_size > max_request_bytes {
+            enqueue_request(spool, epoch, request, loss).await?;
             request = ExportMetricsServiceRequest {
                 resource_metrics: vec![window.clone()],
             };
@@ -256,7 +258,7 @@ async fn enqueue_scan(spool: &mut Spool, scan: Scan, loss: &LossTracker) -> Resu
         request.resource_metrics.push(resource);
     }
     if request.resource_metrics.len() > 1 {
-        enqueue_request(spool, &epoch, request, loss).await?;
+        enqueue_request(spool, epoch, request, loss).await?;
     }
     Ok(())
 }
@@ -280,7 +282,7 @@ async fn enqueue_request(
         .flat_map(|r| &r.scope_metrics)
         .flat_map(|s| &s.metrics)
     {
-        recount_telemetry_validation::catalogue::validate_collector_metric(metric)?;
+        catalogue::validate_adapter_metric(metric, Adapter::Linux)?;
     }
     let points = point_count(&request.resource_metrics);
     let batch = Batch::new(epoch.into(), request, points)?;
@@ -331,13 +333,13 @@ fn backoff(attempt: u32) -> Duration {
 }
 
 async fn export(
-    mut client: MetricsServiceClient<Channel>,
+    mut client: Client,
     spool: SharedSpool,
     loss: LossTracker,
     max_age: Duration,
     notify: Option<Arc<Notify>>,
     mut stopped: watch::Receiver<bool>,
-    authorization: Option<tonic::metadata::MetadataValue<tonic::metadata::Ascii>>,
+    mut authorization: Option<Authorization>,
 ) -> Result<()> {
     loop {
         if *stopped.borrow() {
@@ -367,10 +369,18 @@ async fn export(
                 break Some((LossReason::BufferExpired, batch.points));
             }
             let mut request = request(&batch)?;
-            if let Some(value) = &authorization {
-                request
-                    .metadata_mut()
-                    .insert("authorization", value.clone());
+            if let Some(authorization) = &mut authorization {
+                // Without a current token, wait for renewal within the batch's lifetime.
+                let Some(value) = authorization.current() else {
+                    tokio::select! {
+                        biased;
+                        _ = stopped.changed() => return Ok(()),
+                        () = authorization.changed() => {}
+                        () = tokio::time::sleep(remaining.saturating_sub(lifetime.elapsed())) => {}
+                    }
+                    continue;
+                };
+                request.metadata_mut().insert("authorization", value);
             }
             let result = tokio::select! {
                 biased;
@@ -392,7 +402,12 @@ async fn export(
                     break None;
                 }
                 Ok(Err(status)) => {
-                    let Some(server_delay) = retry_delay(&status) else {
+                    // A refused token is renewed and the unchanged batch retried.
+                    let refused = status.code() == tonic::Code::Unauthenticated
+                        && authorization.as_ref().inspect(|a| a.reject()).is_some();
+                    let Some(server_delay) =
+                        retry_delay(&status).or(refused.then_some(Duration::ZERO))
+                    else {
                         tracing::warn!(code=?status.code(), "Batch permanently rejected");
                         break Some((LossReason::PermanentRejection, batch.points));
                     };
@@ -414,21 +429,15 @@ fn request(batch: &Batch) -> Result<tonic::Request<ExportMetricsServiceRequest>>
     let mut request = tonic::Request::new(ExportMetricsServiceRequest::decode(
         batch.payload.as_slice(),
     )?);
+    request.metadata_mut().insert(BATCH_ID, batch.id.parse()?);
     request
         .metadata_mut()
-        .insert("recount-batch-id", batch.id.parse()?);
-    request.metadata_mut().insert(
-        "recount-batch-created-unix-nano",
-        batch.created_ns.to_string().parse()?,
-    );
-    request
-        .metadata_mut()
-        .insert("recount-collection-profile", "linux".parse()?);
+        .insert(BATCH_CREATED, batch.created_ns.to_string().parse()?);
+    request.metadata_mut().insert(PROFILE, "linux".parse()?);
     Ok(request)
 }
 
 fn shutdown_signal() -> io::Result<impl Future<Output = ()>> {
-    use tokio::signal::unix::{SignalKind, signal};
     let mut interrupt = signal(SignalKind::interrupt())?;
     let mut terminate = signal(SignalKind::terminate())?;
     Ok(async move {
@@ -439,20 +448,32 @@ fn shutdown_signal() -> io::Result<impl Future<Output = ()>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CollectorConfig;
+    use crate::{
+        CollectorConfig,
+        metrics::{gauge, point, resource, string},
+    };
+    use clap::Parser;
     use opentelemetry_proto::tonic::collector::metrics::v1::{
         ExportMetricsPartialSuccess, ExportMetricsServiceResponse,
         metrics_service_server::{MetricsService, MetricsServiceServer},
     };
-    use opentelemetry_proto::tonic::metrics::v1::ResourceMetrics;
-    use std::{path::PathBuf, sync::Mutex};
-    use tonic::{Request, Response, Status};
+    use opentelemetry_proto::tonic::metrics::v1::{ResourceMetrics, number_data_point::Value};
+    use recount_telemetry_validation::delivery::{self, CollectorConnection};
+    use std::{net::SocketAddr, path::PathBuf, sync::Mutex};
+    use tokio::{
+        io::copy_bidirectional,
+        net::{TcpListener, TcpStream},
+    };
+    use tonic::{Request, Response, Status, codec::CompressionEncoding};
+    use tonic_types::{ErrorDetails, RetryInfo, StatusExt};
 
     #[derive(Clone, Default)]
     struct Receiver(Arc<Mutex<ReceiverState>>);
     #[derive(Default)]
     struct ReceiverState {
         requests: Vec<(String, String, Vec<u8>)>,
+        connections: Vec<CollectorConnection>,
+        peer_addresses: Vec<SocketAddr>,
         unavailable: bool,
         rejected: bool,
         partial: bool,
@@ -494,7 +515,19 @@ mod tests {
                     .unwrap(),
                 "linux"
             );
+            let connection = delivery::decode_connection(
+                &request
+                    .metadata()
+                    .get_bin(delivery::HEADER)
+                    .unwrap()
+                    .to_bytes()
+                    .unwrap(),
+            )
+            .unwrap();
+            let peer = request.remote_addr().unwrap();
             let mut state = self.0.lock().unwrap();
+            state.connections.push(connection);
+            state.peer_addresses.push(peer);
             state
                 .requests
                 .push((id, time, request.into_inner().encode_to_vec()));
@@ -553,6 +586,148 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn delivery_observations_follow_the_actual_socket_and_reconnect_without_mutating_the_batch()
+     {
+        let fixture = Fixture::new().await;
+        let receiver = Receiver::default();
+        let (endpoint, stop) = server(receiver.clone()).await;
+        let mut client = client(endpoint);
+        client
+            .export(request(&fixture.batch).unwrap())
+            .await
+            .unwrap();
+        client
+            .export(request(&fixture.batch).unwrap())
+            .await
+            .unwrap();
+        receiver.0.lock().unwrap().rejected = true;
+        assert!(
+            client
+                .export(request(&fixture.batch).unwrap())
+                .await
+                .is_err()
+        );
+        receiver.0.lock().unwrap().rejected = false;
+        client
+            .export(request(&fixture.batch).unwrap())
+            .await
+            .unwrap();
+        {
+            let state = receiver.0.lock().unwrap();
+            assert_eq!(state.connections.len(), 4);
+            assert_eq!(
+                state.connections[0].connection_id,
+                state.connections[1].connection_id
+            );
+            assert_eq!(
+                state.connections[1].connection_id,
+                state.connections[2].connection_id
+            );
+            assert_ne!(
+                state.connections[2].connection_id,
+                state.connections[3].connection_id
+            );
+            assert!(state.requests.windows(2).all(|r| r[0] == r[1]));
+            assert_eq!(state.requests[0].2, fixture.batch.payload);
+            assert!(
+                state
+                    .connections
+                    .iter()
+                    .zip(&state.peer_addresses)
+                    .all(|(connection, peer)| connection.local_address == peer.to_string())
+            );
+        }
+        stop.send(()).unwrap();
+        fixture.close().await;
+    }
+
+    #[tokio::test]
+    async fn dropped_proxy_socket_requires_new_observation_and_preserves_queued_payload() {
+        let fixture = Fixture::new().await;
+        let receiver = Receiver::default();
+        let (backend, stop_backend) = server(receiver.clone()).await;
+        let target = backend.uri().authority().unwrap().to_string();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_address = listener.local_addr().unwrap();
+        let endpoint = Endpoint::from_shared(format!("http://{proxy_address}")).unwrap();
+        let (disconnect, disconnected) = watch::channel(0u64);
+        let (stop, mut stopped) = watch::channel(false);
+        let released = Arc::new(Notify::new());
+        let notified = released.clone();
+        let accepted_peers = Arc::new(Mutex::new(Vec::new()));
+        let peers = accepted_peers.clone();
+        let proxy = tokio::spawn(async move {
+            let mut connections = JoinSet::new();
+            loop {
+                let (mut downstream, peer) = tokio::select! {
+                    _ = stopped.changed() => break,
+                    accepted = listener.accept() => accepted.unwrap(),
+                };
+                peers.lock().unwrap().push(peer);
+                let mut dropped = disconnected.clone();
+                dropped.borrow_and_update();
+                let target = target.clone();
+                let released = released.clone();
+                connections.spawn(async move {
+                    let mut upstream = TcpStream::connect(target).await.unwrap();
+                    tokio::select! {
+                        _ = dropped.changed() => {},
+                        _ = copy_bidirectional(&mut downstream, &mut upstream) => {},
+                    }
+                    drop(downstream);
+                    drop(upstream);
+                    released.notify_one();
+                });
+            }
+            connections.shutdown().await;
+        });
+        let mut client = client(endpoint);
+        client
+            .export(request(&fixture.batch).unwrap())
+            .await
+            .unwrap();
+        disconnect.send_replace(1);
+        tokio::time::timeout(Duration::from_secs(3), notified.notified())
+            .await
+            .unwrap();
+        assert!(
+            client
+                .export(request(&fixture.batch).unwrap())
+                .await
+                .is_err()
+        );
+        client
+            .export(request(&fixture.batch).unwrap())
+            .await
+            .unwrap();
+        {
+            let state = receiver.0.lock().unwrap();
+            let peers = accepted_peers.lock().unwrap();
+            assert_eq!(state.connections.len(), 2);
+            assert_eq!(peers.len(), 2);
+            assert_ne!(
+                state.connections[0].connection_id,
+                state.connections[1].connection_id
+            );
+            assert!(
+                state
+                    .connections
+                    .iter()
+                    .zip(peers.iter())
+                    .all(|(connection, peer)| {
+                        connection.local_address == peer.to_string()
+                            && connection.peer_address == proxy_address.to_string()
+                    })
+            );
+            assert!(state.requests.iter().all(|r| r.2 == fixture.batch.payload));
+        }
+        stop.send_replace(true);
+        proxy.await.unwrap();
+        stop_backend.send(()).unwrap();
+        fixture.close().await;
+    }
+
     async fn server(receiver: Receiver) -> (Endpoint, tokio::sync::oneshot::Sender<()>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
@@ -604,6 +779,163 @@ mod tests {
             None,
         ));
         (stop, task)
+    }
+
+    fn scan_contents() -> ScanContents {
+        let scalar = |definition: &catalogue::Definition, value| {
+            gauge(definition, vec![point(value, 200, 0, vec![])])
+        };
+        ScanContents {
+            // A collector-shaped measurement and a window-named diagnostic must
+            // not be mistaken for shared window observations.
+            measurements: vec![
+                resource(
+                    vec![string("recount.collection.scope", "collector")],
+                    vec![scalar(&catalogue::CLOCK_STATUS, Value::AsInt(1))],
+                ),
+                resource(
+                    vec![string("recount.collection.scope", "node")],
+                    vec![scalar(&catalogue::NODE_MEMORY_TOTAL, Value::AsInt(1024))],
+                ),
+            ],
+            window: resource(
+                vec![],
+                vec![
+                    scalar(&catalogue::SCAN_DURATION, Value::AsDouble(0.25)),
+                    scalar(&catalogue::CLOCK_STATUS, Value::AsInt(0)),
+                ],
+            ),
+            diagnostics: resource(
+                vec![],
+                vec![scalar(&catalogue::SCAN_DURATION, Value::AsDouble(0.5))],
+            ),
+        }
+    }
+
+    #[tokio::test]
+    async fn requests_repeat_only_explicit_window_in_either_measurement_order() {
+        for (reverse, split) in [(false, false), (true, false), (false, true), (true, true)] {
+            let fixture = Fixture::new().await;
+            let mut spool = fixture.spool.lock().await;
+            let pending = spool
+                .front()
+                .await
+                .unwrap()
+                .expect("Fixture batch is pending");
+            spool.finish(&pending, None, &fixture.loss).await.unwrap();
+            let mut contents = scan_contents();
+            if reverse {
+                contents.measurements.reverse();
+            }
+            let window = contents.window.clone();
+            let expected = contents
+                .measurements
+                .iter()
+                .cloned()
+                .chain(std::iter::once(contents.diagnostics.clone()))
+                .collect::<Vec<_>>();
+            let limit = if split {
+                window.encoded_len() + expected.iter().map(Message::encoded_len).max().unwrap() + 32
+            } else {
+                MAX_REQUEST_BYTES
+            };
+            enqueue_contents(&mut spool, "epoch", contents, &fixture.loss, limit)
+                .await
+                .unwrap();
+            let mut observed = Vec::new();
+            let mut requests = 0;
+            while let Some(batch) = spool.front().await.unwrap() {
+                let request =
+                    ExportMetricsServiceRequest::decode(batch.payload.as_slice()).unwrap();
+                assert!(batch.payload.len() <= limit);
+                assert_eq!(request.resource_metrics.first(), Some(&window));
+                assert!(
+                    !request
+                        .resource_metrics
+                        .iter()
+                        .flat_map(|r| &r.scope_metrics)
+                        .flat_map(|s| &s.metrics)
+                        .any(|m| m.name == "recount.clock.uncertainty")
+                );
+                observed.extend(request.resource_metrics.into_iter().skip(1));
+                requests += 1;
+                spool.finish(&batch, None, &fixture.loss).await.unwrap();
+            }
+            if split {
+                assert!(requests > 1);
+            } else {
+                assert_eq!(requests, 1);
+            }
+            assert_eq!(observed, expected);
+            assert_eq!(fixture.loss.generation(), 0);
+            drop(spool);
+            fixture.close().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn stale_scan_is_discarded_without_changing_pending_bytes() {
+        let fixture = Fixture::new().await;
+        fixture.loss.start_epoch("epoch");
+        let contents = scan_contents();
+        let points = contents.point_count();
+        let scan = Scan::new(
+            "epoch".into(),
+            fixture.loss.generation(),
+            contents,
+            fixture.loss.clone(),
+        );
+        fixture
+            .loss
+            .record("epoch", LossReason::PermanentRejection, 1);
+        let mut spool = fixture.spool.lock().await;
+        enqueue_scan(&mut spool, scan, &fixture.loss).await.unwrap();
+        assert_eq!(spool.usage().await.unwrap().1, 1);
+        let retained = spool.front().await.unwrap().unwrap();
+        assert_eq!(retained.payload, fixture.batch.payload);
+        assert_eq!(retained.id, fixture.batch.id);
+        assert_eq!(spool.discarded_points().await.unwrap(), points);
+        assert_eq!(fixture.loss.snapshot(), (2, [0, points, 1]));
+        drop(spool);
+        fixture.close().await;
+    }
+
+    #[tokio::test]
+    async fn oversized_measurement_loss_keeps_window_and_other_resources() {
+        let fixture = Fixture::new().await;
+        let mut spool = fixture.spool.lock().await;
+        let pending = spool
+            .front()
+            .await
+            .unwrap()
+            .expect("Fixture batch is pending");
+        spool.finish(&pending, None, &fixture.loss).await.unwrap();
+        let mut contents = scan_contents();
+        let limit = contents.window.encoded_len()
+            + contents
+                .measurements
+                .iter()
+                .map(Message::encoded_len)
+                .max()
+                .unwrap()
+            + 32;
+        contents.measurements[0].schema_url = "x".repeat(limit);
+        let dropped = point_count(&contents.measurements[..1]);
+        let window = contents.window.clone();
+        enqueue_contents(&mut spool, "epoch", contents, &fixture.loss, limit)
+            .await
+            .unwrap();
+        assert_eq!(spool.discarded_points().await.unwrap(), dropped);
+        let mut retained_points = 0;
+        while let Some(batch) = spool.front().await.unwrap() {
+            let request = ExportMetricsServiceRequest::decode(batch.payload.as_slice()).unwrap();
+            assert_eq!(request.resource_metrics.first(), Some(&window));
+            retained_points += point_count(&request.resource_metrics[1..]);
+            spool.finish(&batch, None, &fixture.loss).await.unwrap();
+        }
+        assert_eq!(retained_points, 2);
+        drop(spool);
+        fixture.close().await;
     }
 
     #[tokio::test]
@@ -723,7 +1055,6 @@ mod tests {
 
     #[tokio::test]
     async fn cancelling_run_stops_workers_and_releases_the_queue_for_replay() {
-        use clap::Parser;
         let path = std::env::temp_dir().join(format!("recount-cancel-{}", uuid::Uuid::now_v7()));
         let receiver = Receiver::default();
         receiver.0.lock().unwrap().unavailable = true;
@@ -742,7 +1073,7 @@ mod tests {
             "test-namespace",
         ])
         .unwrap();
-        let destination = config.export().unwrap().queue_destination;
+        let destination = queue_destination(&config.endpoint, None);
         let task = tokio::spawn(run(config));
         until(async || !receiver.0.lock().unwrap().requests.is_empty()).await;
         task.abort();
@@ -777,7 +1108,6 @@ mod tests {
         stop.send_replace(true);
         task.await.unwrap().unwrap();
         assert_eq!(fixture.spool.lock().await.usage().await.unwrap().1, 1);
-        // Close the original SQLite connection and reopen as after a restart.
         fixture.close().await;
         *fixture.spool.lock().await = Spool::open(&fixture.path, "test-receiver", 1024 * 1024, 4)
             .await
@@ -885,91 +1215,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn drain_then_rotate_keeps_old_queue_binding_and_uses_a_new_queue() {
-        use clap::Parser;
-        let directory =
-            std::env::temp_dir().join(format!("recount-rotation-{}", uuid::Uuid::now_v7()));
-        std::fs::create_dir(&directory).unwrap();
-        let token_file = directory.join("source.token");
-        let token = "recount_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-        std::fs::write(&token_file, token).unwrap();
-        let queue = directory.join("old-queue");
+    async fn refused_tokens_are_renewed_without_losing_the_batch() {
+        let path = std::env::temp_dir().join(format!("recount-renewal-{}", uuid::Uuid::now_v7()));
         let receiver = Receiver::default();
+        receiver.0.lock().unwrap().authorization = Some("Bearer renewed".into());
         let (endpoint, server_stop) = server(receiver.clone()).await;
-        let configuration = |queue: &std::path::Path| {
-            Config::try_parse_from([
-                "collector",
-                "--drain",
-                "--endpoint",
-                &endpoint.uri().to_string(),
-                "--source-token-file",
-                token_file.to_str().unwrap(),
-                "--queue-directory",
-                queue.to_str().unwrap(),
-            ])
-            .unwrap()
-        };
-        let config = configuration(&queue);
-        let destination = config.export().unwrap().queue_destination;
         let loss = LossTracker::default();
+        let mut spool = Spool::open(&path, "destination", 64 * 1024 * 1024, 1024)
+            .await
+            .unwrap();
         let batch = Batch::new("epoch".into(), ExportMetricsServiceRequest::default(), 1).unwrap();
-        {
-            let mut spool = Spool::open(
-                &queue,
-                &destination,
-                config.queue_max_bytes,
-                config.queue_max_batches,
-            )
+        spool.enqueue(&batch, &loss).await.unwrap();
+        let spool = Arc::new(tokio::sync::Mutex::new(spool));
+        let (token, tokens) = watch::channel(Some("Bearer expired".parse().unwrap()));
+        let stale = Arc::new(Notify::new());
+        let (_stop, stopped) = watch::channel(false);
+        let task = tokio::spawn(export(
+            client(endpoint),
+            spool.clone(),
+            loss.clone(),
+            Duration::from_secs(60),
+            None,
+            stopped,
+            Some(Authorization::new(tokens, stale.clone())),
+        ));
+        tokio::time::timeout(Duration::from_secs(5), stale.notified())
             .await
             .unwrap();
-            spool.enqueue(&batch, &loss).await.unwrap();
-            spool.close().await.unwrap();
-        }
-        std::fs::write(&token_file, token.replace('A', "B")).unwrap();
-        assert!(run(configuration(&queue)).await.is_err());
-        let mut spool = Spool::open(&queue, &destination, 64 * 1024 * 1024, 1024)
+        token.send_replace(Some("Bearer renewed".parse().unwrap()));
+        tokio::time::timeout(Duration::from_secs(40), task)
             .await
-            .unwrap();
-        assert_eq!(spool.usage().await.unwrap().1, 1);
-        spool.close().await.unwrap();
-        std::fs::write(&token_file, token).unwrap();
-        receiver.0.lock().unwrap().authorization = Some(format!("Bearer {token}"));
-        tokio::time::timeout(Duration::from_secs(5), run(config))
-            .await
+            .unwrap()
             .unwrap()
             .unwrap();
         assert_eq!(receiver.0.lock().unwrap().requests.len(), 1);
-        let mut spool = Spool::open(&queue, &destination, 64 * 1024 * 1024, 1024)
-            .await
-            .unwrap();
+        let mut spool = spool.lock().await;
         assert_eq!(spool.usage().await.unwrap().1, 0);
-        spool.close().await.unwrap();
-        std::fs::write(&token_file, token.replace('A', "B")).unwrap();
-        assert!(run(configuration(&queue)).await.is_err());
-        let new_queue = directory.join("rotated-queue");
-        let rotated_config = configuration(&new_queue);
-        let rotated_destination = rotated_config.export().unwrap().queue_destination;
-        {
-            let mut spool = Spool::open(
-                &new_queue,
-                &rotated_destination,
-                rotated_config.queue_max_bytes,
-                rotated_config.queue_max_batches,
-            )
-            .await
-            .unwrap();
-            spool.enqueue(&batch, &loss).await.unwrap();
-            spool.close().await.unwrap();
-        }
-        receiver.0.lock().unwrap().authorization =
-            Some(format!("Bearer {}", token.replace('A', "B")));
-        tokio::time::timeout(Duration::from_secs(5), run(configuration(&new_queue)))
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(receiver.0.lock().unwrap().requests.len(), 2);
+        assert_eq!(spool.discarded_points().await.unwrap(), 0);
+        spool.close_connection().await.unwrap();
         let _ = server_stop.send(());
-        std::fs::remove_dir_all(directory).unwrap();
+        std::fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
@@ -998,7 +1283,6 @@ mod tests {
         ] {
             assert!(retry_delay(&Status::new(code, "")).is_none());
         }
-        use tonic_types::{ErrorDetails, RetryInfo, StatusExt};
         let status = Status::with_error_details(
             tonic::Code::ResourceExhausted,
             "",

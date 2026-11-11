@@ -93,21 +93,36 @@ impl LossTracker {
 pub struct Scan {
     epoch: String,
     generation: u64,
-    resources: Vec<ResourceMetrics>,
+    contents: Option<ScanContents>,
     loss: LossTracker,
+}
+
+pub struct ScanContents {
+    pub measurements: Vec<ResourceMetrics>,
+    /// Shared observations repeated unchanged in every split export request.
+    pub window: ResourceMetrics,
+    pub diagnostics: ResourceMetrics,
+}
+
+impl ScanContents {
+    pub fn point_count(&self) -> u64 {
+        point_count(&self.measurements)
+            + point_count(std::slice::from_ref(&self.window))
+            + point_count(std::slice::from_ref(&self.diagnostics))
+    }
 }
 
 impl Scan {
     pub(crate) fn new(
         epoch: String,
         generation: u64,
-        resources: Vec<ResourceMetrics>,
+        contents: ScanContents,
         loss: LossTracker,
     ) -> Self {
         Self {
             epoch,
             generation,
-            resources,
+            contents: Some(contents),
             loss,
         }
     }
@@ -123,24 +138,29 @@ impl Scan {
 
     /// Records the supplied loss reason and releases the sampled points.
     pub fn discard(mut self, reason: LossReason) {
-        self.loss
-            .record(&self.epoch, reason, point_count(&self.resources));
-        self.resources.clear();
+        if let Some(contents) = self.contents.take() {
+            self.loss
+                .record(&self.epoch, reason, contents.point_count());
+        }
     }
 
     /// Transfers the points to persistence without reporting them as lost.
-    pub fn into_resources(mut self) -> Vec<ResourceMetrics> {
-        std::mem::take(&mut self.resources)
+    pub fn into_contents(mut self) -> ScanContents {
+        self.contents
+            .take()
+            .expect("Scan owns its sampled contents")
     }
 }
 
 impl Drop for Scan {
     fn drop(&mut self) {
-        self.loss.record(
-            &self.epoch,
-            LossReason::BufferExpired,
-            point_count(&self.resources),
-        );
+        if let Some(contents) = &self.contents {
+            self.loss.record(
+                &self.epoch,
+                LossReason::BufferExpired,
+                contents.point_count(),
+            );
+        }
     }
 }
 
@@ -161,6 +181,34 @@ pub fn point_count(resources: &[ResourceMetrics]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::metrics::{gauge, point, resource};
+    use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value;
+    use recount_telemetry_validation::catalogue::CLOCK_STATUS;
+
+    #[test]
+    fn scan_drop_discard_and_transfer_account_for_all_components_once() {
+        let loss = LossTracker::default();
+        loss.start_epoch("epoch");
+        let scalar = resource(
+            vec![],
+            vec![gauge(
+                &CLOCK_STATUS,
+                vec![point(Value::AsInt(0), 200, 0, vec![])],
+            )],
+        );
+        let contents = || ScanContents {
+            measurements: vec![scalar.clone(), scalar.clone()],
+            window: scalar.clone(),
+            diagnostics: scalar.clone(),
+        };
+        let scan = || Scan::new("epoch".into(), loss.generation(), contents(), loss.clone());
+        drop(scan());
+        assert_eq!(loss.snapshot(), (1, [0, 4, 0]));
+        scan().discard(LossReason::BufferFull);
+        assert_eq!(loss.snapshot(), (2, [4, 4, 0]));
+        assert_eq!(scan().into_contents().point_count(), 4);
+        assert_eq!(loss.snapshot(), (2, [4, 4, 0]));
+    }
 
     #[test]
     fn old_epoch_loss_does_not_enter_new_epoch_counts() {

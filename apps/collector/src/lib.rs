@@ -12,6 +12,8 @@ mod continuity;
 mod delivery;
 #[cfg(target_os = "linux")]
 mod diagnostics;
+#[cfg(target_os = "linux")]
+mod enrollment;
 #[cfg(any(target_os = "linux", test))]
 mod identity;
 #[cfg(target_os = "linux")]
@@ -19,11 +21,15 @@ mod linux;
 #[cfg(target_os = "linux")]
 mod metrics;
 #[cfg(target_os = "linux")]
+mod network;
+#[cfg(target_os = "linux")]
 pub mod runtime;
 #[cfg(target_os = "linux")]
 pub mod spool;
+#[cfg(target_os = "linux")]
+mod transport;
 
 #[cfg(target_os = "linux")]
-pub use delivery::{LossReason, LossTracker, Scan, point_count};
+pub use delivery::{LossReason, LossTracker, Scan, ScanContents, point_count};
 #[cfg(target_os = "linux")]
 pub use linux::{Collector, CollectorConfig};

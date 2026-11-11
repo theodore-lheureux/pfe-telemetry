@@ -5,8 +5,10 @@ import { createReadStream } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
+import { eq } from "drizzle-orm";
 import { actorService } from "../../src/auth/actor.server";
-import * as credentialDomain from "../../src/credentials/credentials.server";
+import * as collectorDomain from "../../src/collectors/collectors.server";
+import { collectorNode } from "../../src/db/collectors-schema";
 import type { TelemetryResult } from "../../src/executions/contracts";
 import * as executionDomain from "../../src/executions/executions.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
@@ -444,7 +446,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 			contentType: "application/json",
 		});
 		await Promise.all(
-			["queue", "other-queue"].map((name) =>
+			["queue", "other-queue", "node", "other-node"].map((name) =>
 				mkdir(resolve(directory, name), { mode: 0o700 }),
 			),
 		);
@@ -466,7 +468,6 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Real measurements",
-					slug: "real",
 				}),
 			),
 		);
@@ -474,43 +475,29 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 			organizationId: organization.id,
 			projectId: project.id,
 		};
-		const credentials = actorService(workspace.auth);
 		const enrolled = data(
-			await credentials(owner.headers, (actor) =>
-				credentialDomain.createCollectorCredential(
-					workspace.database.db,
-					actor,
-					{
-						...reference,
-						name: "Linux collector",
-						sourceId: `source-${suffix}`,
-						rootId: "pipeline-node",
-						rootKind: 1,
-						adapter: "linux",
-						allowedLocalKinds: [4],
-						additionalRoots: [
-							{
-								resourceId: "other-node",
-								resourceKind: 1,
-								adapter: "linux",
-								allowedLocalKinds: [4],
-							},
-						],
-					},
-				),
+			await actorService(workspace.auth)(owner.headers, (actor) =>
+				collectorDomain.createEnrollmentKey(workspace.database.db, actor, {
+					...reference,
+					name: `Pipeline ${suffix}`,
+				}),
 			),
 		);
-		rememberSecret(enrolled.token);
-		await writeFile(resolve(directory, "token"), enrolled.token, {
+		rememberSecret(enrolled.key);
+		await writeFile(resolve(directory, "enrollment-key"), enrolled.key, {
 			mode: 0o600,
 		});
+		// Collectors run in containers and reach the web application through this origin.
+		const enrollmentOrigin =
+			process.env.RECOUNT_PIPELINE_WEB_ORIGIN ??
+			workspace.origin.replace("localhost", "host.docker.internal");
 		const databaseUrl = new URL(workspace.databaseUrl);
 		await workspace.database.pool.query(
 			`CREATE ROLE ${role} LOGIN PASSWORD '${authorityPassword}' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT`,
 		);
 		roleCreated = true;
 		await workspace.database.pool.query(
-			`GRANT CONNECT ON DATABASE "${databaseUrl.pathname.slice(1)}" TO ${role}; GRANT USAGE ON SCHEMA ingestion TO ${role}; GRANT SELECT ON ingestion.collector_credential,ingestion.collector_root_grant,ingestion.collector_resource_grant TO ${role}`,
+			`GRANT CONNECT ON DATABASE "${databaseUrl.pathname.slice(1)}" TO ${role}; GRANT USAGE ON SCHEMA ingestion TO ${role}; GRANT SELECT ON ingestion.collector_node TO ${role}`,
 		);
 		databaseUrl.hostname =
 			process.env.RECOUNT_PIPELINE_DATABASE_HOST ?? "credential-postgres";
@@ -533,27 +520,34 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 			...kafka,
 			RECOUNT_INGESTION_ADDR: "0.0.0.0:4317",
 			RECOUNT_INGESTION_DATABASE_URL: databaseUrl.toString(),
+			RECOUNT_INGESTION_COLLECTOR_PUBLIC_KEYS: workspace.collectorPublicKey,
 		});
 		const collector = start(
 			"collector",
 			[
 				"--endpoint",
 				`http://${ingestion}:4317`,
-				"--source-token-file",
-				"/test/token",
+				"--enrollment-key-file",
+				"/test/enrollment-key",
+				"--enrollment-url",
+				enrollmentOrigin,
 				"--host-id",
 				"pipeline-node",
 				"--process-namespace-id",
 				"container",
 				"--queue-directory",
 				"/test/queue",
+				"--state-directory",
+				"/test/node",
 				...collectorBounds,
 			],
 			[
 				"--mount",
-				`type=bind,src=${hostDirectory}/token,dst=/test/token,readonly`,
+				`type=bind,src=${hostDirectory}/enrollment-key,dst=/test/enrollment-key,readonly`,
 				"--mount",
 				`type=bind,src=${hostDirectory}/queue,dst=/test/queue`,
+				"--mount",
+				`type=bind,src=${hostDirectory}/node,dst=/test/node`,
 			],
 		);
 		const otherCollector = start(
@@ -561,21 +555,27 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 			[
 				"--endpoint",
 				`http://${ingestion}:4317`,
-				"--source-token-file",
-				"/test/token",
+				"--enrollment-key-file",
+				"/test/enrollment-key",
+				"--enrollment-url",
+				enrollmentOrigin,
 				"--host-id",
 				"other-node",
 				"--process-namespace-id",
 				"other-container",
 				"--queue-directory",
 				"/test/other-queue",
+				"--state-directory",
+				"/test/other-node",
 				...collectorBounds,
 			],
 			[
 				"--mount",
-				`type=bind,src=${hostDirectory}/token,dst=/test/token,readonly`,
+				`type=bind,src=${hostDirectory}/enrollment-key,dst=/test/enrollment-key,readonly`,
 				"--mount",
 				`type=bind,src=${hostDirectory}/other-queue,dst=/test/other-queue`,
+				"--mount",
+				`type=bind,src=${hostDirectory}/other-node,dst=/test/other-node`,
 			],
 			"collector-other",
 		);
@@ -612,13 +612,27 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 		expect(listed.executions).toHaveLength(1);
 		const entry = listed.executions[0];
 		const ref = { ...reference, executionId: entry.executionId };
+		let otherNodeId: string | undefined;
+		await expect
+			.poll(
+				async () => {
+					[{ id: otherNodeId } = { id: undefined }] =
+						await workspace.database.db
+							.select({ id: collectorNode.id })
+							.from(collectorNode)
+							.where(eq(collectorNode.machineId, "other-node"));
+					return otherNodeId;
+				},
+				{ timeout: 30000 },
+			)
+			.toBeTruthy();
 		const otherEntry = data(
 			await executions(owner.headers, (actor) =>
 				executionDomain.createExecution(workspace.database.db, actor, {
 					requestId: crypto.randomUUID(),
 					...reference,
 					name: "Other host capture",
-					credentialId: enrolled.credential.id,
+					nodeId: otherNodeId as string,
 					hostId: "other-node",
 					startedAt: startedAt.toISOString(),
 					endedAt: new Date(startedAt.getTime() + 300000).toISOString(),
@@ -869,7 +883,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 			).toBeVisible();
 			const html = await response?.text();
 			expect(html).toMatch(new RegExp(`<html\\b[^>]*\\blang="${locale}"`));
-			expect(html?.includes(enrolled.token)).toBe(false);
+			expect(html?.includes(enrolled.key)).toBe(false);
 			const readerPassword = process.env.RECOUNT_CLICKHOUSE_READER_PASSWORD;
 			if (readerPassword) expect(html?.includes(readerPassword)).toBe(false);
 			await page.screenshot({

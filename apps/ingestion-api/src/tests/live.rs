@@ -7,9 +7,9 @@ struct Database {
     name: String,
     role: String,
     reader_url: String,
-    credential: Uuid,
+    node: Uuid,
+    other_node: Uuid,
     project: Uuid,
-    token: String,
 }
 
 async fn connect(config: &tokio_postgres::Config) -> tokio_postgres::Client {
@@ -48,20 +48,22 @@ impl Database {
             .expect("Bun and current web migrations are required");
         assert!(status.success(), "Current Drizzle migrations failed");
         let client = connect(&config).await;
-        let credential = Uuid::now_v7();
+        let key = Uuid::now_v7();
+        let node = Uuid::now_v7();
+        let other_node = Uuid::now_v7();
         let project = Uuid::now_v7();
-        let token = format!("recount_{credential}_{}", "A".repeat(43));
         client.batch_execute(&format!(
             "INSERT INTO app.organization (id,name,slug,created_at) VALUES ('test-org','Test','test',now());
-             INSERT INTO app.project (id,organization_id,name,slug) VALUES ('{project}','test-org','Test','test');
+             INSERT INTO app.project (id,organization_id,name) VALUES ('{project}','test-org','Test');
+             INSERT INTO ingestion.enrollment_key (id,organization_id,project_id,name,key_sha256) VALUES ('{key}','test-org','{project}','Test',repeat('a',64));
+             INSERT INTO ingestion.collector_node (id,organization_id,project_id,enrollment_key_id,machine_id,hostname,public_key) VALUES
+               ('{node}','test-org','{project}','{key}','node','node',repeat('A',43)),
+               ('{other_node}','test-org','{project}','{key}','other','other',repeat('A',43));
              CREATE ROLE {role} LOGIN PASSWORD 'test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT CONNECTION LIMIT 4;
              GRANT CONNECT ON DATABASE {name} TO {role};
              GRANT USAGE ON SCHEMA ingestion TO {role};
-             GRANT SELECT ON ingestion.collector_credential, ingestion.collector_root_grant, ingestion.collector_resource_grant TO {role};"
+             GRANT SELECT (id, project_id, organization_id, revoked_at) ON ingestion.collector_node TO {role};"
         )).await.unwrap();
-        client.execute("INSERT INTO ingestion.collector_credential (id,organization_id,project_id,source_id,name,token_sha256,root_id,root_kind,maximum_submission_age,allowed_clock_skew) VALUES ($1,'test-org',$2,'trusted-source','Test',$3,'node',1,604800,0)", &[&credential,&project,&auth::digest(token.as_bytes())]).await.unwrap();
-        client.execute("INSERT INTO ingestion.collector_root_grant (credential_id,project_id,organization_id,resource_id,resource_kind,adapter,allowed_local_kinds) VALUES ($1,$2,'test-org','node',1,'linux',ARRAY[4])", &[&credential,&project]).await.unwrap();
-        client.execute("INSERT INTO ingestion.collector_resource_grant (credential_id,project_id,organization_id,resource_id,resource_kind) VALUES ($1,$2,'test-org','sensor',8)", &[&credential,&project]).await.unwrap();
         let (_, host) = prefix
             .rsplit_once('@')
             .expect("Test URL must include explicit user info");
@@ -72,9 +74,9 @@ impl Database {
             name,
             role,
             reader_url,
-            credential,
+            node,
+            other_node,
             project,
-            token,
         }
     }
     async fn close(self) {
@@ -150,48 +152,79 @@ fn linux_process(token: &str, created: u64) -> Request<ExportMetricsServiceReque
     request
 }
 
+fn signing() -> ed25519_dalek::SigningKey {
+    ed25519_dalek::SigningKey::from_bytes(&[7; 32])
+}
+
+/// A token as the web application signs it; `changes` overrides individual claims.
+fn token(db: &Database, node: Uuid, changes: serde_json::Value) -> String {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use ed25519_dalek::Signer;
+    let now = unix_nanos().unwrap() / 1_000_000_000;
+    let public = URL_SAFE_NO_PAD.encode(signing().verifying_key().as_bytes());
+    let mut claims = serde_json::json!({
+        "sub": node.to_string(),
+        "org": "test-org",
+        "project": db.project.to_string(),
+        "root": if node == db.node { "node" } else { "other" },
+        "rootKind": 1,
+        "adapter": "linux",
+        "localKinds": [4],
+        "maxAge": 604800,
+        "skew": 0,
+        "iss": "recount",
+        "aud": "recount-ingestion",
+        "iat": now,
+        "exp": now + 3600,
+    });
+    for (key, value) in changes.as_object().unwrap() {
+        claims[key] = value.clone();
+    }
+    let header = serde_json::json!({ "alg": "EdDSA", "typ": "JWT", "kid": auth::key_id(&public) });
+    let input = format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(header.to_string()),
+        URL_SAFE_NO_PAD.encode(claims.to_string())
+    );
+    let signature = signing().sign(input.as_bytes());
+    format!("{input}.{}", URL_SAFE_NO_PAD.encode(signature.to_bytes()))
+}
+
 #[tokio::test]
 #[ignore = "requires explicit isolated PostgreSQL, current web migrations and Bun"]
-async fn authoritative_postgres_rotation_revocation_expiry_bindings_and_outage_are_live() {
+async fn signed_node_tokens_revocation_bindings_and_outage_are_live() {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     let db = Database::new().await;
-    let credentials = Arc::new(auth::Credentials::new(&db.reader_url).unwrap());
-    assert!(credentials.ready().await);
+    let public = URL_SAFE_NO_PAD.encode(signing().verifying_key().as_bytes());
+    let tokens = Arc::new(auth::NodeTokens::new(&db.reader_url, &[public]).unwrap());
     let sink = Arc::new(TestSink::default());
-    let (mut client, _, stop, task) =
-        server(credentials.clone(), sink.clone(), Limits::default()).await;
+    let (mut client, _, stop, task) = server(tokens.clone(), sink.clone(), Limits::default()).await;
+    let current = token(&db, db.node, serde_json::json!({}));
     let created = unix_nanos().unwrap();
-    let mut first = batch(&db.token, created);
+    // Fail closed until the first revocation list loads.
+    assert!(!tokens.ready().await);
+    assert_eq!(
+        client
+            .export(batch(&current, created))
+            .await
+            .unwrap_err()
+            .code(),
+        Code::Unavailable
+    );
+    assert!(tokens.refresh_revocations().await);
+    assert!(tokens.ready().await);
+    let mut first = batch(&current, created);
     first
         .metadata_mut()
         .insert("project-id", "spoofed".parse().unwrap());
     client.export(first).await.unwrap();
-    assert_eq!(
-        sink.records.lock().unwrap()[0]
-            .security
-            .as_ref()
-            .unwrap()
-            .project_id,
-        db.project.to_string()
-    );
-    let rotated = db.token.replace(&"A".repeat(43), &"B".repeat(43));
-    db.client.execute("UPDATE ingestion.collector_credential SET token_sha256=$1, rotated_at=statement_timestamp() WHERE id=$2", &[&auth::digest(rotated.as_bytes()),&db.credential]).await.unwrap();
-    assert_eq!(
-        client
-            .export(batch(&db.token, created))
-            .await
-            .unwrap_err()
-            .code(),
-        Code::Unauthenticated
-    );
-    client.export(batch(&rotated, created)).await.unwrap();
     {
         let records = sink.records.lock().unwrap();
-        let original = validate::raw(&records[0], Limits::default()).unwrap();
-        let retried = validate::raw(&records[1], Limits::default()).unwrap();
-        assert_eq!(original[0].sample_id, retried[0].sample_id);
-        assert_eq!(records[0].bindings, records[1].bindings);
-        assert_ne!(records[0].record_id, records[1].record_id);
+        let security = records[0].security.as_ref().unwrap();
+        assert_eq!(security.project_id, db.project.to_string());
+        assert_eq!(security.source_id, db.node.to_string());
     }
+    // Nodes hold only their machine root; independent resources are never granted.
     let mut sensor = body();
     sensor.resource_metrics[0].resource = Some(Resource {
         attributes: vec![
@@ -200,147 +233,87 @@ async fn authoritative_postgres_rotation_revocation_expiry_bindings_and_outage_a
         ],
         ..Default::default()
     });
-    client
-        .export(authorized(&rotated, sensor.clone()))
-        .await
-        .unwrap();
-    sensor.resource_metrics[0]
-        .resource
-        .as_mut()
-        .unwrap()
-        .attributes[0] = string("recount.resource.id", "unbound");
-    sensor.resource_metrics[0]
-        .resource
-        .as_mut()
-        .unwrap()
-        .attributes
-        .push(string("parent.id", "node"));
     assert_eq!(
         client
-            .export(authorized(&rotated, sensor))
+            .export(authorized(&current, sensor))
             .await
             .unwrap_err()
             .code(),
         Code::PermissionDenied
     );
-    db.client
-        .batch_execute("DELETE FROM ingestion.collector_root_grant")
-        .await
-        .unwrap();
-    assert_eq!(
-        client
-            .export(authorized(&rotated, body()))
-            .await
-            .unwrap_err()
-            .code(),
-        Code::PermissionDenied
-    );
-    db.client.execute("INSERT INTO ingestion.collector_root_grant (credential_id,project_id,organization_id,resource_id,resource_kind,adapter,allowed_local_kinds) VALUES ($1,$2,'test-org','node',1,'linux',ARRAY[4])", &[&db.credential,&db.project]).await.unwrap();
-    let linux_created = unix_nanos().unwrap();
     let published = sink.records.lock().unwrap().len();
-    db.client.batch_execute("UPDATE ingestion.collector_root_grant SET adapter='standard', allowed_local_kinds=ARRAY[]::integer[]").await.unwrap();
+    let no_local = token(&db, db.node, serde_json::json!({ "localKinds": [] }));
     assert_eq!(
         client
-            .export(linux_process(&rotated, linux_created))
-            .await
-            .unwrap_err()
-            .code(),
-        Code::PermissionDenied
-    );
-    db.client
-        .batch_execute("UPDATE ingestion.collector_root_grant SET adapter='linux'")
-        .await
-        .unwrap();
-    assert_eq!(
-        client
-            .export(linux_process(&rotated, linux_created))
+            .export(linux_process(&no_local, unix_nanos().unwrap()))
             .await
             .unwrap_err()
             .code(),
         Code::PermissionDenied
     );
     assert_eq!(sink.records.lock().unwrap().len(), published);
-    db.client
-        .batch_execute("UPDATE ingestion.collector_root_grant SET allowed_local_kinds=ARRAY[4]")
-        .await
-        .unwrap();
     client
-        .export(linux_process(&rotated, linux_created))
+        .export(linux_process(&current, unix_nanos().unwrap()))
         .await
         .unwrap();
-    assert_eq!(sink.records.lock().unwrap().len(), published + 1);
-    db.client
-        .batch_execute("UPDATE ingestion.collector_credential SET maximum_submission_age=1")
-        .await
-        .unwrap();
+    let short = token(&db, db.node, serde_json::json!({ "maxAge": 1 }));
     assert_eq!(
         client
-            .export(batch(&rotated, unix_nanos().unwrap() - 3_000_000_000))
+            .export(batch(&short, unix_nanos().unwrap() - 3_000_000_000))
             .await
             .unwrap_err()
             .code(),
         Code::FailedPrecondition
     );
-    // Current upload/credential policy cannot invalidate an accepted raw record.
-    validate::retained_raw(&sink.records.lock().unwrap()[0], Limits::default()).unwrap();
+    let expired = token(&db, db.node, serde_json::json!({ "iat": 1, "exp": 2 }));
+    assert_eq!(
+        client
+            .export(authorized(&expired, body()))
+            .await
+            .unwrap_err()
+            .code(),
+        Code::Unauthenticated
+    );
     db.client
-        .batch_execute("UPDATE ingestion.collector_credential SET maximum_submission_age=604800")
+        .execute(
+            "UPDATE ingestion.collector_node SET revoked_at=statement_timestamp() WHERE id=$1",
+            &[&db.node],
+        )
         .await
         .unwrap();
-    client
-        .export(batch(
-            &rotated,
-            unix_nanos().unwrap() - 3 * 86400 * 1_000_000_000,
-        ))
-        .await
-        .unwrap();
+    assert!(tokens.refresh_revocations().await);
+    assert_eq!(
+        client
+            .export(authorized(&current, body()))
+            .await
+            .unwrap_err()
+            .code(),
+        Code::Unauthenticated
+    );
+    // Losing database access keeps the last list: revoked stays revoked, others keep working.
     db.client
         .batch_execute(&format!(
-            "REVOKE SELECT ON ingestion.collector_root_grant FROM {}",
+            "REVOKE SELECT ON ingestion.collector_node FROM {}",
             db.role
         ))
         .await
         .unwrap();
     let start = std::time::Instant::now();
+    assert!(!tokens.refresh_revocations().await);
+    assert!(start.elapsed() < Duration::from_secs(4));
     assert_eq!(
         client
-            .export(authorized(&rotated, body()))
-            .await
-            .unwrap_err()
-            .code(),
-        Code::Unavailable
-    );
-    assert!(start.elapsed() < Duration::from_secs(3));
-    assert!(!credentials.ready().await);
-    db.client
-        .batch_execute(&format!(
-            "GRANT SELECT ON ingestion.collector_root_grant TO {}",
-            db.role
-        ))
-        .await
-        .unwrap();
-    client.export(authorized(&rotated, body())).await.unwrap();
-    db.client.batch_execute("UPDATE ingestion.collector_credential SET created_at='2000-01-01', expires_at='2001-01-01'").await.unwrap();
-    assert_eq!(
-        client
-            .export(authorized(&rotated, body()))
+            .export(authorized(&current, body()))
             .await
             .unwrap_err()
             .code(),
         Code::Unauthenticated
     );
-    db.client.batch_execute("UPDATE ingestion.collector_credential SET expires_at=NULL, revoked_at=statement_timestamp()").await.unwrap();
-    assert_eq!(
-        client
-            .export(authorized(&rotated, body()))
-            .await
-            .unwrap_err()
-            .code(),
-        Code::Unauthenticated
-    );
+    let other = token(&db, db.other_node, serde_json::json!({}));
+    client.export(authorized(&other, body())).await.unwrap();
     validate::retained_raw(&sink.records.lock().unwrap()[0], Limits::default()).unwrap();
     stop.send(()).unwrap();
     task.await.unwrap();
-    drop(credentials);
+    drop(tokens);
     db.close().await;
 }

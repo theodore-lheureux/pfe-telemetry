@@ -3,10 +3,10 @@ use prost::Message;
 use recount_telemetry_schema::{
     ExportMetricsServiceRequest,
     common::KeyValue,
-    identity::canonical_attributes,
+    identity::{AttributeError, bounded_attributes},
     metrics::{self, metric::Data, number_data_point::Value},
     point::{self, Observation},
-    wire::{NormalizedPoint, PayloadKind, RawRecord, RelationKind, ResourceKind},
+    wire::{AnalyticalPoint, PayloadKind, RawRecord, RelationKind, ResourceKind},
 };
 use std::collections::BTreeSet;
 
@@ -60,92 +60,10 @@ fn invalid(path: &str, reason: &'static str) -> Issue {
     Issue::new(Category::Invalid, path, reason)
 }
 fn attrs(v: &[KeyValue], limits: Limits) -> Result<(), Issue> {
-    fn nodes(
-        value: &recount_telemetry_schema::common::AnyValue,
-        count: &mut usize,
-        limits: Limits,
-        depth: usize,
-    ) -> Result<(), Issue> {
-        use recount_telemetry_schema::common::any_value::Value;
-        if depth > 16 {
-            return Err(Issue::new(
-                Category::Limit,
-                "attributes",
-                "attribute depth limit",
-            ));
-        }
-        *count += 1;
-        if *count > limits.attributes_per_set {
-            return Err(Issue::new(
-                Category::Limit,
-                "attributes",
-                "recursive attribute node limit",
-            ));
-        }
-        match &value.value {
-            Some(Value::StringValue(v)) if v.len() > 65536 => {
-                return Err(Issue::new(
-                    Category::Limit,
-                    "attributes",
-                    "attribute string byte limit",
-                ));
-            }
-            Some(Value::BytesValue(v)) if v.len() > 65536 => {
-                return Err(Issue::new(
-                    Category::Limit,
-                    "attributes",
-                    "attribute bytes limit",
-                ));
-            }
-            Some(Value::ArrayValue(v)) => {
-                for v in &v.values {
-                    nodes(v, count, limits, depth + 1)?;
-                }
-            }
-            Some(Value::KvlistValue(v)) => {
-                for kv in &v.values {
-                    if kv.key.len() > 128 {
-                        return Err(Issue::new(
-                            Category::Limit,
-                            "attributes",
-                            "attribute key byte limit",
-                        ));
-                    }
-                    if let Some(v) = &kv.value {
-                        nodes(v, count, limits, depth + 1)?;
-                    } else {
-                        *count += 1;
-                    }
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-    let mut count = 0;
-    for kv in v {
-        if kv.key.len() > 128 {
-            return Err(Issue::new(
-                Category::Limit,
-                "attributes",
-                "attribute key byte limit",
-            ));
-        }
-        if let Some(v) = &kv.value {
-            nodes(v, &mut count, limits, 0)?;
-        } else {
-            count += 1;
-        }
-    }
-    if count > limits.attributes_per_set {
-        return Err(Issue::new(
-            Category::Limit,
-            "attributes",
-            "attribute count limit",
-        ));
-    }
-    canonical_attributes(v).map_err(|e| invalid("attributes", e))?;
-    Ok(())
+    bounded_attributes(v, limits.attributes_per_set).map_err(|error| match error {
+        AttributeError::Invalid(reason) => invalid("attributes", reason),
+        AttributeError::Limit(reason) => Issue::new(Category::Limit, "attributes", reason),
+    })
 }
 fn finite(v: impl IntoIterator<Item = f64>) -> Result<(), Issue> {
     if v.into_iter().all(f64::is_finite) {
@@ -344,10 +262,30 @@ pub fn request(request: &ExportMetricsServiceRequest, limits: Limits) -> Result<
     Ok(points)
 }
 
-// Run before raw publication, then again after raw decode. Age/credential
-// authority are request-only policy, not reasons to discard accepted replay.
-pub fn raw(raw: &RawRecord, limits: Limits) -> Result<Vec<NormalizedPoint>, Issue> {
+// Submission age and live credential grants cannot invalidate accepted replay.
+pub fn raw(raw: &RawRecord, limits: Limits) -> Result<Vec<AnalyticalPoint>, Issue> {
     let limits = limits.validate()?;
+    envelope(raw, limits)?;
+    let request = ExportMetricsServiceRequest::decode(raw.otlp_request.as_slice())
+        .map_err(|_| invalid("otlp", "invalid OTLP encoding"))?;
+    self::request(&request, limits)?;
+    lower(raw, &request, limits)
+}
+
+// Admission only, after authorization: `request` has passed `request()` with
+// these limits and is the unchanged decoded body encoded into `raw`.
+// Retained boundaries must use raw().
+pub fn preflight(
+    raw: &RawRecord,
+    request: &ExportMetricsServiceRequest,
+    limits: Limits,
+) -> Result<Vec<AnalyticalPoint>, Issue> {
+    let limits = limits.validate()?;
+    envelope(raw, limits)?;
+    lower(raw, request, limits)
+}
+
+fn envelope(raw: &RawRecord, limits: Limits) -> Result<(), Issue> {
     if raw.encoded_len() > limits.decoded_bytes {
         return Err(Issue::new(Category::Limit, "raw", "raw record byte limit"));
     }
@@ -366,9 +304,17 @@ pub fn raw(raw: &RawRecord, limits: Limits) -> Result<Vec<NormalizedPoint>, Issu
     if let Some(b) = &raw.batch {
         crate::metadata::batch(Some(&b.client_id), Some(&b.created_unix_nano.to_string()))?;
     }
-    let request = ExportMetricsServiceRequest::decode(raw.otlp_request.as_slice())
-        .map_err(|_| invalid("otlp", "invalid OTLP encoding"))?;
-    self::request(&request, limits)?;
+    if let Some(delivery) = &raw.delivery {
+        crate::delivery::validate_observation(delivery)?;
+    }
+    Ok(())
+}
+
+fn lower(
+    raw: &RawRecord,
+    request: &ExportMetricsServiceRequest,
+    limits: Limits,
+) -> Result<Vec<AnalyticalPoint>, Issue> {
     let mut positions = BTreeSet::new();
     for b in &raw.bindings {
         if b.original_resource as usize >= request.resource_metrics.len()
@@ -439,7 +385,7 @@ pub fn raw(raw: &RawRecord, limits: Limits) -> Result<Vec<NormalizedPoint>, Issu
     crate::policy::requested_authorities(raw, limits.distinct_authorities)?;
     point::normalize_bounded(
         raw,
-        &request,
+        request,
         limits.points,
         limits.normalized_record_bytes,
         limits.normalized_batch_bytes,
@@ -447,86 +393,7 @@ pub fn raw(raw: &RawRecord, limits: Limits) -> Result<Vec<NormalizedPoint>, Issu
     .map_err(|e| Issue::new(Category::Limit, "normalized", e))
 }
 
-pub fn normalized(point: &NormalizedPoint, limits: Limits) -> Result<(), Issue> {
-    let limits = limits.validate()?;
-    use recount_telemetry_schema::{
-        common::InstrumentationScope, identity, resource::Resource, wire::ResourceBinding,
-    };
-    if recount_telemetry_schema::projection::encode(point)
-        .map_err(|e| invalid("normalized", e))?
-        .len()
-        > limits.normalized_record_bytes
-    {
-        return Err(Issue::new(
-            Category::Limit,
-            "normalized",
-            "normalized protobuf byte limit",
-        ));
-    }
-    let metric = metrics::Metric::decode(point.otlp_metric.as_slice())
-        .map_err(|_| invalid("metric", "invalid metric encoding"))?;
-    if point::observations(&metric).len() != 1 {
-        return Err(invalid(
-            "metric",
-            "exactly one original observation required",
-        ));
-    }
-    let resource = point
-        .otlp_resource
-        .as_deref()
-        .map(Resource::decode)
-        .transpose()
-        .map_err(|_| invalid("resource", "invalid resource encoding"))?;
-    let scope = point
-        .otlp_scope
-        .as_deref()
-        .map(InstrumentationScope::decode)
-        .transpose()
-        .map_err(|_| invalid("scope", "invalid scope encoding"))?;
-    let request = ExportMetricsServiceRequest {
-        resource_metrics: vec![metrics::ResourceMetrics {
-            resource,
-            schema_url: point.resource_schema_url.clone(),
-            scope_metrics: vec![metrics::ScopeMetrics {
-                scope,
-                schema_url: point.scope_schema_url.clone(),
-                metrics: vec![metric],
-            }],
-        }],
-    };
-    let synthetic = RawRecord {
-        security: point.security.clone(),
-        record_id: point.record_id.clone(),
-        received_unix_nano: point.received_unix_nano,
-        batch: point.batch.clone(),
-        payload_kind: point.payload_kind,
-        otlp_request: request.encode_to_vec(),
-        bindings: vec![ResourceBinding {
-            original_resource: 0,
-            context: point.context.clone(),
-        }],
-    };
-    let mut expected = raw(&synthetic, limits)?.remove(0);
-    let position = point
-        .original
-        .as_ref()
-        .ok_or_else(|| invalid("original", "missing original point position"))?;
-    expected.sample_id = identity::sample_id(&synthetic, position)
-        .map_err(|e| invalid("sample_id", e))?
-        .to_vec();
-    expected.original = Some(*position);
-    if expected != *point
-        || expected.double_value.map(f64::to_bits) != point.double_value.map(f64::to_bits)
-    {
-        return Err(invalid(
-            "normalized",
-            "typed fields disagree with supported OTLP or immutable identity",
-        ));
-    }
-    Ok(())
-}
-
-pub fn retained_raw(record: &RawRecord, limits: Limits) -> Result<Vec<NormalizedPoint>, Issue> {
+pub fn retained_raw(record: &RawRecord, limits: Limits) -> Result<Vec<AnalyticalPoint>, Issue> {
     raw(record, limits).map_err(|mut issue| {
         issue.category = Category::Poison;
         issue

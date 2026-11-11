@@ -24,10 +24,23 @@ pub struct Config {
         required = true
     )]
     pub database_url: Option<String>,
+    /// Base64url Ed25519 public keys trusted to sign collector access tokens, comma-separated.
+    /// List the previous and next key together while rotating the web application's key.
+    #[arg(
+        long,
+        env = "RECOUNT_INGESTION_COLLECTOR_PUBLIC_KEYS",
+        value_delimiter = ',',
+        required = true
+    )]
+    pub collector_public_keys: Vec<String>,
     #[arg(long, env = "RECOUNT_KAFKA_BOOTSTRAP", default_value = "kafka:9092", value_parser = nonblank)]
     pub kafka_bootstrap: String,
     #[arg(long, env = "RECOUNT_RAW_TOPIC", default_value = recount_telemetry_schema::RAW_TOPIC, value_parser = nonblank)]
     pub raw_topic: String,
+    #[arg(long, env = "RECOUNT_LIVE_TOPIC", default_value = "recount.metrics.live", value_parser = nonblank)]
+    pub live_topic: String,
+    #[arg(long, env = "RECOUNT_LIVE_PARTITIONS", default_value_t = 8, value_parser = clap::value_parser!(u32).range(1..=256))]
+    pub live_partitions: u32,
     #[arg(long, env = "RECOUNT_RAW_PARTITIONS", default_value_t = 3, value_parser = clap::value_parser!(i32).range(1..))]
     pub raw_partitions: i32,
     #[arg(long, env = "RECOUNT_RAW_BROKER_MAX_BYTES", default_value_t = RAW_BROKER_BYTES as usize, value_parser = clap::value_parser!(u32).range(1000..=MAX_BROKER_BYTES as i64).map(|v| v as usize))]
@@ -51,6 +64,9 @@ impl Config {
             .validation
             .limits()
             .map_err(|_| invalid("incoherent validation limits"))?;
+        if self.raw_topic == self.live_topic {
+            return Err(invalid("raw and Live topics must differ"));
+        }
         transport::body_fits(limits.decoded_bytes, self.raw_broker_max_bytes).map_err(invalid)?;
         if self
             .database_url
@@ -82,7 +98,16 @@ mod tests {
         assert_eq!(config.limits().unwrap(), Limits::default());
         assert!(config.database_url.is_none());
         assert_eq!(config.raw_broker_max_bytes, RAW_BROKER_BYTES as usize);
-        assert!(parse(&["ingestion", "--database-url", "synthetic"]).is_ok());
+        assert!(parse(&["ingestion", "--database-url", "synthetic"]).is_err());
+        let service = parse(&[
+            "ingestion",
+            "--database-url",
+            "synthetic",
+            "--collector-public-keys",
+            "first,second",
+        ])
+        .unwrap();
+        assert_eq!(service.collector_public_keys, ["first", "second"]);
         assert!(
             parse(&["ingestion", "--database-url", " ", "validate"])
                 .unwrap()

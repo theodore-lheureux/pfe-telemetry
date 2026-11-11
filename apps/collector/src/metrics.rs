@@ -6,6 +6,7 @@ use opentelemetry_proto::tonic::{
     },
     resource::v1::Resource,
 };
+use recount_telemetry_validation::catalogue::Definition;
 
 pub(crate) fn string(key: &str, value: impl Into<String>) -> KeyValue {
     KeyValue {
@@ -42,10 +43,10 @@ pub(crate) fn point(
     }
 }
 
-pub(crate) fn counter(name: &str, unit: &str, points: Vec<NumberDataPoint>) -> Metric {
+pub(crate) fn counter(definition: &Definition, points: Vec<NumberDataPoint>) -> Metric {
     Metric {
-        name: name.into(),
-        unit: unit.into(),
+        name: definition.name.into(),
+        unit: definition.unit.into(),
         data: Some(metric::Data::Sum(Sum {
             data_points: points,
             aggregation_temporality: AggregationTemporality::Cumulative as i32,
@@ -55,10 +56,10 @@ pub(crate) fn counter(name: &str, unit: &str, points: Vec<NumberDataPoint>) -> M
     }
 }
 
-pub(crate) fn gauge(name: &str, unit: &str, points: Vec<NumberDataPoint>) -> Metric {
+pub(crate) fn gauge(definition: &Definition, points: Vec<NumberDataPoint>) -> Metric {
     Metric {
-        name: name.into(),
-        unit: unit.into(),
+        name: definition.name.into(),
+        unit: definition.unit.into(),
         data: Some(metric::Data::Gauge(Gauge {
             data_points: points,
         })),
@@ -82,56 +83,5 @@ pub(crate) fn resource(attributes: Vec<KeyValue>, metrics: Vec<Metric>) -> Resou
             ..Default::default()
         }],
         ..Default::default()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn baseline_builders_preserve_types_units_and_dimensions() {
-        let cpu = counter(
-            "recount.node.cpu.time",
-            "s",
-            vec![point(
-                number_data_point::Value::AsDouble(1.25),
-                200,
-                100,
-                vec![
-                    string("cpu.mode", "user"),
-                    string(
-                        "recount.counter.segment_id",
-                        "bd2e9e7e-09b7-4e28-807d-1b71ab43de88",
-                    ),
-                ],
-            )],
-        );
-        assert_eq!(cpu.name, "recount.node.cpu.time");
-        assert_eq!(cpu.unit, "s");
-        let Some(metric::Data::Sum(sum)) = cpu.data else {
-            panic!("CPU must be a sum");
-        };
-        assert_eq!(sum.aggregation_temporality, 2);
-        assert!(sum.is_monotonic);
-        assert_eq!(
-            sum.data_points[0].value,
-            Some(number_data_point::Value::AsDouble(1.25))
-        );
-        assert_eq!(sum.data_points[0].attributes[0].key, "cpu.mode");
-
-        let rss = gauge(
-            "recount.process.memory.rss",
-            "By",
-            vec![point(number_data_point::Value::AsInt(4096), 200, 0, vec![])],
-        );
-        let Some(metric::Data::Gauge(data)) = rss.data else {
-            panic!("RSS must be a gauge");
-        };
-        assert_eq!(data.data_points[0].start_time_unix_nano, 0);
-        assert_eq!(
-            data.data_points[0].value,
-            Some(number_data_point::Value::AsInt(4096))
-        );
     }
 }

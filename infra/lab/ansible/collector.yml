@@ -5,7 +5,8 @@
   gather_facts: true
   gather_subset: ["!all", min]
   vars:
-    recount_collector_endpoint: http://10.0.2.2:14317
+    recount_collector_endpoint: "http://{{ recount_ingestion_address }}"
+    recount_collector_enrollment_url: "http://{{ recount_web_address }}"
     recount_collector_interval_ms: 1000
     recount_collector_state: started
     recount_collector_enabled_on_boot: true
@@ -13,7 +14,7 @@
     recount_collector_arch: "{{ {'aarch64': 'arm64', 'x86_64': 'amd64'}.get(ansible_facts.architecture, 'unsupported') }}"
     recount_collector_artifacts: "{{ playbook_dir }}/../../../.state/artifacts/{{ recount_collector_arch }}"
     recount_collector_binary: "{{ recount_collector_artifacts }}/bin/recount-collector"
-    recount_collector_token_directory: "{{ playbook_dir }}/../.state/tokens"
+    recount_collector_enrollment_directory: "{{ playbook_dir }}/../.state/enrollment"
     recount_demo_owner_email: "{{ lookup('ansible.builtin.env', 'RECOUNT_DEMO_OWNER_EMAIL') }}"
     recount_demo_env_file: "{{ playbook_dir }}/../../../apps/web/.env"
   pre_tasks:
@@ -65,7 +66,7 @@
       changed_when: false
       when: recount_collector_state == 'started'
 
-    - name: Provision the local demo account, organization and node credentials
+    - name: Provision the local demo account, organization and enrollment key
       ansible.builtin.command:
         argv:
           - bun
@@ -76,7 +77,7 @@
           - --nodes
           - "{{ recount_demo_nodes | to_json }}"
           - --state-directory
-          - "{{ recount_collector_token_directory }}"
+          - "{{ recount_collector_enrollment_directory }}"
         chdir: "{{ playbook_dir }}/../../.."
       delegate_to: localhost
       become: false
@@ -113,76 +114,15 @@
       notify: Restart the telemetry collector
       when: recount_collector_state == 'started'
 
-    - name: Inspect the installed credential without revealing it
-      ansible.builtin.stat:
-        path: /etc/recount-collector/source.token
-        checksum_algorithm: sha256
-      register: recount_installed_token
-      no_log: true
-
-    - name: Inspect the provisioned credential locally
-      ansible.builtin.stat:
-        path: "{{ recount_collector_token_directory }}/{{ inventory_hostname }}.token"
-        checksum_algorithm: sha256
-      register: recount_provisioned_token
-      delegate_to: localhost
-      become: false
-      no_log: true
-      when: recount_collector_state == 'started'
-
-    - name: Preserve an earlier enrollment before switching the service
-      when: recount_collector_state == 'started' and recount_installed_token.stat.exists and recount_installed_token.stat.checksum != recount_provisioned_token.stat.checksum
-      no_log: true
-      block:
-        - name: Read the earlier service configuration privately
-          ansible.builtin.slurp:
-            src: /etc/systemd/system/recount-collector.service
-          register: recount_earlier_service
-
-        - name: Refuse rebinding an existing queue to a different token
-          ansible.builtin.assert:
-            that:
-              - "('StateDirectory=' + recount_collector_queue_name) not in (recount_earlier_service.content | b64decode).splitlines()"
-            fail_msg: Drain the earlier enrollment and select a new private queue name before replacing its token.
-
-        - name: Stop the earlier collector gracefully
-          ansible.builtin.systemd_service:
-            name: recount-collector
-            state: stopped
-
-        - name: Create the private enrollment archive
-          ansible.builtin.file:
-            path: /etc/recount-collector/previous-enrollments
-            state: directory
-            owner: "{{ ansible_user }}"
-            mode: "0700"
-
-        - name: Preserve the earlier token
-          ansible.builtin.copy:
-            src: /etc/recount-collector/source.token
-            dest: "/etc/recount-collector/previous-enrollments/{{ recount_installed_token.stat.checksum }}.token"
-            remote_src: true
-            owner: "{{ ansible_user }}"
-            mode: "0600"
-            force: false
-
-        - name: Preserve the earlier service configuration
-          ansible.builtin.copy:
-            src: /etc/systemd/system/recount-collector.service
-            dest: "/etc/recount-collector/previous-enrollments/{{ recount_installed_token.stat.checksum }}.service"
-            remote_src: true
-            owner: "{{ ansible_user }}"
-            mode: "0600"
-            force: false
-
-    - name: Install this node's source credential
+    # The key is only needed until each VM has enrolled; the node identity in the state
+    # directory survives key rotation, so replacing the key never rebinds the queue.
+    - name: Install the project's enrollment key
       ansible.builtin.copy:
-        src: "{{ recount_collector_token_directory }}/{{ inventory_hostname }}.token"
-        dest: /etc/recount-collector/source.token
+        src: "{{ recount_collector_enrollment_directory }}/enrollment.key"
+        dest: /etc/recount-collector/enrollment.key
         owner: "{{ ansible_user }}"
         mode: "0600"
       no_log: true
-      notify: Restart the telemetry collector
       when: recount_collector_state == 'started'
 
     - name: Install the telemetry collector service

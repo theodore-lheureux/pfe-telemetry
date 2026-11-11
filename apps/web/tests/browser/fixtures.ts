@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { test as base, expect, type Page } from "@playwright/test";
@@ -7,13 +7,17 @@ import type { Locale } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
+import { readSigningKey } from "../../src/collectors/tokens.server";
+import { settingsCatalog } from "../../src/components/settings/settings-catalog";
 import {
 	type SettingsSection,
-	settingsPath,
+	settingsScopes,
+	settingsSections,
 } from "../../src/components/settings-links";
-import type { OperationResult } from "../../src/organizations/contracts";
+import type { OperationResult } from "../../src/lib/operation-result";
 import { trustedCodeSignIn } from "../auth-actors";
 import { createTestDatabase } from "../database";
+import { settingsPath } from "../settings-path";
 
 export function settingsUrl(scope: string, section?: SettingsSection) {
 	const relative = scope.startsWith("/");
@@ -132,20 +136,40 @@ export async function dismissPasskeySetup(page: Page, locale: Locale = "en") {
 	await expect(prompt).toHaveCount(0);
 }
 
+export async function openReauthentication(page: Page, redirect = "/") {
+	// Keep the document and held responses alive; a hard reload would erase the race.
+	await page.evaluate((redirect) => {
+		history.pushState(
+			null,
+			"",
+			`/login?redirect=${encodeURIComponent(redirect)}`,
+		);
+	}, redirect);
+	await expect(
+		page.getByLabel(m.email_address(), { exact: true }),
+	).toBeVisible();
+}
+
 async function expandSettingsNavigation(page: Page, locale: Locale) {
-	const summary = page
-		.getByRole("navigation", {
-			name: m.settings_navigation({}, { locale }),
+	const navigation = page.getByRole("navigation", {
+		name: m.settings_navigation({}, { locale }),
+		exact: true,
+	});
+	await expect(navigation).toBeVisible();
+	const summary = navigation.getByRole("button", {
+		name: new RegExp(`^${m.settings({}, { locale })} ·`),
+	});
+	if (await summary.count()) {
+		await expect(summary).toBeEnabled();
+		if ((await summary.getAttribute("aria-expanded")) === "false")
+			await summary.click();
+	}
+	await expect(
+		navigation.getByRole("combobox", {
+			name: m.search_settings({}, { locale }),
 			exact: true,
-		})
-		.getByRole("button", {
-			name: new RegExp(`^${m.settings({}, { locale })} ·`),
-		});
-	if (
-		(await summary.isVisible()) &&
-		(await summary.getAttribute("aria-expanded")) === "false"
-	)
-		await summary.click();
+		}),
+	).toBeVisible();
 }
 
 export async function openPreferences(page: Page, locale: Locale = "en") {
@@ -177,7 +201,7 @@ export async function openPreferences(page: Page, locale: Locale = "en") {
 		.click();
 	await expect(
 		page.getByRole("heading", {
-			name: m.appearance({}, { locale }),
+			name: m.appearance_language({}, { locale }),
 			exact: true,
 			level: 1,
 		}),
@@ -262,14 +286,6 @@ export async function openSettingsSection(
 	name: string,
 	locale: Locale = "en",
 ) {
-	if (name === m.organizations({}, { locale }))
-		return chooseOrganization(
-			page,
-			m.all_organizations({}, { locale }),
-			locale,
-		);
-	if (name === m.projects({}, { locale }))
-		return chooseProject(page, m.all_visible_projects({}, { locale }), locale);
 	const link = page
 		.getByRole("navigation", {
 			name: m.settings_navigation({}, { locale }),
@@ -281,22 +297,35 @@ export async function openSettingsSection(
 		return link.click();
 	}
 	await openWorkspaceMenu(page, locale);
+	const section = settingsSections.find(
+		(section) => settingsCatalog[section].label({}, { locale }) === name,
+	);
+	const scope = section && settingsScopes[section];
 	const parent =
-		name === m.collector_credentials({}, { locale })
+		scope === "project"
 			? m.project_settings({}, { locale })
-			: name === m.members({}, { locale })
+			: scope === "organization"
 				? m.organization_settings({}, { locale })
-				: name === m.appearance_language({}, { locale })
+				: scope === "user"
 					? m.user_settings({}, { locale })
 					: name;
 	await page.getByRole("menuitem", { name: parent, exact: true }).click();
-	if (parent !== name) {
+	if (
+		section ||
+		[
+			m.project_settings({}, { locale }),
+			m.organization_settings({}, { locale }),
+			m.user_settings({}, { locale }),
+		].some((label) => label === name)
+	) {
 		await expect(
 			page.getByRole("navigation", {
 				name: m.settings_navigation({}, { locale }),
 				exact: true,
 			}),
 		).toBeVisible();
+	}
+	if (parent !== name) {
 		await expandSettingsNavigation(page, locale);
 		await link.click();
 	}
@@ -323,6 +352,10 @@ async function createWorkspace(parallelIndex: number) {
 	const url = new URL(database.url);
 	const origin = `http://localhost:${port}`;
 	const secret = `browser-test-only-${randomUUID()}`;
+	const collectorSigningKey = randomBytes(32).toString("base64url");
+	const collectorPublicKey = readSigningKey({
+		RECOUNT_COLLECTOR_SIGNING_KEY: collectorSigningKey,
+	}).publicJwk.x;
 	const codes = new Map<string, string>();
 	const auth = createAuth(
 		{ origin, secret, rpID: "localhost", allowSignUp: true },
@@ -422,6 +455,7 @@ async function createWorkspace(parallelIndex: number) {
 					BETTER_AUTH_URL: origin,
 					BETTER_AUTH_SECRET: secret,
 					RECOUNT_AUTH_ALLOW_SIGN_UP: "true",
+					RECOUNT_COLLECTOR_SIGNING_KEY: collectorSigningKey,
 					SMTP_HOST: "127.0.0.1",
 					SMTP_PORT: "31562",
 					SMTP_USER: "test-only",
@@ -473,6 +507,7 @@ async function createWorkspace(parallelIndex: number) {
 		timings,
 		origin,
 		databaseUrl: url.toString(),
+		collectorPublicKey,
 		codes,
 		database,
 		auth,

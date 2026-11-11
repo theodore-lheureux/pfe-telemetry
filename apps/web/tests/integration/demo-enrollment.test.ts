@@ -24,7 +24,6 @@ test("local demo enrollment reuses canonical ownership and tokens, and refuses l
 			organizationName: "Recount demo",
 			organizationSlug: "recount-demo",
 			projectName: "Local VMs",
-			projectSlug: "local-vms",
 			stateDirectory: directory,
 			nodes: [
 				{ name: "node1", hostId: "recount-compute-1" },
@@ -40,8 +39,8 @@ test("local demo enrollment reuses canonical ownership and tokens, and refuses l
 			"recount-compute-1",
 			"recount-compute-2",
 		]);
-		const token = await readFile(join(directory, "node1.token"), "utf8");
-		expect((await stat(join(directory, "node1.token"))).mode & 0o777).toBe(
+		const key = await readFile(join(directory, "enrollment.key"), "utf8");
+		expect((await stat(join(directory, "enrollment.key"))).mode & 0o777).toBe(
 			0o600,
 		);
 		const second = await provisionDemoCollectors(input);
@@ -49,21 +48,21 @@ test("local demo enrollment reuses canonical ownership and tokens, and refuses l
 		expect(second.projectId).toBe(first.projectId);
 		expect(second.organizationId).toBe(first.organizationId);
 		expect(second.nodes).toEqual(first.nodes);
-		expect(await readFile(join(directory, "node1.token"), "utf8")).toBe(token);
-		expect(JSON.stringify(second)).not.toContain(token.trim());
-		await unlink(join(directory, "node1.token"));
+		expect(await readFile(join(directory, "enrollment.key"), "utf8")).toBe(key);
+		expect(JSON.stringify(second)).not.toContain(key.trim());
+		await unlink(join(directory, "enrollment.key"));
 		await expect(provisionDemoCollectors(input)).rejects.toThrow(
-			"token file is missing",
+			"enrollment key file is missing",
 		);
 		const inspect = new Pool({ connectionString: url.toString(), max: 1 });
 		try {
 			const [counts] = (
 				await inspect.query(`SELECT
-				(SELECT count(*)::int FROM ingestion.collector_credential) AS credentials,
+				(SELECT count(*)::int FROM ingestion.enrollment_key) AS keys,
 				(SELECT count(*)::int FROM app.organization) AS organizations,
 				(SELECT count(*)::int FROM app.member WHERE role = 'owner') AS owners`)
 			).rows;
-			expect(counts).toEqual({ credentials: 2, organizations: 1, owners: 1 });
+			expect(counts).toEqual({ keys: 1, organizations: 1, owners: 1 });
 		} finally {
 			await inspect.end();
 		}

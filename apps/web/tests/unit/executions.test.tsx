@@ -21,6 +21,7 @@ test("validates calendar timestamps, fixed windows and bounded resolution", () =
 		"2026-11-03T10:00:00.000Z",
 	);
 	for (const value of [
+		"1969-12-31T23:59:59Z",
 		"2026-02-30T00:00:00Z",
 		"2026-11-03",
 		"2026-11-03T24:00:00Z",

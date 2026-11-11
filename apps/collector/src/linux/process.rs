@@ -2,6 +2,11 @@ use std::io;
 
 use opentelemetry_proto::tonic::metrics::v1::{ResourceMetrics, number_data_point::Value};
 use procfs::{ProcError, process::Process};
+use recount_telemetry_validation::catalogue::{
+    PROCESS_CPU_TIME as CPU_TIME, PROCESS_DISK_IO as DISK_IO,
+    PROCESS_MEMORY_RSS as RESIDENT_MEMORY, READ_STATUS,
+};
+use recount_telemetry_validation::linux_adapter::{self as adapter, ProcessIdentity, Scope};
 
 use super::Collector;
 use crate::{
@@ -9,10 +14,6 @@ use crate::{
     identity::same_incarnation,
     metrics::{counter, gauge, integer, resource, string},
 };
-
-const CPU_TIME: &str = "process.cpu.time";
-const RESIDENT_MEMORY: &str = "recount.process.memory.rss";
-const DISK_IO: &str = "process.disk.io";
 
 impl Collector {
     pub(super) fn process_metrics(
@@ -39,11 +40,18 @@ impl Collector {
             Ok(_) => return Ok(Err(ReadStatus::Failed)),
             Err(error) => return Ok(Err(ReadStatus::from_error(&error))),
         }
-        let prefix = format!("process/{}/{}/{}", self.namespace, stat.pid, stat.starttime);
+        let incarnation = ProcessIdentity {
+            boot: &self.boot,
+            namespace: &self.namespace,
+            pid: stat.pid as u64,
+            start_ticks: stat.starttime,
+        }
+        .incarnation();
+        let prefix = format!("process/{incarnation}");
         let mut cpu_points = Vec::new();
         for (mode, ticks) in [("user", stat.utime), ("system", stat.stime)] {
             cpu_points.push(self.counter_point(
-                format!("{prefix}/{CPU_TIME}/{mode}"),
+                format!("{prefix}/{}/{mode}", CPU_TIME.name),
                 ticks,
                 Value::AsDouble(ticks as f64 / self.ticks_per_second as f64),
                 cpu_time,
@@ -51,8 +59,8 @@ impl Collector {
                 vec![string("cpu.mode", mode)],
             )?);
         }
-        let mut metrics = vec![counter(CPU_TIME, "s", cpu_points)];
-        let mut statuses = vec![self.read_status(CPU_TIME, ReadStatus::Read, cpu_time)];
+        let mut metrics = vec![counter(&CPU_TIME, cpu_points)];
+        let mut statuses = vec![self.read_status(&CPU_TIME, ReadStatus::Read, cpu_time)];
         let memory_status = match memory {
             Ok(memory) => match memory
                 .resident
@@ -60,14 +68,14 @@ impl Collector {
                 .and_then(|bytes| i64::try_from(bytes).ok())
             {
                 Some(bytes) => {
-                    metrics.push(self.int_gauge(RESIDENT_MEMORY, "By", bytes, memory_time));
+                    metrics.push(self.int_gauge(&RESIDENT_MEMORY, bytes, memory_time));
                     ReadStatus::Read
                 }
                 None => ReadStatus::OutOfRange,
             },
             Err(error) => ReadStatus::from_error(&error),
         };
-        statuses.push(self.read_status(RESIDENT_MEMORY, memory_status, memory_time));
+        statuses.push(self.read_status(&RESIDENT_MEMORY, memory_status, memory_time));
         let mut disk_points = Vec::new();
         let disk_status = match disk {
             Ok(disk) => {
@@ -75,7 +83,7 @@ impl Collector {
                 for (direction, raw) in [("read", disk.read_bytes), ("write", disk.write_bytes)] {
                     match i64::try_from(raw) {
                         Ok(bytes) => disk_points.push(self.counter_point(
-                            format!("{prefix}/{DISK_IO}/{direction}"),
+                            format!("{prefix}/{}/{direction}", DISK_IO.name),
                             raw,
                             Value::AsInt(bytes),
                             disk_time,
@@ -90,27 +98,21 @@ impl Collector {
             Err(error) => ReadStatus::from_error(&error),
         };
         if !disk_points.is_empty() {
-            metrics.push(counter(DISK_IO, "By", disk_points));
+            metrics.push(counter(&DISK_IO, disk_points));
         }
-        statuses.push(self.read_status(DISK_IO, disk_status, disk_time));
-        metrics.push(gauge("recount.collection.read.status", "1", statuses));
-        let mut attributes = self.attributes("process");
+        statuses.push(self.read_status(&DISK_IO, disk_status, disk_time));
+        metrics.push(gauge(&READ_STATUS, statuses));
+        let mut attributes = self.attributes(Scope::Process);
         attributes.extend([
-            integer("process.pid", i64::from(stat.pid)),
-            integer("process.parent_pid", i64::from(stat.ppid)),
-            string("recount.process.namespace_id", self.namespace.clone()),
+            integer(adapter::PID, i64::from(stat.pid)),
+            integer(adapter::PARENT_PID, i64::from(stat.ppid)),
+            string(adapter::NAMESPACE_ID, self.namespace.clone()),
             string(
-                "recount.process.incarnation_id",
+                adapter::INCARNATION_ID,
                 format!("start-ticks:{}", stat.starttime),
             ),
-            string(
-                "recount.process.start_time_ticks",
-                stat.starttime.to_string(),
-            ),
-            integer(
-                "recount.linux.clock_ticks_per_second",
-                self.ticks_per_second as i64,
-            ),
+            string(adapter::START_TICKS, stat.starttime.to_string()),
+            integer(adapter::CLOCK_TICKS, self.ticks_per_second as i64),
         ]);
         // Derived wall-clock start times are omitted: btime/tick precision alone
         // does not establish a truthful wall-clock resolution across steps.

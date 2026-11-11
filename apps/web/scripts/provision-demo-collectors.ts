@@ -2,14 +2,13 @@ import { createHash } from "node:crypto";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { actorService } from "../src/auth/actor.server";
 import { createAuth } from "../src/auth/create-auth.server";
-import type { CollectorCredentialSummary } from "../src/credentials/contracts";
-import * as credentialDomain from "../src/credentials/credentials.server";
+import * as collectorDomain from "../src/collectors/collectors.server";
 import { createDatabase } from "../src/db/client.server";
-import { collectorCredential, collectorRootGrant } from "../src/db/schema";
-import type { OperationResult } from "../src/organizations/contracts";
+import { enrollmentKey } from "../src/db/schema";
+import type { OperationResult } from "../src/lib/operation-result";
 import * as organizationDomain from "../src/organizations/organizations.server";
 import * as projectDomain from "../src/organizations/projects.server";
 
@@ -23,7 +22,6 @@ interface Input {
 	organizationName: string;
 	organizationSlug: string;
 	projectName: string;
-	projectSlug: string;
 	stateDirectory: string;
 	nodes: Node[];
 	databaseUrl: string;
@@ -34,7 +32,7 @@ interface Input {
 function data<T>(result: OperationResult<T>): T {
 	if (result.error)
 		throw new Error(
-			"Demo operation was denied; no existing account or credential was reset.",
+			"Demo operation was denied; no existing account or enrollment key was reset.",
 		);
 	return result.data;
 }
@@ -152,7 +150,7 @@ export async function provisionDemoCollectors(input: Input) {
 			await organizations(headers, (actor) =>
 				projectDomain.listProjects(database.db, actor, organization.id),
 			),
-		).find((item) => item.slug === input.projectSlug);
+		).find((item) => item.name === input.projectName);
 		if (!project) {
 			project = data(
 				await organizations(headers, (actor) =>
@@ -160,7 +158,6 @@ export async function provisionDemoCollectors(input: Input) {
 						requestId: crypto.randomUUID(),
 						organizationId: organization.id,
 						name: input.projectName,
-						slug: input.projectSlug,
 					}),
 				),
 			);
@@ -170,117 +167,66 @@ export async function provisionDemoCollectors(input: Input) {
 			organizationId: organization.id,
 			projectId: project.id,
 		};
-		const credentials = actorService(auth);
-		const current = data(
-			await credentials(headers, (actor) =>
-				credentialDomain.listCollectorCredentials(
-					database.db,
-					actor,
-					reference,
-				),
-			),
-		);
-		const nodes = [];
-		for (const node of input.nodes) {
-			const sourceId = `local-vm-${node.name}`;
-			const tokenPath = resolve(directory, `${node.name}.token`);
-			const saved = (await exists(tokenPath))?.trim();
-			let credential: CollectorCredentialSummary;
-			if (saved !== undefined) {
-				const match = /^recount_([0-9a-f-]{36})_[A-Za-z0-9_-]{43}$/.exec(saved);
-				const found = current.find((item) => item.id === match?.[1]);
-				if (
-					!found ||
-					found.sourceId !== sourceId ||
-					found.revokedAt ||
-					(found.expiresAt && found.expiresAt <= new Date()) ||
-					found.rootKind !== 1 ||
-					found.rootId !== node.hostId
-				) {
-					throw new Error(
-						"Existing VM credential is inactive or belongs to another scope. Restore the correct token or enroll explicitly; credentials are not automatically rotated.",
-					);
-				}
-				const [valid] = await database.db
-					.select({
-						id: collectorCredential.id,
-						adapter: collectorRootGrant.adapter,
-						allowedLocalKinds: collectorRootGrant.allowedLocalKinds,
-					})
-					.from(collectorCredential)
-					.innerJoin(
-						collectorRootGrant,
-						and(
-							eq(collectorRootGrant.credentialId, collectorCredential.id),
-							eq(collectorRootGrant.projectId, collectorCredential.projectId),
-							eq(
-								collectorRootGrant.organizationId,
-								collectorCredential.organizationId,
-							),
-							eq(collectorRootGrant.resourceId, node.hostId),
-							eq(collectorRootGrant.resourceKind, 1),
+		// One enrollment key for every demo VM; each VM enrolls itself with its host ID.
+		const keyName = "Demo VMs";
+		const keyPath = resolve(directory, "enrollment.key");
+		const saved = (await exists(keyPath))?.trim();
+		if (saved !== undefined) {
+			const [active] = await database.db
+				.select({ id: enrollmentKey.id })
+				.from(enrollmentKey)
+				.where(
+					and(
+						eq(enrollmentKey.projectId, project.id),
+						eq(enrollmentKey.organizationId, organization.id),
+						eq(
+							enrollmentKey.keySha256,
+							createHash("sha256").update(saved, "ascii").digest("hex"),
 						),
-					)
-					.where(
-						and(
-							eq(collectorCredential.id, found.id),
-							eq(collectorCredential.projectId, project.id),
-							eq(collectorCredential.organizationId, organization.id),
-							eq(
-								collectorCredential.tokenSha256,
-								createHash("sha256").update(saved, "ascii").digest("hex"),
-							),
-						),
-					);
-				if (
-					valid?.adapter !== "linux" ||
-					valid.allowedLocalKinds.length !== 1 ||
-					valid.allowedLocalKinds[0] !== 4
-				)
-					throw new Error(
-						"The saved VM token or root grant no longer matches. Restore the intended enrollment explicitly; credentials are not automatically rotated.",
-					);
-				credential = found;
-				await chmod(tokenPath, 0o600);
-			} else {
-				if (current.some((item) => item.sourceId === sourceId))
-					throw new Error(
-						"An enrolled VM token file is missing. Restore its once-revealed token instead of silently replacing the credential.",
-					);
-				const created = data(
-					await credentials(headers, (actor) =>
-						credentialDomain.createCollectorCredential(database.db, actor, {
-							...reference,
-							name: `VM ${node.name}`,
-							sourceId,
-							rootId: node.hostId,
-							rootKind: 1,
-							adapter: "linux",
-							allowedLocalKinds: [4],
-						}),
+						isNull(enrollmentKey.revokedAt),
 					),
 				);
-				await writeFile(tokenPath, `${created.token}\n`, {
-					flag: "wx",
-					mode: 0o600,
-				});
-				credential = created.credential;
-				current.push(credential);
-				changed = true;
-			}
-			nodes.push({
-				name: node.name,
-				hostId: node.hostId,
-				sourceId,
-				credentialId: credential.id,
-			});
+			if (!active)
+				throw new Error(
+					"The saved demo enrollment key is revoked or belongs to another project. Restore the correct key or remove the file to create a new one.",
+				);
+			await chmod(keyPath, 0o600);
+		} else {
+			const [existing] = await database.db
+				.select({ id: enrollmentKey.id })
+				.from(enrollmentKey)
+				.where(
+					and(
+						eq(enrollmentKey.projectId, project.id),
+						eq(enrollmentKey.name, keyName),
+						isNull(enrollmentKey.revokedAt),
+					),
+				);
+			if (existing)
+				throw new Error(
+					"The demo enrollment key file is missing. Restore its once-revealed key or revoke the key before creating a new one.",
+				);
+			const created = data(
+				await actorService(auth)(headers, (actor) =>
+					collectorDomain.createEnrollmentKey(database.db, actor, {
+						...reference,
+						name: keyName,
+						labels: ["demo"],
+					}),
+				),
+			);
+			await writeFile(keyPath, `${created.key}\n`, { flag: "wx", mode: 0o600 });
+			changed = true;
 		}
+		const nodes = input.nodes.map((node) => ({
+			name: node.name,
+			hostId: node.hostId,
+		}));
 		const result = {
 			changed,
 			email: input.email,
 			...reference,
 			organizationSlug: input.organizationSlug,
-			projectSlug: input.projectSlug,
 			nodes,
 		};
 		await writeFile(
@@ -319,7 +265,6 @@ if (import.meta.main) {
 			"organization-name": { type: "string", default: "Recount demo" },
 			"organization-slug": { type: "string", default: "recount-demo" },
 			"project-name": { type: "string", default: "Local VMs" },
-			"project-slug": { type: "string", default: "local-vms" },
 		},
 	});
 	try {
@@ -330,7 +275,6 @@ if (import.meta.main) {
 			organizationName: values["organization-name"],
 			organizationSlug: values["organization-slug"],
 			projectName: values["project-name"],
-			projectSlug: values["project-slug"],
 			databaseUrl: process.env.DATABASE_URL ?? "",
 			origin: process.env.BETTER_AUTH_URL ?? "",
 			authSecret: process.env.BETTER_AUTH_SECRET ?? "",
@@ -338,7 +282,7 @@ if (import.meta.main) {
 		console.log(JSON.stringify(result));
 	} catch {
 		console.error(
-			"Local demo enrollment failed. Check the loopback app environment, owner access and saved VM token files; existing credentials were not reset.",
+			"Local demo enrollment failed. Check the loopback app environment, owner access and saved enrollment key file; existing keys were not reset.",
 		);
 		process.exitCode = 1;
 	}

@@ -1,9 +1,7 @@
+import { decodeCalendarTimestamp } from "../lib/calendar";
+import { parseName, parseRequestId } from "../lib/input";
 import { InputError } from "../lib/input-error";
-import {
-	parseName,
-	parseProjectReference,
-	parseRequestId,
-} from "../organizations/validation";
+import { parseProjectReference } from "../organizations/validation";
 import type {
 	CreateExecutionInput,
 	ExecutionReference,
@@ -26,36 +24,15 @@ function uuid(value: unknown) {
 	return value.toLowerCase();
 }
 export function parseTimestamp(value: unknown) {
-	const match =
-		typeof value === "string" &&
-		/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(
-			value,
-		);
-	if (!match)
+	const decoded = decodeCalendarTimestamp(value);
+	if (decoded.error === "syntax")
 		throw new InputError(
 			"INVALID_TIME_RANGE",
 			"Use an ISO timestamp with timezone",
 		);
-	const [year, month, day, hour, minute, second] = match
-		.slice(1, 7)
-		.map(Number);
-	const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-	const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-	const time = Date.parse(match[0]);
-	if (
-		month < 1 ||
-		month > 12 ||
-		day < 1 ||
-		day > days[month - 1] ||
-		hour > 23 ||
-		minute > 59 ||
-		second > 59 ||
-		!Number.isFinite(time) ||
-		time < 0 ||
-		time >= Date.UTC(2101, 0, 1)
-	)
+	if (decoded.error || decoded.time < 0 || decoded.time >= Date.UTC(2101, 0, 1))
 		throw new InputError("INVALID_TIME_RANGE", "Invalid calendar timestamp");
-	return new Date(time).toISOString();
+	return new Date(decoded.time).toISOString();
 }
 export function parseExecutionReference(value: unknown): ExecutionReference {
 	return {
@@ -93,7 +70,7 @@ export function parseCreateExecution(value: unknown): CreateExecutionInput {
 		...parseProjectReference(value),
 		name: parseName(input.name),
 		requestId: parseRequestId(input.requestId),
-		credentialId: uuid(input.credentialId),
+		nodeId: uuid(input.nodeId),
 		hostId,
 		startedAt,
 		endedAt,

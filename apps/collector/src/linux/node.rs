@@ -2,17 +2,16 @@ use std::io;
 
 use opentelemetry_proto::tonic::metrics::v1::{Metric, number_data_point::Value};
 use procfs::{Current, CurrentSI, KernelStats, Meminfo};
+use recount_telemetry_validation::catalogue::{
+    NODE_CPU_TIME as CPU_TIME, NODE_DISK_IO as DISK_IO, NODE_MEMORY_AVAILABLE as AVAILABLE_MEMORY,
+    NODE_MEMORY_TOTAL as TOTAL_MEMORY, READ_STATUS,
+};
 
 use super::Collector;
 use crate::{
     diagnostics::ReadStatus,
     metrics::{counter, gauge, string},
 };
-
-const CPU_TIME: &str = "recount.node.cpu.time";
-const TOTAL_MEMORY: &str = "recount.node.memory.total";
-const AVAILABLE_MEMORY: &str = "recount.node.memory.available";
-const DISK_IO: &str = "system.disk.io";
 
 impl Collector {
     pub(super) fn node_metrics(&mut self) -> io::Result<Vec<Metric>> {
@@ -36,7 +35,7 @@ impl Collector {
                 ] {
                     if let Some(raw) = raw {
                         points.push(self.counter_point(
-                            format!("node/{CPU_TIME}/{mode}"),
+                            format!("node/{}/{mode}", CPU_TIME.name),
                             raw,
                             Value::AsDouble(raw as f64 / self.ticks_per_second as f64),
                             time,
@@ -51,11 +50,11 @@ impl Collector {
                         status = ReadStatus::Unsupported;
                     }
                 }
-                metrics.push(counter(CPU_TIME, "s", points));
-                statuses.push(self.read_status(CPU_TIME, status, time));
+                metrics.push(counter(&CPU_TIME, points));
+                statuses.push(self.read_status(&CPU_TIME, status, time));
             }
             Err(error) => {
-                statuses.push(self.read_status(CPU_TIME, ReadStatus::from_error(&error), time))
+                statuses.push(self.read_status(&CPU_TIME, ReadStatus::from_error(&error), time))
             }
         }
         let memory = Meminfo::current();
@@ -69,19 +68,19 @@ impl Collector {
                     let status = match bytes {
                         Some(bytes) => match i64::try_from(bytes) {
                             Ok(bytes) => {
-                                metrics.push(self.int_gauge(name, "By", bytes, time));
+                                metrics.push(self.int_gauge(&name, bytes, time));
                                 ReadStatus::Read
                             }
                             Err(_) => ReadStatus::OutOfRange,
                         },
                         None => ReadStatus::Unsupported,
                     };
-                    statuses.push(self.read_status(name, status, time));
+                    statuses.push(self.read_status(&name, status, time));
                 }
             }
             Err(error) => {
                 for name in [TOTAL_MEMORY, AVAILABLE_MEMORY] {
-                    statuses.push(self.read_status(name, ReadStatus::from_error(&error), time));
+                    statuses.push(self.read_status(&name, ReadStatus::from_error(&error), time));
                 }
             }
         }
@@ -101,7 +100,7 @@ impl Collector {
                             .and_then(|bytes| i64::try_from(bytes).ok())
                         {
                             disk_points.push(self.counter_point(
-                                format!("node/{DISK_IO}/{device}/{direction}"),
+                                format!("node/{}/{device}/{direction}", DISK_IO.name),
                                 sectors,
                                 Value::AsInt(bytes),
                                 time,
@@ -121,10 +120,10 @@ impl Collector {
             Err(error) => ReadStatus::from_error(&error),
         };
         if !disk_points.is_empty() {
-            metrics.push(counter(DISK_IO, "By", disk_points));
+            metrics.push(counter(&DISK_IO, disk_points));
         }
-        statuses.push(self.read_status(DISK_IO, disk_status, time));
-        metrics.push(gauge("recount.collection.read.status", "1", statuses));
+        statuses.push(self.read_status(&DISK_IO, disk_status, time));
+        metrics.push(gauge(&READ_STATUS, statuses));
         Ok(metrics)
     }
 }

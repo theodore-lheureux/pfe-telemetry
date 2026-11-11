@@ -10,18 +10,37 @@ use std::{
 
 use opentelemetry_proto::tonic::{
     common::v1::KeyValue,
-    metrics::v1::{Metric, NumberDataPoint, ResourceMetrics, number_data_point::Value},
+    metrics::v1::{Metric, NumberDataPoint, number_data_point::Value},
 };
 use procfs::{CurrentSI, KernelStats, process::Process};
+use recount_telemetry_validation::authority::identifier;
+use recount_telemetry_validation::catalogue::{self, Definition};
+use recount_telemetry_validation::linux_adapter::{self as adapter, IdentifierKind, Scope};
 
 use crate::{
     clock::{SamplingClock, is_discontinuity},
     continuity::Continuity,
-    delivery::{LossReason, LossTracker, Scan, point_count},
+    delivery::{LossReason, LossTracker, Scan, ScanContents},
     diagnostics::ReadStatus,
-    identity::{IdentifierKind, parse_identifier},
     metrics::{counter, gauge, integer, point, resource, string},
 };
+
+/// The host resource ID: an explicitly enrolled host ID, otherwise the Linux machine ID.
+/// It is also the machine ID a node enrolls with.
+pub(crate) fn host_id_or_machine_id(host_id: Option<String>) -> io::Result<String> {
+    match host_id {
+        Some(id) if identifier(&id) => Ok(id),
+        Some(_) => Err(io::Error::other(
+            "Enrolled host ID must be 1-128 bytes without control characters",
+        )),
+        None => adapter::parse_identifier(
+            &fs::read_to_string("/etc/machine-id")?,
+            IdentifierKind::Machine,
+        )
+        .map(str::to_owned)
+        .ok_or_else(|| io::Error::other("Invalid Linux machine identifier")),
+    }
+}
 
 /// Sampling identity and interval for one collection epoch.
 pub struct CollectorConfig {
@@ -38,6 +57,7 @@ pub struct CollectorConfig {
 /// Blocking Linux baseline sampling with verified process identity.
 pub struct Collector {
     host: Vec<KeyValue>,
+    boot: String,
     namespace: String,
     visibility: &'static str,
     interval_ns: i64,
@@ -63,18 +83,13 @@ impl Collector {
             namespace_id,
             host_visibility,
         } = config;
-        let host_id = match host_id {
-            Some(id) if !id.is_empty() && id.len() <= 128 => id,
-            Some(_) => return Err(io::Error::other("Enrolled host ID must be 1-128 bytes")),
-            None => parse_identifier(
-                &fs::read_to_string("/etc/machine-id")?,
-                IdentifierKind::Machine,
-            )?,
-        };
-        let boot_id = parse_identifier(
+        let host_id = host_id_or_machine_id(host_id)?;
+        let boot_id = adapter::parse_identifier(
             &fs::read_to_string("/proc/sys/kernel/random/boot_id")?,
             IdentifierKind::Boot,
-        )?;
+        )
+        .ok_or_else(|| io::Error::other("Invalid Linux boot identifier"))?
+        .to_owned();
         // Refuse a proc mount whose PID numbering differs from the caller's.
         let own = Process::myself()
             .and_then(|process| process.stat())
@@ -85,8 +100,12 @@ impl Collector {
             ));
         }
         let namespace = match namespace_id {
-            Some(id) if !id.is_empty() && id.len() <= 128 => id,
-            Some(_) => return Err(io::Error::other("Process namespace ID must be 1-128 bytes")),
+            Some(id) if identifier(&id) => id,
+            Some(_) => {
+                return Err(io::Error::other(
+                    "Process namespace ID must be 1-128 bytes without control characters",
+                ));
+            }
             None if host_visibility => "host".into(),
             None => {
                 return Err(io::Error::other(
@@ -120,8 +139,8 @@ impl Collector {
         let epoch_start = clock.timestamp()?;
         loss.start_epoch(&epoch);
         let mut host = vec![
-            string("host.id", host_id),
-            string("recount.host.boot_id", boot_id),
+            string(adapter::HOST_ID, host_id),
+            string(adapter::BOOT_ID, boot_id.clone()),
             string("os.type", "linux"),
             string("recount.collection.source", "rust-procfs"),
         ];
@@ -134,6 +153,7 @@ impl Collector {
         }
         Ok(Self {
             host,
+            boot: boot_id,
             namespace,
             visibility: if host_visibility {
                 "host"
@@ -172,7 +192,7 @@ impl Collector {
         self.continuity.begin_scan();
         self.cycle_points = 0;
         match self.scan() {
-            Ok(resources) => {
+            Ok(contents) => {
                 self.continuity.finish_scan();
                 if self.loss.generation() != generation {
                     // Export can report loss while a blocking scan is running.
@@ -180,7 +200,7 @@ impl Collector {
                     self.loss.record(
                         &self.epoch,
                         LossReason::BufferExpired,
-                        point_count(&resources),
+                        contents.point_count(),
                     );
                     self.continuity.invalidate();
                     return Ok(None);
@@ -188,7 +208,7 @@ impl Collector {
                 Ok(Some(Scan::new(
                     self.epoch.clone(),
                     generation,
-                    resources,
+                    contents,
                     self.loss.clone(),
                 )))
             }
@@ -215,12 +235,12 @@ impl Collector {
         }
     }
 
-    fn scan(&mut self) -> io::Result<Vec<ResourceMetrics>> {
+    fn scan(&mut self) -> io::Result<ScanContents> {
         // Establish the scan window before the first source read.
         self.clock.timestamp()?;
         let started = Instant::now();
         let node = self.node_metrics()?;
-        let mut resources = vec![resource(self.attributes("node"), node)];
+        let mut resources = vec![resource(self.attributes(Scope::Node), node)];
         let mut discovered = 0u64;
         let mut discarded = [0u64; 2];
         let mut discovery = ReadStatus::Read;
@@ -270,21 +290,10 @@ impl Collector {
         })
         .collect::<io::Result<Vec<_>>>()?;
         let diagnostics = vec![
-            self.int_gauge(
-                "recount.collection.discovery.status",
-                "1",
-                discovery as i64,
-                time,
-            ),
-            self.int_gauge(
-                "recount.collection.discovered.processes",
-                "{process}",
-                signed(discovered)?,
-                time,
-            ),
+            self.int_gauge(&catalogue::DISCOVERY_STATUS, discovery as i64, time),
+            self.int_gauge(&catalogue::DISCOVERED_PROCESSES, signed(discovered)?, time),
             gauge(
-                "recount.collection.discarded.processes",
-                "{process}",
+                &catalogue::DISCARDED_PROCESSES,
                 vec![
                     self.measurement_point(
                         Value::AsInt(signed(discarded[0])?),
@@ -300,28 +309,32 @@ impl Collector {
                     ),
                 ],
             ),
+            counter(&catalogue::DROPPED_POINTS, dropped),
+        ];
+        let window = vec![
             gauge(
-                "recount.collection.scan.duration",
-                "s",
+                &catalogue::SCAN_DURATION,
                 vec![self.measurement_point(Value::AsDouble(duration), time, 0, vec![])],
             ),
             // No synchronization estimate is verified by this collector.
-            self.int_gauge("recount.clock.status", "1", 0, time),
-            counter("recount.collection.dropped.points", "{point}", dropped),
+            self.int_gauge(&catalogue::CLOCK_STATUS, 0, time),
         ];
-        resources.push(resource(self.attributes("collector"), diagnostics));
-        Ok(resources)
+        Ok(ScanContents {
+            measurements: resources,
+            window: resource(self.attributes(Scope::Collector), window),
+            diagnostics: resource(self.attributes(Scope::Collector), diagnostics),
+        })
     }
 
-    fn attributes(&self, scope: &str) -> Vec<KeyValue> {
+    fn attributes(&self, scope: Scope) -> Vec<KeyValue> {
         let mut attributes = self.host.clone();
         attributes.extend([
-            string("recount.collection.scope", scope),
-            string("recount.collection.epoch_id", self.epoch.clone()),
-            integer("recount.collection.interval_ns", self.interval_ns),
+            string(adapter::SCOPE, scope.as_str()),
+            string(adapter::EPOCH_ID, self.epoch.clone()),
+            integer(adapter::INTERVAL_NS, self.interval_ns),
         ]);
-        if scope == "collector" {
-            attributes.push(string("recount.collection.visibility", self.visibility));
+        if scope == Scope::Collector {
+            attributes.push(string(adapter::VISIBILITY, self.visibility));
         }
         attributes
     }
@@ -353,24 +366,114 @@ impl Collector {
         point(value, time, start, dimensions)
     }
 
-    fn int_gauge(&mut self, name: &str, unit: &str, value: i64, time: u64) -> Metric {
+    fn int_gauge(&mut self, definition: &Definition, value: i64, time: u64) -> Metric {
         gauge(
-            name,
-            unit,
+            definition,
             vec![self.measurement_point(Value::AsInt(value), time, 0, vec![])],
         )
     }
 
-    fn read_status(&mut self, name: &str, status: ReadStatus, time: u64) -> NumberDataPoint {
+    fn read_status(
+        &mut self,
+        definition: &Definition,
+        status: ReadStatus,
+        time: u64,
+    ) -> NumberDataPoint {
         self.measurement_point(
             Value::AsInt(status as i64),
             time,
             0,
-            vec![string("recount.metric.name", name)],
+            vec![string("recount.metric.name", definition.name)],
         )
     }
 }
 
 fn signed(value: u64) -> io::Result<i64> {
     i64::try_from(value).map_err(|_| io::Error::other("Diagnostic count exceeds int64"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configured_host_and_namespace_reject_control_characters() {
+        for control in ['\n', '\t', '\0', '\u{0085}'] {
+            for host_invalid in [true, false] {
+                let invalid = format!("test{control}identity");
+                let error = Collector::new(
+                    CollectorConfig {
+                        interval: Duration::from_secs(1),
+                        host_id: Some(if host_invalid {
+                            invalid.clone()
+                        } else {
+                            "test-host".into()
+                        }),
+                        namespace_id: Some(if host_invalid {
+                            "test-namespace".into()
+                        } else {
+                            invalid
+                        }),
+                        host_visibility: false,
+                    },
+                    LossTracker::default(),
+                )
+                .err()
+                .expect("Control characters must be rejected");
+                assert!(error.to_string().contains("without control characters"));
+            }
+        }
+    }
+
+    #[test]
+    fn sampled_resources_obey_shared_identity_catalogue_and_window_contracts() {
+        let mut collector = Collector::new(
+            CollectorConfig {
+                interval: Duration::from_secs(1),
+                host_id: Some("test-host".into()),
+                namespace_id: Some("test-namespace".into()),
+                host_visibility: false,
+            },
+            LossTracker::default(),
+        )
+        .unwrap();
+        let contents = collector
+            .sample()
+            .unwrap()
+            .expect("Stable sampling clock")
+            .into_contents();
+        let window_names = contents
+            .window
+            .scope_metrics
+            .iter()
+            .flat_map(|s| &s.metrics)
+            .map(|m| m.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            window_names,
+            [catalogue::SCAN_DURATION.name, catalogue::CLOCK_STATUS.name]
+        );
+        let mut saw_self = false;
+        let mut saw_cpu = false;
+        for resource in contents
+            .measurements
+            .iter()
+            .chain([&contents.window, &contents.diagnostics])
+        {
+            let attrs = &resource.resource.as_ref().unwrap().attributes;
+            let identity = adapter::resource_identity(attrs).unwrap();
+            assert_eq!(identity.host, "test-host");
+            if let Some(process) = identity.process {
+                assert_eq!(process.namespace, "test-namespace");
+                saw_self |= process.pid == u64::from(std::process::id());
+            }
+            for metric in resource.scope_metrics.iter().flat_map(|s| &s.metrics) {
+                catalogue::validate_adapter_metric(metric, catalogue::Adapter::Linux).unwrap();
+                assert_ne!(metric.name, catalogue::CLOCK_UNCERTAINTY.name);
+                saw_cpu |= metric.name == catalogue::NODE_CPU_TIME.name;
+            }
+        }
+        assert!(saw_self);
+        assert!(saw_cpu);
+    }
 }

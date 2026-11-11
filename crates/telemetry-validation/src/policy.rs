@@ -209,37 +209,3 @@ pub fn authorize(
     }
     Ok(())
 }
-
-#[derive(Clone, Copy, Debug)]
-pub struct FlushLimits {
-    pub max_rows: usize,
-    pub max_bytes: usize,
-    pub max_delay_ns: u64,
-}
-impl FlushLimits {
-    pub fn validate(self) -> Result<Self, Issue> {
-        if self.max_rows == 0 || self.max_bytes == 0 || self.max_delay_ns == 0 {
-            Err(Issue::new(
-                Category::Invalid,
-                "flush",
-                "positive bounded flush limits required",
-            ))
-        } else {
-            Ok(self)
-        }
-    }
-    // Adapter uses a monotonic timer and starts it with the first buffered row.
-    pub fn due(self, rows: usize, bytes: usize, elapsed_ns: u64) -> bool {
-        rows > 0
-            && (rows >= self.max_rows || bytes >= self.max_bytes || elapsed_ns >= self.max_delay_ns)
-    }
-}
-
-pub fn disposition(category: Category) -> &'static str {
-    match category {
-        Category::Outage => "retry unchanged with backpressure",
-        Category::Poison => "halt affected partition; do not commit",
-        Category::RetentionGap => "halt and report unrecoverable gap",
-        _ => "reject whole request before publication",
-    }
-}

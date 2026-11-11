@@ -6,7 +6,7 @@ export interface ExecutionReference extends ProjectReference {
 export interface CreateExecutionInput extends ProjectReference {
 	requestId: string;
 	name: string;
-	credentialId: string;
+	nodeId: string;
 	hostId: string | null;
 	startedAt: string;
 	endedAt: string;

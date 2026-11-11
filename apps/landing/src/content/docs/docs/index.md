@@ -10,8 +10,8 @@ You can use **Recount Cloud**, which we run for you, or [host Recount yourself](
 ## How it fits together
 
 - **Organizations and projects.** Everything lives in a project. Projects are private, and only the people you add can see them.
-- **Collectors.** A small program runs on each Linux machine and sends telemetry to Recount. Each one uses a credential created in the project, so only machines you enroll can send data.
-- **Executions.** An execution is a saved time window on one source, optionally narrowed to one host. Opening it shows what that machine was doing during the window.
+- **Collectors.** A small program runs on each Linux machine and sends telemetry to Recount. Each one enrolls with a key created in the project, so only machines you enroll can send data.
+- **Executions.** An execution is a saved time window on one node, optionally narrowed to one host. Opening it shows what that machine was doing during the window.
 
 ## What you can see today
 

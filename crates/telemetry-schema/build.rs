@@ -5,12 +5,32 @@ use prost_types::{
 };
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
-fn sql_type(field: &FieldDescriptorProto, messages: &BTreeMap<String, DescriptorProto>) -> String {
+fn sql_type(
+    owner: &str,
+    field: &FieldDescriptorProto,
+    messages: &BTreeMap<String, DescriptorProto>,
+) -> String {
+    if owner == ".recount.telemetry.AnalyticalPoint"
+        && matches!(field.name(), "sample_id" | "stream_id")
+    {
+        assert_eq!(
+            field.r#type(),
+            Type::Bytes,
+            "analytical identity must be bytes"
+        );
+        assert_ne!(
+            field.label(),
+            Label::Repeated,
+            "analytical identity must be singular"
+        );
+        assert!(
+            !field.proto3_optional.unwrap_or(false),
+            "analytical identity is required"
+        );
+        return "FixedString(32)".into();
+    }
     let base = match field.r#type() {
         Type::String => "String".into(),
-        Type::Bytes if matches!(field.name(), "sample_id" | "stream_id") => {
-            "FixedString(32)".into()
-        }
         Type::Bytes => "String".into(),
         Type::Bool | Type::Enum => "UInt8".into(),
         Type::Uint32 | Type::Fixed32 => "UInt32".into(),
@@ -23,7 +43,7 @@ fn sql_type(field: &FieldDescriptorProto, messages: &BTreeMap<String, Descriptor
             messages[field.type_name()]
                 .field
                 .iter()
-                .map(|f| format!("{} {}", f.name(), sql_type(f, messages)))
+                .map(|f| format!("{} {}", f.name(), sql_type(field.type_name(), f, messages)))
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
@@ -59,7 +79,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let columns = messages[".recount.telemetry.AnalyticalPoint"]
         .field
         .iter()
-        .map(|f| format!("    {} {}", f.name(), sql_type(f, &messages)))
+        .map(|f| {
+            format!(
+                "    {} {}",
+                f.name(),
+                sql_type(".recount.telemetry.AnalyticalPoint", f, &messages)
+            )
+        })
         .collect::<Vec<_>>()
         .join(",\n");
     fs::write(out.join("analytical-columns.sql"), columns)?;

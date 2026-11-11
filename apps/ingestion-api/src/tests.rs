@@ -7,8 +7,9 @@ use recount_telemetry_schema::{
         Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, metric, number_data_point,
     },
     resource::Resource,
-    wire::{ResourceKind, ResourceRef, SecurityScope},
+    wire::{PointLineage, ResourceKind, ResourceRef, SecurityScope},
 };
+use recount_telemetry_validation::delivery::{self as delivery_diagnostics, CollectorConnection};
 use recount_telemetry_validation::policy::{BoundGrant, RequestedAuthorities, RootGrant};
 use std::sync::{
     Mutex,
@@ -28,7 +29,7 @@ struct TestSink {
 }
 #[tonic::async_trait]
 impl broker::Sink for TestSink {
-    async fn publish(&self, raw: &RawRecord) -> Result<()> {
+    async fn publish(&self, raw: &RawRecord, _body: &ExportMetricsServiceRequest) -> Result<()> {
         if self.fail.load(Ordering::SeqCst) {
             return Err("unconfirmed".into());
         }
@@ -62,7 +63,7 @@ impl Default for TestAuthority {
 }
 fn source() -> Source {
     Source {
-        credential_id: Uuid::nil(),
+        node_id: Uuid::nil(),
         security: SecurityScope {
             project_id: "019a4790-d1da-7000-8000-000000000002".into(),
             source_id: "source".into(),
@@ -73,7 +74,8 @@ fn source() -> Source {
         },
         maximum_age_ns: 7 * 86400 * 1_000_000_000,
         skew_ns: 0,
-        digest: "".into(),
+        adapter: "linux".into(),
+        local_kinds: [ResourceKind::Process].into(),
     }
 }
 #[tonic::async_trait]
@@ -240,6 +242,94 @@ async fn whole_request_preflight_precedes_publication_and_success_follows_confir
     );
     let points = validate::raw(&sink.records.lock().unwrap()[0], Limits::default()).unwrap();
     assert_eq!(points[0].int_value, Some(i64::MAX));
+    stop.send(()).unwrap();
+    task.await.unwrap();
+}
+
+#[tokio::test]
+async fn delivery_diagnostics_preserve_claims_but_never_trust_forwarded_sender_addresses() {
+    let sink = Arc::new(TestSink::default());
+    let (mut client, _, stop, task) = server(
+        Arc::new(TestAuthority::default()),
+        sink.clone(),
+        Limits::default(),
+    )
+    .await;
+    let connection = CollectorConnection {
+        connection_id: "reported-connection".into(),
+        connected_unix_nano: 1,
+        local_address: "10.0.0.2:42000".into(),
+        peer_address: "10.0.0.1:4317".into(),
+        inventory_observed_unix_nano: 1,
+        architecture: "aarch64".into(),
+        inventory_status: "unavailable".into(),
+        ..Default::default()
+    };
+    let binary = tonic::metadata::MetadataValue::from_bytes(&connection.encode_to_vec());
+    let mut accepted = request(body());
+    accepted
+        .metadata_mut()
+        .insert_bin(delivery_diagnostics::HEADER, binary.clone());
+    accepted
+        .metadata_mut()
+        .insert("x-forwarded-for", "198.51.100.99".parse().unwrap());
+    accepted
+        .metadata_mut()
+        .insert("forwarded", "for=198.51.100.99".parse().unwrap());
+    client.export(accepted).await.unwrap();
+    let raw = sink.records.lock().unwrap()[0].clone();
+    let observation = raw.delivery.as_ref().unwrap();
+    assert_eq!(observation.collector.as_ref(), Some(&connection));
+    let peer = observation
+        .ingestion_peer_address
+        .as_ref()
+        .unwrap()
+        .parse::<std::net::SocketAddr>()
+        .unwrap();
+    assert!(peer.ip().is_loopback());
+    let points = validate::retained_raw(&raw, Limits::default()).unwrap();
+    let context = PointLineage::decode(points[0].lineage.as_slice())
+        .unwrap()
+        .delivery
+        .unwrap();
+    assert_eq!(
+        context.ingestion_peer_address,
+        observation.ingestion_peer_address
+    );
+    assert_eq!(
+        context.collector_connection_id.as_deref(),
+        Some("reported-connection")
+    );
+    assert_eq!(
+        context.collector_local_address.as_deref(),
+        Some("10.0.0.2:42000")
+    );
+
+    let mut duplicate = request(body());
+    duplicate
+        .metadata_mut()
+        .append_bin(delivery_diagnostics::HEADER, binary.clone());
+    duplicate
+        .metadata_mut()
+        .append_bin(delivery_diagnostics::HEADER, binary);
+    assert_eq!(
+        client.export(duplicate).await.unwrap_err().code(),
+        Code::InvalidArgument
+    );
+    let mut oversized = request(body());
+    oversized.metadata_mut().insert_bin(
+        delivery_diagnostics::HEADER,
+        tonic::metadata::MetadataValue::from_bytes(&vec![
+            0;
+            delivery_diagnostics::MAX_CONNECTION_BYTES
+                + 1
+        ]),
+    );
+    assert_eq!(
+        client.export(oversized).await.unwrap_err().code(),
+        Code::ResourceExhausted
+    );
+    assert_eq!(sink.records.lock().unwrap().len(), 1);
     stop.send(()).unwrap();
     task.await.unwrap();
 }

@@ -10,8 +10,8 @@ Vous pouvez utiliser **Recount Cloud**, que nous exploitons pour vous, ou [hébe
 ## Comment tout s’agence
 
 - **Organisations et projets.** Tout se trouve dans un projet. Les projets sont privés : seules les personnes que vous ajoutez peuvent les voir.
-- **Collecteurs.** Un petit programme fonctionne sur chaque machine Linux et envoie la télémétrie à Recount. Chacun utilise un identifiant d’accès créé dans le projet; seules les machines que vous inscrivez peuvent donc envoyer des données.
-- **Exécutions.** Une exécution est une période enregistrée sur une source, éventuellement limitée à un hôte. En l’ouvrant, vous voyez ce que faisait la machine pendant cette période.
+- **Collecteurs.** Un petit programme fonctionne sur chaque machine Linux et envoie la télémétrie à Recount. Chacun s’inscrit avec une clé créée dans le projet; seules les machines que vous inscrivez peuvent donc envoyer des données.
+- **Exécutions.** Une exécution est une période enregistrée sur un nœud, éventuellement limitée à un hôte. En l’ouvrant, vous voyez ce que faisait la machine pendant cette période.
 
 ## Ce que vous pouvez voir aujourd’hui
 

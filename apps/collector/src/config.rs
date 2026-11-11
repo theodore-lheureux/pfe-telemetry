@@ -1,13 +1,10 @@
-use std::{fs, io, path::PathBuf, time::Duration};
+use std::{io, path::PathBuf, time::Duration};
 
 use clap::{Parser, ValueEnum};
-use sha2::{Digest, Sha256};
-use tonic::{
-    metadata::{Ascii, MetadataValue},
-    transport::Endpoint,
-};
+use tonic::transport::Endpoint;
+use uuid::Uuid;
 
-use crate::{CollectorConfig, spool::Result};
+use crate::{CollectorConfig, enrollment::EnrollmentConfig, spool::Result};
 
 /// Largest whole-second duration representable as UInt64 nanoseconds.
 const MAX_U64_NANOSECONDS_DURATION_SECONDS: u64 = u64::MAX / 1_000_000_000;
@@ -49,13 +46,24 @@ pub struct Config {
         default_value = "http://127.0.0.1:14317"
     )]
     pub endpoint: String,
-    /// Private file containing the source bearer token.
+    /// Web application URL that enrolls this node and issues its access tokens.
+    #[arg(long, env = "RECOUNT_COLLECTOR_ENROLLMENT_URL")]
+    pub enrollment_url: Option<String>,
+    /// Private file containing the project's enrollment key; needed only until the node
+    /// has enrolled.
     #[arg(
         long,
-        env = "RECOUNT_COLLECTOR_SOURCE_TOKEN_FILE",
-        hide_env_values = true
+        env = "RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE",
+        requires = "enrollment_url"
     )]
-    pub source_token_file: Option<PathBuf>,
+    pub enrollment_key_file: Option<PathBuf>,
+    /// Directory for the node identity: `node.json` and the private key `node.key`.
+    #[arg(
+        long,
+        env = "RECOUNT_COLLECTOR_STATE_DIRECTORY",
+        default_value = ".state/collector"
+    )]
+    pub state_directory: PathBuf,
     /// Enrolled host identity; defaults to the Linux machine ID.
     #[arg(long, env = "RECOUNT_COLLECTOR_HOST_ID")]
     pub host_id: Option<String>,
@@ -79,11 +87,19 @@ pub enum Visibility {
     Restricted,
 }
 
-/// Validated transport settings and the identity bound to queued uploads.
+/// Validated transport and enrollment settings.
 pub(crate) struct ExportConfig {
     pub endpoint: Endpoint,
-    pub authorization: Option<MetadataValue<Ascii>>,
-    pub queue_destination: String,
+    pub enrollment: Option<EnrollmentConfig>,
+}
+
+/// The identity a persistent queue is bound to. Token refreshes keep it; another node or
+/// endpoint needs a new queue.
+pub(crate) fn queue_destination(endpoint: &str, node: Option<Uuid>) -> String {
+    match node {
+        Some(node) => format!("{endpoint}#node={node}"),
+        None => endpoint.to_owned(),
+    }
 }
 
 impl Config {
@@ -101,40 +117,28 @@ impl Config {
         if endpoint.uri().scheme_str() != Some("http") {
             return Err(io::Error::other("OTLP export currently requires an http endpoint").into());
         }
-        let token = self
-            .source_token_file
-            .as_ref()
-            .map(|path| fs::read_to_string(path).map(|value| value.trim().to_owned()))
-            .transpose()?;
-        let authorization = token
-            .as_ref()
-            .map(|token| {
-                if !(32..=512).contains(&token.len())
-                    || !token.bytes().all(|b| b.is_ascii_graphic())
-                {
-                    return Err(io::Error::other("Invalid source token file"));
+        let enrollment = self
+            .enrollment_url
+            .as_deref()
+            .map(|url| {
+                let mut url = reqwest::Url::parse(url)
+                    .ok()
+                    .filter(|url| matches!(url.scheme(), "http" | "https") && url.has_host())
+                    .ok_or_else(|| io::Error::other("Invalid enrollment URL"))?;
+                // Join API paths below the configured path instead of replacing its last segment.
+                if !url.path().ends_with('/') {
+                    url.set_path(&format!("{}/", url.path()));
                 }
-                let mut value = format!("Bearer {token}")
-                    .parse::<MetadataValue<Ascii>>()
-                    .map_err(|_| io::Error::other("Invalid source token file"))?;
-                value.set_sensitive(true);
-                Ok(value)
+                Ok::<_, io::Error>(EnrollmentConfig {
+                    url,
+                    key_file: self.enrollment_key_file.clone(),
+                    state_directory: self.state_directory.clone(),
+                })
             })
             .transpose()?;
-        let queue_destination = match token {
-            Some(token) => {
-                let digest = Sha256::digest(token.as_bytes())
-                    .iter()
-                    .map(|b| format!("{b:02x}"))
-                    .collect::<String>();
-                format!("{}#credential={digest}", self.endpoint)
-            }
-            None => self.endpoint.clone(),
-        };
         Ok(ExportConfig {
             endpoint,
-            authorization,
-            queue_destination,
+            enrollment,
         })
     }
 }
@@ -144,31 +148,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn web_credential_file_is_sensitive_and_rotation_changes_queue_binding() {
-        use std::io::Write;
-        use std::os::unix::fs::OpenOptionsExt;
-        let path =
-            std::env::temp_dir().join(format!("recount-token-test-{}", uuid::Uuid::now_v7()));
-        let token = "recount_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&path)
-            .unwrap();
-        writeln!(file, "{token}").unwrap();
-        let config =
-            Config::try_parse_from(["collector", "--source-token-file", path.to_str().unwrap()])
-                .unwrap();
-        let first = config.export().unwrap();
-        let authorization = first.authorization.unwrap();
-        assert!(authorization.is_sensitive());
-        assert_eq!(authorization.to_str().unwrap(), format!("Bearer {token}"));
-        assert!(!first.queue_destination.contains(token));
-        fs::write(&path, token.replace('A', "B")).unwrap();
-        let rotated = config.export().unwrap();
-        assert_ne!(first.queue_destination, rotated.queue_destination);
-        fs::remove_file(path).unwrap();
+    fn enrollment_settings_and_queue_binding() {
+        let config = Config::try_parse_from([
+            "collector",
+            "--enrollment-url",
+            "https://recount.example/app",
+            "--enrollment-key-file",
+            "/run/secrets/enrollment-key",
+        ])
+        .unwrap();
+        let enrollment = config.export().unwrap().enrollment.unwrap();
+        assert_eq!(
+            enrollment
+                .url
+                .join("api/collectors/enroll")
+                .unwrap()
+                .as_str(),
+            "https://recount.example/app/api/collectors/enroll"
+        );
+        assert!(Config::try_parse_from(["collector", "--enrollment-key-file", "key"]).is_err());
+        for url in ["ftp://recount.example", "not a url"] {
+            let config = Config::try_parse_from(["collector", "--enrollment-url", url]).unwrap();
+            assert!(config.export().is_err());
+        }
+        let node = Uuid::now_v7();
+        assert_eq!(
+            queue_destination("http://ingestion:4317", Some(node)),
+            format!("http://ingestion:4317#node={node}")
+        );
+        assert_ne!(
+            queue_destination("http://ingestion:4317", Some(node)),
+            queue_destination("http://ingestion:4317", Some(Uuid::now_v7()))
+        );
     }
 
     #[test]

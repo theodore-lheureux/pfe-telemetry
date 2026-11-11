@@ -123,6 +123,8 @@ impl Config {
 mod tests {
     use super::*;
     use clap::FromArgMatches;
+    #[cfg(unix)]
+    use std::os::unix::ffi::OsStrExt;
     use std::{ffi::OsStr, process};
 
     fn parse(args: &[&str]) -> Result<Cli, clap::Error> {
@@ -179,13 +181,6 @@ mod tests {
             ("--retry-ms", 60_000),
             ("--delivery-ms", 60_000),
             ("--shutdown-ms", 120_000),
-            ("--max-request-bytes", i32::MAX),
-            ("--max-points", i32::MAX),
-            ("--max-expanded-items", i32::MAX),
-            ("--max-authorities", i32::MAX),
-            ("--max-attribute-nodes", i32::MAX),
-            ("--normalized-max-record-bytes", i32::MAX),
-            ("--normalized-max-output-bytes", i32::MAX),
             ("--raw-broker-max-bytes", MAX_BROKER_BYTES as i32),
             ("--normalized-broker-max-bytes", MAX_BROKER_BYTES as i32),
         ] {
@@ -259,43 +254,6 @@ mod tests {
         assert!(config.validate_transport().is_err());
     }
 
-    #[test]
-    fn small_message_budgets_keep_protocol_headroom_at_maximum_partition_counts() {
-        let config = parse(&[
-            "normalizer",
-            "--raw-partitions",
-            "4096",
-            "--normalized-partitions",
-            "4096",
-            "--max-request-bytes",
-            "1",
-            "--raw-broker-max-bytes",
-            "65537",
-            "--normalized-max-record-bytes",
-            "1",
-            "--normalized-max-output-bytes",
-            "1",
-            "--normalized-broker-max-bytes",
-            "65537",
-            "validate",
-        ])
-        .unwrap()
-        .into_config()
-        .unwrap();
-        assert_eq!(
-            transport::ConsumerBudget::raw(config.raw_broker_max_bytes)
-                .unwrap()
-                .receive_bytes,
-            100_000_000
-        );
-        assert_eq!(
-            transport::ConsumerBudget::normalized(config.normalized_broker_max_bytes)
-                .unwrap()
-                .receive_bytes,
-            6 * 1024 * 1024
-        );
-    }
-
     fn probe(env: &[(&str, &OsStr)]) {
         let output = process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "config::tests::environment_probe", "--nocapture"])
@@ -333,7 +291,6 @@ mod tests {
         }
         #[cfg(unix)]
         {
-            use std::os::unix::ffi::OsStrExt;
             for name in ["RECOUNT_NORMALIZER_GROUP", "RECOUNT_MAX_POINTS"] {
                 probe(&[
                     ("RECOUNT_CONFIG_PROBE", OsStr::new("invalid")),

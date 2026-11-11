@@ -1,7 +1,9 @@
-import { formatDate, formatSeconds } from "@recount/i18n";
+import { formatSeconds } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useId } from "react";
+import { TimeDisplay } from "../components/time-display";
+import { dateFromNanoseconds } from "../lib/time-display";
 import type {
 	TelemetryPoint,
 	TelemetryResult,
@@ -114,8 +116,16 @@ function Series({
 									<td className="font-mono text-xs">
 										{segment.id.slice(0, 12)}
 									</td>
-									<td>{formatDate(point.bucketMs, undefined, timeZone)}</td>
-									<td className="font-mono text-xs">{point.timeNs}</td>
+									<td>
+										<TimeDisplay value={point.bucketMs} timeZone={timeZone} />
+									</td>
+									<td className="font-mono text-xs">
+										<TimeDisplay
+											value={dateFromNanoseconds(point.timeNs)}
+											unixNanoseconds={point.timeNs}
+											label={point.timeNs}
+										/>
+									</td>
 									<td>
 										{point.integer !== null
 											? new Intl.NumberFormat(getLocale()).format(

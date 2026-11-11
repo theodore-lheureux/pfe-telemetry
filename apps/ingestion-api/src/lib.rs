@@ -2,6 +2,8 @@ pub mod admission;
 pub mod auth;
 pub mod broker;
 pub mod config;
+mod delivery;
+pub mod live;
 pub mod resources;
 #[cfg(test)]
 mod tests;
@@ -99,27 +101,30 @@ impl Ingestion {
             metadata::age(batch, received, source.maximum_age_ns, source.skew_ns)
                 .map_err(status)?;
         }
+        let delivery = delivery::observe(&request)?;
         let body = request.into_inner();
         let limits = self.limits;
         // Blocking validation retains admission until completion even if the RPC is cancelled.
-        let (raw, count, permit, source, requested) = tokio::task::spawn_blocking(move || {
-            let count = validate::request(&body, limits).map_err(status)?;
-            let bindings = resources::resolve(&body, &source, profile, limits)?;
-            let raw = RawRecord {
-                security: Some(source.security.clone()),
-                record_id: Uuid::now_v7().to_string(),
-                received_unix_nano: received,
-                batch,
-                payload_kind: PayloadKind::OtlpMetrics as i32,
-                otlp_request: body.encode_to_vec(),
-                bindings,
-            };
-            let requested =
-                policy::requested_authorities(&raw, limits.distinct_authorities).map_err(status)?;
-            Ok::<_, Status>((raw, count, permit, source, requested))
-        })
-        .await
-        .map_err(|_| Status::unavailable("Validation worker failed"))??;
+        let (raw, body, count, permit, source, requested) =
+            tokio::task::spawn_blocking(move || {
+                let count = validate::request(&body, limits).map_err(status)?;
+                let bindings = resources::resolve(&body, &source, profile, limits)?;
+                let raw = RawRecord {
+                    security: Some(source.security.clone()),
+                    record_id: Uuid::now_v7().to_string(),
+                    received_unix_nano: received,
+                    batch,
+                    payload_kind: PayloadKind::OtlpMetrics as i32,
+                    otlp_request: body.encode_to_vec(),
+                    bindings,
+                    delivery: Some(delivery),
+                };
+                let requested = policy::requested_authorities(&raw, limits.distinct_authorities)
+                    .map_err(status)?;
+                Ok::<_, Status>((raw, body, count, permit, source, requested))
+            })
+            .await
+            .map_err(|_| Status::unavailable("Validation worker failed"))??;
         let (roots, bound) = self.authority.grants(&source, &requested).await?;
         if profile == metadata::Profile::Linux && roots.iter().any(|grant| grant.adapter != "linux")
         {
@@ -135,16 +140,15 @@ impl Ingestion {
             limits.distinct_authorities,
         )
         .map_err(status)?;
-        let (raw, count, _permit) = tokio::task::spawn_blocking(move || {
-            // Same generated projection and exact binary bounds as retained normalization.
-            validate::raw(&raw, limits).map_err(status)?;
-            Ok::<_, Status>((raw, count, permit))
+        let (raw, body, count, _permit) = tokio::task::spawn_blocking(move || {
+            validate::preflight(&raw, &body, limits).map_err(status)?;
+            Ok::<_, Status>((raw, body, count, permit))
         })
         .await
         .map_err(|_| Status::unavailable("Preflight worker failed"))??;
         if count > 0 {
             self.sink
-                .publish(&raw)
+                .publish(&raw, &body)
                 .await
                 .map_err(|_| Status::unavailable("Durable publication was not confirmed"))?;
         }

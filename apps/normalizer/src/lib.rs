@@ -25,6 +25,6 @@ pub fn prepare(
     if key != Some(identity::raw_routing_key(&raw).map_err(poison)?.as_slice()) {
         return Err(poison("raw routing key mismatch"));
     }
-    let points = validate::retained_raw(&raw, limits)?;
-    point::kafka_records(&points, partitions, limits.normalized_record_bytes).map_err(poison)
+    let rows = validate::retained_raw(&raw, limits)?;
+    point::kafka_records(&rows, partitions, limits.normalized_record_bytes).map_err(poison)
 }

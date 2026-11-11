@@ -1,25 +1,46 @@
-use std::{collections::BTreeSet, time::Duration};
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    sync::{Arc, RwLock},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+};
 
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod, Runtime};
+use ed25519_dalek::{Signature, VerifyingKey};
 use recount_telemetry_schema::wire::{ResourceKind, ResourceRef, SecurityScope};
-use recount_telemetry_validation::policy::{BoundGrant, RequestedAuthorities, RootGrant};
+use recount_telemetry_validation::{
+    authority::identifier,
+    policy::{BoundGrant, RequestedAuthorities, RootGrant},
+};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use subtle::ConstantTimeEq;
-use tokio_postgres::{Row, config::SslMode};
+use tokio_postgres::config::SslMode;
 use tokio_postgres_rustls::MakeRustlsConnect;
 use tonic::{Status, metadata::MetadataMap};
 use uuid::Uuid;
 
 use crate::Result;
 
-#[derive(Clone)]
+const AUDIENCE: &str = "recount-ingestion";
+const ISSUER: &str = "recount";
+/// Tolerance for issue times slightly ahead of this service's clock.
+const ISSUED_AT_SKEW_SECONDS: u64 = 60;
+const REVOCATION_POLL: Duration = Duration::from_secs(30);
+/// Readiness fails once the revocation list is this old.
+const REVOCATION_STALE: Duration = Duration::from_secs(300);
+/// Covers the one-hour token lifetime with margin; older revocations have no live tokens.
+const REVOKED: &str = "SELECT id FROM ingestion.collector_node
+    WHERE revoked_at IS NOT NULL AND revoked_at > statement_timestamp() - interval '2 hours'";
+
+#[derive(Clone, Debug)]
 pub struct Source {
-    pub credential_id: Uuid,
+    pub node_id: Uuid,
     pub security: SecurityScope,
     pub root: ResourceRef,
+    pub adapter: String,
+    pub local_kinds: BTreeSet<ResourceKind>,
     pub maximum_age_ns: u64,
     pub skew_ns: u64,
-    pub(crate) digest: String,
 }
 
 #[tonic::async_trait]
@@ -33,39 +54,81 @@ pub trait Authority: Send + Sync {
     async fn ready(&self) -> bool;
 }
 
-pub struct Credentials {
-    pool: Pool,
+#[derive(Deserialize)]
+struct Header {
+    alg: String,
+    kid: String,
 }
 
-const LOOKUP: &str = "SELECT id, project_id, source_id, token_sha256, root_id, root_kind,
-    maximum_submission_age, allowed_clock_skew FROM ingestion.collector_credential
-    WHERE id = $1 AND revoked_at IS NULL
-    AND (expires_at IS NULL OR expires_at > statement_timestamp())";
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Claims {
+    sub: String,
+    project: String,
+    root: String,
+    root_kind: i32,
+    adapter: String,
+    local_kinds: Vec<i32>,
+    max_age: i64,
+    skew: i64,
+    iss: String,
+    aud: String,
+    iat: u64,
+    exp: u64,
+}
 
-const GRANTS: &str = "SELECT g.resource_id, g.resource_kind, g.adapter,
-    g.allowed_local_kinds, true AS is_root
-    FROM ingestion.collector_root_grant g JOIN ingestion.collector_credential c
-      ON (c.id,c.project_id,c.organization_id)=(g.credential_id,g.project_id,g.organization_id)
-    WHERE c.id=$1 AND c.project_id=$2 AND c.token_sha256=$3 AND c.revoked_at IS NULL
-      AND (c.expires_at IS NULL OR c.expires_at > statement_timestamp())
-      AND g.resource_id=ANY($4)
-    UNION ALL SELECT g.resource_id, g.resource_kind, ''::text AS adapter,
-    ARRAY[]::integer[] AS allowed_local_kinds, false AS is_root
-    FROM ingestion.collector_resource_grant g JOIN ingestion.collector_credential c
-      ON (c.id,c.project_id,c.organization_id)=(g.credential_id,g.project_id,g.organization_id)
-    WHERE c.id=$1 AND c.project_id=$2 AND c.token_sha256=$3 AND c.revoked_at IS NULL
-      AND (c.expires_at IS NULL OR c.expires_at > statement_timestamp())
-      AND g.resource_id=ANY($5)";
+#[derive(Default)]
+struct Revocations {
+    nodes: HashSet<Uuid>,
+    loaded_at: Option<Instant>,
+}
+
+/// Verifies node access tokens signed by the web application. Signatures and claims are
+/// checked in memory; the database is read only to refresh the revocation list.
+pub struct NodeTokens {
+    keys: HashMap<String, VerifyingKey>,
+    pool: Pool,
+    revocations: RwLock<Revocations>,
+}
 
 fn unavailable() -> Status {
-    Status::unavailable("Credential authority is unavailable")
+    Status::unavailable("Collector authority is unavailable")
 }
 
-impl Credentials {
-    pub fn new(database_url: &str) -> Result<Self> {
+fn rejected() -> Status {
+    Status::unauthenticated("Invalid collector credentials")
+}
+
+/// The key ID the web application publishes: the first 16 characters of the base64url
+/// SHA-256 of the base64url public key.
+pub fn key_id(public_key: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(public_key.as_bytes()))[..16].to_string()
+}
+
+pub fn parse_public_keys(values: &[String]) -> Result<HashMap<String, VerifyingKey>> {
+    let mut keys = HashMap::new();
+    for value in values {
+        let value = value.trim();
+        let bytes: [u8; 32] = URL_SAFE_NO_PAD
+            .decode(value)
+            .ok()
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or("Collector public keys must be base64url Ed25519 keys")?;
+        let key = VerifyingKey::from_bytes(&bytes)
+            .map_err(|_| "Collector public keys must be base64url Ed25519 keys")?;
+        keys.insert(key_id(value), key);
+    }
+    if keys.is_empty() {
+        return Err("At least one collector public key is required".into());
+    }
+    Ok(keys)
+}
+
+impl NodeTokens {
+    pub fn new(database_url: &str, public_keys: &[String]) -> Result<Self> {
         let mut config: tokio_postgres::Config = database_url
             .parse()
-            .map_err(|_| "Invalid credential database configuration")?;
+            .map_err(|_| "Invalid collector authority database configuration")?;
         if config.get_ssl_mode() != SslMode::Disable {
             config.ssl_mode(SslMode::Require);
         }
@@ -83,60 +146,148 @@ impl Credentials {
             },
         );
         let pool = Pool::builder(manager)
-            .max_size(4)
+            .max_size(1)
             .runtime(Runtime::Tokio1)
             .wait_timeout(Some(Duration::from_millis(500)))
             .create_timeout(Some(Duration::from_secs(1)))
             .recycle_timeout(Some(Duration::from_millis(500)))
             .build()
-            .map_err(|_| "Invalid credential pool configuration")?;
-        Ok(Self { pool })
+            .map_err(|_| "Invalid collector authority pool configuration")?;
+        Ok(Self {
+            keys: parse_public_keys(public_keys)?,
+            pool,
+            revocations: RwLock::default(),
+        })
     }
 
-    async fn query(
-        &self,
-        sql: &str,
-        parameters: &[&(dyn tokio_postgres::types::ToSql + Sync)],
-    ) -> std::result::Result<Vec<Row>, Status> {
-        let client = tokio::time::timeout(Duration::from_secs(1), self.pool.get())
-            .await
-            .map_err(|_| unavailable())?
-            .map_err(|_| unavailable())?;
-        match tokio::time::timeout(Duration::from_secs(1), client.query(sql, parameters)).await {
-            Ok(result) => result.map_err(|_| unavailable()),
-            Err(_) => {
-                drop(deadpool_postgres::Object::take(client));
-                Err(unavailable())
-            }
+    /// Loads revoked node IDs once. A failure keeps the previous list.
+    pub async fn refresh_revocations(&self) -> bool {
+        let rows = async {
+            let client = tokio::time::timeout(Duration::from_secs(1), self.pool.get())
+                .await
+                .ok()?
+                .ok()?;
+            tokio::time::timeout(Duration::from_secs(2), client.query(REVOKED, &[]))
+                .await
+                .ok()?
+                .ok()
         }
+        .await;
+        let Some(rows) = rows else { return false };
+        let nodes = rows
+            .iter()
+            .filter_map(|row| row.try_get::<_, Uuid>("id").ok())
+            .collect();
+        let Ok(mut revocations) = self.revocations.write() else {
+            return false;
+        };
+        *revocations = Revocations {
+            nodes,
+            loaded_at: Some(Instant::now()),
+        };
+        true
+    }
+
+    /// Keeps the revocation list current for the life of the process.
+    pub fn spawn_revocation_poller(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let tokens = Arc::clone(self);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(REVOCATION_POLL);
+            loop {
+                interval.tick().await;
+                if !tokens.refresh_revocations().await {
+                    tracing::warn!("collector revocation list refresh failed");
+                }
+            }
+        })
+    }
+
+    fn verify(&self, token: &str, now: u64) -> std::result::Result<Source, Status> {
+        let mut parts = token.split('.');
+        let (Some(header), Some(payload), Some(signature), None) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
+            return Err(rejected());
+        };
+        let decode = |part: &str| URL_SAFE_NO_PAD.decode(part).map_err(|_| rejected());
+        let header: Header = serde_json::from_slice(&decode(header)?).map_err(|_| rejected())?;
+        if header.alg != "EdDSA" {
+            return Err(rejected());
+        }
+        let key = self.keys.get(&header.kid).ok_or_else(rejected)?;
+        let signature: [u8; 64] = decode(signature)?.try_into().map_err(|_| rejected())?;
+        let signed = &token[..token.rfind('.').ok_or_else(rejected)?];
+        key.verify_strict(signed.as_bytes(), &Signature::from_bytes(&signature))
+            .map_err(|_| rejected())?;
+        let claims: Claims = serde_json::from_slice(&decode(payload)?).map_err(|_| rejected())?;
+        if claims.iss != ISSUER
+            || claims.aud != AUDIENCE
+            || claims.exp <= now
+            || claims.iat > now + ISSUED_AT_SKEW_SECONDS
+        {
+            return Err(rejected());
+        }
+        source(claims).ok_or_else(rejected)
     }
 }
 
+fn source(claims: Claims) -> Option<Source> {
+    let node_id = Uuid::parse_str(&claims.sub).ok()?;
+    let project = Uuid::parse_str(&claims.project).ok()?;
+    let (maximum_age_ns, skew_ns) = policy_nanos(claims.max_age, claims.skew)?;
+    let local_kinds = claims
+        .local_kinds
+        .into_iter()
+        .map(ResourceKind::try_from)
+        .collect::<std::result::Result<BTreeSet<_>, _>>()
+        .ok()?;
+    if !identifier(&claims.root)
+        || claims.root.starts_with("recount.local.")
+        || ResourceKind::try_from(claims.root_kind).is_err()
+        || !matches!(claims.adapter.as_str(), "standard" | "linux")
+    {
+        return None;
+    }
+    Some(Source {
+        node_id,
+        security: SecurityScope {
+            project_id: project.to_string(),
+            source_id: node_id.to_string(),
+        },
+        root: ResourceRef {
+            id: claims.root,
+            kind: claims.root_kind,
+        },
+        adapter: claims.adapter,
+        local_kinds,
+        maximum_age_ns,
+        skew_ns,
+    })
+}
+
+fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default()
+}
+
 #[tonic::async_trait]
-impl Authority for Credentials {
+impl Authority for NodeTokens {
     async fn authenticate(&self, metadata: &MetadataMap) -> std::result::Result<Source, Status> {
         let token = one(metadata, "authorization")?
             .and_then(|v| v.strip_prefix("Bearer "))
             .ok_or_else(|| Status::unauthenticated("A collector bearer token is required"))?;
-        let id = credential_id(token)
-            .ok_or_else(|| Status::unauthenticated("Invalid collector credentials"))?;
-        let rows = self.query(LOOKUP, &[&id]).await?;
-        let row = rows
-            .first()
-            .ok_or_else(|| Status::unauthenticated("Invalid collector credentials"))?;
-        let stored: String = row.try_get("token_sha256").map_err(|_| unavailable())?;
-        if stored.len() != 64
-            || !stored
-                .bytes()
-                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-        {
+        let source = self.verify(token, unix_now())?;
+        let revocations = self.revocations.read().map_err(|_| unavailable())?;
+        // Fail closed until the first revocation list has loaded.
+        if revocations.loaded_at.is_none() {
             return Err(unavailable());
         }
-        let digest = digest(token.as_bytes());
-        if !bool::from(stored.as_bytes().ct_eq(digest.as_bytes())) {
-            return Err(Status::unauthenticated("Invalid collector credentials"));
+        if revocations.nodes.contains(&source.node_id) {
+            return Err(rejected());
         }
-        source(row, digest).map_err(|_| unavailable())
+        Ok(source)
     }
 
     async fn grants(
@@ -144,123 +295,34 @@ impl Authority for Credentials {
         source: &Source,
         requested: &RequestedAuthorities,
     ) -> std::result::Result<(Vec<RootGrant>, Vec<BoundGrant>), Status> {
-        let project = Uuid::parse_str(&source.security.project_id).map_err(|_| unavailable())?;
-        let roots: Vec<_> = requested.roots.iter().cloned().collect();
-        let independent: Vec<_> = requested.independent.iter().cloned().collect();
-        let rows = self
-            .query(
-                GRANTS,
-                &[
-                    &source.credential_id,
-                    &project,
-                    &source.digest,
-                    &roots,
-                    &independent,
-                ],
-            )
-            .await?;
-        if rows.len() > roots.len() + independent.len() {
-            return Err(unavailable());
-        }
-        let mut root_grants = Vec::new();
-        let mut bound_grants = Vec::new();
-        for row in rows {
-            let reference = ResourceRef {
-                id: row.try_get("resource_id").map_err(|_| unavailable())?,
-                kind: row.try_get("resource_kind").map_err(|_| unavailable())?,
-            };
-            if row
-                .try_get::<_, bool>("is_root")
-                .map_err(|_| unavailable())?
-            {
-                let kinds: Vec<i32> = row
-                    .try_get("allowed_local_kinds")
-                    .map_err(|_| unavailable())?;
-                let kinds = kinds
-                    .into_iter()
-                    .map(ResourceKind::try_from)
-                    .collect::<std::result::Result<BTreeSet<_>, _>>()
-                    .map_err(|_| unavailable())?;
-                root_grants.push(RootGrant {
-                    security: source.security.clone(),
-                    root: reference,
-                    adapter: row.try_get("adapter").map_err(|_| unavailable())?,
-                    allowed_local_kinds: kinds,
-                });
-            } else {
-                bound_grants.push(BoundGrant {
-                    security: source.security.clone(),
-                    resource: reference,
-                });
-            }
-        }
-        Ok((root_grants, bound_grants))
+        // A node holds exactly one root, its machine; independent resources are not granted.
+        let roots = requested
+            .roots
+            .contains(&source.root.id)
+            .then(|| RootGrant {
+                security: source.security.clone(),
+                root: source.root.clone(),
+                adapter: source.adapter.clone(),
+                allowed_local_kinds: source.local_kinds.clone(),
+            })
+            .into_iter()
+            .collect();
+        Ok((roots, Vec::new()))
     }
 
     async fn ready(&self) -> bool {
-        // Probe all required tables, including grants, with the deployed role.
-        self.query("SELECT c.id FROM ingestion.collector_credential c LEFT JOIN ingestion.collector_root_grant r ON false LEFT JOIN ingestion.collector_resource_grant b ON false LIMIT 0", &[]).await.is_ok()
+        self.revocations.read().is_ok_and(|revocations| {
+            revocations
+                .loaded_at
+                .is_some_and(|loaded| loaded.elapsed() < REVOCATION_STALE)
+        })
     }
-}
-
-fn source(row: &Row, digest: String) -> Result<Source> {
-    let project: Uuid = row.try_get("project_id")?;
-    let source_id: String = row.try_get("source_id")?;
-    let root_id: String = row.try_get("root_id")?;
-    let kind: i32 = row.try_get("root_kind")?;
-    let age: i64 = row.try_get("maximum_submission_age")?;
-    let skew: i64 = row.try_get("allowed_clock_skew")?;
-    let (maximum_age_ns, skew_ns) = policy_nanos(age, skew).ok_or("Invalid credential policy")?;
-    if !identifier(&source_id)
-        || !identifier(&root_id)
-        || root_id.starts_with("recount.local.")
-        || ResourceKind::try_from(kind).is_err()
-    {
-        return Err("Invalid credential policy".into());
-    }
-    Ok(Source {
-        credential_id: row.try_get("id")?,
-        security: SecurityScope {
-            project_id: project.to_string(),
-            source_id,
-        },
-        root: ResourceRef { id: root_id, kind },
-        maximum_age_ns,
-        skew_ns,
-        digest,
-    })
 }
 
 pub fn policy_nanos(age: i64, skew: i64) -> Option<(u64, u64)> {
     let age = u64::try_from(age).ok()?.checked_mul(1_000_000_000)?;
     let skew = u64::try_from(skew).ok()?.checked_mul(1_000_000_000)?;
     (age > 0 && age.checked_add(skew).is_some()).then_some((age, skew))
-}
-
-pub fn digest(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect()
-}
-
-pub fn credential_id(token: &str) -> Option<Uuid> {
-    let bytes = token.as_bytes();
-    if bytes.len() != 88
-        || !bytes.starts_with(b"recount_")
-        || bytes[44] != b'_'
-        || !bytes[45..]
-            .iter()
-            .all(|b| b.is_ascii_alphanumeric() || b"_-".contains(b))
-    {
-        return None;
-    }
-    let id = Uuid::parse_str(token.get(8..44)?).ok()?;
-    (id.to_string() == token[8..44]).then_some(id)
-}
-
-pub fn identifier(value: &str) -> bool {
-    !value.is_empty() && value.len() <= 128 && !value.chars().any(char::is_control)
 }
 
 pub fn one<'a>(
@@ -283,22 +345,148 @@ pub fn one<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
+
+    fn public(signing: &SigningKey) -> String {
+        URL_SAFE_NO_PAD.encode(signing.verifying_key().as_bytes())
+    }
+
+    fn tokens(signing: &SigningKey) -> NodeTokens {
+        NodeTokens::new(
+            "postgres://recount@127.0.0.1:1/recount?sslmode=disable",
+            &[public(signing)],
+        )
+        .unwrap()
+    }
+
+    fn token(signing: &SigningKey, claims: serde_json::Value, kid: Option<&str>) -> String {
+        let kid = kid.map_or_else(|| key_id(&public(signing)), str::to_string);
+        let header = serde_json::json!({ "alg": "EdDSA", "typ": "JWT", "kid": kid });
+        let input = format!(
+            "{}.{}",
+            URL_SAFE_NO_PAD.encode(header.to_string()),
+            URL_SAFE_NO_PAD.encode(claims.to_string())
+        );
+        let signature = signing.sign(input.as_bytes());
+        format!("{input}.{}", URL_SAFE_NO_PAD.encode(signature.to_bytes()))
+    }
+
+    fn claims(now: u64) -> serde_json::Value {
+        serde_json::json!({
+            "sub": "019a4790-d1da-7000-8000-000000000001",
+            "org": "org",
+            "project": "019a4790-d1da-7000-8000-000000000002",
+            "root": "machine-a",
+            "rootKind": 1,
+            "adapter": "linux",
+            "localKinds": [4, 6],
+            "maxAge": 3600,
+            "skew": 60,
+            "iss": "recount",
+            "aud": "recount-ingestion",
+            "iat": now,
+            "exp": now + 3600,
+        })
+    }
+
+    #[tokio::test]
+    async fn signed_claims_become_the_trusted_source() {
+        let signing = SigningKey::from_bytes(&[7; 32]);
+        let tokens = tokens(&signing);
+        let now = 1_800_000_000;
+        let source = tokens
+            .verify(&token(&signing, claims(now), None), now)
+            .unwrap();
+        assert_eq!(
+            source.security.source_id,
+            "019a4790-d1da-7000-8000-000000000001"
+        );
+        assert_eq!(
+            source.root,
+            ResourceRef {
+                id: "machine-a".into(),
+                kind: 1
+            }
+        );
+        assert_eq!(
+            source.local_kinds,
+            BTreeSet::from([ResourceKind::Process, ResourceKind::Container])
+        );
+        assert_eq!(source.maximum_age_ns, 3_600_000_000_000);
+        let requested = RequestedAuthorities {
+            roots: BTreeSet::from(["machine-a".to_string()]),
+            independent: BTreeSet::from(["sensor".to_string()]),
+        };
+        let (roots, bound) = tokens.grants(&source, &requested).await.unwrap();
+        assert_eq!(roots.len(), 1);
+        assert!(bound.is_empty());
+    }
+
     #[test]
-    fn token_shape_and_duration_overflow_fail_closed() {
-        let token = "recount_019a4790-d1da-7000-8000-000000000001_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-        assert!(credential_id(token).is_some());
-        for value in [
-            token.replace("recount_", "pfe_"),
-            token.to_uppercase(),
-            format!("{token}="),
-            token.replace('A', "/"),
+    fn forged_expired_and_malformed_tokens_are_rejected() {
+        let signing = SigningKey::from_bytes(&[7; 32]);
+        let other = SigningKey::from_bytes(&[9; 32]);
+        let tokens = tokens(&signing);
+        let now = 1_800_000_000;
+        let valid = token(&signing, claims(now), None);
+        let mut wrong_audience = claims(now);
+        wrong_audience["aud"] = "elsewhere".into();
+        let mut reserved_root = claims(now);
+        reserved_root["root"] = "recount.local.x".into();
+        let kid = key_id(&public(&signing));
+        for candidate in [
+            token(&other, claims(now), Some(&kid)),
+            token(&signing, wrong_audience, None),
+            token(&signing, reserved_root, None),
+            token(&signing, claims(now), Some("unknown")),
+            format!("{valid}x"),
+            valid.replacen('.', "", 1),
         ] {
-            assert!(credential_id(&value).is_none());
+            assert!(tokens.verify(&candidate, now).is_err());
         }
+        assert!(tokens.verify(&valid, now + 3600).is_err());
+        assert!(tokens.verify(&valid, now - 120).is_err());
+    }
+
+    #[tokio::test]
+    async fn submissions_fail_closed_until_revocations_load() {
+        let signing = SigningKey::from_bytes(&[7; 32]);
+        let tokens = tokens(&signing);
+        let mut metadata = MetadataMap::new();
+        let value = format!("Bearer {}", token(&signing, claims(unix_now()), None));
+        metadata.insert("authorization", value.parse().unwrap());
+        assert_eq!(
+            tokens.authenticate(&metadata).await.unwrap_err().code(),
+            tonic::Code::Unavailable
+        );
+        assert!(!tokens.ready().await);
+        *tokens.revocations.write().unwrap() = Revocations {
+            nodes: HashSet::from(
+                [Uuid::parse_str("019a4790-d1da-7000-8000-000000000001").unwrap()],
+            ),
+            loaded_at: Some(Instant::now()),
+        };
+        assert!(tokens.ready().await);
+        assert_eq!(
+            tokens.authenticate(&metadata).await.unwrap_err().code(),
+            tonic::Code::Unauthenticated
+        );
+    }
+
+    #[test]
+    fn duration_overflow_fails_closed() {
         assert_eq!(policy_nanos(7 * 86400, 0), Some((604800000000000, 0)));
         assert!(policy_nanos(0, 0).is_none());
         assert!(policy_nanos(1, -1).is_none());
         assert!(policy_nanos(18446744073, 1).is_none());
         assert!(policy_nanos(i64::MAX, 0).is_none());
+    }
+
+    #[test]
+    fn key_ids_match_the_web_application() {
+        // Values printed by apps/web/src/collectors/tokens.server.ts for a seed of 32 × 0x07.
+        let public = public(&SigningKey::from_bytes(&[7; 32]));
+        assert_eq!(public, "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw");
+        assert_eq!(key_id(&public), "gKy7G6nCrCzghDSU");
     }
 }

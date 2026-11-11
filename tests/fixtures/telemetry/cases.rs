@@ -255,6 +255,144 @@ pub fn request() -> ExportMetricsServiceRequest {
     }
     request
 }
+
+pub fn metric_mut<'a>(
+    request: &'a mut ExportMetricsServiceRequest,
+    name: &str,
+) -> &'a mut metrics::Metric {
+    let mut matches = request
+        .resource_metrics
+        .iter_mut()
+        .flat_map(|r| &mut r.scope_metrics)
+        .flat_map(|s| &mut s.metrics)
+        .filter(|m| m.name == name);
+    let metric = matches.next().expect("named fixture metric");
+    assert!(
+        matches.next().is_none(),
+        "fixture metric name must be unique: {name}"
+    );
+    metric
+}
+
+pub fn gauge_mut<'a>(
+    request: &'a mut ExportMetricsServiceRequest,
+    name: &str,
+) -> &'a mut metrics::Gauge {
+    let Some(Data::Gauge(gauge)) = &mut metric_mut(request, name).data else {
+        panic!("expected gauge fixture: {name}");
+    };
+    gauge
+}
+
+pub fn histogram_mut(request: &mut ExportMetricsServiceRequest) -> &mut metrics::Histogram {
+    let Some(Data::Histogram(histogram)) = &mut metric_mut(request, "distribution").data else {
+        panic!("expected histogram fixture");
+    };
+    histogram
+}
+
+pub fn reader_request() -> ExportMetricsServiceRequest {
+    let mut request = request();
+    gauge_mut(&mut request, "DCGM_FI_PROF_SM_ACTIVE").data_points[0].value =
+        Some(Value::AsDouble(-0.0));
+    request.resource_metrics[0]
+        .resource
+        .as_mut()
+        .unwrap()
+        .entity_refs
+        .push(common::EntityRef {
+            schema_url: "https://example.invalid/entity".into(),
+            r#type: "host".into(),
+            id_keys: vec!["host.name".into()],
+            description_keys: vec![],
+        });
+    request.resource_metrics[1]
+        .resource
+        .as_mut()
+        .unwrap()
+        .attributes
+        .extend([
+            attr("zero-int", Attribute::IntValue(0)),
+            attr("zero-double", Attribute::DoubleValue(0.0)),
+            attr("false", Attribute::BoolValue(false)),
+            attr("empty-string", Attribute::StringValue(String::new())),
+            attr("empty-bytes", Attribute::BytesValue(Vec::new())),
+        ]);
+    request
+}
+
+pub fn reader_raw() -> RawRecord {
+    RawRecord {
+        otlp_request: reader_request().encode_to_vec(),
+        ..raw()
+    }
+}
+
+pub fn single_gauge_resource(points: Vec<metrics::NumberDataPoint>) -> metrics::ResourceMetrics {
+    metrics::ResourceMetrics {
+        scope_metrics: vec![metrics::ScopeMetrics {
+            metrics: vec![metric(
+                "single.gauge",
+                Data::Gauge(metrics::Gauge {
+                    data_points: points,
+                }),
+            )],
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+pub fn metadata_heavy(points: usize) -> RawRecord {
+    let mut resource =
+        single_gauge_resource(vec![
+            number(Some(Value::AsInt(1)), 1_780_000_000_000_000_001);
+            points
+        ]);
+    resource.resource = Some(Resource {
+        attributes: vec![attr("heavy", Attribute::StringValue("x".repeat(65536)))],
+        ..Default::default()
+    });
+    single_resource(resource)
+}
+
+pub fn single_resource(resource: metrics::ResourceMetrics) -> RawRecord {
+    record(
+        ExportMetricsServiceRequest {
+            resource_metrics: vec![resource],
+        },
+        vec![ResourceBinding {
+            original_resource: 0,
+            context: Some(bound_context(
+                "node-a",
+                ResourceKind::Host,
+                Some("node-a"),
+                None,
+            )),
+        }],
+    )
+}
+
+fn bound_context(
+    id: &str,
+    kind: ResourceKind,
+    host: Option<&str>,
+    device: Option<&str>,
+) -> ResourceContext {
+    ResourceContext {
+        resource: Some(ResourceRef {
+            id: id.into(),
+            kind: kind as i32,
+        }),
+        host_id: host.map(str::to_owned),
+        device_id: device.map(str::to_owned),
+        relationships: vec![],
+        access: Some(ResourceAccess {
+            scope: Some(resource_access::Scope::Bound(BoundScope {})),
+        }),
+    }
+}
+
 pub fn raw() -> RawRecord {
     let mut bindings = Vec::new();
     for (r, (id, kind, host, device)) in [
@@ -300,6 +438,10 @@ pub fn raw() -> RawRecord {
             }),
         });
     }
+    record(request(), bindings)
+}
+
+fn record(request: ExportMetricsServiceRequest, bindings: Vec<ResourceBinding>) -> RawRecord {
     RawRecord {
         security: Some(SecurityScope {
             project_id: "project-a".into(),
@@ -312,15 +454,15 @@ pub fn raw() -> RawRecord {
             created_unix_nano: 1_780_000_000_000_000_000,
         }),
         payload_kind: PayloadKind::OtlpMetrics as i32,
-        otlp_request: request().encode_to_vec(),
+        otlp_request: request.encode_to_vec(),
         bindings,
+        delivery: None,
     }
 }
 
 pub fn ordinary_cpu_process() -> RawRecord {
     let time = 1_780_000_000_000_000_001;
-    let mut raw = raw();
-    raw.bindings.truncate(2);
+    let mut bindings = Vec::new();
     let mut resources = Vec::new();
     for (index, id) in ["node-a", "process-a"].into_iter().enumerate() {
         let mut counter = number(
@@ -385,21 +527,24 @@ pub fn ordinary_cpu_process() -> RawRecord {
                 metrics: vec![cpu, memory],
             }],
         });
-        let context = raw.bindings[index].context.as_mut().unwrap();
-        context.resource = Some(ResourceRef {
-            id: id.into(),
-            kind: if index == 0 {
-                ResourceKind::Host
-            } else {
-                ResourceKind::Process
-            } as i32,
+        bindings.push(ResourceBinding {
+            original_resource: index as u32,
+            context: Some(bound_context(
+                id,
+                if index == 0 {
+                    ResourceKind::Host
+                } else {
+                    ResourceKind::Process
+                },
+                Some("node-a"),
+                None,
+            )),
         });
-        context.host_id = Some("node-a".into());
-        context.device_id = None;
     }
-    raw.otlp_request = ExportMetricsServiceRequest {
-        resource_metrics: resources,
-    }
-    .encode_to_vec();
-    raw
+    record(
+        ExportMetricsServiceRequest {
+            resource_metrics: resources,
+        },
+        bindings,
+    )
 }

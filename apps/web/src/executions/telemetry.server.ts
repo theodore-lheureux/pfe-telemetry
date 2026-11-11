@@ -3,7 +3,7 @@ import {
 	ClickHouseLogLevel,
 	createClient,
 } from "@clickhouse/client";
-import { OperationError } from "../organizations/errors";
+import { OperationError } from "../lib/operation-error";
 import type {
 	TelemetryPoint,
 	TelemetryResult,

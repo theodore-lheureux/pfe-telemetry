@@ -1,4 +1,5 @@
 use clap::Parser;
+use recount_telemetry_schema::ddl::{Batching, FLUSH_MS, Schema};
 use recount_telemetry_validation::transport::{
     ConsumerBudget, MAX_BROKER_BYTES, MAX_OUTPUT_ROWS, NORMALIZED_BROKER_BYTES, OUTPUT_ROWS,
 };
@@ -13,6 +14,8 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const PROTO: &str = include_str!("../../telemetry-schema/proto/recount.proto");
 const GENERATOR: &str = include_str!("../../telemetry-schema/build.rs");
 const DDL: &str = include_str!("../../../infra/clickhouse/schema.sql.in");
+const RENDERER: &str = include_str!("../../telemetry-schema/src/ddl.rs");
+const SCHEMA_LIBRARY: &str = include_str!("../../telemetry-schema/src/lib.rs");
 const COLUMNS: &str = recount_telemetry_schema::ANALYTICAL_COLUMNS;
 const TRANSPORT: &str = include_str!("../src/transport.rs");
 
@@ -31,6 +34,8 @@ struct Options {
     bootstrap: String,
     #[arg(long = "normalized-topic", env = "RECOUNT_NORMALIZED_TOPIC", default_value = recount_telemetry_schema::NORMALIZED_TOPIC)]
     topic: String,
+    #[arg(long = "consumer-group", default_value = recount_telemetry_schema::CLICKHOUSE_GROUP)]
+    group: String,
     /// Native insert partition ceiling; Kafka records always carry exactly one point.
     #[arg(long = "output-rows", env = "RECOUNT_NORMALIZER_OUTPUT_ROWS", default_value_t = OUTPUT_ROWS, value_parser = clap::value_parser!(u32).range(1..=MAX_OUTPUT_ROWS as i64))]
     rows: u32,
@@ -42,7 +47,7 @@ struct Options {
     kafka_receive_bytes: Option<u32>,
     #[arg(long = "poll-ms", default_value_t = 100, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
     poll: u32,
-    #[arg(long = "flush-ms", default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
+    #[arg(long = "flush-ms", default_value_t = FLUSH_MS, value_parser = clap::value_parser!(u32).range(1..=i32::MAX as i64))]
     flush: u32,
 }
 
@@ -62,6 +67,8 @@ fn verify_source(root: &Path) -> Result<()> {
         ("crates/telemetry-schema/proto/recount.proto", PROTO),
         ("crates/telemetry-schema/build.rs", GENERATOR),
         ("infra/clickhouse/schema.sql.in", DDL),
+        ("crates/telemetry-schema/src/ddl.rs", RENDERER),
+        ("crates/telemetry-schema/src/lib.rs", SCHEMA_LIBRARY),
         ("crates/telemetry-validation/src/transport.rs", TRANSPORT),
     ] {
         if fs::read(root.join(name))? != compiled.as_bytes() {
@@ -79,32 +86,19 @@ fn prepare(options: &Options) -> Result<()> {
     let budget = ConsumerBudget::normalized(options.normalized_broker_max_bytes as usize)?;
     let default_receive = budget.receive_bytes;
     let budget = budget.with_receive_limit(options.kafka_receive_bytes.map(|v| v as usize))?;
-    for value in [&options.bootstrap, &options.topic] {
-        if value.is_empty()
-            || !value
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b"_.:,[]-".contains(&b))
-        {
-            return Err(invalid("invalid Kafka address or topic").into());
-        }
+    let batching = Batching::for_partition_limit(options.rows)?;
+    let sql = Schema {
+        database: "telemetry",
+        bootstrap: &options.bootstrap,
+        topic: &options.topic,
+        group: &options.group,
+        partition_limit: options.rows,
+        poll_ms: options.poll,
+        flush_ms: options.flush,
+        if_not_exists: true,
     }
+    .render()?;
     let columns = COLUMNS.trim();
-    if columns.is_empty() || columns.contains(';') || columns.contains("__") {
-        return Err(invalid("invalid generated columns").into());
-    }
-    let mut sql = DDL.to_owned();
-    for (token, value) in [
-        ("__ANALYTICAL_COLUMNS__", columns.to_owned()),
-        ("__KAFKA_BOOTSTRAP__", options.bootstrap.clone()),
-        ("__NORMALIZED_TOPIC__", options.topic.clone()),
-        ("__POLL_MS__", options.poll.to_string()),
-        ("__FLUSH_MS__", options.flush.to_string()),
-    ] {
-        sql = sql.replace(token, &value);
-    }
-    if sql.contains("__") {
-        return Err(invalid("unresolved DDL placeholder").into());
-    }
     let expected = columns
         .lines()
         .map(|line| {
@@ -181,13 +175,17 @@ fn prepare(options: &Options) -> Result<()> {
     )?;
     let manifest = serde_json::json!({
         "clickhouse_version": "26.8.34.13", "bootstrap": options.bootstrap,
-        "normalized_topic": options.topic, "block_rows": 1, "output_rows": options.rows,
+        "normalized_topic": options.topic, "block_rows": batching.block_rows,
+        "poll_messages": batching.poll_messages, "maximum_block_rows": batching.maximum_rows(),
+        "output_rows": options.rows,
+        "database": "telemetry", "consumer_group": options.group,
         "kafka_format": "ProtobufSingle", "point_rows": 1,
         "normalized_broker_max_bytes": options.normalized_broker_max_bytes,
         "kafka_receive_bytes": budget.receive_bytes,
         "poll_ms": options.poll, "flush_ms": options.flush, "sha256": hashes,
         "exporter_sha256": digest(&fs::read(env::current_exe()?)?),
         "generator_sha256": digest(GENERATOR.as_bytes()),
+        "renderer_sha256": digest(RENDERER.as_bytes()),
     });
     fs::write(
         options.output.join("manifest.json"),
@@ -203,6 +201,7 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::Command;
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
     fn directory() -> PathBuf {
@@ -223,6 +222,8 @@ mod tests {
             ("crates/telemetry-schema/proto/recount.proto", PROTO),
             ("crates/telemetry-schema/build.rs", GENERATOR),
             ("infra/clickhouse/schema.sql.in", DDL),
+            ("crates/telemetry-schema/src/ddl.rs", RENDERER),
+            ("crates/telemetry-schema/src/lib.rs", SCHEMA_LIBRARY),
             ("crates/telemetry-validation/src/transport.rs", TRANSPORT),
         ] {
             fs::create_dir_all(root.join(name).parent().unwrap()).unwrap();
@@ -253,6 +254,7 @@ mod tests {
             source: parent.clone(),
             bootstrap: "kafka:9092".into(),
             topic: "recount.test.normalized".into(),
+            group: recount_telemetry_schema::CLICKHOUSE_GROUP.into(),
             rows: OUTPUT_ROWS,
             normalized_broker_max_bytes: 65_537,
             kafka_receive_bytes: Some(12_582_912),
@@ -281,6 +283,7 @@ mod tests {
             source: source.clone(),
             bootstrap: "kafka:9092".into(),
             topic: "recount.test.normalized".into(),
+            group: "recount.test.consumer".into(),
             rows: 64,
             normalized_broker_max_bytes: 3_000_000,
             kafka_receive_bytes: None,
@@ -309,6 +312,10 @@ mod tests {
             );
         }
         assert_eq!(manifest["output_rows"], 64);
+        assert_eq!(manifest["block_rows"], 64);
+        assert_eq!(manifest["poll_messages"], 1);
+        assert_eq!(manifest["maximum_block_rows"], 64);
+        assert_eq!(manifest["consumer_group"], "recount.test.consumer");
         assert_eq!(manifest["point_rows"], 1);
         assert_eq!(manifest["kafka_format"], "ProtobufSingle");
         assert!(
@@ -346,6 +353,7 @@ mod tests {
             source: parent.clone(),
             bootstrap: "kafka:9092".into(),
             topic: "recount.test.normalized".into(),
+            group: recount_telemetry_schema::CLICKHOUSE_GROUP.into(),
             rows: 128,
             normalized_broker_max_bytes: NORMALIZED_BROKER_BYTES,
             kafka_receive_bytes: None,
@@ -356,6 +364,7 @@ mod tests {
             "crates/telemetry-schema/proto/recount.proto",
             "crates/telemetry-schema/build.rs",
             "infra/clickhouse/schema.sql.in",
+            "crates/telemetry-schema/src/ddl.rs",
             "crates/telemetry-validation/src/transport.rs",
         ] {
             let path = parent.join(name);
@@ -365,12 +374,27 @@ mod tests {
             assert!(!options.output.exists());
             fs::write(path, original).unwrap();
         }
+        let changed_group = SCHEMA_LIBRARY.replace(
+            &format!(
+                "pub const CLICKHOUSE_GROUP: &str = {:?};",
+                recount_telemetry_schema::CLICKHOUSE_GROUP
+            ),
+            "pub const CLICKHOUSE_GROUP: &str = \"changed-group\";",
+        );
+        assert_ne!(changed_group, SCHEMA_LIBRARY);
+        fs::write(
+            parent.join("crates/telemetry-schema/src/lib.rs"),
+            changed_group,
+        )
+        .unwrap();
+        let error = prepare(&options).unwrap_err().to_string();
+        assert!(error.contains("stale") && error.contains("crates/telemetry-schema/src/lib.rs"));
+        assert!(!options.output.exists());
         fs::remove_dir_all(parent).unwrap();
     }
 
     #[test]
     fn offline_bundle_guard_rejects_runtime_mismatches_and_schema_tampering() {
-        use std::process::Command;
         let parent = directory();
         write_source(&parent);
         for (name, rows, topic_bytes, receive_override) in [
@@ -388,6 +412,7 @@ mod tests {
                 source: parent.clone(),
                 bootstrap: "kafka:9092".into(),
                 topic: "recount.test.normalized".into(),
+                group: recount_telemetry_schema::CLICKHOUSE_GROUP.into(),
                 rows,
                 normalized_broker_max_bytes: topic_bytes,
                 kafka_receive_bytes: receive_override,
@@ -441,6 +466,19 @@ mod tests {
             assert!(!run(Some(rows), Some(topic_bytes + 1), receive_override));
             assert!(!run(Some(rows), Some(topic_bytes), Some(13_000_000)));
             let schema = options.output.join("schema.sql");
+            let original = fs::read_to_string(&schema).unwrap();
+            let changed_group = original.replace(
+                &format!(
+                    "kafka_group_name = '{}'",
+                    recount_telemetry_schema::CLICKHOUSE_GROUP
+                ),
+                "kafka_group_name = 'changed-group'",
+            );
+            assert_ne!(changed_group, original);
+            fs::write(&schema, changed_group).unwrap();
+            assert!(!run(Some(rows), Some(topic_bytes), receive_override));
+            fs::write(&schema, original).unwrap();
+            assert!(run(Some(rows), Some(topic_bytes), receive_override));
             fs::write(&schema, "synthetic schema mismatch\n").unwrap();
             assert!(!run(Some(rows), Some(topic_bytes), receive_override));
         }

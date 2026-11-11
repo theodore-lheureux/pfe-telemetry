@@ -1,38 +1,20 @@
 use recount_telemetry_schema::{
     ExportMetricsServiceRequest,
-    common::{KeyValue, any_value::Value},
     identity::local_resource_id,
-    point::string_attribute,
     wire::{
         BoundScope, LocalResource, ResourceAccess, ResourceBinding, ResourceContext, ResourceKind,
         ResourceRef, RootScope, resource_access::Scope,
     },
 };
 use recount_telemetry_validation::{
+    catalogue::{self, Adapter},
+    linux_adapter::{self, resource_identity},
     metadata::{self, Profile},
     validate::Limits,
 };
 use tonic::Status;
 
 use crate::{auth::Source, status};
-
-fn required<'a>(attrs: &'a [KeyValue], key: &str) -> std::result::Result<&'a str, Status> {
-    string_attribute(attrs, key)
-        .filter(|v| crate::auth::identifier(v))
-        .ok_or_else(|| Status::invalid_argument("Missing or invalid Linux resource identity"))
-}
-
-fn integer(attrs: &[KeyValue], key: &str) -> std::result::Result<i64, Status> {
-    attrs
-        .iter()
-        .find(|a| a.key == key)
-        .and_then(|a| a.value.as_ref())
-        .and_then(|v| match v.value {
-            Some(Value::IntValue(v)) if v > 0 => Some(v),
-            _ => None,
-        })
-        .ok_or_else(|| Status::invalid_argument("Missing or invalid Linux process identity"))
-}
 
 pub fn resolve(
     request: &ExportMetricsServiceRequest,
@@ -55,41 +37,18 @@ pub fn resolve(
                 .unwrap_or_default();
             let claim = metadata::resource_claim(attrs).map_err(status)?;
             let (resource, scope, host_id) = if profile == Profile::Linux {
-                let host = required(attrs, "host.id")?;
-                let boot = required(attrs, "recount.host.boot_id")?;
-                if uuid::Uuid::parse_str(boot).is_err() {
-                    return Err(Status::invalid_argument("Invalid Linux boot identity"));
-                }
-                let scope = required(attrs, "recount.collection.scope")?;
-                if !matches!(scope, "node" | "process" | "collector") {
-                    return Err(Status::failed_precondition(
-                        "Unsupported Linux collection scope",
-                    ));
-                }
-                required(attrs, "recount.collection.epoch_id")?;
-                let process = scope == "process";
+                let identity = resource_identity(attrs).map_err(status)?;
+                let host = identity.host;
                 for metric in rm.scope_metrics.iter().flat_map(|s| &s.metrics) {
-                    recount_telemetry_validation::catalogue::validate_collector_metric(metric)
-                        .map_err(status)?;
+                    catalogue::validate_adapter_metric(metric, Adapter::Linux).map_err(status)?;
                 }
                 if claim.is_some() {
                     return Err(Status::invalid_argument(
                         "Linux adapter resource claims must use native identity",
                     ));
                 }
-                if process {
-                    let pid = integer(attrs, "process.pid")?;
-                    let ticks = required(attrs, "recount.process.start_time_ticks")?
-                        .parse::<u64>()
-                        .map_err(|_| Status::invalid_argument("Invalid process start ticks"))?;
-                    let namespace = required(attrs, "recount.process.namespace_id")?;
-                    let mut hash =
-                        recount_telemetry_schema::identity::TypedHash::new("recount.linux-process");
-                    hash.field(boot.as_bytes());
-                    hash.field(namespace.as_bytes());
-                    hash.u64(pid as u64);
-                    hash.u64(ticks);
-                    let incarnation = recount_telemetry_schema::identity::hex(&hash.finish());
+                if let Some(process) = identity.process {
+                    let incarnation = process.incarnation();
                     let id = local_resource_id(
                         &source.security.project_id,
                         host,
@@ -104,7 +63,7 @@ pub fn resolve(
                         },
                         Scope::Local(LocalResource {
                             root_id: host.into(),
-                            adapter: "linux".into(),
+                            adapter: linux_adapter::ADAPTER.into(),
                             local_incarnation: incarnation,
                         }),
                         Some(host.to_owned()),
@@ -155,4 +114,184 @@ pub fn resolve(
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use recount_telemetry_schema::{
+        common::{AnyValue, KeyValue, any_value::Value},
+        metrics::{
+            Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, metric,
+            number_data_point,
+        },
+        resource::Resource,
+        wire::SecurityScope,
+    };
+
+    fn string(key: &str, value: &str) -> KeyValue {
+        KeyValue {
+            key: key.into(),
+            value: Some(AnyValue {
+                value: Some(Value::StringValue(value.into())),
+            }),
+            ..Default::default()
+        }
+    }
+
+    fn source() -> Source {
+        Source {
+            node_id: uuid::Uuid::nil(),
+            security: SecurityScope {
+                project_id: "project".into(),
+                source_id: "source".into(),
+            },
+            root: ResourceRef {
+                id: "host".into(),
+                kind: ResourceKind::Host as i32,
+            },
+            maximum_age_ns: 1,
+            skew_ns: 0,
+            adapter: "linux".into(),
+            local_kinds: [ResourceKind::Process].into(),
+        }
+    }
+
+    fn linux_node() -> ResourceMetrics {
+        ResourceMetrics {
+            resource: Some(Resource {
+                attributes: vec![
+                    string("host.id", "host"),
+                    string(
+                        "recount.host.boot_id",
+                        "01234567-89ab-cdef-0123-456789abcdef",
+                    ),
+                    string("recount.collection.epoch_id", "epoch"),
+                    string("recount.collection.scope", "node"),
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn linux_bindings_follow_resource_positions_not_resource_or_attribute_order() {
+        let node = linux_node();
+        let mut process = node.clone();
+        let attrs = &mut process.resource.as_mut().unwrap().attributes;
+        *attrs
+            .iter_mut()
+            .find(|a| a.key == "recount.collection.scope")
+            .unwrap() = string("recount.collection.scope", "process");
+        attrs.extend([
+            string("recount.process.namespace_id", "namespace"),
+            string("recount.process.start_time_ticks", "100"),
+            // A descriptive incarnation claim cannot override native identity.
+            string("recount.process.incarnation_id", "forged"),
+            KeyValue {
+                key: "process.pid".into(),
+                value: Some(AnyValue {
+                    value: Some(Value::IntValue(42)),
+                }),
+                ..Default::default()
+            },
+        ]);
+        let source = source();
+        let mut request = ExportMetricsServiceRequest {
+            resource_metrics: vec![node, process],
+        };
+        let original = resolve(&request, &source, Profile::Linux, Limits::default()).unwrap();
+        assert!(matches!(
+            original[0]
+                .context
+                .as_ref()
+                .unwrap()
+                .access
+                .as_ref()
+                .unwrap()
+                .scope,
+            Some(Scope::Root(_))
+        ));
+        let Some(Scope::Local(local)) = &original[1]
+            .context
+            .as_ref()
+            .unwrap()
+            .access
+            .as_ref()
+            .unwrap()
+            .scope
+        else {
+            panic!("Process must resolve locally");
+        };
+        assert_eq!(local.root_id, "host");
+        assert_eq!(local.adapter, "linux");
+        assert_ne!(local.local_incarnation, "forged");
+        request.resource_metrics.reverse();
+        for resource in &mut request.resource_metrics {
+            resource.resource.as_mut().unwrap().attributes.reverse();
+        }
+        let reordered = resolve(&request, &source, Profile::Linux, Limits::default()).unwrap();
+        assert_eq!(reordered[0].original_resource, 0);
+        assert_eq!(reordered[1].original_resource, 1);
+        assert_eq!(reordered[0].context, original[1].context);
+        assert_eq!(reordered[1].context, original[0].context);
+    }
+
+    #[test]
+    fn linux_boundary_rejects_dcgm_without_restricting_standard_otlp() {
+        let mut resource = linux_node();
+        resource.scope_metrics.push(ScopeMetrics {
+            metrics: vec![Metric {
+                name: "DCGM_FI_PROF_SM_ACTIVE".into(),
+                unit: "1".into(),
+                data: Some(metric::Data::Gauge(Gauge {
+                    data_points: vec![NumberDataPoint {
+                        time_unix_nano: 200,
+                        value: Some(number_data_point::Value::AsDouble(0.5)),
+                        ..Default::default()
+                    }],
+                })),
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        let request = ExportMetricsServiceRequest {
+            resource_metrics: vec![resource],
+        };
+        let source = source();
+        let status = resolve(&request, &source, Profile::Linux, Limits::default()).unwrap_err();
+        assert_eq!(status.code(), tonic::Code::FailedPrecondition);
+        resolve(&request, &source, Profile::Standard, Limits::default()).unwrap();
+    }
+
+    #[test]
+    fn standard_resources_need_no_linux_identity_or_metric_allowlist() {
+        let request = ExportMetricsServiceRequest {
+            resource_metrics: vec![ResourceMetrics {
+                resource: Some(Resource {
+                    attributes: vec![
+                        string("recount.collection.scope", "application"),
+                        string("recount.host.boot_id", "not-linux"),
+                    ],
+                    ..Default::default()
+                }),
+                scope_metrics: vec![ScopeMetrics {
+                    metrics: vec![Metric {
+                        name: "application.custom".into(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+        let source = source();
+        let bindings = resolve(&request, &source, Profile::Standard, Limits::default()).unwrap();
+        assert_eq!(
+            bindings[0].context.as_ref().unwrap().resource.as_ref(),
+            Some(&source.root)
+        );
+        assert!(resolve(&request, &source, Profile::Linux, Limits::default()).is_err());
+    }
 }

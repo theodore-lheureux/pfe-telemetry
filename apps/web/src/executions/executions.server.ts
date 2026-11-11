@@ -1,12 +1,13 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
+import { listSourceNodes } from "../collectors/collectors.server";
 import type { getDatabase } from "../db/client.server";
-import { collectorCredential } from "../db/credentials-schema";
+import { collectorNode } from "../db/collectors-schema";
 import { execution } from "../db/executions-schema";
 import { createOnce } from "../lib/create-once.server";
+import { OperationError } from "../lib/operation-error";
 import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference, ProjectRole } from "../organizations/contracts";
-import { OperationError } from "../organizations/errors";
 import type {
 	CreateExecutionInput,
 	ExecutionReference,
@@ -86,21 +87,10 @@ export async function listExecutionSources(
 ) {
 	const access = await requireProject(database, actor, input);
 	writer(access.role);
-	const sources = await database
-		.select({
-			credentialId: collectorCredential.id,
-			name: collectorCredential.name,
-			sourceId: collectorCredential.sourceId,
-		})
-		.from(collectorCredential)
-		.where(
-			and(
-				eq(collectorCredential.organizationId, access.organizationId),
-				eq(collectorCredential.projectId, access.id),
-			),
-		)
-		.orderBy(desc(collectorCredential.createdAt))
-		.limit(201);
+	const sources = await listSourceNodes(database, {
+		organizationId: access.organizationId,
+		projectId: access.id,
+	});
 	if (sources.length > 200)
 		throw new OperationError("CAPACITY", "Too many source choices");
 	return sources;
@@ -121,19 +111,12 @@ export async function createExecution(
 	input = parseCreateExecution(input);
 	return createOnce(database, {
 		actorId: actor.id,
-		requestId: input.requestId,
 		scope: {
 			operation: "create-execution",
 			organizationId: input.organizationId,
 			projectId: input.projectId,
 		},
-		values: [
-			input.credentialId,
-			input.name,
-			input.hostId,
-			input.startedAt,
-			input.endedAt,
-		],
+		submission: input,
 		resourceId: uuidv7(),
 		authorize: async (tx) => {
 			const access = await requireProject(tx, actor, input);
@@ -142,13 +125,13 @@ export async function createExecution(
 		},
 		create: async (tx, id, access) => {
 			const [source] = await tx
-				.select({ sourceId: collectorCredential.sourceId })
-				.from(collectorCredential)
+				.select({ sourceId: collectorNode.id })
+				.from(collectorNode)
 				.where(
 					and(
-						eq(collectorCredential.id, input.credentialId),
-						eq(collectorCredential.projectId, access.id),
-						eq(collectorCredential.organizationId, access.organizationId),
+						eq(collectorNode.id, input.nodeId),
+						eq(collectorNode.projectId, access.id),
+						eq(collectorNode.organizationId, access.organizationId),
 					),
 				);
 			if (!source)

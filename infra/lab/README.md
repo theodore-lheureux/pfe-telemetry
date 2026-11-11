@@ -16,7 +16,7 @@ Before applying these source names to an existing environment, explicitly inspec
 
 Do not run `up` or provisioning against existing VMs until those identities and bindings have been matched. Keep the existing `.env`, `.vagrant`, disks, token files, queues and results intact during that inspection. Do not automatically recreate or delete VMs, replace credentials, or rebind tokens or queued uploads to make the renamed source fit. Any subsequent operational change requires an explicit choice after inspection; these source definitions perform no local-state migration.
 
-Select the existing metadata using standard [`VAGRANT_DOTFILE_PATH`](https://developer.hashicorp.com/vagrant/docs/other/environmental-variables#vagrant_dotfile_path) in ignored local settings; use its existing absolute directory, not a new empty `.vagrant`. Run `VBoxManage list vms` and `just lab vagrant status` and match UUIDs before any `up`, `provision`, `collectors`, `stop` or `destroy`. `RECOUNT_LAB_VM_PREFIX` selects the intended provider/network name prefix; `COMPOSE_PROJECT_NAME` selects an existing monitoring project. Source defaults describe new installations, not the identity of already registered VMs. The recipes select the generated Ansible inventory under the chosen Vagrant metadata directory. They do not move metadata, disks, credentials or runtime state. Preserve the existing token directory explicitly with `recount_collector_token_directory` when it differs from the new-installation default.
+Select the existing metadata using standard [`VAGRANT_DOTFILE_PATH`](https://developer.hashicorp.com/vagrant/docs/other/environmental-variables#vagrant_dotfile_path) in ignored local settings; use its existing absolute directory, not a new empty `.vagrant`. Run `VBoxManage list vms` and `just lab vagrant status` and match UUIDs before any `up`, `provision`, `collectors`, `stop` or `destroy`. `RECOUNT_LAB_VM_PREFIX` selects the intended provider/network name prefix; `COMPOSE_PROJECT_NAME` selects an existing monitoring project. Source defaults describe new installations, not the identity of already registered VMs. The recipes select the generated Ansible inventory under the chosen Vagrant metadata directory. They do not move metadata, disks, credentials or runtime state. Preserve the existing enrollment key directory explicitly with `recount_collector_enrollment_directory` when it differs from the new-installation default.
 
 ## Commands
 
@@ -29,6 +29,7 @@ just lab                  # List commands
 just lab up               # Start monitoring, provision the VMs, verify both
 just lab verify           # Check hostname, private address, agents, and connectivity
 just lab check            # Simulate configuration changes and run connectivity checks
+just --no-dotenv lab syntax # Offline Ruby, Ansible and example Compose validation
 just lab inventory --graph
 just lab provision        # Reapply Ansible and verify
 just lab status
@@ -70,6 +71,8 @@ Vagrant generates the local inventory at `.vagrant/provisioners/ansible/inventor
 `ansible.cfg` selects this inventory and treats unreadable inventories or unmatched host patterns as errors. Vagrant selects the configuration through `config_file`; the environment recipes set `ANSIBLE_CONFIG`. Shared package settings, probe versions, interpreter selection, and SSH policy live in `group_vars/compute.yml`. Ansible loads these variables beside the playbooks. The inventory command uses `--playbook-dir ansible` to load them too.
 
 The site playbook statically imports the connectivity tasks with `never` and `verify` tags. Default provisioning skips them so the first VM can provision before its peers start. `just lab verify` selects them explicitly; `just lab check` uses `--check --diff --tags all,verify` to simulate provisioning and run the read-only probes. Check mode requires already-provisioned VMs because it does not install missing tools. A successful check-mode run can report configuration changes that would still need to be applied.
+
+Portable CI runs `just --no-dotenv lab syntax`, which uses a synthetic inventory and the committed Compose example without connecting to guests. Live commands still require readable generated inventory. Collectors default `recount_collector_endpoint` to `http://{{ recount_ingestion_address }}`, matching the generated address checked by verification, and `recount_collector_enrollment_url` to the web application at `http://{{ recount_web_address }}`. Every VM enrolls itself with the one demo enrollment key. An explicit Ansible override, such as `-e recount_collector_endpoint=http://host:port`, takes precedence.
 
 ## Storage and local settings
 

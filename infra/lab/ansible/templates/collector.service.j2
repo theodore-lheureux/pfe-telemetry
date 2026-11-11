@@ -8,7 +8,9 @@ Type=simple
 User={{ ansible_user }}
 Environment={{ ('OTEL_EXPORTER_OTLP_ENDPOINT=' ~ recount_collector_endpoint) | to_json }}
 Environment={{ ('RECOUNT_COLLECTOR_HOST_ID=' ~ ansible_facts.hostname) | to_json }}
-Environment=RECOUNT_COLLECTOR_SOURCE_TOKEN_FILE=/etc/recount-collector/source.token
+Environment={{ ('RECOUNT_COLLECTOR_ENROLLMENT_URL=' ~ recount_collector_enrollment_url) | to_json }}
+Environment=RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=/etc/recount-collector/enrollment.key
+Environment=RECOUNT_COLLECTOR_STATE_DIRECTORY=/var/lib/{{ recount_collector_queue_name }}/node
 Environment=RECOUNT_COLLECTOR_QUEUE_DIRECTORY=/var/lib/{{ recount_collector_queue_name }}
 Environment=RECOUNT_COLLECTOR_INTERVAL_MS={{ recount_collector_interval_ms }}
 Environment=RECOUNT_COLLECTOR_VISIBILITY=host

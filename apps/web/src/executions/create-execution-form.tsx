@@ -16,7 +16,7 @@ export function CreateExecutionForm({
 	userId,
 }: {
 	reference: ProjectReference;
-	sources: { credentialId: string; name: string; sourceId: string }[];
+	sources: { nodeId: string; hostname: string }[];
 	userId: string;
 }) {
 	const mutation = useAppMutation({
@@ -41,7 +41,7 @@ export function CreateExecutionForm({
 			...reference,
 			requestId: crypto.randomUUID(),
 			name: "",
-			credentialId: sources[0]?.credentialId ?? "",
+			nodeId: sources[0]?.nodeId ?? "",
 			hostId: "",
 			startedAt: "",
 			endedAt: "",
@@ -89,7 +89,7 @@ export function CreateExecutionForm({
 					/>
 				)}
 			</form.AppField>
-			<form.AppField name="credentialId">
+			<form.AppField name="nodeId">
 				{(field) => (
 					<field.SelectField
 						label={m.collector_source()}
@@ -97,8 +97,8 @@ export function CreateExecutionForm({
 						disabled={disabled}
 					>
 						{sources.map((source) => (
-							<option key={source.credentialId} value={source.credentialId}>
-								{source.name} · {source.sourceId}
+							<option key={source.nodeId} value={source.nodeId}>
+								{source.hostname}
 							</option>
 						))}
 					</field.SelectField>

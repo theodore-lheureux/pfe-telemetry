@@ -1,9 +1,11 @@
 #[cfg(target_os = "linux")]
+use clap::Parser;
+#[cfg(target_os = "linux")]
+use tracing_subscriber::EnvFilter;
+
+#[cfg(target_os = "linux")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use clap::Parser;
-    use tracing_subscriber::EnvFilter;
-
     let config = recount_collector::config::Config::parse();
     tracing_subscriber::fmt()
         .with_env_filter(

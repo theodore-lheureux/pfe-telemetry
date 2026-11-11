@@ -1,4 +1,6 @@
 use crate::Result;
+use crate::live::{LivePublisher, notification};
+use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use prost::Message;
 use rdkafka::{
     ClientConfig,
@@ -13,7 +15,7 @@ use std::time::Duration;
 
 #[tonic::async_trait]
 pub trait Sink: Send + Sync {
-    async fn publish(&self, raw: &RawRecord) -> Result<()>;
+    async fn publish(&self, raw: &RawRecord, body: &ExportMetricsServiceRequest) -> Result<()>;
     async fn ready(&self) -> bool;
 }
 
@@ -24,6 +26,7 @@ pub struct KafkaSink {
     partitions: i32,
     max_bytes: usize,
     broker_max_bytes: usize,
+    live: LivePublisher,
 }
 
 impl KafkaSink {
@@ -33,6 +36,8 @@ impl KafkaSink {
         partitions: i32,
         max_bytes: usize,
         broker_max_bytes: usize,
+        live_topic: String,
+        live_partitions: u32,
     ) -> Result<Self> {
         if partitions <= 0 {
             return Err("raw partition count must be positive".into());
@@ -61,25 +66,31 @@ impl KafkaSink {
             partitions,
             max_bytes,
             broker_max_bytes,
+            live: LivePublisher::new(bootstrap, live_topic, live_partitions)?,
         })
     }
 }
 
 #[tonic::async_trait]
 impl Sink for KafkaSink {
-    async fn publish(&self, raw: &RawRecord) -> Result<()> {
+    async fn publish(&self, raw: &RawRecord, body: &ExportMetricsServiceRequest) -> Result<()> {
         let bytes = raw.encode_to_vec();
         if bytes.len() > self.max_bytes {
             return Err("Raw record exceeds configured producer bound".into());
         }
         let key = raw_routing_key(raw)?;
-        self.producer
+        let delivery = self
+            .producer
             .send(
                 FutureRecord::to(&self.topic).key(&key).payload(&bytes),
                 Timeout::After(Duration::from_millis(100)),
             )
             .await
             .map_err(|_| "Kafka did not confirm raw publication")?;
+        let mut live = notification(raw, body);
+        live.raw_partition = delivery.partition as u32;
+        live.raw_offset = delivery.offset as u64;
+        self.live.publish(live);
         Ok(())
     }
     async fn ready(&self) -> bool {

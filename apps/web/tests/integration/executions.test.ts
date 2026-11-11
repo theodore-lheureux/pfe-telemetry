@@ -4,15 +4,16 @@ import { eq } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
-import * as credentialDomain from "../../src/credentials/credentials.server";
+import * as collectorDomain from "../../src/collectors/collectors.server";
 import { execution, member } from "../../src/db/schema";
 import * as executionDomain from "../../src/executions/executions.server";
 import { queryExecutionTelemetry } from "../../src/executions/executions.server";
 import { parseCreateExecution } from "../../src/executions/validation";
-import type { OperationResult } from "../../src/organizations/contracts";
+import type { OperationResult } from "../../src/lib/operation-result";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
-
+import { trustedActor } from "../auth-actors";
+import { createTestNode } from "../collector-node";
 import { createTestDatabase } from "../database";
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -28,25 +29,12 @@ function data<T>(result: OperationResult<T>): T {
 }
 async function actor() {
 	const email = `execution-${++count}@example.invalid`;
-	await auth.api.sendVerificationOTP({ body: { email, type: "sign-in" } });
-	await auth.emailDelivery.drain();
-	const otp = codes.get(email);
-	if (!otp) throw new Error("Expected captured sign-in code");
-	const response = await auth.api.signInEmailOTP({
-		body: { email, otp },
-		headers: { origin },
-		asResponse: true,
-	});
-	const headers = new Headers({
-		origin,
-		cookie: response.headers
-			.getSetCookie()
-			.map((cookie) => cookie.split(";")[0])
-			.join("; "),
-	});
-	const session = await auth.api.getSession({ headers });
-	if (!session) throw new Error("Expected session");
-	return { id: session.user.id, headers };
+	return trustedActor(
+		auth,
+		email,
+		(email) => codes.get(email),
+		new Headers({ origin }),
+	);
 }
 beforeAll(async () => {
 	database = await createTestDatabase("executions");
@@ -73,7 +61,7 @@ afterAll(async () => {
 	await database?.close();
 });
 
-test("independent canonical access, immutable source selection, tenant-qualified cursors and project-wide reads", async () => {
+async function scenario() {
 	const owner = await actor();
 	const writer = await actor();
 	const viewer = await actor();
@@ -92,7 +80,6 @@ test("independent canonical access, immutable source selection, tenant-qualified
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Private",
-				slug: "private",
 			}),
 		),
 	);
@@ -102,7 +89,6 @@ test("independent canonical access, immutable source selection, tenant-qualified
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Other",
-				slug: "other",
 			}),
 		),
 	);
@@ -133,43 +119,64 @@ test("independent canonical access, immutable source selection, tenant-qualified
 				}),
 			),
 		);
-	const credentials = actorService(auth);
-	const credential = data(
-		await credentials(owner.headers, (actor) =>
-			credentialDomain.createCollectorCredential(database.db, actor, {
-				...reference,
-				name: "Collector",
-				sourceId: "source",
-				rootId: "node1",
-				rootKind: 1,
-				adapter: "linux",
-				allowedLocalKinds: [4],
-			}),
-		),
-	);
-	const otherCredential = data(
-		await credentials(owner.headers, (actor) =>
-			credentialDomain.createCollectorCredential(database.db, actor, {
-				organizationId: organization.id,
-				projectId: other.id,
-				name: "Other",
-				sourceId: "foreign",
-				rootId: "node2",
-				rootKind: 1,
-				adapter: "linux",
-				allowedLocalKinds: [4],
-			}),
-		),
+	const { nodeId: sourceNodeId } = await createTestNode(database.db, reference);
+	const otherSource = await createTestNode(
+		database.db,
+		{ organizationId: organization.id, projectId: other.id },
+		{ hostname: "node2", machineId: "node2" },
 	);
 	const input = parseCreateExecution({
 		requestId: crypto.randomUUID(),
 		...reference,
-		credentialId: credential.credential.id,
+		nodeId: sourceNodeId,
 		name: "Recorded",
 		hostId: "node1",
 		startedAt: "2026-11-03T10:00:00Z",
 		endedAt: "2026-11-03T11:00:00Z",
 	});
+	return {
+		owner,
+		writer,
+		viewer,
+		outsider,
+		organization,
+		project,
+		other,
+		reference,
+		memberships,
+		otherSource,
+		sourceNodeId,
+		input,
+	};
+}
+
+async function recordedScenario() {
+	const fixture = await scenario();
+	const entry = data(
+		await requests(fixture.writer.headers, (actor) =>
+			executionDomain.createExecution(database.db, actor, fixture.input),
+		),
+	);
+	return {
+		...fixture,
+		entry,
+		ref: { ...fixture.reference, executionId: entry.executionId },
+	};
+}
+
+test("canonical project access controls execution creation, project-wide reads and edits", async () => {
+	const {
+		sourceNodeId,
+		owner,
+		writer,
+		viewer,
+		outsider,
+		organization,
+		other,
+		reference,
+		otherSource,
+		input,
+	} = await scenario();
 	expect(
 		(
 			await requests(viewer.headers, (actor) =>
@@ -182,7 +189,7 @@ test("independent canonical access, immutable source selection, tenant-qualified
 			await requests(writer.headers, (actor) =>
 				executionDomain.createExecution(database.db, actor, {
 					...input,
-					credentialId: otherCredential.credential.id,
+					nodeId: otherSource.nodeId,
 				}),
 			)
 		).error?.code,
@@ -220,7 +227,7 @@ test("independent canonical access, immutable source selection, tenant-qualified
 				}),
 			),
 		).sourceId,
-	).toBe("source");
+	).toBe(sourceNodeId);
 	const foreignRef = { ...ref, projectId: other.id };
 	for (const headers of [outsider.headers, new Headers()]) {
 		const expected =
@@ -276,6 +283,12 @@ test("independent canonical access, immutable source selection, tenant-qualified
 			)
 		).error?.code,
 	).toBe("NOT_FOUND");
+});
+
+test("telemetry reads use authorized immutable recording scope and bounded intervals", async () => {
+	const { viewer, project, other, ref, sourceNodeId } =
+		await recordedScenario();
+	const foreignRef = { ...ref, projectId: other.id };
 	let scope: unknown;
 	await queryExecutionTelemetry(
 		database.db,
@@ -294,7 +307,7 @@ test("independent canonical access, immutable source selection, tenant-qualified
 	);
 	expect(scope).toEqual({
 		projectId: project.id,
-		sourceId: "source",
+		sourceId: sourceNodeId,
 		hostId: "node1",
 		from: new Date("2026-11-03T10:10:00Z"),
 		to: new Date("2026-11-03T10:11:00Z"),
@@ -320,11 +333,16 @@ test("independent canonical access, immutable source selection, tenant-qualified
 			from: "2026-11-03T09:59:00Z",
 		}),
 	).rejects.toMatchObject({ code: "INVALID_INPUT" });
+});
+
+test("source revocation preserves recordings while membership revocation removes access", async () => {
+	const { owner, viewer, reference, memberships, ref, sourceNodeId } =
+		await recordedScenario();
 	data(
-		await credentials(owner.headers, (actor) =>
-			credentialDomain.revokeCollectorCredential(database.db, actor, {
+		await requests(owner.headers, (actor) =>
+			collectorDomain.revokeNodes(database.db, actor, {
 				...reference,
-				credentialId: credential.credential.id,
+				nodeIds: [sourceNodeId],
 			}),
 		),
 	);
@@ -334,13 +352,34 @@ test("independent canonical access, immutable source selection, tenant-qualified
 				executionDomain.getExecution(database.db, actor, ref),
 			),
 		).sourceId,
-	).toBe("source");
+	).toBe(sourceNodeId);
+	data(
+		await organizations(owner.headers, (actor) =>
+			projectDomain.removeProjectMember(database.db, actor, {
+				...reference,
+				memberId: memberships.find((item) => item.userId === viewer.id)
+					?.id as string,
+			}),
+		),
+	);
+	expect(
+		(
+			await requests(viewer.headers, (actor) =>
+				executionDomain.queryExecutionTelemetry(database.db, actor, ref),
+			)
+		).error?.code,
+	).toBe("NOT_FOUND");
+});
+
+test("execution pagination returns stable nonoverlapping project-scoped pages", async () => {
+	const { viewer, organization, project, reference, entry, sourceNodeId } =
+		await recordedScenario();
 	const inserted = Array.from({ length: 51 }, () => ({
 		id: uuidv7(),
 		organizationId: organization.id,
 		projectId: project.id,
 		name: "Page",
-		sourceId: "source",
+		sourceId: sourceNodeId,
 		startedAt: entry.startedAt,
 		endedAt: entry.endedAt,
 	}));
@@ -367,20 +406,4 @@ test("independent canonical access, immutable source selection, tenant-qualified
 			),
 		).size,
 	).toBe(52);
-	data(
-		await organizations(owner.headers, (actor) =>
-			projectDomain.removeProjectMember(database.db, actor, {
-				...reference,
-				memberId: memberships.find((item) => item.userId === viewer.id)
-					?.id as string,
-			}),
-		),
-	);
-	expect(
-		(
-			await requests(viewer.headers, (actor) =>
-				executionDomain.queryExecutionTelemetry(database.db, actor, ref),
-			)
-		).error?.code,
-	).toBe("NOT_FOUND");
 });

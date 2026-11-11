@@ -11,21 +11,21 @@ An organization holds your projects and members. A project is the boundary for d
 
 Projects are private by default. Organization owners and admins have admin access to every project in the organization. Other members need a project role:
 
-| Role   | Can do                                                                     |
-| ------ | -------------------------------------------------------------------------- |
-| Viewer | See every execution in the project.                                        |
-| Member | Everything a viewer can, plus rename their own executions.                 |
-| Admin  | Everything, including project settings, members and collector credentials. |
+| Role   | Can do                                                          |
+| ------ | --------------------------------------------------------------- |
+| Viewer | See every execution in the project.                             |
+| Member | Everything a viewer can, plus rename their own executions.      |
+| Admin  | Everything, including project settings, members and collectors. |
 
-## Sources and credentials
+## Nodes and enrollment keys
 
-A source is what reports telemetry, usually one collector on one machine. Each collector credential enrolls a source in a project and decides which machine it may report for.
+A node is one machine that reports telemetry to a project, through the collector running on it. Machines enroll themselves with an enrollment key created in the project, so you can add a whole fleet with one key.
 
-You can rotate a credential to get a new token, or revoke it to stop that source from sending more data. Revoking one credential doesn't affect the others. To change what a credential allows, create a new one and revoke the old one.
+Revoking a node stops that machine from sending more data without affecting the others. Revoking an enrollment key stops new machines from enrolling with it; machines it already enrolled keep reporting.
 
 ## Executions
 
-An execution is a saved time window on one source, optionally narrowed to a host. Everyone who can read the project can open every execution in it.
+An execution is a saved time window on one node, optionally narrowed to a host. Everyone who can read the project can open every execution in it.
 
 An execution doesn't track whether a job is running or finished. It records the window you chose, and shows what the machine was doing during it.
 

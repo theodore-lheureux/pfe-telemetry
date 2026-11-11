@@ -1,13 +1,9 @@
+#[allow(dead_code)]
 #[path = "../../../tests/fixtures/telemetry/cases.rs"]
 mod cases;
 use prost::Message;
-use recount_telemetry_schema::{
-    ANALYTICAL_COLUMNS, ExportMetricsServiceRequest,
-    common::any_value::Value,
-    metrics::{metric::Data, number_data_point::Value as NumberValue},
-    projection,
-    wire::AnalyticalPoint,
-};
+use recount_telemetry_schema::{ANALYTICAL_COLUMNS, projection, wire::AnalyticalPoint};
+use std::io::Write;
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--columns") {
@@ -21,7 +17,7 @@ fn main() {
     let mut raw = if ordinary {
         cases::ordinary_cpu_process()
     } else {
-        cases::raw()
+        cases::reader_raw()
     };
     match args.get(1).map(String::as_str) {
         Some("--ordinary-new") => raw.batch.as_mut().unwrap().client_id = "native-outage-a".into(),
@@ -30,49 +26,11 @@ fn main() {
         }
         _ => {}
     }
-    if !ordinary {
-        let mut request = ExportMetricsServiceRequest::decode(raw.otlp_request.as_slice()).unwrap();
-        let Some(Data::Gauge(gauge)) =
-            &mut request.resource_metrics[1].scope_metrics[0].metrics[0].data
-        else {
-            unreachable!()
-        };
-        gauge.data_points[0].value = Some(NumberValue::AsDouble(-0.0));
-        request.resource_metrics[0]
-            .resource
-            .as_mut()
-            .unwrap()
-            .entity_refs
-            .push(recount_telemetry_schema::common::EntityRef {
-                schema_url: "https://example.invalid/entity".into(),
-                r#type: "host".into(),
-                id_keys: vec!["host.name".into()],
-                description_keys: vec![],
-            });
-        request.resource_metrics[1]
-            .resource
-            .as_mut()
-            .unwrap()
-            .attributes
-            .extend([
-                cases::attr("zero-int", Value::IntValue(0)),
-                cases::attr("zero-double", Value::DoubleValue(0.0)),
-                cases::attr("false", Value::BoolValue(false)),
-                cases::attr("empty-string", Value::StringValue(String::new())),
-                cases::attr("empty-bytes", Value::BytesValue(Vec::new())),
-            ]);
-        raw.otlp_request = request.encode_to_vec();
-    }
     if args.get(1).map(String::as_str) == Some("--raw") {
-        use std::io::Write;
         std::io::stdout().write_all(&raw.encode_to_vec()).unwrap();
         return;
     }
-    let points = recount_telemetry_validation::validate::raw(&raw, Default::default()).unwrap();
-    let mut rows: Vec<_> = points
-        .iter()
-        .map(|p| projection::project(p).unwrap())
-        .collect();
+    let mut rows = recount_telemetry_validation::validate::raw(&raw, Default::default()).unwrap();
     if args.get(1).map(String::as_str) == Some("--stats") {
         let sizes: Vec<_> = rows
             .iter()
@@ -113,7 +71,6 @@ fn main() {
         );
         return;
     }
-    use std::io::Write;
     // Multirow file/HTTP interchange uses Protobuf's delimited stream format;
     // Kafka producers send each individual row through ProtobufSingle instead.
     for row in rows {

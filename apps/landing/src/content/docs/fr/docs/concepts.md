@@ -11,21 +11,21 @@ Une organisation regroupe vos projets et vos membres. Un projet délimite les do
 
 Les projets sont privés par défaut. Les propriétaires et les administrateurs de l’organisation ont un accès administrateur à tous ses projets. Les autres membres ont besoin d’un rôle dans le projet :
 
-| Rôle           | Peut                                                                             |
-| -------------- | -------------------------------------------------------------------------------- |
-| Lecteur        | Voir toutes les exécutions du projet.                                            |
-| Membre         | Tout ce que peut un lecteur, en plus de renommer ses propres exécutions.         |
-| Administrateur | Tout, y compris les paramètres, les membres et les identifiants des collecteurs. |
+| Rôle           | Peut                                                                     |
+| -------------- | ------------------------------------------------------------------------ |
+| Lecteur        | Voir toutes les exécutions du projet.                                    |
+| Membre         | Tout ce que peut un lecteur, en plus de renommer ses propres exécutions. |
+| Administrateur | Tout, y compris les paramètres, les membres et les collecteurs.          |
 
-## Sources et identifiants d’accès
+## Nœuds et clés d’inscription
 
-Une source est ce qui envoie la télémétrie, habituellement un collecteur sur une machine. Chaque identifiant d’accès de collecteur inscrit une source dans un projet et détermine pour quelle machine elle peut envoyer des données.
+Un nœud est une machine qui envoie de la télémétrie à un projet, par le collecteur qui y fonctionne. Les machines s’inscrivent d’elles-mêmes avec une clé d’inscription créée dans le projet : une seule clé suffit pour ajouter tout un parc.
 
-Vous pouvez renouveler un identifiant pour obtenir un nouveau jeton, ou le révoquer pour empêcher cette source d’envoyer d’autres données. Révoquer un identifiant n’a aucun effet sur les autres. Pour changer ce qu’un identifiant permet, créez-en un nouveau et révoquez l’ancien.
+Révoquer un nœud empêche cette machine d’envoyer d’autres données, sans effet sur les autres. Révoquer une clé d’inscription empêche de nouvelles machines de s’inscrire avec elle; les machines déjà inscrites continuent d’envoyer leurs données.
 
 ## Exécutions
 
-Une exécution est une période enregistrée sur une source, éventuellement limitée à un hôte. Toute personne qui peut lire le projet peut ouvrir toutes ses exécutions.
+Une exécution est une période enregistrée sur un nœud, éventuellement limitée à un hôte. Toute personne qui peut lire le projet peut ouvrir toutes ses exécutions.
 
 Une exécution ne suit pas l’état d’une tâche, en cours ou terminée. Elle enregistre la période que vous avez choisie et montre ce que faisait la machine pendant ce temps.
 

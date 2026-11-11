@@ -16,5 +16,6 @@ REVOKE ALL ON ALL TABLES IN SCHEMA app FROM recount_ingestion;
 REVOKE ALL ON SCHEMA ingestion FROM recount_ingestion;
 REVOKE ALL ON ALL TABLES IN SCHEMA ingestion FROM recount_ingestion;
 GRANT USAGE ON SCHEMA ingestion TO recount_ingestion;
-GRANT SELECT ON ingestion.collector_credential,
-    ingestion.collector_root_grant, ingestion.collector_resource_grant TO recount_ingestion;
+-- The ingestion service verifies collector tokens offline and only polls revoked node IDs.
+GRANT SELECT (id, project_id, organization_id, revoked_at)
+    ON ingestion.collector_node TO recount_ingestion;

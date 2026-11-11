@@ -1,5 +1,8 @@
+pub mod authority;
 pub mod catalogue;
 pub mod cli;
+pub mod delivery;
+pub mod linux_adapter;
 pub mod metadata;
 pub mod policy;
 pub mod transport;
@@ -13,8 +16,6 @@ pub enum Category {
     Limit,
     Expired,
     Poison,
-    Outage,
-    RetentionGap,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

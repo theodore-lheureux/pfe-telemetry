@@ -1,7 +1,7 @@
 use clap::Parser;
 use recount_ingestion_api::{
     Result,
-    auth::Credentials,
+    auth::NodeTokens,
     broker::{KafkaSink, Sink},
     config::{Command, Config},
 };
@@ -25,18 +25,22 @@ async fn serve(
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let authority = Arc::new(Credentials::new(
+    let authority = Arc::new(NodeTokens::new(
         config
             .database_url
             .as_deref()
             .expect("Clap requires a database URL for service operation"),
+        &config.collector_public_keys,
     )?);
+    authority.spawn_revocation_poller();
     let sink = Arc::new(KafkaSink::new(
         &config.kafka_bootstrap,
         &config.raw_topic,
         config.raw_partitions,
         limits.decoded_bytes,
         config.raw_broker_max_bytes,
+        config.live_topic.clone(),
+        config.live_partitions,
     )?);
     if !sink.ready().await {
         return Err(

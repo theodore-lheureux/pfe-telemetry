@@ -4,6 +4,10 @@ use ruststream_rdkafka::{context::keys::Key, prelude::*};
 use std::{convert::Infallible, num::NonZeroUsize, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 
+const KAFKA_NETWORK_TIMEOUT: Duration = Duration::from_secs(3);
+const KAFKA_SESSION_TIMEOUT: Duration = Duration::from_secs(6);
+const KAFKA_ASSIGNMENT_HEADROOM: Duration = Duration::from_secs(12);
+
 #[derive(Clone)]
 struct RunState {
     config: Config,
@@ -72,12 +76,19 @@ async fn normalize(
 
 fn app(config: Config) -> impl App {
     let budget = ConsumerBudget::raw(config.raw_broker_max_bytes).expect("validated raw budget");
+    // A killed Kafka group member sends no LeaveGroup, so replacement assignment
+    // can wait a full session. Additional startup headroom covers rejoining and
+    // RustStream's separate initial committed-offset lookup timeout.
+    let assignment_timeout = KAFKA_SESSION_TIMEOUT + KAFKA_ASSIGNMENT_HEADROOM;
     let broker = KafkaBroker::new([config.bootstrap.clone()])
-        .connect_timeout(Duration::from_secs(3))
-        .assignment_timeout(Duration::from_secs(3))
+        .connect_timeout(KAFKA_NETWORK_TIMEOUT)
+        .assignment_timeout(assignment_timeout)
         .flush_timeout(Duration::from_secs(3))
         .config("allow.auto.create.topics", "false")
-        .config("socket.timeout.ms", "3000")
+        .config(
+            "socket.timeout.ms",
+            KAFKA_NETWORK_TIMEOUT.as_millis().to_string(),
+        )
         .producer_config("enable.idempotence", "true")
         .producer_config("acks", "all")
         .producer_config(
@@ -102,7 +113,10 @@ fn app(config: Config) -> impl App {
         .commit(Commit::Tracked)
         .config("auto.offset.reset", "error")
         .config("auto.commit.interval.ms", "1000")
-        .config("session.timeout.ms", "6000")
+        .config(
+            "session.timeout.ms",
+            KAFKA_SESSION_TIMEOUT.as_millis().to_string(),
+        )
         .config("message.max.bytes", budget.partition_bytes.to_string())
         .config(
             "fetch.message.max.bytes",

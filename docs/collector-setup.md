@@ -1,33 +1,51 @@
-# Enroll a project collector
+# Set up project collectors
 
-An effective project administrator can manage collector credentials at **Project settings → Collector credentials**. Organization owners and admins have effective project admin access. Project readers cannot list credentials or change enrollment.
+Collectors enroll themselves into a project with an enrollment key; [collector enrollment](collector-enrollment.md) explains the mechanism. Effective project admins manage keys and nodes at **Project settings → Collectors**. Organization owners and admins have effective project admin access; project readers cannot see either list.
 
-## Create a credential
+## Create an enrollment key
 
-1. Enter a descriptive credential name and a stable source ID. Multiple credentials may enroll the same source in a project.
-2. Enter the exact enrolled root ID. Use the Linux collector's explicit `--host-id` value or its default `/etc/machine-id`. Cloned machine IDs need distinct enrolled roots. Source and resource IDs must contain 1–128 UTF-8 bytes without control characters; spelling is case-sensitive and wildcards grant nothing.
-3. The current form creates a host root with adapter `linux` and explicit permission for local process resources. It does not enroll every PID or expose a host allowlist. Root reporting permission is not physical attestation, and payload parent/placement claims do not expand it. The server-function API supports additional typed roots and independent-resource bindings; see [credential policy](collector-credentials.md#enrollment-policy).
-4. Optionally set a future expiration in your local time. Upload timing defaults to maximum submission age 3600 seconds and clock skew 60 seconds; skew can be zero. Keep the collector's queue lifetime no greater than the enrolled upload age. This policy checks declared batch creation, not individual measurement age, and does not rewrite source timestamps.
-5. Create the credential and save its token in the collector’s private token file. The page reveals the raw token only immediately after creation or rotation. Hiding it, reloading, changing accounts, or leaving the page discards the reveal. The credential list cannot recover it.
+1. Choose **Create enrollment key**.
+2. Enter a name that identifies the fleet or environment, such as `prod-linux`.
+3. Optionally add comma-separated labels, which every node enrolled with the key receives, a node limit and an expiry. Use a short expiry and a limit for one-off keys.
+4. Create the key and save it from the reveal dialog. The key is shown only once; hiding the dialog, reloading or leaving the page discards it. If it is lost, revoke the key and create another.
 
-Use the page’s Linux build and Bash token-file instructions. They keep the token out of command arguments and shell history, and create its directory with mode `0700` and file with mode `0600`. Do not enable shell tracing. Clipboard copying is optional and occurs only when you choose **Copy token**; if the browser denies access, select and copy manually. Clear your clipboard after saving the token. Do not put tokens in URLs, browser storage, tickets, or logs.
+New Linux keys allow process and container resources and use a maximum submission age of 3600 seconds with 60 seconds of clock skew. Keep each collector's queue lifetime no greater than the submission age.
+
+Store the key where only the collector's user can read it, without putting it in command arguments, shell history, URLs or tickets:
+
+```sh
+sudo install -d -m 0700 /etc/recount-collector
+sudo sh -c 'umask 077; cat > /etc/recount-collector/enrollment.key'
+```
+
+Paste the key, press Enter, then Ctrl-D. Configuration management can install the same file on every machine in the fleet.
 
 ## Run the collector
 
-The [Linux collector configuration](../apps/collector/README.md#configuration) is authoritative for supported flags and environment variables. Set `--source-token-file` or `RECOUNT_COLLECTOR_SOURCE_TOKEN_FILE` to the private file's path, not the token itself. The credential establishes project/source and root grants; there are no project-ID or source-ID collector flags. Compile Linux artifacts on the host and run repository validation only in Docker; no compiler belongs in the runtime image.
+The [Linux collector configuration](../apps/collector/README.md#configuration) is authoritative for flags and environment variables. Each machine needs:
 
-Configure the [ingestion API's](../apps/ingestion-api/README.md) OTLP/gRPC endpoint, the enrolled root ID and a verified boot-local process namespace ID. Keep restricted visibility unless deployment has verified initial-host PID visibility; container visibility must match the actual procfs/PID namespace, not merely a `host` flag. The current collector supports plaintext HTTP endpoints only: use loopback or a trusted private network/tunnel, not an unprotected public network. The web application's URL is not an ingestion endpoint. Follow the [stack guide](../infra/README.md) for explicit initialization, mounts, schema artifacts and endpoint publication rather than assuming a running container is ready.
+- `RECOUNT_COLLECTOR_ENROLLMENT_URL`: the web application URL, for example `https://recount.example`.
+- `RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE`: the path of the private key file, not the key itself.
+- `RECOUNT_COLLECTOR_STATE_DIRECTORY`: a persistent private directory for the node identity.
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: the [ingestion API's](../apps/ingestion-api/README.md) OTLP/gRPC endpoint. The web application URL is not an ingestion endpoint.
+- A verified process namespace ID and visibility, as described in the collector README.
 
-## Rotate or revoke
+```sh
+RECOUNT_COLLECTOR_ENROLLMENT_URL=https://recount.example \
+RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=/etc/recount-collector/enrollment.key \
+RECOUNT_COLLECTOR_STATE_DIRECTORY=/var/lib/recount-collector/node \
+RECOUNT_COLLECTOR_QUEUE_DIRECTORY=/var/lib/recount-collector \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://ingestion.internal:4317 \
+RECOUNT_COLLECTOR_VISIBILITY=host \
+recount-collector
+```
 
-Rotation invalidates the old token immediately and reveals a replacement once. It is not a seamless handover:
+On first start the collector enrolls and appears in the **Nodes** table with its hostname and machine ID. Later starts reuse the stored identity, so the key file can be removed once the node is listed. The current collector supports plaintext OTLP endpoints only: use loopback or a trusted private network or tunnel. Follow the [stack guide](../infra/README.md) for initialization, schema artifacts and endpoint publication.
 
-1. Stop every affected collector with SIGINT or SIGTERM while the old token is valid. With the unchanged token, endpoint and queue settings, run `recount-collector --drain` in its Linux runtime to export pending uploads without sampling. Inspect rejection and loss diagnostics: drain uses ordinary retry, terminal-rejection and expiry policies, so an empty queue does not prove every batch was accepted. Keep the old token active until drain finishes.
-2. Confirm rotation and replace the private token file. The collector reads that file only at startup; running collectors keep the invalidated token.
-3. Restart with a **new private queue directory** and retain the old queue without modifying it. The [persistent queue](../apps/collector/README.md#authenticated-ingestion) is bound to the endpoint and token digest, and refuses a replacement token; existing queued uploads cannot be replayed under the rotated credential.
+## Revoke and remove
 
-Revocation permanently prevents new submissions with that credential. Expired or revoked credentials cannot rotate. Enrollment policies are immutable through the management API: to change source, root/resource grants, timing or expiry, create a replacement credential and revoke the previous one. Rotation preserves the same source/root policy and stable observation identities, but it does not make the old local queue usable with a replacement token.
+- **Revoke an enrollment key** to stop new enrollments. Nodes it already enrolled keep working.
+- **Revoke nodes** from the Nodes table to stop their submissions within about 30 seconds. They stay listed with status Revoked.
+- **Delete nodes** to revoke them and remove them from the list. Their telemetry stays queryable. The machine can enroll again as a new node after its `node.json` and `node.key` are removed.
 
-Records already accepted into Kafka may finish normalization after revocation or upload-age expiry; the normalizer does not refresh credential state. Private project reads still authorize independently. An ingestion acknowledgement confirms raw publication, not immediate ClickHouse queryability or an entire batch becoming visible together.
-
-If a mutation response is lost, refresh the list before retrying. Creation or rotation may have succeeded even though no token appeared. A lost token cannot be recovered; rotate its credential to obtain a replacement. Do not automatically repeat rotations.
+Records already accepted into Kafka may finish normalization after a node is revoked; the normalizer does not check node state. Private project reads still authorize independently. An ingestion acknowledgement confirms raw publication, not immediate ClickHouse queryability.

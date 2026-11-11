@@ -1,5 +1,4 @@
 import { actorService } from "../../src/auth/actor.server";
-import * as credentialDomain from "../../src/credentials/credentials.server";
 import * as executionDomain from "../../src/executions/executions.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
@@ -28,24 +27,11 @@ test("a completed execution keeps its saved acknowledgement and link after Skip 
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Private",
-				slug: "private",
 			}),
 		),
 	);
 	const reference = { organizationId: organization.id, projectId: project.id };
-	data(
-		await actorService(workspace.auth)(owner.headers, (actor) =>
-			credentialDomain.createCollectorCredential(workspace.database.db, actor, {
-				...reference,
-				name: "Source",
-				sourceId: "fragment-source",
-				rootId: "node1",
-				rootKind: 1,
-				adapter: "linux",
-				allowedLocalKinds: [4],
-			}),
-		),
-	);
+	await createTestNode(workspace.database.db, reference);
 	const requests = actorService(workspace.auth);
 	const url = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/executions`;
 	await page.goto(url);
@@ -150,7 +136,6 @@ for (const failure of ["unknown-write", "refresh", "refresh-away"] as const) {
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Private",
-					slug: "private",
 				}),
 			),
 		);
@@ -158,24 +143,7 @@ for (const failure of ["unknown-write", "refresh", "refresh-away"] as const) {
 			organizationId: organization.id,
 			projectId: project.id,
 		};
-		const credentials = actorService(workspace.auth);
-		data(
-			await credentials(owner.headers, (actor) =>
-				credentialDomain.createCollectorCredential(
-					workspace.database.db,
-					actor,
-					{
-						...reference,
-						name: "Source",
-						sourceId: "ui-source",
-						rootId: "node1",
-						rootKind: 1,
-						adapter: "linux",
-						allowedLocalKinds: [4],
-					},
-				),
-			),
-		);
+		await createTestNode(workspace.database.db, reference);
 		const requests = actorService(workspace.auth);
 		await page.goto(
 			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/executions`,
@@ -316,3 +284,4 @@ for (const failure of ["unknown-write", "refresh", "refresh-away"] as const) {
 }
 
 import { m } from "@recount/i18n/messages";
+import { createTestNode } from "../collector-node";
