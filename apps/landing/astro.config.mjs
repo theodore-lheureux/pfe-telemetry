@@ -1,26 +1,16 @@
 import starlight from "@astrojs/starlight";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "astro/config";
+import { LOCALE_KEY, langFromPath } from "./src/i18n/locale.mjs";
+import { localeInitializationScript } from "./src/i18n/preference-script.mjs";
 import { analyticsScript } from "./src/lib/analytics.mjs";
 
-// Same language rule as the landing pages (see Layout.astro): a saved choice wins, otherwise
-// French systems landing on the English docs go to the French docs. Choosing a language in
-// Starlight's picker saves it.
-const localeScript = `(() => {
-	const key = "recount-locale";
-	const path = location.pathname;
-	const lang = path === "/fr" || path.startsWith("/fr/") ? "fr" : "en";
-	let saved = null;
-	try { saved = localStorage.getItem(key); } catch {}
-	const system = (navigator.languages?.[0] ?? navigator.language ?? "").toLowerCase().startsWith("fr") ? "fr" : "en";
-	const wanted = saved === "en" || saved === "fr" ? saved : lang === "en" ? system : lang;
-	if (wanted !== lang) {
-		location.replace((wanted === "fr" ? "/fr" + path : path.slice(3) || "/") + location.search + location.hash);
-	}
+const localeScript = `${localeInitializationScript}
+(() => {
 	document.addEventListener("change", (event) => {
 		const select = event.target;
 		if (select instanceof HTMLSelectElement && select.closest("starlight-lang-select")) {
-			try { localStorage.setItem(key, select.value.startsWith("/fr/") ? "fr" : "en"); } catch {}
+			try { localStorage.setItem(${JSON.stringify(LOCALE_KEY)}, (${langFromPath.toString()})(select.value)); } catch {}
 		}
 	}, true);
 })();`;

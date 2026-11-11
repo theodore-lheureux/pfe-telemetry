@@ -1,6 +1,4 @@
 ---
-// A privacy policy or terms page: a short table of contents, then the document, with each
-// section heading linkable.
 import { getEntry, render } from "astro:content";
 import type { Lang } from "../i18n";
 import { strings } from "../i18n/strings";
@@ -71,7 +69,6 @@ const format = new Intl.DateTimeFormat(lang === "fr" ? "fr-CA" : "en", {
 </style>
 
 <script>
-	// Turn each section heading into a link to itself, so a section can be shared.
 	for (const container of document.querySelectorAll<HTMLElement>(".legal[data-section-link]")) {
 		for (const heading of container.querySelectorAll<HTMLHeadingElement>("h2[id]")) {
 			const link = document.createElement("a");

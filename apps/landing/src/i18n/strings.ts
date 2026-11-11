@@ -52,32 +52,32 @@ const en = {
 			"Built to give you a clear, accurate record of how your machines are used.",
 		docsLink: "Read the docs",
 		pricingLink: "See pricing",
-		items: [
-			{
+		items: {
+			reliable: {
 				title: "Reliable",
 				text: "A dropped connection doesn't mean lost data. It catches up once you're back online.",
 			},
-			{
+			standards: {
 				title: "Open standards",
 				text: "Works with the tools you already use instead of locking you in.",
 			},
-			{
+			secure: {
 				title: "Secure",
 				text: "Only the machines and people you allow can send or see your data.",
 			},
-			{
+			accurate: {
 				title: "Accurate",
 				text: "You see what was measured. Nothing is filled in or smoothed over.",
 			},
-			{
+			teams: {
 				title: "Made for teams",
 				text: "Projects keep work organized, and everyone sees the same picture.",
 			},
-			{
+			setup: {
 				title: "Simple to set up",
 				text: "No changes to your code or workflows. Install the collector and it does the rest.",
 			},
-		],
+		},
 	},
 	deployment: {
 		title: "Cloud or self-hosted",
@@ -420,32 +420,32 @@ const fr: Strings = {
 			"Conçu pour vous donner un portrait clair et exact de l’utilisation de vos machines.",
 		docsLink: "Lire la documentation",
 		pricingLink: "Voir les tarifs",
-		items: [
-			{
+		items: {
+			reliable: {
 				title: "Fiable",
 				text: "Une connexion perdue ne veut pas dire des données perdues. Tout est rattrapé au retour en ligne.",
 			},
-			{
+			standards: {
 				title: "Normes ouvertes",
 				text: "Fonctionne avec les outils que vous utilisez déjà, sans vous enfermer.",
 			},
-			{
+			secure: {
 				title: "Sécurisé",
 				text: "Seules les machines et les personnes que vous autorisez peuvent envoyer ou voir vos données.",
 			},
-			{
+			accurate: {
 				title: "Exact",
 				text: "Vous voyez ce qui a été mesuré. Rien n’est inventé ni lissé.",
 			},
-			{
+			teams: {
 				title: "Pensé pour les équipes",
 				text: "Les projets gardent le travail organisé, et tout le monde voit la même chose.",
 			},
-			{
+			setup: {
 				title: "Simple à installer",
 				text: "Aucun changement à votre code ni à vos façons de faire. Installez le collecteur, il s’occupe du reste.",
 			},
-		],
+		},
 	},
 	deployment: {
 		title: "Infonuagique ou auto-hébergé",

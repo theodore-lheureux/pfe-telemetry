@@ -14,7 +14,6 @@ export const TURNSTILE_SITE_KEY = "0x4AAAAAAF5saUgthVLrgwUX";
 export const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
 
 export const GITHUB_URL = "https://github.com/theodore-lheureux/pfe-telemetry";
-export const INGEST_URL = "https://ca.ingest.recount.cloud";
 
 // Shared with Starlight so the landing page and docs keep the same theme choice:
 // "light", "dark", or "" to follow the system.
@@ -51,15 +50,14 @@ export const icons = {
 		'<circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" />',
 };
 
-// Icon for each feature, in the order of the features copy.
-export const featureIcons = [
-	icons.refresh,
-	icons.code,
-	icons.lock,
-	icons.target,
-	icons.users,
-	icons.check,
-];
+export const features = [
+	{ key: "reliable", icon: icons.refresh },
+	{ key: "standards", icon: icons.code },
+	{ key: "secure", icon: icons.lock },
+	{ key: "accurate", icon: icons.target },
+	{ key: "teams", icon: icons.users },
+	{ key: "setup", icon: icons.check },
+] as const;
 
 export function buttonClass(variant: "primary" | "outline", extra = "") {
 	const base =

@@ -1,7 +1,7 @@
 ---
 import { type Lang, localePath } from "../i18n";
 import { strings } from "../i18n/strings";
-import { featureIcons } from "../lib/site";
+import { features } from "../lib/site";
 import Container from "./Container.astro";
 import Icon from "./Icon.astro";
 
@@ -26,14 +26,14 @@ const link = "font-medium text-primary underline-offset-2 hover:underline";
 		</div>
 		<div class="grid gap-x-10 gap-y-10 sm:grid-cols-2">
 			{
-				t.items.map((f, i) => (
+				features.map(({ key, icon }) => (
 					<div class="flex gap-4">
 						<span class="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
-							<Icon svg={featureIcons[i]} class="size-[18px]" />
+							<Icon svg={icon} class="size-[18px]" />
 						</span>
 						<div>
-							<h3 class="font-medium">{f.title}</h3>
-							<p class="mt-1 text-muted-foreground leading-relaxed">{f.text}</p>
+							<h3 class="font-medium">{t.items[key].title}</h3>
+							<p class="mt-1 text-muted-foreground leading-relaxed">{t.items[key].text}</p>
 						</div>
 					</div>
 				))

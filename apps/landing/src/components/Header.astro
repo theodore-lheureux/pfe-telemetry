@@ -98,7 +98,6 @@ const iconButton =
 	menu?.addEventListener("click", (event) => {
 		if ((event.target as Element).closest("a")) setOpen(false);
 	});
-	// Tapping anywhere outside the open menu closes it.
 	document.addEventListener("click", (event) => {
 		if (button?.getAttribute("aria-expanded") !== "true") return;
 		const target = event.target as Node;
@@ -110,7 +109,6 @@ const iconButton =
 			button.focus();
 		}
 	});
-	// Close when the layout grows past the phone breakpoint.
 	matchMedia("(min-width: 768px)").addEventListener("change", (event) => {
 		if (event.matches) setOpen(false);
 	});

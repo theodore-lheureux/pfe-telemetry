@@ -1,6 +1,8 @@
 ---
-import { type Lang, LOCALE_KEY, switchPath } from "../i18n";
+import { type Lang, switchPath } from "../i18n";
+import { localeInitializationScript } from "../i18n/preference-script.mjs";
 import { analyticsScript } from "../lib/analytics.mjs";
+import { THEME_KEY } from "../lib/site";
 import "../styles/global.css";
 
 interface Props {
@@ -80,27 +82,13 @@ const alternate = translated ? switchPath(Astro.url.pathname, other) : null;
 		<meta name="twitter:image" content={image} />
 		<meta name="twitter:image:alt" content={imageAlt} />
 		{structuredData && <script type="application/ld+json" is:inline set:html={JSON.stringify(structuredData)} />}
-		{
-			alternate && (
-				<script is:inline define:vars={{ lang, alternate, key: LOCALE_KEY }}>
-					// A saved choice wins. Without one, French systems landing on the English site
-					// go to the French version; a French URL opened on purpose is left alone.
-					let saved = null;
-					try {
-						saved = localStorage.getItem(key);
-					} catch {}
-					const system = (navigator.languages?.[0] ?? navigator.language ?? "").toLowerCase().startsWith("fr") ? "fr" : "en";
-					const wanted = saved === "en" || saved === "fr" ? saved : lang === "en" ? system : lang;
-					if (wanted !== lang) location.replace(alternate + location.search + location.hash);
-				</script>
-			)
-		}
-		<script is:inline>
+		{alternate && <script is:inline set:html={localeInitializationScript} />}
+		<script is:inline define:vars={{ themeKey: THEME_KEY }}>
 			(() => {
 				// "light" or "dark" when chosen; anything else follows the system.
 				let mode = null;
 				try {
-					mode = localStorage.getItem("starlight-theme");
+					mode = localStorage.getItem(themeKey);
 				} catch {}
 				if (mode !== "light" && mode !== "dark") {
 					mode = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -144,7 +132,7 @@ const alternate = translated ? switchPath(Astro.url.pathname, other) : null;
 						showSignedIn(signedIn);
 					})
 					.catch(() => {
-						// App unreachable or not allowing this origin: keep the signed-out labels.
+						// Keep the last known labels if the app cannot be reached.
 					});
 			}
 

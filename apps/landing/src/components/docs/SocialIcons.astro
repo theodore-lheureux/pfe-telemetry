@@ -1,18 +1,15 @@
 ---
-// Replaces Starlight's header social links: the same Pricing and Changelog links as the site
-// header, then the default social icons. Starlight already links the logo to the home page.
+// Starlight already links the logo to the home page.
 import Default from "@astrojs/starlight/components/SocialIcons.astro";
+import { localePath } from "../../i18n";
+import { strings } from "../../i18n/strings";
 
-const fr = Astro.locals.starlightRoute.locale === "fr";
-const links = fr
-	? [
-			{ href: "/fr/pricing/", label: "Tarifs" },
-			{ href: "/fr/changelog/", label: "Nouveautés" },
-		]
-	: [
-			{ href: "/pricing/", label: "Pricing" },
-			{ href: "/changelog/", label: "Changelog" },
-		];
+const lang = Astro.locals.starlightRoute.locale === "fr" ? "fr" : "en";
+const t = strings[lang].nav;
+const links = [
+	{ href: localePath(lang, "/pricing/"), label: t.pricing },
+	{ href: localePath(lang, "/changelog/"), label: t.changelog },
+];
 ---
 
 {
