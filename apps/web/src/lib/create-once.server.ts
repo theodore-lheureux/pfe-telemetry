@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { getDatabase } from "../db/client.server";
 import { createReceipt } from "../db/create-receipts-schema";
-import { OperationError } from "../organizations/errors";
+import type { CreateExecutionInput } from "../executions/contracts";
+import type { CreateProjectInput } from "../organizations/contracts";
+import { OperationError } from "./operation-error";
 
 type Database = ReturnType<typeof getDatabase>;
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -13,16 +15,21 @@ type CreateScope = { organizationId: string } & (
 
 export function createInputHash(
 	scope: CreateScope,
-	values: readonly (string | null)[],
+	actorId: string,
+	submission: CreateProjectInput | CreateExecutionInput,
 ) {
+	const { requestId: _, ...semantic } = submission;
 	return createHash("sha256")
 		.update(
-			JSON.stringify([
-				scope.operation,
-				scope.organizationId,
-				scope.projectId,
-				...values,
-			]),
+			JSON.stringify({
+				actorId,
+				...scope,
+				submission: Object.fromEntries(
+					Object.entries(semantic).sort(([left], [right]) =>
+						left < right ? -1 : left > right ? 1 : 0,
+					),
+				),
+			}),
 		)
 		.digest("hex");
 }
@@ -31,9 +38,8 @@ export function createOnce<Access, Result>(
 	database: Database,
 	input: {
 		actorId: string;
-		requestId: string;
 		scope: CreateScope;
-		values: readonly (string | null)[];
+		submission: CreateProjectInput | CreateExecutionInput;
 		resourceId: string;
 		authorize: (tx: Transaction) => Promise<Access>;
 		create: (
@@ -49,9 +55,13 @@ export function createOnce<Access, Result>(
 			await input.authorize(tx);
 			const expected = {
 				actorId: input.actorId,
-				requestId: input.requestId,
+				requestId: input.submission.requestId,
 				...input.scope,
-				inputHash: createInputHash(input.scope, input.values),
+				inputHash: createInputHash(
+					input.scope,
+					input.actorId,
+					input.submission,
+				),
 				resourceId: input.resourceId,
 			};
 			const [inserted] = await tx
@@ -73,7 +83,7 @@ export function createOnce<Access, Result>(
 						.where(
 							and(
 								eq(createReceipt.actorId, input.actorId),
-								eq(createReceipt.requestId, input.requestId),
+								eq(createReceipt.requestId, input.submission.requestId),
 							),
 						)
 				)[0];

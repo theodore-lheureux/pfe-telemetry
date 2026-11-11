@@ -1,4 +1,4 @@
-import { useRouter } from "@tanstack/react-router";
+import { type NavigateFn, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { mutationRefreshFailed } from "../lib/mutation-refresh";
 import { useMutationBoundary, useMutationNotice } from "./mutation-feedback";
@@ -36,7 +36,6 @@ export function useMutationOwner(userId: string) {
 		)
 			return null;
 		active.current?.dispose();
-		active.current?.retire("navigation");
 		const controller = new AbortController();
 		let origin = router.state.location.href;
 		let destination: string | undefined;
@@ -63,6 +62,7 @@ export function useMutationOwner(userId: string) {
 				stop();
 			},
 			dispose() {
+				controller.abort("navigation");
 				stop();
 				boundary.removeEventListener("abort", retireBoundary);
 			},
@@ -78,13 +78,21 @@ export function useMutationOwner(userId: string) {
 			} else operation.retire("navigation");
 		});
 		active.current = operation;
+		const navigate: NavigateFn = async (options) => {
+			if (!ownsRefresh()) return;
+			destination = router.buildLocation({
+				...options,
+				leaveParams: false,
+			}).href;
+			await router.navigate(options);
+		};
 		return {
 			current,
 			signal: controller.signal,
 			async refresh(
 				saved: string,
 				unavailable: string,
-				afterRefresh?: (follow: (href: string) => void) => Promise<void>,
+				afterRefresh?: (navigate: NavigateFn) => Promise<void>,
 				transientNotice = false,
 			) {
 				if (!current()) return false;
@@ -94,9 +102,7 @@ export function useMutationOwner(userId: string) {
 				try {
 					await router.invalidate({ sync: true });
 					if (!ownsRefresh()) return false;
-					await afterRefresh?.((href) => {
-						destination = href;
-					});
+					await afterRefresh?.(navigate);
 					if (!ownsRefresh()) return false;
 					if (mutationRefreshFailed(router)) {
 						notice.update(unavailable);

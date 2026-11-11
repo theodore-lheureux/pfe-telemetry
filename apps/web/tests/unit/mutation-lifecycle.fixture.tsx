@@ -7,6 +7,7 @@ import {
 	Outlet,
 	RouterProvider,
 } from "@tanstack/react-router";
+import { getGlobalBroadcastChannel } from "better-auth/client";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createAuthenticationController } from "../../src/auth/authentication";
@@ -14,6 +15,7 @@ import { LocaleSafety } from "../../src/components/locale-safety";
 import { MutationFeedback } from "../../src/components/mutation-feedback";
 import { useAppMutation } from "../../src/components/use-app-mutation";
 import { usePageConfirmation } from "../../src/components/use-page-confirmation";
+import { gate as createGate } from "../gate";
 
 const queryClient = new QueryClient();
 const authentication = createAuthenticationController({
@@ -53,17 +55,14 @@ function Editor() {
 	async function settle(result: Awaited<ReturnType<typeof mutation.submit>>) {
 		try {
 			if (!result || result.error) return;
-			if (deferRefresh)
-				await new Promise<void>((resolve) => {
-					resumeRefresh = resolve;
-				});
-			refreshResult = await result.refresh(async (follow) => {
+			if (deferRefresh) {
+				const refreshGate = createGate();
+				resumeRefresh = refreshGate.release;
+				await refreshGate.promise;
+			}
+			refreshResult = await result.refresh(async (navigate) => {
 				if (!navigateAfterSave) return;
-				follow(
-					router.buildLocation({ to: "/settings", search: { section: "user" } })
-						.href,
-				);
-				await router.navigate({ to: "/settings", search: { section: "user" } });
+				await navigate({ to: "/settings", search: { section: "user" } });
 			});
 		} finally {
 			settled++;
@@ -168,6 +167,7 @@ declare global {
 			deliver: (index: number) => void;
 			lose: (index: number) => void;
 			identity: () => void;
+			broadcastIdentity: () => void;
 			failReload: () => void;
 			recoverReload: () => void;
 			navigateAfterSave: () => void;
@@ -193,6 +193,12 @@ window.mutationTest = {
 		writes[index].resolve({ data: { id: "saved" }, error: null }),
 	lose: (index) => writes[index].reject(new Error("Lost response")),
 	identity: () => authentication.begin("verify")?.finish(),
+	broadcastIdentity: () =>
+		getGlobalBroadcastChannel().post({
+			event: "session",
+			data: { trigger: "getSession" },
+			clientId: crypto.randomUUID(),
+		}),
 	failReload: () => {
 		failReload = true;
 	},

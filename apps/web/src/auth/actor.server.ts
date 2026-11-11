@@ -1,6 +1,6 @@
+import type { OperationResult } from "../lib/operation-result";
+import { operationResult } from "../lib/operation-result.server";
 import type { Actor } from "../organizations/access.server";
-import type { OperationResult } from "../organizations/contracts";
-import { operationResult } from "../organizations/operation-result.server";
 import type { createAuth } from "./create-auth.server";
 import { applicationSession } from "./session.server";
 

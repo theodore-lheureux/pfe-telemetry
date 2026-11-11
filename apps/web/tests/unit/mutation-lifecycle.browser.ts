@@ -95,6 +95,46 @@ test("a current saved operation can follow its typed destination and release its
 	).toHaveCount(0);
 });
 
+test("a cross-tab identity change retires the response and confirmation before route replacement", async ({
+	page,
+}) => {
+	await page.evaluate(() => window.mutationTest.navigateAfterSave());
+	await page
+		.getByRole("button", { name: "Open confirmation", exact: true })
+		.click();
+	await page.getByRole("button", { name: "Save", exact: true }).click();
+	await expect
+		.poll(() => page.evaluate(() => window.mutationTest.writes().length))
+		.toBe(1);
+	const second = await page.context().newPage();
+	try {
+		await second.goto("/settings");
+		await expect(
+			second.getByRole("heading", { name: "Other page", exact: true }),
+		).toBeVisible();
+		await second.evaluate(() => window.mutationTest.broadcastIdentity());
+		await expect(page.getByTestId("pending")).toHaveText("false");
+		await expect(page.getByText("Confirm change", { exact: true })).toHaveCount(
+			0,
+		);
+		await expect
+			.poll(() => page.evaluate(() => window.mutationTest.idle()))
+			.toBe(true);
+		const reads = await page.evaluate(() => window.mutationTest.reads());
+		await page.evaluate(() => window.mutationTest.deliver(0));
+		await expect
+			.poll(() => page.evaluate(() => window.mutationTest.settled()))
+			.toBe(1);
+		await expect(page).toHaveURL(/\/$/);
+		await expect(
+			page.getByRole("link", { name: "Saved link", exact: true }),
+		).toHaveCount(0);
+		expect(await page.evaluate(() => window.mutationTest.reads())).toBe(reads);
+	} finally {
+		await second.close();
+	}
+});
+
 for (const reason of ["fragment", "identity", "document"] as const) {
 	test(`confirmation belongs to its page and document after ${reason}`, async ({
 		page,

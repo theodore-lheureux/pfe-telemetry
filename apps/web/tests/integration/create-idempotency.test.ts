@@ -1,10 +1,9 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
-import * as credentialDomain from "../../src/credentials/credentials.server";
 import {
 	createReceipt,
 	execution,
@@ -16,19 +15,19 @@ import {
 import type { CreateExecutionInput } from "../../src/executions/contracts";
 import * as executionDomain from "../../src/executions/executions.server";
 import { createInputHash, createOnce } from "../../src/lib/create-once.server";
+import type { OperationResult } from "../../src/lib/operation-result";
 import {
 	requireOrganization,
 	requireProject,
 } from "../../src/organizations/access.server";
-import type {
-	CreateProjectInput,
-	OperationResult,
-} from "../../src/organizations/contracts";
+import type { CreateProjectInput } from "../../src/organizations/contracts";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 
-import { trustedCodeSignIn } from "../auth-actors";
+import { trustedActor } from "../auth-actors";
+import { createTestNode } from "../collector-node";
 import { createTestDatabase } from "../database";
+import { gate } from "../gate";
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let auth: ReturnType<typeof createAuth>;
@@ -43,32 +42,13 @@ function data<T>(result: OperationResult<T>): T {
 	if (result.error) throw new Error(result.error.message);
 	return result.data;
 }
-function gate() {
-	let release!: () => void;
-	return {
-		promise: new Promise<void>((resolve) => {
-			release = resolve;
-		}),
-		release: () => release(),
-	};
-}
 async function actor() {
-	const response = await trustedCodeSignIn(
+	return trustedActor(
 		auth,
 		`${randomUUID()}@example.invalid`,
 		(email) => codes.get(email),
 		new Headers({ origin }),
 	);
-	const headers = new Headers({
-		origin,
-		cookie: response.headers
-			.getSetCookie()
-			.map((entry) => entry.split(";")[0])
-			.join("; "),
-	});
-	const session = await auth.api.getSession({ headers });
-	if (!session) throw new Error("Expected fixture session");
-	return { id: session.user.id, headers };
 }
 beforeAll(async () => {
 	database = await createTestDatabase("create_once", 8);
@@ -119,7 +99,6 @@ async function scenario(kind: Kind) {
 				requestId: randomUUID(),
 				organizationId: organization.id,
 				name: "Base",
-				slug: "base",
 			}),
 		),
 	);
@@ -134,31 +113,18 @@ async function scenario(kind: Kind) {
 				}),
 			),
 		);
-	const credential = data(
-		await actorService(auth)(owner.headers, (actor) =>
-			credentialDomain.createCollectorCredential(database.db, actor, {
-				...reference,
-				name: "Source",
-				sourceId: "create-source",
-				rootId: "node1",
-				rootKind: 1,
-				adapter: "linux",
-				allowedLocalKinds: [4],
-			}),
-		),
-	).credential;
+	const { nodeId } = await createTestNode(database.db, reference);
 	const requestId = randomUUID();
 	const projectInput: CreateProjectInput = {
 		requestId,
 		organizationId: organization.id,
 		name: "Created",
-		slug: "created",
 	};
 	const executionInput: CreateExecutionInput = {
 		...reference,
 		requestId,
 		name: "Created",
-		credentialId: credential.id,
+		nodeId,
 		hostId: null,
 		startedAt: "2026-11-03T10:00:00.000Z",
 		endedAt: "2026-11-03T10:05:00.000Z",
@@ -171,16 +137,7 @@ async function scenario(kind: Kind) {
 					projectId: null,
 				} as const)
 			: ({ operation: "create-execution", ...reference } as const);
-	const values =
-		kind === "project"
-			? [projectInput.name, projectInput.slug]
-			: [
-					executionInput.credentialId,
-					executionInput.name,
-					executionInput.hostId,
-					executionInput.startedAt,
-					executionInput.endedAt,
-				];
+	const submission = kind === "project" ? projectInput : executionInput;
 	return {
 		owner,
 		creator,
@@ -188,7 +145,7 @@ async function scenario(kind: Kind) {
 		reference,
 		requestId,
 		scope,
-		values,
+		submission,
 		projectInput,
 		executionInput,
 		attempt: (
@@ -214,14 +171,13 @@ async function scenario(kind: Kind) {
 					id,
 					organizationId: organization.id,
 					name: projectInput.name,
-					slug: projectInput.slug,
 					createdBy: creator.id,
 				});
 			else
 				await tx.insert(execution).values({
 					id,
 					...reference,
-					sourceId: credential.sourceId,
+					sourceId: nodeId,
 					hostId: null,
 					name: executionInput.name,
 					startedAt: new Date(executionInput.startedAt),
@@ -269,7 +225,7 @@ async function scenario(kind: Kind) {
 						.where(
 							and(
 								eq(project.organizationId, organization.id),
-								eq(project.slug, projectInput.slug),
+								ne(project.id, base.id),
 							),
 						)
 				: database.db
@@ -353,12 +309,13 @@ for (const kind of ["project", "execution"] as const) {
 		const fixture = await scenario(kind);
 		const savedId = id(await fixture.attempt());
 		for (const change of kind === "project"
-			? [{ name: "Other" }, { slug: "other" }]
+			? [{ name: "Other" }]
 			: [
 					{ name: "Other" },
 					{ hostId: "Node-A" },
+					{ startedAt: "2026-11-03T10:01:00Z" },
 					{ endedAt: "2026-11-03T10:06:00Z" },
-					{ credentialId: randomUUID() },
+					{ nodeId: randomUUID() },
 				]) {
 			const rejected = await fixture.attempt(change);
 			expect(rejected).toMatchObject({
@@ -424,7 +381,7 @@ for (const kind of ["project", "execution"] as const) {
 			error: { code: "CONFLICT", reason: "REQUEST_ID_REUSED" },
 		});
 		const otherActor = await fixture.attempt(
-			{ slug: "other-actor" },
+			{ name: "Other actor" },
 			fixture.owner.headers,
 		);
 		expect(id(otherActor)).not.toBe(savedId);
@@ -451,9 +408,8 @@ for (const kind of ["project", "execution"] as const) {
 		await expect(
 			createOnce(database.db, {
 				actorId: fixture.creator.id,
-				requestId: fixture.requestId,
 				scope: fixture.scope,
-				values: fixture.values,
+				submission: fixture.submission,
 				resourceId: candidate,
 				authorize: fixture.authorize,
 				create: fixture.insertResource,
@@ -486,7 +442,11 @@ for (const kind of ["project", "execution"] as const) {
 						actorId: fixture.creator.id,
 						requestId: fixture.requestId,
 						...fixture.scope,
-						inputHash: createInputHash(fixture.scope, fixture.values),
+						inputHash: createInputHash(
+							fixture.scope,
+							fixture.creator.id,
+							fixture.submission,
+						),
 						resourceId: reserved,
 					});
 					ready.release();
@@ -571,7 +531,11 @@ test("receipt constraints reject unsupported operations, hashes and cross-tenant
 		actorId: fixture.creator.id,
 		requestId: randomUUID(),
 		...fixture.scope,
-		inputHash: createInputHash(fixture.scope, fixture.values),
+		inputHash: createInputHash(
+			fixture.scope,
+			fixture.creator.id,
+			fixture.submission,
+		),
 		resourceId: randomUUID(),
 	};
 	for (const change of [

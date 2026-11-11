@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { validatePublicAssets } from "../../../../infra/local/artifacts";
+import { validatePublicAssets } from "../../../../tooling/artifact-policy";
 
 test("public artifacts reject private inputs, HTML route takeovers and escaping symlinks", async () => {
 	const root = await mkdtemp(join(tmpdir(), "recount-public-"));

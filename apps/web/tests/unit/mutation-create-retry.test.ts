@@ -13,14 +13,12 @@ test("a create retry consumes the exact normalized input and request ID once", (
 	expect(take()).toBeNull();
 });
 
-test("retired create input cannot be reused after account, project or document retirement", () => {
-	for (const reason of ["identity", "navigation", "document"]) {
-		const controller = new AbortController();
-		const take = oneCreateRetry(
-			{ requestId: crypto.randomUUID() },
-			() => !controller.signal.aborted,
-		);
-		controller.abort(reason);
-		expect(take()).toBeNull();
-	}
+test("retired create input cannot be reused", () => {
+	const controller = new AbortController();
+	const take = oneCreateRetry(
+		{ requestId: crypto.randomUUID() },
+		() => !controller.signal.aborted,
+	);
+	controller.abort();
+	expect(take()).toBeNull();
 });

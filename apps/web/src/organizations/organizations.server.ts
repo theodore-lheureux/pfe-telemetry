@@ -2,13 +2,13 @@ import { asc, eq } from "drizzle-orm";
 import type { createAuth } from "../auth/create-auth.server";
 import type { getDatabase } from "../db/client.server";
 import { member, organization } from "../db/schema";
+import { OperationError } from "../lib/operation-error";
 import {
 	type Actor,
 	requireOrganization,
 	resolveOrganizationRole,
 } from "./access.server";
 import type { OrganizationInput, OrganizationSummary } from "./contracts";
-import { OperationError } from "./errors";
 
 type Database = ReturnType<typeof getDatabase>;
 type Auth = ReturnType<typeof createAuth>;

@@ -1,6 +1,6 @@
 import { APIError } from "better-auth/api";
-import type { OperationResult } from "./contracts";
-import { OperationError, type OperationErrorCode } from "./errors";
+import { OperationError, type OperationErrorCode } from "./operation-error";
+import type { OperationResult } from "./operation-result";
 
 function postgresCode(error: unknown): string | undefined {
 	if (!error || typeof error !== "object") return;

@@ -1,4 +1,4 @@
-import type { FailureReason } from "../organizations/contracts";
+import type { FailureReason } from "./operation-result";
 
 export class InputError extends Error {
 	constructor(

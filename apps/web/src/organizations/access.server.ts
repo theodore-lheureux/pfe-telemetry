@@ -1,13 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import type { getDatabase } from "../db/client.server";
 import { member, organization, project, projectMember } from "../db/schema";
+import { OperationError } from "../lib/operation-error";
 import type {
 	OrganizationRole,
 	ProjectReference,
 	ProjectRole,
 	ProjectSummary,
 } from "./contracts";
-import { OperationError } from "./errors";
+import { projectSummaryColumns } from "./project-summary.server";
 
 type Database = Pick<ReturnType<typeof getDatabase>, "select">;
 
@@ -95,14 +96,7 @@ export async function requireProject(
 	);
 	const [entry] = await database
 		.select({
-			id: project.id,
-			organizationId: project.organizationId,
-			name: project.name,
-			slug: project.slug,
-			tags: project.tags,
-			projectGroup: project.projectGroup,
-			timeZone: project.timeZone,
-			weekStartsOn: project.weekStartsOn,
+			...projectSummaryColumns,
 			assignedRole: projectMember.role,
 		})
 		.from(project)
@@ -127,15 +121,6 @@ export async function requireProject(
 			"FORBIDDEN",
 			"Project administrator access required",
 		);
-	return {
-		id: entry.id,
-		organizationId: entry.organizationId,
-		name: entry.name,
-		slug: entry.slug,
-		tags: entry.tags,
-		projectGroup: entry.projectGroup,
-		timeZone: entry.timeZone,
-		weekStartsOn: entry.weekStartsOn,
-		role,
-	} satisfies ProjectSummary;
+	const { assignedRole: _, ...summary } = entry;
+	return { ...summary, role } satisfies ProjectSummary;
 }

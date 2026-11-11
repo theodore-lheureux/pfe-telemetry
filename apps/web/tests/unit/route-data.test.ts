@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isNotFound, isRedirect } from "@tanstack/react-router";
-import type { OperationResult } from "../../src/organizations/contracts";
+import type { OperationResult } from "../../src/lib/operation-result";
 import {
 	organizationParams,
 	projectParams,

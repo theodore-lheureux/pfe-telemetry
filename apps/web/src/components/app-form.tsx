@@ -17,10 +17,18 @@ type TextFieldProps = Omit<
 	"value" | "defaultValue" | "name" | "onChange" | "onBlur"
 > & {
 	label: string;
+	/** Keeps the label for assistive technology when the layout already names the field. */
+	labelHidden?: boolean;
 	description?: ReactNode;
 };
 
-function TextField({ label, description, id, ...props }: TextFieldProps) {
+function TextField({
+	label,
+	labelHidden,
+	description,
+	id,
+	...props
+}: TextFieldProps) {
 	const field = useFieldContext<string>();
 	const state = useSelector(field.store, (state) => state);
 	const generatedId = useId();
@@ -45,7 +53,12 @@ function TextField({ label, description, id, ...props }: TextFieldProps) {
 	};
 	return (
 		<Field data-invalid={invalid}>
-			<FieldLabel htmlFor={inputId}>{label}</FieldLabel>
+			<FieldLabel
+				htmlFor={inputId}
+				className={labelHidden ? "sr-only" : undefined}
+			>
+				{label}
+			</FieldLabel>
 			<Input
 				{...control}
 				onChange={(event) => field.handleChange(event.target.value)}

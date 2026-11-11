@@ -1,4 +1,4 @@
-import type { FailureReason, OperationResult } from "./contracts";
+import type { FailureReason, OperationResult } from "./operation-result";
 
 export type OperationErrorCode = NonNullable<
 	OperationResult<never>["error"]

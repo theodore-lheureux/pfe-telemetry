@@ -1,9 +1,11 @@
 import { m } from "@recount/i18n/messages";
 import { useRouter } from "@tanstack/react-router";
+import { getGlobalBroadcastChannel } from "better-auth/client";
 import { CircleCheckIcon, TriangleAlertIcon } from "lucide-react";
 import {
 	createContext,
 	type ReactNode,
+	useCallback,
 	useContext,
 	useEffect,
 	useRef,
@@ -35,6 +37,14 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 	const [notices, setNotices] = useState<
 		{ id: number; message: string; kind: FeedbackKind; origin?: string }[]
 	>([]);
+	const capture = useCallback(
+		() =>
+			document.current.phase === "ready" &&
+			!router.options.context.authentication.getSnapshot().pending
+				? document.current.controller.signal
+				: null,
+		[router],
+	);
 	useEffect(() => {
 		if (document.current.controller.signal.aborted)
 			document.current.controller = new AbortController();
@@ -79,6 +89,24 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 			retire("identity");
 			router.options.context.queryClient.clear();
 		};
+		const broadcast = getGlobalBroadcastChannel();
+		const stopBroadcast = broadcast.setup();
+		let queuedIdentityRefresh = false;
+		let disposed = false;
+		const unsubscribeBroadcast = broadcast.subscribe(() => {
+			if (queuedIdentityRefresh) return;
+			clearIdentity();
+			actor = undefined;
+			router.clearCache();
+			if (document.current.phase === "hidden") return;
+			document.current.phase = "restoring";
+			queuedIdentityRefresh = true;
+			// Better Auth can also own a storage listener while its session hook is mounted.
+			queueMicrotask(() => {
+				queuedIdentityRefresh = false;
+				if (!disposed) void router.invalidate({ sync: true }).catch(() => {});
+			});
+		});
 		const unsubscribe = authentication.subscribe(() => {
 			if (
 				authentication.getSnapshot().pending ||
@@ -101,6 +129,9 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 				document.current.phase = "ready";
 		});
 		return () => {
+			disposed = true;
+			unsubscribeBroadcast();
+			stopBroadcast();
 			stop();
 			unsubscribe();
 			resolved();
@@ -141,11 +172,7 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 			value={{
 				setMessage,
 				publish,
-				capture: () =>
-					document.current.phase === "ready" &&
-					!router.options.context.authentication.getSnapshot().pending
-						? document.current.controller.signal
-						: null,
+				capture,
 			}}
 		>
 			{children}

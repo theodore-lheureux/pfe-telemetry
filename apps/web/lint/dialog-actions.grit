@@ -1,0 +1,13 @@
+language js
+
+or {
+	JsxOpeningElement(name=$name),
+	JsxSelfClosingElement(name=$name)
+} where {
+	$name <: or {
+		`DialogFooter`,
+		`AlertDialogFooter`,
+		`AlertDialogCancel`
+	},
+	register_diagnostic(span=$name, message="Build dialog buttons with DialogActions or AlertDialogActions from components/dialog-actions, so cancel and confirm keep the standard order and style.")
+}

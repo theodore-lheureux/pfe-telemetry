@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
+import { gravatarUrl } from "../auth/avatar.server";
 import type { createAuth } from "../auth/create-auth.server";
-import { gravatarUrl } from "../components/avatar.server";
 import type { getDatabase } from "../db/client.server";
 import { member, projectMember, user } from "../db/schema";
+import { OperationError } from "../lib/operation-error";
 import {
 	type Actor,
 	requireOrganization,
@@ -11,7 +12,6 @@ import {
 	resolveOrganizationRole,
 } from "./access.server";
 import type { ProjectReference } from "./contracts";
-import { OperationError } from "./errors";
 import type {
 	MemberReference,
 	MemberRoleInput,

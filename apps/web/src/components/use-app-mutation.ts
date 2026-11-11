@@ -1,36 +1,34 @@
 import { m } from "@recount/i18n/messages";
 import { useMutation } from "@tanstack/react-query";
-import { useHydrated } from "@tanstack/react-router";
+import { type NavigateFn, useHydrated } from "@tanstack/react-router";
 import { useState } from "react";
 import { oneCreateRetry } from "../lib/mutation-create-retry";
 import { operationMessage } from "../lib/operation-message";
-import type { OperationResult } from "../organizations/contracts";
+import {
+	MutationFailure,
+	type OperationResult,
+	unwrapOperation,
+} from "../lib/operation-result";
 import { useLocaleChangeBlocker } from "./locale-safety";
 import { useMutationOwner } from "./use-mutation-owner";
 
 type DomainError = NonNullable<OperationResult<never>["error"]>;
-export class MutationFailure extends Error {
-	constructor(readonly failure: DomainError) {
-		super(failure.code);
-	}
-}
-export function unwrapOperation<T>(result: OperationResult<T>): T {
-	if (result.error) throw new MutationFailure(result.error);
-	return result.data;
-}
 
 type Acknowledgement<Data> = {
 	status: "saved" | "refreshing" | "refresh-failed" | "uncertain";
 	message: string;
 	data?: Data;
 };
+type InputMessage<Input> = string | ((input: Input) => string);
+const inputMessage = <Input>(value: InputMessage<Input>, input: Input) =>
+	typeof value === "function" ? value(input) : value;
 
 export function useAppMutation<Input, Data>(options: {
 	userId: string;
 	save: (input: Input, signal: AbortSignal) => Promise<OperationResult<Data>>;
-	saved?: string;
-	refreshFailed?: string;
-	unknown?: string;
+	saved?: InputMessage<Input>;
+	refreshFailed?: InputMessage<Input>;
+	unknown?: InputMessage<Input>;
 	receiptBacked?: boolean;
 	transientNotice?: boolean;
 	errorMessage?: (error: DomainError) => string;
@@ -80,8 +78,14 @@ export function useAppMutation<Input, Data>(options: {
 				? "rejected"
 				: "uncertain"
 			: "idle");
-	const unknown =
-		options.unknown ?? m.the_response_was_lost_the_action_may_have();
+	const unknownFor = (input: Input) =>
+		inputMessage(
+			options.unknown ?? m.the_response_was_lost_the_action_may_have(),
+			input,
+		);
+	const unknown = mutation.variables
+		? unknownFor(mutation.variables.input)
+		: m.the_response_was_lost_the_action_may_have();
 	const message =
 		acknowledgement?.message ??
 		(mutation.isError
@@ -95,6 +99,8 @@ export function useAppMutation<Input, Data>(options: {
 
 	async function run(input: Input, attempt: "initial" | "retry") {
 		if (!hydrated) return;
+		const unknown = unknownFor(input);
+		const saved = inputMessage(options.saved ?? m.changes_saved(), input);
 		const operation = begin((reason) => {
 			mutation.reset();
 			acknowledge((previous) => {
@@ -134,30 +140,27 @@ export function useAppMutation<Input, Data>(options: {
 			operation.finish();
 			return;
 		}
-		report("saved", options.saved ?? m.changes_saved(), data);
+		report("saved", saved, data);
 		return {
 			error: null,
 			data,
 			input,
 			async refresh(
-				afterRefresh?: (follow: (href: string) => void) => Promise<void>,
+				afterRefresh?: (navigate: NavigateFn) => Promise<void>,
 				success = m.changes_saved(),
 			) {
 				if (!operation.current()) {
 					operation.finish();
 					return false;
 				}
-				const unavailable =
+				const unavailable = inputMessage(
 					options.refreshFailed ??
-					m.your_change_was_saved_but_the_page_could_2();
-				report("refreshing", options.saved ?? m.changes_saved(), data);
+						m.your_change_was_saved_but_the_page_could_2(),
+					input,
+				);
+				report("refreshing", saved, data);
 				const refreshed = await operation
-					.refresh(
-						options.saved ?? m.your_change_was_saved_refreshing_the_page(),
-						unavailable,
-						afterRefresh,
-						options.transientNotice,
-					)
+					.refresh(saved, unavailable, afterRefresh, options.transientNotice)
 					.catch(() => false);
 				operation.finish();
 				if (!operation.current()) return false;

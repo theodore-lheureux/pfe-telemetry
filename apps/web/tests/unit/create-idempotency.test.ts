@@ -1,10 +1,8 @@
 import { expect, test } from "bun:test";
 import { parseCreateExecution } from "../../src/executions/validation";
 import { createInputHash } from "../../src/lib/create-once.server";
-import {
-	parseCreateProjectInput,
-	parseRequestId,
-} from "../../src/organizations/validation";
+import { parseRequestId } from "../../src/lib/input";
+import { parseCreateProjectInput } from "../../src/organizations/validation";
 
 const requestId = "019a4790-d1da-7000-8000-00000000000a";
 const projectId = "019a4790-d1da-7000-8000-00000000000b";
@@ -21,7 +19,7 @@ test("creates require a caller-owned UUID and strip nonsemantic request fields",
 	])
 		expect(() => parseRequestId(value)).toThrow();
 	expect(parseRequestId(requestId.toUpperCase())).toBe(requestId);
-	const input = { organizationId: "org", name: "  Name  ", slug: "name" };
+	const input = { organizationId: "org", name: "  Name  " };
 	expect(() => parseCreateProjectInput(input)).toThrow();
 	expect(
 		parseCreateProjectInput({
@@ -30,7 +28,7 @@ test("creates require a caller-owned UUID and strip nonsemantic request fields",
 			locale: "fr",
 			actorId: "foreign",
 		}),
-	).toEqual({ organizationId: "org", name: "Name", slug: "name", requestId });
+	).toEqual({ organizationId: "org", name: "Name", requestId });
 });
 
 test("execution input canonicalizes UUIDs, instants and empty host without changing identifier case", () => {
@@ -38,7 +36,7 @@ test("execution input canonicalizes UUIDs, instants and empty host without chang
 		requestId: requestId.toUpperCase(),
 		organizationId: "Org",
 		projectId: projectId.toUpperCase(),
-		credentialId: requestId.toUpperCase(),
+		nodeId: requestId.toUpperCase(),
 		name: "  Capture  ",
 		hostId: "",
 		startedAt: "2026-11-03T12:00:00+02:00",
@@ -48,7 +46,7 @@ test("execution input canonicalizes UUIDs, instants and empty host without chang
 		requestId,
 		organizationId: "Org",
 		projectId,
-		credentialId: requestId,
+		nodeId: requestId,
 		name: "Capture",
 		hostId: null,
 		startedAt: "2026-11-03T10:00:00.000Z",
@@ -68,18 +66,32 @@ test("receipt fingerprints bind operation, tenant, scope and unambiguous semanti
 		organizationId: "org",
 		projectId: null,
 	} as const;
-	const hash = createInputHash(scope, ["Name", "name"]);
+	const input = {
+		requestId,
+		organizationId: "org",
+		name: "Name",
+	};
+	const hash = createInputHash(scope, "actor", input);
 	expect(hash).toMatch(/^[0-9a-f]{64}$/);
-	expect(createInputHash(scope, ["Name", "name"])).toBe(hash);
+	expect(
+		createInputHash(scope, "actor", { ...input, requestId: projectId }),
+	).toBe(hash);
+	expect(
+		createInputHash(scope, "actor", {
+			name: input.name,
+			organizationId: input.organizationId,
+			requestId,
+		}),
+	).toBe(hash);
 	for (const changed of [
-		createInputHash({ ...scope, organizationId: "other" }, ["Name", "name"]),
-		createInputHash({ ...scope, operation: "create-execution", projectId }, [
-			"Name",
-			"name",
-		]),
-		createInputHash(scope, ["name", "Name"]),
-		createInputHash(scope, ["Name,name"]),
-		createInputHash(scope, ["Name", "name", null]),
+		createInputHash({ ...scope, organizationId: "other" }, "actor", input),
+		createInputHash(
+			{ ...scope, operation: "create-execution", projectId },
+			"actor",
+			input,
+		),
+		createInputHash(scope, "other", input),
+		createInputHash(scope, "actor", { ...input, name: "name" }),
 	])
 		expect(changed).not.toBe(hash);
 });

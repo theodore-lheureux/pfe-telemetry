@@ -1,5 +1,5 @@
 import { useLocation } from "@tanstack/react-router";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useMutationBoundary } from "./mutation-feedback";
 
 export function usePageConfirmation<T>() {
@@ -14,17 +14,21 @@ export function usePageConfirmation<T>() {
 	} | null>(null);
 	if (confirmation && confirmation.locationKey !== locationKey)
 		setConfirmation(null);
-	return [
-		confirmation &&
-		confirmation.locationKey === locationKey &&
-		!confirmation.signal.aborted
-			? confirmation.value
-			: null,
+	const confirm = useCallback(
 		(value: T | null) => {
 			const signal = capture();
 			setConfirmation(
 				value !== null && signal ? { value, locationKey, signal } : null,
 			);
 		},
+		[capture, locationKey],
+	);
+	return [
+		confirmation &&
+		confirmation.locationKey === locationKey &&
+		!confirmation.signal.aborted
+			? confirmation.value
+			: null,
+		confirm,
 	] as const;
 }

@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
-import type { FailureReason } from "../organizations/contracts";
 import { InputError } from "./input-error";
+import type { FailureReason } from "./operation-result";
 
 const reasons = {
 	REQUEST_ID_REUSED: m.error_request_id_reused,
@@ -11,10 +11,7 @@ const reasons = {
 	INVALID_EXPIRY: m.error_expiry,
 	INVALID_NAME: m.error_name,
 	INVALID_PROJECT_SETTING: m.error_project_setting,
-	HOSTS_REQUIRED: m.error_hosts_required,
-	HOSTS_UNIQUE: m.error_hosts_unique,
 	INVALID_IDENTIFIER: m.error_identifier,
-	CREDENTIAL_INACTIVE: m.error_credential_inactive,
 } satisfies Record<FailureReason, () => string>;
 
 const codes: Record<string, () => string> = {
@@ -28,7 +25,6 @@ const codes: Record<string, () => string> = {
 	UNAVAILABLE: m.error_telemetry_unavailable,
 	CAPACITY: m.error_telemetry_capacity,
 	TIMEOUT: m.error_telemetry_timeout,
-	QUERY_FAILED: m.error_telemetry_query,
 	CANCELLED: m.error_telemetry_cancelled,
 };
 
