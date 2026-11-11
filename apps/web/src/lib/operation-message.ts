@@ -7,6 +7,8 @@ const reasons = {
 	LAST_OWNER: m.error_last_owner,
 	VERIFIED_EMAIL_REQUIRED: m.error_verified_email,
 	INVALID_TIME_RANGE: m.error_invalid_range,
+	INVALID_QUERY: m.error_invalid_query,
+	INVALID_CALCULATION: m.error_invalid_calculation,
 	INVALID_EXECUTION_WINDOW: m.error_execution_window,
 	INVALID_EXPIRY: m.error_expiry,
 	INVALID_NAME: m.error_name,
