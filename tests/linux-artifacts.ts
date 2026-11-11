@@ -1,4 +1,17 @@
-import { open, readFile, realpath, stat } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import {
+	mkdir,
+	mkdtemp,
+	open,
+	readFile,
+	realpath,
+	rm,
+	stat,
+	writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { linuxArchitecture } from "../tooling/artifact-policy";
 
 export async function linuxPlatform(path: string) {
 	const file = await open(path, "r");
@@ -9,18 +22,7 @@ export async function linuxPlatform(path: string) {
 	} finally {
 		await file.close();
 	}
-	if (
-		length !== 20 ||
-		!header.subarray(0, 7).equals(Buffer.from([127, 69, 76, 70, 2, 1, 1])) ||
-		![0, 3].includes(header[7])
-	)
-		throw new Error("Expected a 64-bit little-endian Linux ELF artifact");
-	if (!((await stat(path)).mode & 0o111))
-		throw new Error("Linux artifact must be executable");
-	const machine = header.readUInt16LE(18);
-	if (machine === 62) return "linux/amd64";
-	if (machine === 183) return "linux/arm64";
-	throw new Error("Unsupported Linux ELF architecture");
+	return `linux/${linuxArchitecture(header.subarray(0, length), (await stat(path)).mode)}`;
 }
 
 if (import.meta.main) {
@@ -45,12 +47,31 @@ if (import.meta.main) {
 	for (const path of artifacts.keys())
 		if ((await linuxPlatform(path)) !== platform)
 			throw new Error("Linux artifact architectures differ");
-	for (const path of tests) {
-		const child = Bun.spawn(
+	const directory = await mkdtemp(join(tmpdir(), "recount-linux-artifacts-"));
+	const container = `recount-linux-tests-${randomUUID()}`;
+	const scratch = `/${container}-tmp`;
+	try {
+		const dockerfile =
+			"FROM oven/bun:1.4.2@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895\n" +
+			"COPY --chmod=0555 rootfs/ /\n";
+		const hash = createHash("sha256").update(dockerfile);
+		for (const binary of [...artifacts.keys()].sort()) {
+			const bytes = await readFile(binary);
+			// Keep embedded Cargo executable paths, but execute from Linux storage rather than a host bind mount.
+			const destination = join(directory, "rootfs", binary.slice(1));
+			await mkdir(dirname(destination), { recursive: true });
+			await writeFile(destination, bytes);
+			hash.update(binary).update("\0").update(bytes);
+		}
+		await writeFile(join(directory, "Dockerfile"), dockerfile);
+		const image = `recount-linux-tests:${hash.digest("hex")}`;
+		const commands = [
+			["build", "--platform", platform, "--tag", image, directory],
 			[
-				"docker",
 				"run",
 				"--rm",
+				"--name",
+				container,
 				"--platform",
 				platform,
 				"--network",
@@ -68,18 +89,41 @@ if (import.meta.main) {
 				"ALL",
 				"--security-opt",
 				"no-new-privileges",
+				// Cargo outputs may live under /tmp; do not hide them with the scratch mount.
 				"--tmpfs",
-				"/tmp:rw,nosuid,nodev,size=64m",
-				...[...artifacts.keys()].flatMap((binary) => [
-					"--mount",
-					`type=bind,src=${binary},dst=${binary},readonly`,
-				]),
-				"oven/bun:1.4.2@sha256:9114c058aeae42162ee16dd5084b95fe9473970bb6bcb5b232ab1630f0546895",
-				path,
+				`${scratch}:rw,nosuid,nodev,size=64m`,
+				"--env",
+				`TMPDIR=${scratch}`,
+				image,
+				"/bin/sh",
+				"-ec",
+				'for binary do printf "Linux harness: %s\\n" "$binary"; "$binary"; done',
+				"recount-linux-tests",
+				...tests,
 			],
-			{ stdin: "ignore", stdout: "inherit", stderr: "inherit" },
-		);
-		const code = await child.exited;
-		if (code !== 0) process.exit(code);
+		];
+		for (const args of commands) {
+			const child = Bun.spawn(["docker", ...args], {
+				stdin: "ignore",
+				stdout: "inherit",
+				stderr: "inherit",
+			});
+			const code = await child.exited;
+			if (code !== 0) {
+				process.exitCode = code;
+				break;
+			}
+		}
+	} finally {
+		try {
+			// A disconnected Docker client may still have created this exact owned container.
+			Bun.spawnSync(["docker", "rm", "--force", container], {
+				stdout: "ignore",
+				stderr: "ignore",
+				timeout: 15_000,
+			});
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
 	}
 }

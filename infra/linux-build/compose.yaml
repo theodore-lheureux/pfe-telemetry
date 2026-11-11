@@ -1,0 +1,30 @@
+# Long-lived Linux build container for code that only compiles or runs on Linux.
+# The recipe in the root justfile names the project after the checkout, so each
+# checkout keeps its own container and target directory while sharing downloads.
+services:
+  build:
+    image: docker.io/library/rust:1.99.0-trixie
+    working_dir: /workspace
+    command: ["sleep", "infinity"]
+    init: true
+    # Lets built executables reach services on the host, as Docker Desktop and OrbStack do by default.
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    environment:
+      # Overrides any machine-local target directory in the mounted .cargo/config.toml.
+      CARGO_TARGET_DIR: /target
+    volumes:
+      - ../..:/workspace
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - rustup:/usr/local/rustup
+      - target:/target
+
+volumes:
+  cargo-registry:
+    name: recount-linux-build-cargo-registry
+  cargo-git:
+    name: recount-linux-build-cargo-git
+  rustup:
+    name: recount-linux-build-rustup
+  target: {}

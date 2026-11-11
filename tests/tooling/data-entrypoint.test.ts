@@ -41,12 +41,14 @@ test("normal startup refuses missing, partial and wrong Kafka identities; initia
 	expect(run().stdout.toString()).not.toContain("server-started");
 	expect(run(true).stdout.toString()).toBe("server-started");
 	await writeFile(join(directory, "partial"), "not initialized");
+	expect(run().exitCode).not.toBe(0);
 	expect(run(true).exitCode).not.toBe(0);
 	await rm(join(directory, "partial"));
 	await writeFile(
 		join(directory, "meta.properties"),
 		"cluster.id=wrong\nnode.id=1\n",
 	);
+	expect(run().exitCode).not.toBe(0);
 	expect(run(true).exitCode).not.toBe(0);
 	await mkdir(join(directory, "__cluster_metadata-0"));
 	await writeFile(
@@ -64,6 +66,8 @@ test("normal startup refuses missing, partial and wrong Kafka identities; initia
 		"cluster.id=expected\nnode.id=1\n",
 	);
 	expect(run().stdout.toString()).toBe("server-started");
+	expect(run().exitCode).toBe(0);
+	expect(run(true).exitCode).not.toBe(0);
 	await rm(join(directory, "__cluster_metadata-0/000.log"));
 	expect(run().exitCode).not.toBe(0);
 });
