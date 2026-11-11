@@ -326,7 +326,21 @@ test("effective project administrators grant access and can give up their own ad
 	await page
 		.getByRole("button", { name: "Confirm access change", exact: true })
 		.click();
-	await expect(page).toHaveURL(`${workspace.origin}/organizations/${org.id}`);
+	await expect(page).toHaveURL(
+		`${workspace.origin}/organizations/${org.id}/projects/${project.id}/executions`,
+	);
+	await expect(
+		page.getByLabel("Project role for manager@example.invalid", {
+			exact: true,
+		}),
+	).toHaveCount(0);
+	expect(
+		data(
+			await workspace.operations(manager.headers, (actor) =>
+				projectDomain.getProject(workspace.database.db, actor, reference),
+			),
+		).role,
+	).toBe("viewer");
 	expect(
 		(
 			await workspace.operations(manager.headers, (actor) =>
