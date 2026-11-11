@@ -7,8 +7,14 @@ import {
 	packetDetail,
 	pointDetail,
 } from "../../src/activity/activity.server";
+import { DEFAULT_COLUMNS } from "../../src/activity/columns";
+import { readColumns, saveColumns } from "../../src/activity/columns.server";
 import { createAuth } from "../../src/auth/create-auth.server";
-import { member, projectMember } from "../../src/db/schema";
+import {
+	explorerColumnPreference,
+	member,
+	projectMember,
+} from "../../src/db/schema";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
 import { trustedActor } from "../auth-actors";
@@ -84,6 +90,7 @@ test("all activity operations authorize canonical project access before touching
 			nextCursor: null,
 			from: new Date(0),
 			to: new Date(3600000),
+			searchedTo: new Date(0),
 		};
 	};
 	const detail = async () => {
@@ -152,5 +159,112 @@ test("all activity operations authorize canonical project access before touching
 			{ id: owner.id },
 			{ ...reference, organizationId: "another-org" },
 		),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+});
+
+test("Explorer columns are per member, fall back to the project default, and only administrators set the default", async () => {
+	const headers = new Headers({ origin: "http://localhost:3001" });
+	const owner = await trustedActor(
+		auth,
+		`columns-owner-${randomUUID()}@example.invalid`,
+		(email) => codes.get(email),
+		headers,
+	);
+	const viewer = await trustedActor(
+		auth,
+		`columns-viewer-${randomUUID()}@example.invalid`,
+		(email) => codes.get(email),
+		headers,
+	);
+	const organization = await createOrganization(auth, owner.headers, {
+		name: "Columns",
+		slug: `columns-${randomUUID()}`,
+	});
+	const project = await createProject(
+		database.db,
+		{ id: owner.id },
+		{ requestId: randomUUID(), organizationId: organization.id, name: "Cols" },
+	);
+	const reference = { organizationId: organization.id, projectId: project.id };
+	const memberId = randomUUID();
+	await database.db.insert(member).values({
+		id: memberId,
+		organizationId: organization.id,
+		userId: viewer.id,
+		role: "member",
+		createdAt: new Date(),
+	});
+	await database.db.insert(projectMember).values({
+		...reference,
+		memberId,
+		role: "viewer",
+	});
+	const db = database.db;
+	expect((await readColumns(db, { id: viewer.id }, reference)).columns).toEqual(
+		DEFAULT_COLUMNS,
+	);
+	const mine = [
+		{ field: 'attributes["cpu.mode"]', label: "Mode" },
+		{ field: "metric" },
+	];
+	const saved = await saveColumns(
+		db,
+		{ id: viewer.id },
+		{
+			...reference,
+			columns: mine,
+			asDefault: false,
+		},
+	);
+	expect(saved).toMatchObject({ columns: mine, canSetDefault: false });
+	await expect(
+		saveColumns(
+			db,
+			{ id: viewer.id },
+			{
+				...reference,
+				columns: mine,
+				asDefault: true,
+			},
+		),
+	).rejects.toMatchObject({ code: "FORBIDDEN" });
+	const shared = [{ field: "metric" }, { field: "time" }];
+	await saveColumns(
+		db,
+		{ id: owner.id },
+		{
+			...reference,
+			columns: shared,
+			asDefault: true,
+		},
+	);
+	// The member keeps their own choice; the owner, matching the default, stores none.
+	expect((await readColumns(db, { id: viewer.id }, reference)).columns).toEqual(
+		mine,
+	);
+	expect(await readColumns(db, { id: owner.id }, reference)).toMatchObject({
+		columns: shared,
+		defaults: shared,
+		canSetDefault: true,
+	});
+	// Saving the default again removes the member's own set, so later defaults apply.
+	await saveColumns(
+		db,
+		{ id: viewer.id },
+		{
+			...reference,
+			columns: shared,
+			asDefault: false,
+		},
+	);
+	expect(
+		await db
+			.select()
+			.from(explorerColumnPreference)
+			.where(eq(explorerColumnPreference.memberId, memberId)),
+	).toHaveLength(0);
+	await db.delete(projectMember).where(eq(projectMember.memberId, memberId));
+	await expect(
+		readColumns(db, { id: viewer.id }, reference),
 	).rejects.toMatchObject({ code: "NOT_FOUND" });
 });

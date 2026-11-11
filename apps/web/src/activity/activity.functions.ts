@@ -1,8 +1,15 @@
 import { createServerFn } from "@tanstack/react-start";
 import { withActor } from "../auth/actor.server";
 import { privateOperation } from "../auth/private-operation";
+import { parseProjectReference } from "../organizations/validation";
 import * as activity from "./activity.server";
-import { parseExplorer, parsePacket, parsePoint } from "./validation";
+import { readColumns, saveColumns } from "./columns.server";
+import {
+	parseExplorer,
+	parsePacket,
+	parsePoint,
+	parseSaveColumns,
+} from "./validation";
 
 export const listActivityPoints = createServerFn({ method: "GET" })
 	.middleware([privateOperation])
@@ -27,4 +34,16 @@ export const getActivityPacket = createServerFn({ method: "GET" })
 		withActor(identity, (actor) =>
 			activity.packetDetail(database, actor, data, undefined, request.signal),
 		),
+	);
+export const getExplorerColumns = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
+	.validator(parseProjectReference)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) => readColumns(database, actor, data)),
+	);
+export const saveExplorerColumns = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
+	.validator(parseSaveColumns)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) => saveColumns(database, actor, data)),
 	);

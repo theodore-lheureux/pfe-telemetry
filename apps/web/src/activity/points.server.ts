@@ -1,4 +1,5 @@
 import type { ClickHouseClient } from "@clickhouse/client";
+import { compileFields, compileFilters } from "../analytics/compile.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
 import { activityNode, decodeLineage, nanosecondsDate } from "./codec.server";
@@ -28,7 +29,7 @@ const settings = {
 let active = 0;
 async function query<T>(
 	sql: string,
-	params: Record<string, string | number>,
+	params: Record<string, string | number | string[]>,
 	signal?: AbortSignal,
 	connection: ClickHouseClient = getTelemetryClient(),
 ): Promise<T[]> {
@@ -74,46 +75,36 @@ interface Row {
 	flags: number;
 	scopeName: string;
 	scopeVersion: string;
+	fields?: (string | null)[];
 }
-export const pointListQuery = `SELECT hex(sample_id) AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
+function pointListQuery(conditions: string[], fields: string[]) {
+	const projected = fields.length ? `[${fields.join(",")}] AS fields,` : "";
+	return `SELECT ${projected}hex(sample_id) AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
 host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
 resource_kind AS resourceKind,metric_kind AS kind,toString(int_value) AS integer,double_value AS double,toString(count) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
 FROM metric_points FINAL WHERE project_id={project:String} AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
 AND time_unix_nano>={from:UInt64} AND time_unix_nano<={to:UInt64}
-AND ({hasCursor:UInt8}=0 OR tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String})))
+AND tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String}))${conditions.map((condition) => `\nAND ${condition}`).join("")}
 ORDER BY time_unix_nano DESC,sample_id DESC LIMIT 101`;
+}
 
-export async function readPoints(
-	input: ExplorerInput,
-	signal?: AbortSignal,
-	connection?: ClickHouseClient,
-): Promise<PointPage> {
-	const to = input.cursor?.to ?? new Date(),
-		from = input.cursor?.from ?? new Date(to.getTime() - 3600000);
-	const rows = await query<Row>(
-		pointListQuery,
-		{
-			project: input.projectId,
-			firstDay: Math.floor(from.getTime() / 86400000),
-			lastDay: Math.floor(to.getTime() / 86400000),
-			from: (BigInt(from.getTime()) * 1000000n).toString(),
-			to: (BigInt(to.getTime()) * 1000000n).toString(),
-			hasCursor: input.cursor ? 1 : 0,
-			cursorTime: input.cursor?.timeNs ?? "0",
-			cursorSample: input.cursor?.sampleId ?? "00".repeat(32),
-		},
-		signal,
-		connection,
-	);
-	const points: PointSummary[] = rows.slice(0, 100).map((row) => ({
+// Newest-first reads cannot use the table's sort order, so a page searches backwards in
+// windows that stay within the row limits and stops once it has a full page.
+const WINDOWS_MS = [900_000, 3_600_000, 21_600_000];
+const MAX_WINDOWS = 6;
+const WINDOW_BUDGET_MS = 4000;
+const NS_PER_MS = 1000000n;
+const AFTER_ALL = "FF".repeat(32),
+	BEFORE_ALL = "00".repeat(32);
+
+function summary(projectId: string, row: Row, fields: string[]): PointSummary {
+	return {
 		sampleId: row.sampleId,
 		sourceId: row.sourceId,
 		resourceId: row.resourceId,
 		metricName: row.metricName,
 		timeNs: row.timeNs,
-		node: row.hostId
-			? activityNode(input.projectId, row.hostId, row.hostname)
-			: null,
+		node: row.hostId ? activityNode(projectId, row.hostId, row.hostname) : null,
 		resourceKind: row.resourceKind,
 		kind: row.kind,
 		value: (row.flags & 1) !== 0 ? null : (row.integer ?? row.double),
@@ -123,16 +114,84 @@ export async function readPoints(
 		flags: row.flags,
 		scopeName: row.scopeName,
 		scopeVersion: row.scopeVersion,
-	}));
+		fields: Object.fromEntries(
+			fields.map((field, index) => [field, row.fields?.[index] ?? null]),
+		),
+	};
+}
+
+export async function readPoints(
+	input: ExplorerInput,
+	signal?: AbortSignal,
+	connection?: ClickHouseClient,
+): Promise<PointPage> {
+	const to = input.cursor?.to ?? input.to ?? new Date(),
+		from = input.cursor?.from ?? input.from ?? new Date(to.getTime() - 3600000);
+	const filters = compileFilters(input.filters ?? []);
+	const conditions = [...filters.conditions];
+	if (input.metric !== undefined)
+		conditions.push("metric_name={metric:String}");
+	const fields = input.fields ?? [];
+	const projections = compileFields(fields);
+	const sql = pointListQuery(conditions, projections.expressions);
+	const fromNs = BigInt(from.getTime()) * NS_PER_MS;
+	let upperNs = input.cursor
+			? BigInt(input.cursor.timeNs)
+			: BigInt(to.getTime()) * NS_PER_MS,
+		upperSample = input.cursor?.sampleId ?? AFTER_ALL,
+		lowerNs = upperNs;
+	const rows: Row[] = [],
+		started = Date.now();
+	for (let window = 0; window < MAX_WINDOWS && rows.length <= 100; window++) {
+		const span =
+			BigInt(WINDOWS_MS[Math.min(window, WINDOWS_MS.length - 1)] ?? 0) *
+			NS_PER_MS;
+		lowerNs = upperNs - span > fromNs ? upperNs - span : fromNs;
+		rows.push(
+			...(await query<Row>(
+				sql,
+				{
+					...filters.params,
+					...projections.params,
+					...(input.metric === undefined ? {} : { metric: input.metric }),
+					project: input.projectId,
+					firstDay: Number(lowerNs / 86400000000000n),
+					lastDay: Number(upperNs / 86400000000000n),
+					from: lowerNs.toString(),
+					to: upperNs.toString(),
+					cursorTime: upperNs.toString(),
+					cursorSample: upperSample,
+				},
+				signal,
+				connection,
+			)),
+		);
+		if (lowerNs <= fromNs || Date.now() - started > WINDOW_BUDGET_MS) break;
+		// Rows at the window's lower bound were included, so the next window excludes them.
+		upperNs = lowerNs;
+		upperSample = BEFORE_ALL;
+	}
+	const points = rows
+		.slice(0, 100)
+		.map((row) => summary(input.projectId, row, fields));
 	const last = points.at(-1);
+	const exhausted = rows.length <= 100 && lowerNs <= fromNs;
 	return {
 		points,
 		from,
 		to,
+		searchedTo: nanosecondsDate(lowerNs.toString()),
 		nextCursor:
 			rows.length > 100 && last
 				? { from, to, timeNs: last.timeNs, sampleId: last.sampleId }
-				: null,
+				: exhausted
+					? null
+					: {
+							from,
+							to,
+							timeNs: lowerNs.toString(),
+							sampleId: BEFORE_ALL,
+						},
 	};
 }
 

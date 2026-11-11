@@ -1,4 +1,12 @@
+import { MAX_FILTERS } from "../analytics/contracts";
+import {
+	parseField,
+	parseFilter,
+	parseMetricName,
+} from "../analytics/validation";
 import { parseProjectReference } from "../organizations/validation";
+import { MAX_ATTRIBUTE_COLUMNS, parseColumns } from "./columns";
+import type { SaveColumnsInput } from "./columns.server";
 import type { ExplorerInput, PacketInput, PointInput } from "./contracts";
 
 function record(value: unknown): Record<string, unknown> {
@@ -34,10 +42,56 @@ function nanos(value: unknown) {
 		throw new Error("Invalid measurement timestamp");
 	return value;
 }
+function optionalTime(value: unknown) {
+	if (value === undefined) return undefined;
+	if (
+		!(value instanceof Date) ||
+		!Number.isFinite(value.getTime()) ||
+		value.getTime() < 0
+	)
+		throw new Error("Invalid activity time");
+	return value;
+}
 export function parseExplorer(value: unknown): ExplorerInput {
 	const input = record(value),
 		reference = parseProjectReference(value);
-	if (input.cursor === undefined) return reference;
+	const from = optionalTime(input.from),
+		to = optionalTime(input.to);
+	if (
+		(to && to.getTime() > Date.now() + 30000) ||
+		(from && from.getTime() >= (to ?? new Date()).getTime())
+	)
+		throw new Error("Invalid activity interval");
+	if (
+		input.filters !== undefined &&
+		(!Array.isArray(input.filters) || input.filters.length > MAX_FILTERS)
+	)
+		throw new Error("Invalid activity filters");
+	const filters = ((input.filters as unknown[] | undefined) ?? []).map(
+		parseFilter,
+	);
+	if (
+		input.fields !== undefined &&
+		(!Array.isArray(input.fields) ||
+			input.fields.length > MAX_ATTRIBUTE_COLUMNS ||
+			new Set(input.fields).size !== input.fields.length ||
+			!input.fields.every(
+				(field) =>
+					typeof field === "string" && parseField(field).type === "attribute",
+			))
+	)
+		throw new Error("Invalid activity fields");
+	const parsed: ExplorerInput = {
+		...reference,
+		...(input.fields?.length ? { fields: input.fields as string[] } : {}),
+		...(from ? { from } : {}),
+		...(to ? { to } : {}),
+		filters,
+		...(input.metric === undefined
+			? {}
+			: { metric: parseMetricName(input.metric) }),
+	};
+	if (input.cursor === undefined) return parsed;
 	const cursor = record(input.cursor);
 	if (
 		!(cursor.from instanceof Date) ||
@@ -45,7 +99,7 @@ export function parseExplorer(value: unknown): ExplorerInput {
 		!Number.isFinite(cursor.from.getTime()) ||
 		!Number.isFinite(cursor.to.getTime()) ||
 		cursor.from.getTime() < 0 ||
-		cursor.to.getTime() - cursor.from.getTime() !== 3600000 ||
+		cursor.from.getTime() >= cursor.to.getTime() ||
 		cursor.to.getTime() > Date.now() + 30000
 	)
 		throw new Error("Invalid activity cursor");
@@ -56,7 +110,7 @@ export function parseExplorer(value: unknown): ExplorerInput {
 	)
 		throw new Error("Cursor outside activity interval");
 	return {
-		...reference,
+		...parsed,
 		cursor: {
 			from: cursor.from,
 			to: cursor.to,
@@ -93,5 +147,16 @@ export function parsePacket(value: unknown): PacketInput {
 		packetId,
 		partition: Number(input.partition),
 		offset: input.offset,
+	};
+}
+
+export function parseSaveColumns(value: unknown): SaveColumnsInput {
+	const input = record(value);
+	if (typeof input.asDefault !== "boolean")
+		throw new Error("Invalid column request");
+	return {
+		...parseProjectReference(value),
+		columns: parseColumns(input.columns),
+		asDefault: input.asDefault,
 	};
 }

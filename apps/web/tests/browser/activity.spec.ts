@@ -18,7 +18,7 @@ test.skip(
 	"Requires explicit reused Kafka/ClickHouse endpoints and disposable project permission",
 );
 
-test("Activity has compact real point rows, expandable JSON, live packets, pause, disabled filters and French labels", async ({
+test("Activity has compact real point rows, expandable JSON, Explorer filters, live packets, pause and French labels", async ({
 	page,
 	workspace,
 }, testInfo) => {
@@ -236,6 +236,9 @@ test("Activity has compact real point rows, expandable JSON, live packets, pause
 		const path = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/activity`;
 		const errors: string[] = [];
 		page.on("pageerror", (error) => errors.push(error.message));
+		// Compact times render on the server, so the first paint already shows "now".
+		const document = await (await page.request.get(path)).text();
+		expect(document).toContain(">now</time>");
 		await page.goto(path);
 		await expect(
 			page.getByRole("heading", {
@@ -260,6 +263,10 @@ test("Activity has compact real point rows, expandable JSON, live packets, pause
 		// The page header sticks while the table scrolls and shows its separator only then.
 		const header = page.locator("[data-stuck]");
 		await expect(header).toHaveAttribute("data-stuck", "false");
+		// Scroll only once hydrated; earlier scrolls can be reset as the page hydrates.
+		await expect(
+			page.getByRole("button", { name: "Reload", exact: true }),
+		).toBeEnabled();
 		await page
 			.locator("#main-content")
 			.evaluate((main) => main.scrollTo(0, 800));
@@ -313,12 +320,6 @@ test("Activity has compact real point rows, expandable JSON, live packets, pause
 				.getByRole("heading", { name: "Activity", exact: true })
 				.evaluate((heading) => getComputedStyle(heading).fontSize),
 		).toBe("22px");
-		await expect(
-			page.getByRole("button", { name: "Select a metric", exact: true }),
-		).toBeDisabled();
-		await expect(
-			page.getByRole("button", { name: "Attribute filters", exact: true }),
-		).toBeDisabled();
 		await page.screenshot({
 			path: testInfo.outputPath("activity-explorer.png"),
 		});
@@ -367,13 +368,141 @@ test("Activity has compact real point rows, expandable JSON, live packets, pause
 		await page
 			.getByRole("button", { name: "Configure columns", exact: true })
 			.click();
-		await page
-			.getByRole("menuitemcheckbox", { name: "Resource", exact: true })
+		const dialog = page.getByRole("dialog", { name: "Configure columns" });
+		await dialog
+			.getByRole("button", { name: "Remove Resource", exact: true })
 			.click();
-		await page.keyboard.press("Escape");
+		await dialog.getByRole("option", { name: /^Host name/ }).click();
+		await dialog
+			.getByRole("button", { name: "Rename Host name", exact: true })
+			.click();
+		await dialog.getByLabel("Name for Host name").fill("Machine");
+		await dialog.getByLabel("Name for Host name").press("Enter");
+		// The keyboard sensor moves the new column above Value.
+		const handle = dialog.getByRole("button", {
+			name: "Reorder Machine",
+			exact: true,
+		});
+		await handle.focus();
+		// The sensor measures between moves, so each key waits for the previous one.
+		for (const key of ["Space", "ArrowUp", "ArrowUp", "Space"]) {
+			await page.keyboard.press(key);
+			await page.waitForTimeout(150);
+		}
+		await expect(dialog.getByRole("listitem").nth(2)).toContainText("Machine");
+		// One scroll area: the list itself never scrolls inside the dialog body.
+		expect(
+			await dialog
+				.getByRole("list")
+				.last()
+				.evaluate((list) => list.scrollHeight <= list.clientHeight),
+		).toBe(true);
+		await page.screenshot({
+			path: testInfo.outputPath("activity-columns-dialog.png"),
+			animations: "disabled",
+		});
+		await dialog.getByRole("button", { name: "Save", exact: true }).click();
+		await expect(dialog).toHaveCount(0);
 		await expect(
 			table.getByRole("columnheader", { name: "Resource", exact: true }),
 		).toHaveCount(0);
+		await expect(table.getByRole("columnheader").nth(3)).toHaveText("Machine");
+		await expect(
+			table.getByRole("cell", { name: "activity-node-1", exact: true }).first(),
+		).toBeVisible();
+		// The member's columns are stored, so a reload keeps them.
+		await page.reload();
+		await expect(
+			table.getByRole("columnheader", { name: "Machine", exact: true }),
+		).toBeVisible();
+		await page
+			.getByRole("button", { name: "Time range: Last hour", exact: true })
+			.click();
+		await expect(
+			page.getByRole("option", { name: "This week", exact: true }),
+		).toBeVisible();
+		await page.screenshot({
+			path: testInfo.outputPath("activity-range-menu.png"),
+			animations: "disabled",
+		});
+		await page.getByRole("option", { name: "Yesterday", exact: true }).click();
+		await expect(
+			page.getByText("No matching measurements", { exact: true }),
+		).toBeVisible();
+		await page
+			.getByRole("button", { name: "Time range: Yesterday", exact: true })
+			.click();
+		await page
+			.getByRole("option", { name: "Custom fixed date range…", exact: true })
+			.click();
+		await expect(page.getByRole("grid").first()).toBeVisible();
+		const panel = page.locator("[data-slot=popover-content]", {
+			has: page.getByRole("grid"),
+		});
+		// Layout width, unaffected by the popover's zoom-in transform.
+		const panelWidth = () =>
+			panel
+				.locator("form")
+				.evaluate((element) => (element as HTMLElement).offsetWidth);
+		// A day range shows two months (42rem); with time, one month and time columns (28rem).
+		await expect(page.getByRole("grid")).toHaveCount(2);
+		await expect(page.getByText(/^Selected: /)).toBeVisible();
+		await expect.poll(panelWidth).toBe(672);
+		await page.screenshot({
+			path: testInfo.outputPath("activity-range-months.png"),
+			animations: "disabled",
+		});
+		await page.getByLabel("Include time", { exact: true }).click();
+		await expect(
+			page.getByRole("group", { name: "Minutes", exact: true }),
+		).toBeVisible();
+		// Including time adds the time columns inside the same width.
+		await expect.poll(panelWidth).toBe(448);
+		await page.screenshot({
+			path: testInfo.outputPath("activity-range-calendar.png"),
+			animations: "disabled",
+		});
+		await page.getByRole("button", { name: "Cancel", exact: true }).click();
+		await page
+			.getByRole("option", { name: "Jump to timestamp…", exact: true })
+			.click();
+		await page
+			.getByLabel("Timestamp", { exact: true })
+			.fill(new Date(Number(time / 1000000n)).toISOString());
+		await page.getByRole("button", { name: "Apply", exact: true }).click();
+		await expect(table.locator("tbody > tr")).toHaveCount(100);
+		await expect(
+			page.getByRole("button", { name: /^Time range: .* ± 5 minutes$/ }),
+		).toBeVisible();
+		await page
+			.getByRole("combobox", { name: "Select a metric", exact: true })
+			.click();
+		await page.getByRole("option", { name: /^Node memory total/ }).click();
+		await expect(
+			page.getByRole("combobox", { name: "Node memory total", exact: true }),
+		).toBeVisible();
+		await expect(table.locator("tbody > tr")).toHaveCount(100);
+		await page
+			.getByRole("button", { name: "Attribute filters", exact: true })
+			.click();
+		await page.getByRole("option", { name: /host\.name/ }).click();
+		await page.getByLabel("Value", { exact: true }).fill("another-node");
+		await page
+			.getByRole("button", { name: "Apply filter", exact: true })
+			.click();
+		await expect(
+			page.getByText("No matching measurements", { exact: true }),
+		).toBeVisible();
+		await page.screenshot({
+			path: testInfo.outputPath("activity-explorer-filtered.png"),
+		});
+		await page
+			.getByRole("button", {
+				name: "Remove filter Host name = another-node",
+				exact: true,
+			})
+			.click();
+		await expect(table.locator("tbody > tr")).toHaveCount(100);
 		await producer.connect();
 		const publish = async () => {
 			const recordId = randomUUID();

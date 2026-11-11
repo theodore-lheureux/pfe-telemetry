@@ -1,3 +1,4 @@
+import type { Filter } from "../analytics/contracts";
 import type { ProjectReference } from "../organizations/contracts";
 
 export type JsonValue =
@@ -69,6 +70,8 @@ export interface PointSummary extends PointReference {
 	flags: number;
 	scopeName: string;
 	scopeVersion: string;
+	/** Requested attribute values by field; null when a point lacks the attribute. */
+	fields: Record<string, string | null>;
 }
 export interface PointCursor {
 	from: Date;
@@ -81,8 +84,21 @@ export interface PointPage {
 	nextCursor: PointCursor | null;
 	from: Date;
 	to: Date;
+	/** Oldest time searched so far; below `from` only when the range is exhausted. */
+	searchedTo: Date;
 }
-export type ExplorerInput = ProjectReference & { cursor?: PointCursor };
+export interface ExplorerFilters {
+	/** Defaults to one hour before `to`. */
+	from?: Date;
+	/** Defaults to now. */
+	to?: Date;
+	metric?: string;
+	filters: Filter[];
+	/** Attribute fields to project for attribute columns. */
+	fields?: string[];
+}
+export type ExplorerInput = ProjectReference &
+	Partial<ExplorerFilters> & { cursor?: PointCursor };
 export type PointInput = ProjectReference & PointReference;
 export type PacketInput = ProjectReference & {
 	packetId: string;

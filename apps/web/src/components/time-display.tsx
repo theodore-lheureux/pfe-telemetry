@@ -67,6 +67,12 @@ export function ProjectTimeDisplayProvider({
 	return <TimeContext value={scoped}>{children}</TimeContext>;
 }
 
+/** The zone times are shown in: the project's, else the device's once hydrated. */
+export function useDisplayTimeZone() {
+	const { deviceTimeZone, project } = useContext(TimeContext);
+	return project?.timeZone ?? deviceTimeZone ?? "UTC";
+}
+
 type TimeDisplayProps = {
 	value: TimeValue;
 	mode?: "full" | "compact" | "relative";
@@ -125,7 +131,9 @@ function TimestampPopover({
 	);
 	const visible =
 		label ??
-		(mode !== "full" && deviceTimeZone
+		// A project zone is known during SSR, so compact times render there without a
+		// full-date flash; only a page without a project waits for the device zone.
+		(mode !== "full" && (deviceTimeZone || project?.timeZone)
 			? formatCompactTime(date, mode === "relative", new Date(), locale, zone)
 			: formatDate(date, locale, zone));
 	const show = (next: boolean) => {
@@ -205,7 +213,10 @@ function TimestampPopover({
 					}}
 					onPointerLeave={leave}
 				>
-					<time dateTime={date.toISOString()}>{visible}</time>
+					{/* Relative text can differ by a tick between server and browser. */}
+					<time dateTime={date.toISOString()} suppressHydrationWarning>
+						{visible}
+					</time>
 				</button>
 			</PopoverTrigger>
 			{open && (

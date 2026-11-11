@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Root } from "protobufjs/light";
 import { displayedActivity } from "../../src/activity/activity-state";
 import { activityNode, decodePacket } from "../../src/activity/codec.server";
+import { parseColumns } from "../../src/activity/columns";
 import { activityNumberFormat } from "../../src/activity/format";
 import generated from "../../src/activity/generated/descriptors.json";
 import {
@@ -158,7 +159,12 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 	expect(() =>
 		parseExplorer({
 			...reference,
-			cursor: { to, from: new Date(0), timeNs, sampleId: "aa".repeat(32) },
+			cursor: {
+				to,
+				from: new Date(to.getTime() + 1),
+				timeNs,
+				sampleId: "aa".repeat(32),
+			},
 		}),
 	).toThrow();
 	expect(() =>
@@ -221,4 +227,83 @@ test("packet rate is per minute from the first seconds of a connection", () => {
 	);
 	// A single early packet does not read as 60 per second.
 	expect(packetRate([now], new Date(now - 1000), new Date(now))).toBe(6);
+});
+
+test("Explorer filters are validated and intervals must be ordered and in the past", () => {
+	const to = new Date(),
+		from = new Date(to.getTime() - 21_600_000),
+		cursor = {
+			to,
+			from,
+			timeNs: (BigInt(to.getTime()) * 1000000n).toString(),
+			sampleId: "aa".repeat(32),
+		};
+	expect(parseExplorer({ ...reference, from, to, cursor }).cursor?.from).toBe(
+		from,
+	);
+	expect(() =>
+		parseExplorer({ ...reference, cursor: { ...cursor, from: to } }),
+	).toThrow();
+	expect(() => parseExplorer({ ...reference, from: to, to: from })).toThrow();
+	expect(() =>
+		parseExplorer({ ...reference, to: new Date(Date.now() + 3_600_000) }),
+	).toThrow();
+	expect(() => parseExplorer({ ...reference, from: "yesterday" })).toThrow();
+	expect(
+		parseExplorer({
+			...reference,
+			metric: "recount.node.cpu.time",
+			filters: [
+				{ field: 'attributes["cpu.mode"]', op: "eq", values: ["user"] },
+			],
+		}).filters,
+	).toHaveLength(1);
+	expect(() =>
+		parseExplorer({
+			...reference,
+			filters: [{ field: "metric_points.project_id", op: "eq", values: ["x"] }],
+		}),
+	).toThrow();
+	expect(() =>
+		parseExplorer({ ...reference, metric: "bad\nmetric" }),
+	).toThrow();
+	expect(() =>
+		parseExplorer({
+			...reference,
+			filters: Array.from({ length: 9 }, () => ({
+				field: 'attributes["cpu.mode"]',
+				op: "exists",
+			})),
+		}),
+	).toThrow();
+});
+
+test("Explorer column sets are bounded, unique and use attribute fields", () => {
+	expect(
+		parseColumns([
+			{ field: "metric" },
+			{ field: 'resource.attributes["host.name"]', label: " Host " },
+		]),
+	).toEqual([
+		{ field: "metric" },
+		{ field: 'resource.attributes["host.name"]', label: "Host" },
+	]);
+	expect(() => parseColumns([])).toThrow();
+	expect(() =>
+		parseColumns([{ field: "metric" }, { field: "metric" }]),
+	).toThrow();
+	expect(() => parseColumns([{ field: "node" }, { field: "host" }])).toThrow();
+	expect(() => parseColumns([{ field: "project_id" }])).toThrow();
+	expect(() => parseColumns([{ field: "metric", label: "a\nb" }])).toThrow();
+	expect(() =>
+		parseColumns(
+			Array.from({ length: 11 }, (_, index) => ({
+				field: `attributes["key${index}"]`,
+			})),
+		),
+	).toThrow();
+	expect(() => parseExplorer({ ...reference, fields: ["node"] })).toThrow();
+	expect(
+		parseExplorer({ ...reference, fields: ['attributes["cpu.mode"]'] }).fields,
+	).toEqual(['attributes["cpu.mode"]']);
 });
