@@ -1,11 +1,38 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { finished } from "node:stream/promises";
 import { promisify } from "node:util";
 import { ClickHouseLogLevel, createClient } from "@clickhouse/client";
 
 const execute = promisify(execFile);
+
+/** Discovery tables and views from the ClickHouse schema template, for one database. */
+function discoveryStatements(database: string) {
+	const template = readFileSync(
+		new URL("../../../../infra/clickhouse/schema.sql.in", import.meta.url),
+		"utf8",
+	);
+	const start = template.indexOf(
+		"CREATE TABLE __CREATE_GUARD____DATABASE__.metric_definitions",
+	);
+	if (start < 0)
+		throw new Error("Discovery DDL is missing from the schema template");
+	return template
+		.slice(start)
+		.replaceAll("__CREATE_GUARD__", "")
+		.replaceAll("__DATABASE__", database)
+		.split(";")
+		.map((statement) =>
+			statement
+				.split("\n")
+				.filter((line) => !line.trim().startsWith("--"))
+				.join("\n")
+				.trim(),
+		)
+		.filter(Boolean);
+}
 
 export async function createPointFixture() {
 	const url = process.env.RECOUNT_CLICKHOUSE_TEST_URL;
@@ -73,6 +100,9 @@ export async function createPointFixture() {
 			query: `CREATE TABLE metric_points (${columns}) ENGINE=ReplacingMergeTree
         PARTITION BY event_day ORDER BY (project_id,source_id,resource_id,metric_name,time_unix_nano,sample_id)`,
 		});
+		// The real discovery DDL from the schema template, so tests exercise its views.
+		for (const statement of discoveryStatements(name))
+			await client.command({ query: statement });
 		await client.command({ query: "SYSTEM STOP MERGES metric_points" });
 		await client.command({
 			query: "CREATE TABLE fixture AS metric_points ENGINE=Memory",
@@ -88,12 +118,21 @@ export async function createPointFixture() {
 		inserted.stream.resume();
 		await finished(inserted.stream);
 		await admin.command({
-			query: `CREATE USER ${readerName} IDENTIFIED WITH sha256_password BY '${readerPassword}'`,
+			// Mirror the telemetry_read profile's constraints so tests reject settings
+			// that the deployed reader account would refuse.
+			query: `CREATE USER ${readerName} IDENTIFIED WITH sha256_password BY '${readerPassword}'
+        SETTINGS max_execution_time = 6 MIN 1 MAX 6, max_threads = 1 MIN 1 MAX 1,
+          max_memory_usage = 268435456 MIN 1 MAX 268435456`,
 		});
 		readerCreated = true;
-		await admin.command({
-			query: `GRANT SELECT ON ${name}.metric_points TO ${readerName}`,
-		});
+		for (const table of [
+			"metric_points",
+			"metric_definitions",
+			"attribute_definitions",
+		])
+			await admin.command({
+				query: `GRANT SELECT ON ${name}.${table} TO ${readerName}`,
+			});
 		return {
 			client,
 			reader,

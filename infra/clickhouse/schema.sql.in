@@ -37,3 +37,80 @@ SETTINGS
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_points
 TO __DATABASE__.metric_points AS SELECT * FROM __DATABASE__.normalized_kafka;
+
+-- Discovery catalog: which metrics and attributes each project has sent. Materialized
+-- views aggregate as points arrive, so discovery adds no ingestion write path.
+CREATE TABLE __CREATE_GUARD____DATABASE__.metric_definitions
+(
+    project_id String,
+    metric_name String,
+    metric_kind UInt8,
+    temporality UInt8,
+    monotonic_state UInt8,
+    unit String,
+    description SimpleAggregateFunction(anyLast, String),
+    first_seen_unix_nano SimpleAggregateFunction(min, UInt64),
+    last_seen_unix_nano SimpleAggregateFunction(max, UInt64)
+)
+ENGINE = AggregatingMergeTree
+ORDER BY (project_id, metric_name, metric_kind, temporality, monotonic_state, unit);
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.discover_metric_definitions
+TO __DATABASE__.metric_definitions AS
+SELECT
+    project_id,
+    metric_name,
+    metric_kind,
+    temporality,
+    ifNull(monotonic, 2) AS monotonic_state,
+    unit,
+    anyLast(description) AS description,
+    min(time_unix_nano) AS first_seen_unix_nano,
+    max(time_unix_nano) AS last_seen_unix_nano
+FROM __DATABASE__.metric_points
+GROUP BY project_id, metric_name, metric_kind, temporality, monotonic_state, unit;
+
+CREATE TABLE __CREATE_GUARD____DATABASE__.attribute_definitions
+(
+    project_id String,
+    metric_name String,
+    scope LowCardinality(String),
+    attribute_key String,
+    value_kind UInt8,
+    last_seen_unix_nano SimpleAggregateFunction(max, UInt64)
+)
+ENGINE = AggregatingMergeTree
+ORDER BY (project_id, metric_name, scope, attribute_key, value_kind);
+
+-- Only top-level scalar attributes. Continuity markers are internal and never offered.
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.discover_point_attributes
+TO __DATABASE__.attribute_definitions AS
+SELECT
+    project_id,
+    metric_name,
+    'point' AS scope,
+    substring(attribute.path, 2) AS attribute_key,
+    attribute.kind AS value_kind,
+    max(time_unix_nano) AS last_seen_unix_nano
+FROM __DATABASE__.metric_points
+ARRAY JOIN point_attributes AS attribute
+WHERE attribute.kind BETWEEN 2 AND 6
+    AND position(substring(attribute.path, 2), '/') = 0
+    AND attribute.path != '/recount.counter.segment_id'
+GROUP BY project_id, metric_name, scope, attribute_key, value_kind;
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.discover_resource_attributes
+TO __DATABASE__.attribute_definitions AS
+SELECT
+    project_id,
+    metric_name,
+    'resource' AS scope,
+    substring(attribute.path, 2) AS attribute_key,
+    attribute.kind AS value_kind,
+    max(time_unix_nano) AS last_seen_unix_nano
+FROM __DATABASE__.metric_points
+ARRAY JOIN resource_attributes AS attribute
+WHERE attribute.kind BETWEEN 2 AND 6
+    AND position(substring(attribute.path, 2), '/') = 0
+    AND attribute.path NOT IN ('/recount.host.boot_id', '/recount.collection.epoch_id')
+GROUP BY project_id, metric_name, scope, attribute_key, value_kind;
