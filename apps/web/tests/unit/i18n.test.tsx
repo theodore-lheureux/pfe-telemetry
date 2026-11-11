@@ -100,7 +100,11 @@ test("both email locales stay explicit across concurrent subjects, previews, tex
 	const rendered = await Promise.all(
 		(["en", "fr"] as const).map(async (locale) => {
 			const [signIn, invitation] = await Promise.all([
-				renderSignInCodeEmail("012345", locale),
+				renderSignInCodeEmail({
+					code: "012345",
+					locale,
+					url: "https://telemetry.example.com/login#email=a%40example.com&code=012345",
+				}),
 				renderOrganizationInvitationEmail({
 					locale,
 					url,
@@ -120,9 +124,8 @@ test("both email locales stay explicit across concurrent subjects, previews, tex
 			expect(email.html).not.toContain("<script>");
 			expect(email.html).toContain('name="color-scheme" content="light"');
 			expect(email.html).not.toContain("prefers-color-scheme");
-			expect(email.html).not.toContain("recount-email-card");
 			expect(email.html.match(/<h1\b/g)).toHaveLength(1);
-			expect(email.html.match(/<img\b/g)).toHaveLength(1);
+			expect(email.html.match(/<img\b/g)).toHaveLength(2);
 			expect(email.html).toContain('alt="Recount"');
 		}
 		expect(signIn.html).toContain(
@@ -168,8 +171,6 @@ test("both email locales stay explicit across concurrent subjects, previews, tex
 		]) {
 			expect(invitation.text).toContain(context);
 		}
-		expect(invitation.html.indexOf(url)).toBeLessThan(
-			invitation.html.indexOf('alt="Recount"'),
-		);
+		expect(invitation.html.match(/alt="Recount"/g)).toHaveLength(1);
 	}
 });

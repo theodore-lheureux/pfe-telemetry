@@ -1,18 +1,5 @@
 export type OrganizationRole = "owner" | "admin" | "member";
 export type ProjectRole = "viewer" | "member" | "admin";
-export type FailureReason =
-	| "REQUEST_ID_REUSED"
-	| "LAST_OWNER"
-	| "VERIFIED_EMAIL_REQUIRED"
-	| "INVALID_TIME_RANGE"
-	| "INVALID_EXECUTION_WINDOW"
-	| "INVALID_EXPIRY"
-	| "INVALID_NAME"
-	| "INVALID_PROJECT_SETTING"
-	| "HOSTS_REQUIRED"
-	| "HOSTS_UNIQUE"
-	| "INVALID_IDENTIFIER"
-	| "CREDENTIAL_INACTIVE";
 
 export interface OrganizationSummary {
 	id: string;
@@ -26,7 +13,6 @@ export interface ProjectSummary {
 	id: string;
 	organizationId: string;
 	name: string;
-	slug: string;
 	role: ProjectRole;
 	tags: string[];
 	projectGroup: string;
@@ -49,7 +35,8 @@ export interface OrganizationInput {
 	slug: string;
 }
 
-export interface CreateProjectInput extends OrganizationInput {
+export interface CreateProjectInput {
+	name: string;
 	requestId: string;
 	organizationId: string;
 }
@@ -77,25 +64,3 @@ export interface ProjectMembershipSummary {
 	userId: string;
 	role: ProjectRole;
 }
-
-export type OperationResult<T> =
-	| { data: T; error: null }
-	| {
-			data: null;
-			error: {
-				code:
-					| "UNAUTHENTICATED"
-					| "SESSION_NOT_FRESH"
-					| "FORBIDDEN"
-					| "NOT_FOUND"
-					| "INVALID_INPUT"
-					| "CONFLICT"
-					| "RATE_LIMITED"
-					| "UNAVAILABLE"
-					| "CAPACITY"
-					| "TIMEOUT"
-					| "CANCELLED";
-				message: string;
-				reason?: FailureReason;
-			};
-	  };

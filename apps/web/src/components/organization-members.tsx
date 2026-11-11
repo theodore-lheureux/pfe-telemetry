@@ -152,7 +152,7 @@ export function OrganizationMembers({
 				reserveLine={false}
 			/>
 			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="relative w-full max-w-xs">
+				<div className="relative w-full sm:max-w-xs">
 					<SearchIcon
 						aria-hidden="true"
 						className="absolute top-2.5 left-3 size-4 text-muted-foreground"

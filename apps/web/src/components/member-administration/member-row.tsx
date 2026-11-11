@@ -13,15 +13,14 @@ import type {
 	ProjectSummary,
 } from "../../organizations/contracts";
 import type { OrganizationMemberSummary } from "../../organizations/member-contracts";
+import { AlertDialogActions } from "../dialog-actions";
 import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
-import { SessionTime } from "../settings/session-time";
+import { TimeDisplay } from "../time-display";
 import {
 	AlertDialog,
-	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
-	AlertDialogFooter,
 	AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Badge } from "../ui/badge";
@@ -116,25 +115,25 @@ export function MemberRow({
 					</div>
 				</TableCell>
 				<TableCell>
-					<Badge
-						variant="outline"
-						className={
-							member.twoFactorEnabled
-								? "border-green-600 text-green-700 dark:text-green-400"
-								: "border-amber-600 text-amber-700 dark:text-amber-400"
-						}
-					>
-						{member.twoFactorEnabled
-							? m.two_factor_enabled()
-							: m.two_factor_disabled()}
-					</Badge>
+					{member.twoFactorEnabled ? (
+						<Badge
+							variant="outline"
+							className="border-green-600 text-green-700 dark:text-green-400"
+						>
+							{m.two_factor_enabled()}
+						</Badge>
+					) : (
+						<span className="text-muted-foreground">
+							{m.two_factor_disabled()}
+						</span>
+					)}
 				</TableCell>
 				<TableCell>
-					<SessionTime value={member.joinedAt} relative />
+					<TimeDisplay value={member.joinedAt} mode="relative" />
 				</TableCell>
 				<TableCell>
 					{member.lastSignedInAt ? (
-						<SessionTime value={member.lastSignedInAt} relative />
+						<TimeDisplay value={member.lastSignedInAt} mode="relative" />
 					) : (
 						<span className="text-muted-foreground">
 							{m.unknown_session_value()}
@@ -289,11 +288,18 @@ export function MemberRow({
 						{m.this_removes_their_organization_membership_and_all_explicit()}
 					</AlertDialogDescription>
 					<FormFeedback
+						reserveLine={false}
 						message={failed ? message : ""}
 						kind="error"
 						pending={pending}
 					/>
-					<AlertDialogFooter>
+					<AlertDialogActions
+						cancel={{
+							label: m.keep_membership(),
+							disabled: pending,
+							onClick: () => state.setConfirm(null),
+						}}
+					>
 						<Button
 							variant="destructive"
 							disabled={pending}
@@ -309,14 +315,7 @@ export function MemberRow({
 						>
 							{self ? m.confirm_leave() : m.confirm_removal()}
 						</Button>
-						<AlertDialogCancel
-							variant="outline"
-							disabled={pending}
-							onClick={() => state.setConfirm(null)}
-						>
-							{m.keep_membership()}
-						</AlertDialogCancel>
-					</AlertDialogFooter>
+					</AlertDialogActions>
 				</AlertDialogContent>
 			)}
 		</AlertDialog>

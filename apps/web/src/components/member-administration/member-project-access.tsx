@@ -29,7 +29,9 @@ function ProjectAccess({
 		: undefined;
 	return (
 		<section className="flex flex-col gap-2" aria-label={project.name}>
-			<h4 className="font-medium">{project.name}</h4>
+			<h4 ref={state.heading} tabIndex={-1} className="font-medium">
+				{project.name}
+			</h4>
 			<Table>
 				<TableBody>
 					<ProjectGrantRow

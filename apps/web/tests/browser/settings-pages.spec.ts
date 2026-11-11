@@ -1,12 +1,12 @@
 import { m } from "@recount/i18n/messages";
 import { eq } from "drizzle-orm";
-import { settingsPath } from "../../src/components/settings-links";
 import {
 	member as memberTable,
 	organization as organizationTable,
 } from "../../src/db/schema";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
+import { settingsPath } from "../settings-path";
 import { data, expect, test } from "./fixtures";
 
 for (const locale of ["en", "fr"] as const) {
@@ -33,7 +33,6 @@ for (const locale of ["en", "fr"] as const) {
 					requestId: crypto.randomUUID(),
 					organizationId: org.id,
 					name: "Telemetry project",
-					slug: "telemetry-project",
 				}),
 			),
 		);
@@ -91,10 +90,7 @@ for (const locale of ["en", "fr"] as const) {
 			.click();
 		await expect(
 			page.getByRole("heading", {
-				name: m.settings_page(
-					{ page: m.settings_customization({}, options) },
-					options,
-				),
+				name: m.settings_customization({}, options),
 				exact: true,
 			}),
 		).toBeVisible();
@@ -115,19 +111,18 @@ for (const locale of ["en", "fr"] as const) {
 			.click();
 		await expect(
 			page.getByRole("heading", {
-				name: m.settings_page({ page: m.members({}, options) }, options),
+				name: m.members({}, options),
 				exact: true,
 			}),
 		).toBeVisible();
-		const invites = page.getByRole("table", {
-			name: m.invitations({}, options),
+		const invites = page.getByText(m.no_invitations({}, options), {
 			exact: true,
 		});
 		const members = page.getByRole("table", {
 			name: m.organization_members({}, options),
 			exact: true,
 		});
-		await expect(invites).toContainText(m.no_invitations({}, options));
+		await expect(invites).toBeVisible();
 		expect(
 			await invites.evaluate((element) => element.getBoundingClientRect().top),
 		).toBeLessThan(
@@ -139,15 +134,35 @@ for (const locale of ["en", "fr"] as const) {
 				exact: true,
 			})
 			.click();
+		const invitationDialog = page.getByRole("dialog");
+		await expect(invitationDialog).toBeVisible();
 		await expect(
-			page.getByLabel(m.email_address({}, options), { exact: true }),
+			invitationDialog.getByRole("heading", {
+				name: m.invite_others_to(
+					{ organization: "Renamed settings org" },
+					options,
+				),
+				exact: true,
+			}),
 		).toBeVisible();
-		await page
+		await expect(
+			invitationDialog.getByLabel(m.email_address({}, options), {
+				exact: true,
+			}),
+		).toBeVisible();
+		await invitationDialog
 			.getByRole("button", {
-				name: m.settings_invite_member({}, options),
+				name: m.cancel({}, options),
 				exact: true,
 			})
 			.click();
+		await expect(invitationDialog).toBeHidden();
+		await expect(
+			page.getByRole("button", {
+				name: m.settings_invite_member({}, options),
+				exact: true,
+			}),
+		).toBeFocused();
 		const search = page.getByRole("searchbox", {
 			name: m.settings_search_members({}, options),
 			exact: true,
@@ -239,13 +254,7 @@ for (const locale of ["en", "fr"] as const) {
 			.click();
 		await expect(
 			page.getByRole("button", {
-				name: m.settings_action_named(
-					{
-						action: m.settings_delete_organization({}, options),
-						name: "Renamed settings org",
-					},
-					options,
-				),
+				name: m.settings_delete_organization({}, options),
 				exact: true,
 			}),
 		).toBeDisabled();
@@ -264,13 +273,7 @@ for (const locale of ["en", "fr"] as const) {
 		await expect(page.locator("#delete-project")).toBeVisible();
 		await expect(
 			page.getByRole("button", {
-				name: m.settings_action_named(
-					{
-						action: m.settings_delete_project({}, options),
-						name: "Renamed telemetry project",
-					},
-					options,
-				),
+				name: m.settings_delete_project({}, options),
 				exact: true,
 			}),
 		).toBeDisabled();

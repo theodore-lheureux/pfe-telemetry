@@ -35,7 +35,8 @@ test("project settings validate tags, groups, IANA zones and week boundaries", (
 		{ action: "group", projectGroup: "x".repeat(81) },
 		{ action: "time-zone", timeZone: "+01:00" },
 		{ action: "time-zone", timeZone: "Fake/Zone" },
-		{ action: "week-start", weekStartsOn: 7 },
+		{ action: "week-start", weekStartsOn: 2 },
+		{ action: "week-start", weekStartsOn: 6 },
 	])
 		expect(() =>
 			parseProjectCustomization({ ...reference, ...patch }),
@@ -46,7 +47,7 @@ test("project settings validate tags, groups, IANA zones and week boundaries", (
 			{ action: "add-tag", tag: "another" },
 		),
 	).toThrow();
-	for (const weekStartsOn of [0, 6])
+	for (const weekStartsOn of [0, 1])
 		expect(
 			parseProjectCustomization({
 				...reference,

@@ -1,7 +1,7 @@
-import { formatDate } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { EntityForm } from "@/components/entity-form";
+import { RenameEntityForm } from "@/components/entity-form";
+import { TimeDisplayRange } from "@/components/time-display";
 import { PageHeading } from "@/components/workspace";
 import {
 	getExecution,
@@ -69,18 +69,20 @@ function Execution() {
 				})}
 			</PageHeading>
 			<p>
-				{m.recorded_interval({
-					from: formatDate(entry.startedAt, undefined, project.timeZone),
-					to: formatDate(entry.endedAt, undefined, project.timeZone),
-					timeZone: project.timeZone,
-				})}
+				<TimeDisplayRange
+					from={entry.startedAt}
+					to={entry.endedAt}
+					timeZone={project.timeZone}
+					recorded
+				/>
 			</p>
 			{entry.canEdit && (
-				<EntityForm
+				<RenameEntityForm
 					name={entry.name}
 					submitLabel={m.save_name()}
-					save={({ name }) => updateExecution({ data: { ...entry, name } })}
-					onSuccess={async () => {}}
+					save={({ name }, signal) =>
+						updateExecution({ data: { ...entry, name }, signal })
+					}
 				/>
 			)}
 			<h2 className="text-lg font-semibold">

@@ -48,8 +48,8 @@ export function parseProjectCustomization(
 		input.action === "week-start" &&
 		typeof input.weekStartsOn === "number" &&
 		Number.isInteger(input.weekStartsOn) &&
-		input.weekStartsOn >= 0 &&
-		input.weekStartsOn <= 6
+		// Calendars start on Sunday or Monday.
+		(input.weekStartsOn === 0 || input.weekStartsOn === 1)
 	)
 		return {
 			...reference,

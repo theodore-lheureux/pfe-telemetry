@@ -3,13 +3,17 @@ import type {
 	OrganizationSummary,
 	ProjectSummary,
 } from "../../organizations/contracts";
-import { type SettingsSection, settingsSections } from "../settings-links";
+import {
+	type SettingsScope,
+	type SettingsSection,
+	settingsScopes,
+	settingsSections,
+} from "../settings-links";
 import {
 	authenticationFeatures,
 	twoFactorFeature,
 } from "./authentication-features";
 
-type Scope = "project" | "organization" | "user";
 type Permission = "project-admin" | "organization-admin";
 interface Setting {
 	id: string;
@@ -18,18 +22,15 @@ interface Setting {
 	permission?: Permission;
 }
 interface Page {
-	scope: Scope;
 	label: () => string;
 	permission?: Permission;
 	settings: Setting[];
 }
 
-const catalog = {
+export const settingsCatalog = {
 	project: {
-		scope: "project",
 		label: m.settings_general,
 		settings: [
-			{ id: "project-slug", label: m.slug },
 			{ id: "project-identifier", label: m.project_identifier },
 			{
 				id: "collector-setup",
@@ -39,7 +40,6 @@ const catalog = {
 		],
 	},
 	"project-customization": {
-		scope: "project",
 		label: m.settings_customization,
 		settings: [
 			{ id: "project-details", label: m.settings_project_details },
@@ -59,7 +59,6 @@ const catalog = {
 		],
 	},
 	"project-danger": {
-		scope: "project",
 		label: m.settings_danger_zone,
 		permission: "project-admin",
 		settings: [
@@ -68,7 +67,6 @@ const catalog = {
 		],
 	},
 	"project-members": {
-		scope: "project",
 		label: m.project_access_control,
 		permission: "project-admin",
 		settings: [
@@ -81,36 +79,26 @@ const catalog = {
 			{ id: "project-inherited-roles", label: m.project_roles },
 		],
 	},
-	credentials: {
-		scope: "project",
-		label: m.collector_credentials,
+	collectors: {
+		label: m.collectors,
 		permission: "project-admin",
 		settings: [
 			{
-				id: "credential-list-title",
-				label: m.enrolled_sources,
-				keywords: [m.collector_credentials],
+				id: "enrollment-keys",
+				label: m.enrollment_keys,
+				keywords: [m.enrollment_key_create],
 			},
-			{ id: "create-credential-title", label: m.create_collector_credential },
-			{ id: "credential-name", label: m.credential_name },
-			{ id: "credential-source", label: m.source_id },
-			{ id: "credential-root", label: m.enrolled_root_id },
-			{ id: "credential-expiry", label: m.expires_at_your_local_time_optional },
-			{ id: "credential-maximum-age", label: m.maximum_submission_age_seconds },
-			{ id: "credential-clock-skew", label: m.allowed_clock_skew_seconds },
+			{ id: "collector-nodes", label: m.nodes },
 		],
 	},
 	organization: {
-		scope: "organization",
 		label: m.settings_general,
 		settings: [
 			{ id: "organization-name", label: m.name },
-			{ id: "organization-slug", label: m.slug },
 			{ id: "organization-identifier", label: m.organization_id },
 		],
 	},
 	"organization-authentication": {
-		scope: "organization",
 		label: m.settings_authentication,
 		settings: [
 			{ id: "available-authentication", label: m.settings_current_auth },
@@ -118,14 +106,12 @@ const catalog = {
 		],
 	},
 	"organization-delete": {
-		scope: "organization",
 		label: m.settings_delete_organization,
 		settings: [
 			{ id: "delete-organization", label: m.settings_delete_organization },
 		],
 	},
 	"organization-members": {
-		scope: "organization",
 		label: m.members,
 		settings: [
 			{ id: "members-heading", label: m.organization_members },
@@ -138,7 +124,6 @@ const catalog = {
 		],
 	},
 	user: {
-		scope: "user",
 		label: m.user_profile,
 		settings: [
 			{
@@ -176,7 +161,6 @@ const catalog = {
 		],
 	},
 	appearance: {
-		scope: "user",
 		label: m.appearance_language,
 		settings: [
 			{
@@ -198,7 +182,7 @@ export function getSettingsGroups(context: {
 		(permission === "project-admin"
 			? context.project?.role === "admin"
 			: !!context.organization && context.organization.role !== "member");
-	const scopes: { scope: Scope; label: string }[] = [
+	const scopes: { scope: SettingsScope; label: string }[] = [
 		{ scope: "project", label: m.project() },
 		{ scope: "organization", label: m.organization() },
 		{ scope: "user", label: m.user_settings_group() },
@@ -207,11 +191,12 @@ export function getSettingsGroups(context: {
 		.map((group) => ({
 			...group,
 			pages: settingsSections.flatMap((section) => {
-				const page: Page = catalog[section];
+				const page: Page = settingsCatalog[section];
+				const scope = settingsScopes[section];
 				if (
-					page.scope !== group.scope ||
+					scope !== group.scope ||
 					!permitted(page.permission) ||
-					(page.scope !== "user" && !context[page.scope])
+					(scope !== "user" && !context[scope])
 				)
 					return [];
 				return [

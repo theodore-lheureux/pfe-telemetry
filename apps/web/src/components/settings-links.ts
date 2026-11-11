@@ -1,20 +1,24 @@
 import { notFound } from "@tanstack/react-router";
 import { organizationParams, projectParams } from "../organizations/route-data";
 
-export const settingsSections = [
-	"project",
-	"project-customization",
-	"project-members",
-	"credentials",
-	"project-danger",
-	"organization",
-	"organization-authentication",
-	"organization-members",
-	"organization-delete",
-	"user",
-	"appearance",
-] as const;
-export type SettingsSection = (typeof settingsSections)[number];
+export type SettingsScope = "project" | "organization" | "user";
+export const settingsScopes = {
+	project: "project",
+	"project-customization": "project",
+	"project-members": "project",
+	collectors: "project",
+	"project-danger": "project",
+	organization: "organization",
+	"organization-authentication": "organization",
+	"organization-members": "organization",
+	"organization-delete": "organization",
+	user: "user",
+	appearance: "user",
+} as const satisfies Record<string, SettingsScope>;
+export type SettingsSection = keyof typeof settingsScopes;
+export const settingsSections = Object.keys(
+	settingsScopes,
+) as SettingsSection[];
 export interface SettingsSearch {
 	section: SettingsSection;
 	organizationId?: string;
@@ -49,15 +53,4 @@ export function settingsSearch(
 		organizationId: selection.organizationId,
 		projectId: selection.projectId,
 	};
-}
-
-export function settingsPath(
-	section: SettingsSection,
-	selection: { organizationId?: string; projectId?: string } = {},
-) {
-	const search = new URLSearchParams({ section });
-	if (selection.organizationId)
-		search.set("organizationId", selection.organizationId);
-	if (selection.projectId) search.set("projectId", selection.projectId);
-	return `/settings?${search}`;
 }

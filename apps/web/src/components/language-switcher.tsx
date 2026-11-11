@@ -4,34 +4,41 @@ import { getLocale, setLocale } from "@recount/i18n/runtime";
 import { useHydrated } from "@tanstack/react-router";
 import { LanguagesIcon } from "lucide-react";
 import { useState } from "react";
+import { AlertDialogActions } from "./dialog-actions";
 import { useLocaleChangeBlocked } from "./locale-safety";
 import {
 	AlertDialog,
-	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
-	AlertDialogFooter,
 	AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 
-export function LanguageSwitcher() {
+export function LanguageSwitcher({
+	compact = false,
+}: {
+	/** Smaller select without the icon, for the public footer. */
+	compact?: boolean;
+}) {
 	const hydrated = useHydrated();
 	const blocked = useLocaleChangeBlocked();
 	const [requested, setRequested] = useState<Locale | null>(null);
 	return (
 		<div className="flex items-center gap-2">
-			<LanguagesIcon
-				aria-hidden="true"
-				className="size-4 text-muted-foreground"
-			/>
+			{!compact && (
+				<LanguagesIcon
+					aria-hidden="true"
+					className="size-4 text-muted-foreground"
+				/>
+			)}
 			<Label htmlFor="language" className="sr-only">
 				{m.language()}
 			</Label>
 			<NativeSelect
 				id="language"
+				size={compact ? "sm" : "default"}
 				value={getLocale()}
 				disabled={!hydrated || blocked}
 				aria-describedby={blocked ? "language-blocked" : undefined}
@@ -73,8 +80,7 @@ export function LanguageSwitcher() {
 					<AlertDialogDescription>
 						{m.language_discard_description()}
 					</AlertDialogDescription>
-					<AlertDialogFooter>
-						<AlertDialogCancel>{m.cancel()}</AlertDialogCancel>
+					<AlertDialogActions cancel={{ label: m.cancel() }}>
 						<Button
 							disabled={blocked}
 							onClick={() => {
@@ -83,7 +89,7 @@ export function LanguageSwitcher() {
 						>
 							{m.language_continue()}
 						</Button>
-					</AlertDialogFooter>
+					</AlertDialogActions>
 				</AlertDialogContent>
 			</AlertDialog>
 		</div>

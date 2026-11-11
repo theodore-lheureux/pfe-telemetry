@@ -13,7 +13,11 @@ import { member, projectMember, twoFactor, user } from "../../src/db/schema";
 import * as members from "../../src/organizations/members.server";
 import * as organizations from "../../src/organizations/organizations.server";
 import * as projects from "../../src/organizations/projects.server";
-import { trustedCodeSignIn } from "../auth-actors";
+import {
+	sessionHeaders,
+	trustedActor,
+	trustedCodeSignIn,
+} from "../auth-actors";
 import { createTestDatabase } from "../database";
 import { authenticatorCode } from "../totp";
 
@@ -23,27 +27,18 @@ let secret: string;
 const codes = new Map<string, string>();
 const origin = "http://localhost:3951";
 function headersFrom(response: Response) {
-	return new Headers({
-		origin,
-		cookie: response.headers
-			.getSetCookie()
-			.map((value) => value.split(";")[0])
-			.join("; "),
-	});
+	return sessionHeaders(response, new Headers({ origin }));
 }
 async function actor() {
 	const email = `${randomUUID()}@example.invalid`;
-	const response = await trustedCodeSignIn(
+	const account = await trustedActor(
 		auth,
 		email,
 		(email) => codes.get(email),
 		new Headers({ origin }),
 	);
-	const headers = headersFrom(response);
-	const session = await auth.api.getSession({ headers });
-	if (!session) throw new Error("Expected fixture account");
-	headers.set(accountContextHeader, session.user.id);
-	return { id: session.user.id, email, headers };
+	account.headers.set(accountContextHeader, account.id);
+	return account;
 }
 
 beforeAll(async () => {
@@ -81,7 +76,6 @@ test("project customization persists isolated partial changes and serializes tag
 		requestId: randomUUID(),
 		organizationId: org.id,
 		name: "Project",
-		slug: "settings",
 	});
 	const reference = { organizationId: org.id, projectId: project.id };
 	expect(project).toMatchObject({
@@ -168,7 +162,6 @@ test("project customization persists isolated partial changes and serializes tag
 		requestId: randomUUID(),
 		organizationId: org.id,
 		name: "Hidden project",
-		slug: "hidden",
 	});
 	const scoped = await members.listOrganizationMembers(
 		database.db,
@@ -365,5 +358,79 @@ test("email-code 2FA issues no usable session until TOTP or a single-use recover
 		).toBeNull();
 	} finally {
 		context.internalAdapter.deleteSession = removeSession;
+	}
+});
+
+test("authenticator enrollment revokes other sessions while preserving the completed session", async () => {
+	const account = await actor();
+	const otherSignIn = await trustedCodeSignIn(
+		auth,
+		account.email,
+		(email) => codes.get(email),
+		new Headers({ origin }),
+	);
+	const otherHeaders = headersFrom(otherSignIn);
+	expect((await auth.api.getSession({ headers: otherHeaders }))?.user.id).toBe(
+		account.id,
+	);
+	const enabled = await auth.api.enableTwoFactor({
+		headers: account.headers,
+		body: { method: "totp" },
+	});
+	if (!("totpURI" in enabled)) throw new Error("Expected authenticator setup");
+	const enrollment = await auth.api.verifyTOTP({
+		headers: account.headers,
+		body: { code: authenticatorCode(enabled.totpURI) },
+		asResponse: true,
+	});
+	expect(enrollment.status).toBe(200);
+	const completed = await auth.api.getSession({
+		headers: headersFrom(enrollment),
+	});
+	if (!completed) throw new Error("Expected completed enrollment session");
+	expect(completed.user.id).toBe(account.id);
+	expect(completed.user.twoFactorEnabled).toBe(true);
+	expect(await auth.api.getSession({ headers: otherHeaders })).toBeNull();
+	expect(await auth.api.getSession({ headers: account.headers })).toBeNull();
+	const sessions = await database.db
+		.select()
+		.from(schema.session)
+		.where(eq(schema.session.userId, account.id));
+	expect(sessions.map((session) => session.id)).toEqual([completed.session.id]);
+});
+
+test("enrollment cannot deliver a completed session when other-session revocation fails", async () => {
+	const account = await actor();
+	const enabled = await auth.api.enableTwoFactor({
+		headers: account.headers,
+		body: { method: "totp" },
+	});
+	if (!("totpURI" in enabled)) throw new Error("Expected authenticator setup");
+	const context = await auth.$context;
+	const listSessions = context.internalAdapter.listSessions;
+	context.internalAdapter.listSessions = async () => {
+		throw new Error("Fixture session revocation unavailable");
+	};
+	try {
+		const failed = await auth.api.verifyTOTP({
+			headers: account.headers,
+			body: { code: authenticatorCode(enabled.totpURI) },
+			asResponse: true,
+		});
+		expect(failed.status).toBe(500);
+		expect(await failed.json()).toMatchObject({
+			code: "TWO_FACTOR_UNAVAILABLE",
+		});
+		expect(
+			await auth.api.getSession({ headers: headersFrom(failed) }),
+		).toBeNull();
+		expect(
+			await database.db
+				.select()
+				.from(schema.session)
+				.where(eq(schema.session.userId, account.id)),
+		).toEqual([]);
+	} finally {
+		context.internalAdapter.listSessions = listSessions;
 	}
 });

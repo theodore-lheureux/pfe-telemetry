@@ -12,11 +12,17 @@ import {
 } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import type { AuthenticationController } from "../auth/authentication";
-import { PublicPreferences } from "../components/appearance-settings";
+import { PublicFooter } from "../components/appearance-settings";
 import { LocaleSafety } from "../components/locale-safety";
 import { MutationFeedback } from "../components/mutation-feedback";
 import { BrandLogo } from "../components/recount/brand-logo";
-import { RouteError, RouteNotFound } from "../components/route-feedback";
+import {
+	NavigationProgress,
+	RouteError,
+	RouteNotFound,
+} from "../components/route-feedback";
+import { StepUpAuthentication } from "../components/step-up-authentication";
+import { TimeDisplayProvider } from "../components/time-display";
 import { AppearanceContext } from "../lib/appearance";
 import { clearValidation, localizeValidation } from "../lib/input-validation";
 import { getInitialTheme, themeCookie } from "../lib/theme";
@@ -68,6 +74,7 @@ function RootDocument({ children }: { children: ReactNode }) {
 				onInputCapture={(event) => clearValidation(event.target)}
 				onChangeCapture={(event) => clearValidation(event.target)}
 			>
+				<NavigationProgress />
 				<LocaleSafety>
 					<AppearanceContext
 						value={{
@@ -111,13 +118,13 @@ function RootDocument({ children }: { children: ReactNode }) {
 							</header>
 						)}
 						<div id="page-content" tabIndex={-1} className="flex-1">
-							<MutationFeedback>{children}</MutationFeedback>
+							<MutationFeedback>
+								<TimeDisplayProvider>
+									<StepUpAuthentication>{children}</StepUpAuthentication>
+								</TimeDisplayProvider>
+							</MutationFeedback>
 						</div>
-						{!appMatch && (
-							<footer className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-center gap-3 px-4 py-4 text-muted-foreground sm:px-6">
-								<PublicPreferences />
-							</footer>
-						)}
+						{!appMatch && <PublicFooter />}
 					</AppearanceContext>
 				</LocaleSafety>
 				<Scripts />

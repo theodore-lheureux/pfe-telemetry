@@ -2,7 +2,6 @@ import type { Page } from "@playwright/test";
 import { m } from "@recount/i18n/messages";
 import { eq } from "drizzle-orm";
 import { accountContextHeader } from "../../src/auth/account-context";
-import { settingsPath } from "../../src/components/settings-links";
 import {
 	projectMember,
 	project as projectTable,
@@ -10,6 +9,8 @@ import {
 } from "../../src/db/schema";
 import * as organizations from "../../src/organizations/organizations.server";
 import * as projects from "../../src/organizations/projects.server";
+import { gate } from "../gate";
+import { settingsPath } from "../settings-path";
 import { authenticatorCode } from "../totp";
 import {
 	data,
@@ -18,14 +19,6 @@ import {
 	openInvitationForm,
 	test,
 } from "./fixtures";
-
-function gate() {
-	let open!: () => void;
-	const promise = new Promise<void>((resolve) => {
-		open = resolve;
-	});
-	return { promise, open };
-}
 
 async function emailSignIn(
 	page: Page,
@@ -75,7 +68,6 @@ for (const locale of ["en", "fr"] as const) {
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Two VM project",
-					slug: "two-vm-project",
 				}),
 			),
 		);
@@ -278,7 +270,10 @@ for (const locale of ["en", "fr"] as const) {
 			.getByLabel(m.email_address({}, opt), { exact: true })
 			.fill("invited-preferences@example.invalid");
 		await page
-			.getByRole("button", { name: m.send_invitation({}, opt), exact: true })
+			.getByRole("button", {
+				name: m.invite_team_members({}, opt),
+				exact: true,
+			})
 			.click();
 		const invites = page.getByRole("table", {
 			name: m.invitations({}, opt),
@@ -366,12 +361,7 @@ test("authenticator enrollment gates email login while user-verified passkeys re
 				exact: true,
 			}),
 		).toBeVisible();
-		await dialog
-			.getByRole("checkbox", {
-				name: "I have saved my recovery codes",
-				exact: true,
-			})
-			.click();
+		await expect(dialog.getByText(setup.backupCodes[0])).toHaveCount(0);
 		await dialog
 			.getByLabel("Authenticator code", { exact: true })
 			.fill(authenticatorCode(setup.totpURI));
@@ -379,6 +369,22 @@ test("authenticator enrollment gates email login while user-verified passkeys re
 			.getByRole("button", { name: "Verify and enable 2FA", exact: true })
 			.click();
 		await expect(dialog).toHaveCount(0);
+		await expect(page.getByText("2FA enabled", { exact: true })).toBeVisible();
+		await page
+			.getByRole("button", { name: "Recovery codes", exact: true })
+			.click();
+		const recovery = page.getByRole("dialog", {
+			name: "Recovery codes",
+			exact: true,
+		});
+		await expect(recovery.getByRole("listitem")).toHaveCount(0);
+		await recovery
+			.getByRole("button", { name: "Generate recovery codes", exact: true })
+			.click();
+		await expect(recovery.getByRole("listitem")).toHaveCount(10);
+		await expect(recovery.getByText(setup.backupCodes[0])).toHaveCount(0);
+		await recovery.getByRole("button", { name: "Close" }).click();
+		await expect(recovery).toHaveCount(0);
 		await expect(page.getByText("2FA enabled", { exact: true })).toBeVisible();
 		await page
 			.getByLabel("Passkey name", { exact: true })
@@ -460,7 +466,10 @@ test("authenticator enrollment gates email login while user-verified passkeys re
 			.getByRole("button", { name: "Sign in with a passkey", exact: true })
 			.click();
 		await expect(
-			page.getByRole("heading", { name: "Your organizations", exact: true }),
+			page.getByRole("heading", {
+				name: "Create your first organization",
+				exact: true,
+			}),
 		).toBeVisible();
 		await expect(
 			page.getByRole("heading", { name: "Verify your sign-in", exact: true }),
@@ -489,13 +498,18 @@ test("account switches retire factor secrets and reject stale-tab management", a
 		name: "Set up two-factor authentication",
 		exact: true,
 	});
-	await expect(dialog.getByText("Setup key", { exact: true })).toBeVisible();
+	await expect(
+		dialog.getByText(
+			"If you can’t scan the QR code, enter this setup key in your authenticator app instead.",
+			{ exact: true },
+		),
+	).toBeVisible();
 	const secondPage = await page.context().newPage();
 	const sessionGate = gate();
 	const sessionStarted = gate();
 	try {
 		await page.route("**/api/auth/get-session**", async (route) => {
-			sessionStarted.open();
+			sessionStarted.release();
 			await sessionGate.promise;
 			await route.continue().catch(() => {});
 		});
@@ -524,12 +538,12 @@ test("account switches retire factor secrets and reject stale-tab management", a
 		).toHaveLength(0);
 		await sessionStarted.promise;
 		await expect(dialog).toHaveCount(0);
-		sessionGate.open();
+		sessionGate.release();
 		await expect(page.getByLabel("Email address", { exact: true })).toHaveValue(
 			"factor-second@example.invalid",
 		);
 	} finally {
-		sessionGate.open();
+		sessionGate.release();
 		await secondPage.close();
 	}
 });
@@ -549,10 +563,10 @@ test("a delayed enrollment response cannot restore secrets after a cross-tab acc
 	await page.route("**/api/auth/two-factor/enable", async (route) => {
 		const response = await route.fetch();
 		status = response.status();
-		issued.open();
+		issued.release();
 		await responseGate.promise;
-		await route.fulfill({ response });
-		delivered.open();
+		await route.fulfill({ response }).catch(() => {});
+		delivered.release();
 	});
 	const secondPage = await page.context().newPage();
 	try {
@@ -565,7 +579,7 @@ test("a delayed enrollment response cannot restore secrets after a cross-tab acc
 		await issued.promise;
 		expect(status).toBe(200);
 		await page.route("**/api/auth/get-session**", async (route) => {
-			sessionStarted.open();
+			sessionStarted.release();
 			await sessionGate.promise;
 			await route.continue().catch(() => {});
 		});
@@ -575,7 +589,7 @@ test("a delayed enrollment response cannot restore secrets after a cross-tab acc
 			"delayed-factor-second@example.invalid",
 		);
 		await sessionStarted.promise;
-		responseGate.open();
+		responseGate.release();
 		await delivered.promise;
 		await expect(
 			page.getByRole("dialog", {
@@ -583,14 +597,19 @@ test("a delayed enrollment response cannot restore secrets after a cross-tab acc
 				exact: true,
 			}),
 		).toHaveCount(0);
-		await expect(page.getByText("Setup key", { exact: true })).toHaveCount(0);
-		sessionGate.open();
+		await expect(
+			page.getByText(
+				"If you can’t scan the QR code, enter this setup key in your authenticator app instead.",
+				{ exact: true },
+			),
+		).toHaveCount(0);
+		sessionGate.release();
 		await expect(page.getByLabel("Email address", { exact: true })).toHaveValue(
 			"delayed-factor-second@example.invalid",
 		);
 	} finally {
-		responseGate.open();
-		sessionGate.open();
+		responseGate.release();
+		sessionGate.release();
 		await secondPage.close();
 	}
 });

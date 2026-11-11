@@ -1,19 +1,17 @@
 import type { Locale } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { and, eq } from "drizzle-orm";
-import {
-	collectorCredential,
-	collectorRootGrant,
-	invitation,
-	member,
-} from "../../src/db/schema";
+import { invitation, member } from "../../src/db/schema";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
+import { gate as createGate } from "../gate";
 import {
 	closePreferences,
 	data,
 	editMemberRole,
 	expect,
+	openInvitationForm,
+	openMemberActions,
 	openPreferences,
 	openProjectGrant,
 	openSettingsSection,
@@ -149,7 +147,8 @@ for (const locale of ["en", "fr"] as const) {
 			),
 		);
 		const options = { locale };
-		const leave = page.getByRole("button", {
+		await openMemberActions(page, "owner@example.invalid", locale);
+		const leave = page.getByRole("menuitem", {
 			name: m.leave_member_named({ email: "owner@example.invalid" }, options),
 			exact: true,
 		});
@@ -173,14 +172,8 @@ for (const locale of ["en", "fr"] as const) {
 				),
 			),
 		);
-		let ready: () => void = () => {};
-		const received = new Promise<void>((resolve) => {
-			ready = resolve;
-		});
-		let release: () => void = () => {};
-		const gate = new Promise<void>((resolve) => {
-			release = resolve;
-		});
+		const { promise: received, release: ready } = createGate();
+		const { promise: gate, release } = createGate();
 		await page.route("**/_serverFn/**", async (route) => {
 			if (route.request().method() !== "POST") return route.continue();
 			const response = await route.fetch();
@@ -210,7 +203,15 @@ for (const locale of ["en", "fr"] as const) {
 		);
 		await expect(dialog).toBeVisible();
 		await page.keyboard.press("Escape");
-		await expect(leave).toBeFocused();
+		await expect(
+			page.getByRole("button", {
+				name: m.settings_member_actions(
+					{ email: "owner@example.invalid" },
+					options,
+				),
+				exact: true,
+			}),
+		).toBeFocused();
 		await openPreferences(page, locale);
 		await expect(
 			page.getByLabel(m.language({}, options), { exact: true }),
@@ -261,7 +262,6 @@ for (const locale of ["en", "fr"] as const) {
 			.getByRole("link", { name: text(m.create_organization), exact: true })
 			.click();
 		await page.getByLabel(text(m.name), { exact: true }).fill("Locale lab");
-		await page.getByLabel(text(m.slug), { exact: true }).fill("locale-lab");
 		await page
 			.getByRole("button", { name: text(m.create_organization), exact: true })
 			.click();
@@ -291,6 +291,7 @@ for (const locale of ["en", "fr"] as const) {
 			).map((organization) => organization.name),
 		).toEqual(["Locale lab"]);
 		await openSettingsSection(page, text(m.organization_settings), locale);
+		await openSettingsSection(page, text(m.members), locale);
 		await expect(
 			page.getByText(text(m.role_owner), { exact: true }),
 		).toBeVisible();
@@ -299,7 +300,6 @@ for (const locale of ["en", "fr"] as const) {
 			.getByRole("link", { name: text(m.create_project), exact: true })
 			.click();
 		await page.getByLabel(text(m.name), { exact: true }).fill("Locale project");
-		await page.getByLabel(text(m.slug), { exact: true }).fill("locale-project");
 		await page
 			.getByRole("button", { name: text(m.create_project), exact: true })
 			.click();
@@ -310,7 +310,9 @@ for (const locale of ["en", "fr"] as const) {
 		await openSettingsSection(page, text(m.project_settings), locale);
 		await openSettingsSection(page, text(m.settings_customization), locale);
 		await page.getByLabel(text(m.name), { exact: true }).fill("   ");
-		await page.getByRole("button", { name: text(m.save_project) }).click();
+		await page
+			.getByRole("button", { name: text(m.save_project), exact: true })
+			.click();
 		await expect(
 			page.getByLabel(text(m.name), { exact: true }),
 		).toHaveAttribute("aria-invalid", "true");
@@ -320,7 +322,9 @@ for (const locale of ["en", "fr"] as const) {
 		await page
 			.getByLabel(text(m.name), { exact: true })
 			.fill("Locale project renamed");
-		await page.getByRole("button", { name: text(m.save_project) }).click();
+		await page
+			.getByRole("button", { name: text(m.save_project), exact: true })
+			.click();
 		await expect(
 			page.getByText(text(m.changes_saved), { exact: true }),
 		).toBeVisible();
@@ -408,6 +412,7 @@ for (const locale of ["en", "fr"] as const) {
 			await page.keyboard.press("Escape");
 			await expect(removeGrant).toBeFocused();
 			await page.goto(settingsUrl(orgURL, "organization-members"));
+			await openInvitationForm(page, locale);
 			await page
 				.getByLabel(text(m.email_address), { exact: true })
 				.fill("recipient@example.invalid");
@@ -415,7 +420,7 @@ for (const locale of ["en", "fr"] as const) {
 				.getByLabel(text(m.organization_role), { exact: true })
 				.selectOption("member");
 			await page
-				.getByRole("button", { name: text(m.send_invitation), exact: true })
+				.getByRole("button", { name: text(m.invite_team_members), exact: true })
 				.click();
 			await expect(
 				page.getByText(
@@ -513,159 +518,43 @@ for (const locale of ["en", "fr"] as const) {
 			await otherContext.close();
 		}
 
-		await page.goto(settingsUrl(projectURL, "credentials"));
+		await page.goto(settingsUrl(projectURL, "collectors"));
 		await expect(
-			page.getByRole("heading", { name: text(m.run_a_linux_collector) }),
+			page.getByRole("heading", { name: text(m.collectors), level: 1 }),
 		).toBeVisible();
-		await expect(page.locator("pre").first()).toContainText(
-			"cargo build --locked",
-		);
-		await page
-			.getByLabel(text(m.credential_name), { exact: true })
-			.fill("Locale credential");
-		await page
-			.getByLabel(text(m.source_id), { exact: true })
-			.fill("chart-source");
-		const root = page.getByRole("textbox", {
-			name: text(m.enrolled_root_id),
-			exact: true,
-		});
-		await expect(root).toHaveAttribute("required", "");
-		await expect(root).toHaveAccessibleDescription(text(m.enrolled_root_help));
-		await page
-			.getByRole("button", { name: text(m.create_credential), exact: true })
-			.click();
-		await expect(root).toBeFocused();
-		expect(
-			await root.evaluate(
-				(element: HTMLInputElement) => element.validity.valueMissing,
-			),
-		).toBe(true);
-		await expect(
-			page.getByLabel(text(m.onetime_collector_token), { exact: true }),
-		).toHaveCount(0);
-		await root.fill("node1");
-		await page
-			.getByRole("button", { name: text(m.create_credential), exact: true })
-			.click();
-		const token = page.getByLabel(text(m.onetime_collector_token), {
-			exact: true,
-		});
-		await expect(token).toBeVisible();
-		const secret = await token.inputValue();
-		await expect(
-			page.getByLabel(text(m.language), { exact: true }),
-		).toHaveCount(0);
 		await page
 			.getByRole("button", {
-				name: text(m.i_saved_the_token_hide_it),
+				name: text(m.enrollment_key_create),
 				exact: true,
 			})
 			.click();
-		await expect(token).toHaveCount(0);
-		expect((await page.content()).includes(secret)).toBe(false);
-		// Check persisted grants only after hiding the one-time token from failure artifacts.
-		const enrollments = await workspace.database.db
-			.select({
-				rootId: collectorCredential.rootId,
-				rootKind: collectorCredential.rootKind,
-				sourceId: collectorCredential.sourceId,
-				resourceId: collectorRootGrant.resourceId,
-				resourceKind: collectorRootGrant.resourceKind,
-				adapter: collectorRootGrant.adapter,
-				allowedLocalKinds: collectorRootGrant.allowedLocalKinds,
-			})
-			.from(collectorCredential)
-			.innerJoin(
-				collectorRootGrant,
-				and(
-					eq(collectorRootGrant.credentialId, collectorCredential.id),
-					eq(collectorRootGrant.projectId, collectorCredential.projectId),
-					eq(
-						collectorRootGrant.organizationId,
-						collectorCredential.organizationId,
-					),
-				),
-			)
-			.where(
-				and(
-					eq(collectorCredential.organizationId, organizationId),
-					eq(collectorCredential.projectId, projectURL.split("/").at(-1) ?? ""),
-					eq(collectorCredential.name, "Locale credential"),
-				),
-			);
-		expect(enrollments).toEqual([
-			{
-				rootId: "node1",
-				rootKind: 1,
-				sourceId: "chart-source",
-				resourceId: "node1",
-				resourceKind: 1,
-				adapter: "linux",
-				allowedLocalKinds: [4],
-			},
-		]);
-		const credentialSSR = await page.reload();
-		expect((await credentialSSR?.text())?.includes(secret)).toBe(false);
-		await expect(token).toHaveCount(0);
-		await openPreferences(page, locale);
-		await expect(
-			page.getByLabel(text(m.language), { exact: true }),
-		).toBeEnabled();
-		await closePreferences(page);
-		const rotate = page.getByRole("button", {
-			name: m.rotate_named({ name: "Locale credential" }, options),
-			exact: true,
+		const create = page.getByRole("dialog", {
+			name: text(m.enrollment_key_create),
 		});
-		await rotate.click();
-		await expect(page.getByRole("alertdialog")).toContainText(
-			locale === "fr"
-				? "invalide immédiatement"
-				: "invalidates the old token immediately",
-		);
-		await page.keyboard.press("Escape");
-		await expect(rotate).toBeFocused();
-		if (locale === "fr") {
-			await page.setViewportSize({ width: 360, height: 420 });
-			await rotate.click();
-			await page.route("**/_serverFn/**", async (route) => {
-				if (route.request().method() !== "POST") return route.continue();
-				await route.fetch();
-				await route.abort("failed");
-			});
-			await page
-				.getByRole("button", { name: text(m.confirm_rotation), exact: true })
-				.click();
-			const dialog = page.getByRole("alertdialog");
-			await expect(dialog.getByRole("alert")).toContainText(
-				"La réponse a été perdue",
-			);
-			const cancel = dialog.getByRole("button", {
-				name: text(m.cancel),
+		await create.getByLabel(text(m.name), { exact: true }).fill("Locale key");
+		await create
+			.getByRole("button", {
+				name: text(m.enrollment_key_create),
 				exact: true,
-			});
-			await cancel.scrollIntoViewIfNeeded();
-			const bounds = await cancel.boundingBox();
-			expect(bounds && bounds.y >= 0 && bounds.y + bounds.height <= 420).toBe(
-				true,
-			);
-			await cancel.click();
-			await expect(dialog).toHaveCount(0);
-			await expect(token).toHaveCount(0);
-			await page.unroute("**/_serverFn/**");
-			await page.setViewportSize({ width: 1280, height: 720 });
-			await page
-				.getByRole("button", {
-					name: text(m.refresh_credential_list),
-					exact: true,
-				})
-				.click();
-			await expect(rotate).toBeEnabled();
-		}
+			})
+			.click();
+		const reveal = page.getByRole("dialog", {
+			name: text(m.enrollment_key_created_title),
+		});
+		const secret = (await reveal.locator("code").first().textContent()) ?? "";
+		expect(secret).toMatch(/^recount_enroll_/);
+		await reveal
+			.getByRole("button", { name: text(m.done), exact: true })
+			.click();
+		await expect(reveal).toHaveCount(0);
+		expect((await page.content()).includes(secret)).toBe(false);
+		const collectorsSSR = await page.reload();
+		expect((await collectorsSSR?.text())?.includes(secret)).toBe(false);
+		await expect(page.getByText("Locale key", { exact: true })).toBeVisible();
 		await page.goto(settingsUrl(workspace.origin, "user"));
 		await expect(
 			page.getByRole("heading", {
-				name: text(m.account_security),
+				name: text(m.user_profile),
 				exact: true,
 			}),
 		).toBeVisible();
@@ -696,14 +585,8 @@ for (const locale of ["en", "fr"] as const) {
 		await expect(
 			page.getByRole("button", { name: text(m.remove), exact: true }),
 		).toBeFocused();
-		let listReady: () => void = () => {};
-		const listRequested = new Promise<void>((resolve) => {
-			listReady = resolve;
-		});
-		let releaseList: () => void = () => {};
-		const listGate = new Promise<void>((resolve) => {
-			releaseList = resolve;
-		});
+		const { promise: listRequested, release: listReady } = createGate();
+		const { promise: listGate, release: releaseList } = createGate();
 		await page.route(
 			"**/api/auth/passkey/list-user-passkeys**",
 			async (route) => {
@@ -722,7 +605,7 @@ for (const locale of ["en", "fr"] as const) {
 		await listRequested;
 		await expect(
 			page.getByRole("heading", {
-				name: text(m.account_security),
+				name: text(m.user_profile),
 				exact: true,
 			}),
 		).toBeFocused();
@@ -732,7 +615,7 @@ for (const locale of ["en", "fr"] as const) {
 		);
 		await expect(
 			page.getByRole("heading", {
-				name: text(m.account_security),
+				name: text(m.user_profile),
 				exact: true,
 			}),
 		).toBeFocused();

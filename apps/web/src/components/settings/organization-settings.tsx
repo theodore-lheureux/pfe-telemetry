@@ -1,14 +1,15 @@
 import { m } from "@recount/i18n/messages";
 import { InfoIcon } from "lucide-react";
-import { PageHeading } from "@/components/workspace";
 import type { OrganizationSummary } from "@/organizations/contracts";
 import { updateOrganization } from "@/organizations/organization.functions";
-import { EntityForm } from "../entity-form";
+import { RenameEntityForm } from "../entity-form";
 import { OrganizationAvatar } from "../identity-avatar";
 import { Alert, AlertDescription } from "../ui/alert";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { IdentifierField } from "./identifier-field";
+import { EntityIdentityRow } from "./entity-identity-row";
+import { IdentifierCard } from "./identifier-field";
+import { SettingsPageHeading } from "./settings-page-heading";
 import { SettingsSection } from "./settings-section";
 
 export function OrganizationSettings({
@@ -18,7 +19,7 @@ export function OrganizationSettings({
 }) {
 	return (
 		<div className="flex flex-col gap-8">
-			<PageHeading title={m.settings_page({ page: m.settings_general() })} />
+			<SettingsPageHeading />
 			{organization.role === "member" && (
 				<Alert>
 					<InfoIcon aria-hidden="true" />
@@ -30,51 +31,45 @@ export function OrganizationSettings({
 				title={m.settings_name_logo()}
 				description={m.settings_org_identity_description()}
 			>
-				<div className="flex items-start gap-6">
-					<OrganizationAvatar
-						organization={organization}
-						className="size-16 rounded-md text-xl"
-					/>
-					<div className="min-w-0 flex-1 max-w-lg">
-						{organization.role !== "member" ? (
-							<EntityForm
-								name={organization.name}
-								requireChanged
-								reserveFeedbackLine={false}
-								className="border-0 bg-transparent p-0"
-								submitLabel={m.save_name()}
-								save={({ name }) =>
-									updateOrganization({
-										data: { organizationId: organization.id, name },
-									})
-								}
-								onSuccess={async () => {}}
-							/>
-						) : (
-							<div className="flex flex-col gap-2">
-								<Label htmlFor="entity-name">{m.name()}</Label>
-								<Input id="entity-name" value={organization.name} disabled />
-							</div>
-						)}
-					</div>
-				</div>
-				<p className="text-xs text-muted-foreground">
-					{m.settings_logo_unavailable()}
-				</p>
+				<EntityIdentityRow
+					avatar={
+						<OrganizationAvatar
+							organization={organization}
+							className="size-16 rounded-md text-xl"
+						/>
+					}
+				>
+					{organization.role !== "member" ? (
+						<RenameEntityForm
+							labelHidden
+							requireChanged
+							name={organization.name}
+							reserveFeedbackLine={false}
+							className="border-0 bg-transparent p-0"
+							submitLabel={m.save_name()}
+							save={({ name }, signal) =>
+								updateOrganization({
+									data: { organizationId: organization.id, name },
+									signal,
+								})
+							}
+						/>
+					) : (
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="entity-name" className="sr-only">
+								{m.name()}
+							</Label>
+							<Input id="entity-name" value={organization.name} disabled />
+						</div>
+					)}
+				</EntityIdentityRow>
 			</SettingsSection>
 			<SettingsSection
 				id="organization-identifier"
 				title={m.organization_id()}
 				description={m.settings_org_id_description()}
 			>
-				<div className="max-w-2xl rounded-md border bg-card p-4">
-					<IdentifierField value={organization.id} />
-				</div>
-			</SettingsSection>
-			<SettingsSection id="organization-slug" title={m.slug()}>
-				<div className="max-w-2xl">
-					<IdentifierField value={organization.slug} />
-				</div>
+				<IdentifierCard value={organization.id} />
 			</SettingsSection>
 		</div>
 	);

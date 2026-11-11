@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { EntityForm } from "@/components/entity-form";
+import { createFileRoute } from "@tanstack/react-router";
+import { CreateEntityForm } from "@/components/entity-form";
 import { PageHeading } from "@/components/workspace";
 import { createOrganization } from "@/organizations/organization.functions";
 
@@ -11,23 +11,21 @@ export const Route = createFileRoute("/_app/_workspace/organizations/new")({
 	component: NewOrganization,
 });
 function NewOrganization() {
-	const router = useRouter();
 	return (
 		<>
 			<PageHeading title={m.create_organization()}>
 				{m.you_will_become_its_owner_projects_are_private()}
 			</PageHeading>
-			<EntityForm
-				slug
+			<CreateEntityForm
+				slugFallback="organization"
 				submitLabel={m.create_organization()}
-				save={(data) => createOrganization({ data })}
-				onSuccess={async (organization, recover) => {
+				save={(data, signal) => createOrganization({ data, signal })}
+				onSuccess={async (organization, navigate) => {
 					const destination = {
 						to: "/organizations/$organizationId",
 						params: { organizationId: organization.id },
 					} as const;
-					recover(router.buildLocation(destination).href);
-					await router.navigate(destination);
+					await navigate(destination);
 				}}
 			/>
 		</>

@@ -93,19 +93,24 @@ export function UserAvatar({
 	refresh?: number;
 	imageSize?: number;
 }) {
-	const [imageFailed, setImageFailed] = useState(false);
+	const [failure, setFailure] = useState<{ url: string; refresh: number }>();
 	const canonical = httpsImage(user.image);
 	const gravatar = new URL(user.gravatarUrl);
 	gravatar.searchParams.set("s", String(imageSize));
 	if (refresh) gravatar.searchParams.set("recount_refresh", String(refresh));
+	const source =
+		canonical && (failure?.url !== canonical || failure.refresh !== refresh)
+			? canonical
+			: gravatar.href;
 	return (
 		<Avatar data-identity="user" className={className}>
 			<AvatarImage
-				src={!imageFailed && canonical ? canonical : gravatar.href}
+				src={source}
 				alt=""
 				referrerPolicy="no-referrer"
 				onLoadingStatusChange={(status) => {
-					if (status === "error" && canonical) setImageFailed(true);
+					if (status === "error" && source === canonical)
+						setFailure({ url: source, refresh });
 				}}
 			/>
 			<AvatarFallback>{initials(user.name || user.email)}</AvatarFallback>

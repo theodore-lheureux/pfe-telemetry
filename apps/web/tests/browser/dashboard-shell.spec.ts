@@ -2,7 +2,6 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { m } from "@recount/i18n/messages";
 import { eq } from "drizzle-orm";
-import { settingsPath } from "../../src/components/settings-links";
 import {
 	organization as orgTable,
 	passkey as passkeyTable,
@@ -11,6 +10,8 @@ import {
 } from "../../src/db/schema";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
+import { gate as createGate } from "../gate";
+import { settingsPath } from "../settings-path";
 import {
 	chooseProject,
 	chooseTheme,
@@ -39,7 +40,6 @@ test("settings search opens individual controls and closed timing details within
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Search project",
-				slug: "search-project",
 			}),
 		),
 	);
@@ -59,10 +59,10 @@ test("settings search opens individual controls and closed timing details within
 		exact: true,
 	});
 	await expect(search).toBeEnabled();
-	await search.fill("clock skew");
+	await search.fill("enrollment");
 	await expect(
 		nav.getByRole("option", {
-			name: "Allowed clock skew (seconds)",
+			name: "Enrollment keys",
 			exact: true,
 		}),
 	).toBeVisible();
@@ -76,10 +76,9 @@ test("settings search opens individual controls and closed timing details within
 	}
 	await page.keyboard.press("ArrowDown");
 	await page.keyboard.press("Enter");
-	await expect(page.locator("#credential-clock-skew")).toBeVisible();
-	await expect(page.locator("#credential-clock-skew")).toBeFocused();
+	await expect(page.locator("#enrollment-keys")).toBeVisible();
 	expect(new URL(page.url()).searchParams.get("projectId")).toBe(project.id);
-	expect(new URL(page.url()).hash).toBe("#credential-clock-skew");
+	expect(new URL(page.url()).hash).toBe("#enrollment-keys");
 	await search.fill("email address");
 	await nav.getByRole("option", { name: "Email address", exact: true }).click();
 	await expect(page.locator("#profile-email")).toBeDisabled();
@@ -168,10 +167,10 @@ test("profile name, Gravatar refresh, passkey rename and session revocation use 
 			name: "Rename passkey",
 			exact: true,
 		});
-		await rename.getByLabel("Name", { exact: true }).fill("Renamed key");
 		await rename
-			.getByRole("button", { name: "Save name", exact: true })
-			.click();
+			.getByLabel("Passkey name", { exact: true })
+			.fill("Renamed key");
+		await rename.getByRole("button", { name: "Save", exact: true }).click();
 		await expect(rename).toBeHidden();
 		await expect(
 			page.getByRole("cell", { name: "Renamed key", exact: true }),
@@ -213,7 +212,8 @@ test("profile name, Gravatar refresh, passkey rename and session revocation use 
 		await page.reload();
 		await expect(
 			sessions.getByRole("link", { name: "Sign in again", exact: true }),
-		).toBeVisible();
+		).toHaveCount(0);
+		await expect(sessions.getByRole("table")).toBeVisible();
 		await expect(
 			sessions.getByRole("button", { name: "Try again", exact: true }),
 		).toHaveCount(0);
@@ -254,7 +254,6 @@ for (const locale of ["en", "fr"] as const) {
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Collector trial",
-					slug: "collector-trial",
 				}),
 			),
 		);
@@ -264,7 +263,6 @@ for (const locale of ["en", "fr"] as const) {
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Comparison trial",
-					slug: "comparison-trial",
 				}),
 			),
 		);
@@ -374,6 +372,36 @@ for (const locale of ["en", "fr"] as const) {
 				"hidden",
 			);
 		}
+		async function expectProjectLinks(root: ReturnType<typeof page.locator>) {
+			await expect(root.getByRole("link")).toHaveCount(3);
+			await expect(
+				root.getByRole("link", {
+					name: m.activity_title({}, options),
+					exact: true,
+				}),
+			).toHaveAttribute(
+				"href",
+				`/organizations/${organization.id}/projects/${project.id}/activity`,
+			);
+			await expect(
+				root.getByRole("link", {
+					name: m.executions({}, options),
+					exact: true,
+				}),
+			).toHaveAttribute(
+				"href",
+				`/organizations/${organization.id}/projects/${project.id}/executions`,
+			);
+			await expect(
+				root.getByRole("link", { name: m.settings({}, options), exact: true }),
+			).toHaveAttribute(
+				"href",
+				settingsPath("project", {
+					organizationId: organization.id,
+					projectId: project.id,
+				}),
+			);
+		}
 		if (mobile) {
 			const trigger = page.getByRole("button", {
 				name: m.open_navigation({}, options),
@@ -387,7 +415,7 @@ for (const locale of ["en", "fr"] as const) {
 			});
 			await expect(drawer).toBeVisible();
 			await expectOrganizationIcon();
-			await expect(drawer.getByRole("link")).toHaveCount(2);
+			await expectProjectLinks(drawer);
 			for (let index = 0; index < 5; index++) {
 				await page.keyboard.press("Tab");
 				expect(
@@ -408,9 +436,7 @@ for (const locale of ["en", "fr"] as const) {
 			expect(bounds?.width).toBe(200);
 			const sidebar = page.locator('[data-slot="sidebar"][data-state]');
 			await expect(sidebar).toHaveAttribute("data-state", "expanded");
-			await expect(
-				page.locator('[data-slot="sidebar-container"]').getByRole("link"),
-			).toHaveCount(2);
+			await expectProjectLinks(page.locator('[data-slot="sidebar-container"]'));
 			await expect(
 				page.getByRole("button", {
 					name: m.toggle_navigation({}, options),
@@ -563,7 +589,7 @@ for (const locale of ["en", "fr"] as const) {
 			.click();
 		await expect(
 			page.getByRole("heading", {
-				name: m.appearance({}, options),
+				name: m.appearance_language({}, options),
 				exact: true,
 				level: 1,
 			}),
@@ -596,20 +622,8 @@ for (const locale of ["en", "fr"] as const) {
 		await page.goBack();
 		await expect(passkeyName).toHaveValue("");
 		await nav
-			.getByRole("link", {
-				name: m.collector_credentials({}, options),
-				exact: true,
-			})
+			.getByRole("link", { name: m.collectors({}, options), exact: true })
 			.click();
-		await page
-			.getByLabel(m.credential_name({}, options), { exact: true })
-			.fill("Fixture token");
-		await page
-			.getByLabel(m.source_id({}, options), { exact: true })
-			.fill("posthog-source");
-		await page
-			.getByLabel(m.enrolled_root_id({}, options), { exact: true })
-			.fill("owned-root");
 		let writes = 0;
 		page.on("request", (request) => {
 			if (request.method() === "POST" && request.url().includes("/_serverFn/"))
@@ -617,15 +631,32 @@ for (const locale of ["en", "fr"] as const) {
 		});
 		await page
 			.getByRole("button", {
-				name: m.create_credential({}, options),
+				name: m.enrollment_key_create({}, options),
 				exact: true,
 			})
 			.click();
-		const token = page.getByLabel(m.onetime_collector_token({}, options), {
-			exact: true,
+		const create = page.getByRole("dialog", {
+			name: m.enrollment_key_create({}, options),
 		});
-		await expect(token).toBeVisible();
-		const secret = await token.inputValue();
+		await create
+			.getByLabel(m.name({}, options), { exact: true })
+			.fill("Fixture key");
+		await create
+			.getByRole("button", {
+				name: m.enrollment_key_create({}, options),
+				exact: true,
+			})
+			.click();
+		const keyField = page
+			.getByRole("dialog", {
+				name: m.enrollment_key_created_title({}, options),
+			})
+			.locator("code")
+			.first()
+			.first();
+		await expect(keyField).toBeVisible();
+		const secret = (await keyField.textContent()) ?? "";
+		await page.keyboard.press("Escape");
 		await nav
 			.getByRole("link", {
 				name: m.appearance_language({}, options),
@@ -633,15 +664,14 @@ for (const locale of ["en", "fr"] as const) {
 			})
 			.click();
 		await expect(language).toBeEnabled();
-		await expect(token).toHaveCount(0);
 		await page.goBack();
 		await expect(
 			page.getByRole("heading", {
-				name: m.collector_credentials({}, options),
+				name: m.collectors({}, options),
 				exact: true,
 			}),
 		).toBeVisible();
-		await expect(token).toHaveCount(0);
+		await expect(keyField).toHaveCount(0);
 		expect((await page.content()).includes(secret)).toBe(false);
 		expect(writes).toBe(1);
 		expect(errors).toEqual([]);
@@ -667,7 +697,6 @@ test("own user settings stay available to a project viewer, with tenant-qualifie
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Viewer project",
-				slug: "viewer-project",
 			}),
 		),
 	);
@@ -701,20 +730,14 @@ test("own user settings stay available to a project viewer, with tenant-qualifie
 	await expect(
 		page
 			.getByRole("navigation", { name: "Settings navigation" })
-			.getByRole("link", { name: "Project members", exact: true }),
+			.getByRole("link", { name: "Access control", exact: true }),
 	).toHaveCount(0);
 	await page
 		.getByRole("navigation", { name: "Settings navigation" })
 		.getByRole("link", { name: "Appearance and language", exact: true })
 		.click();
-	let release!: () => void;
-	let entered!: () => void;
-	const gate = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-	const received = new Promise<void>((resolve) => {
-		entered = resolve;
-	});
+	const { promise: gate, release } = createGate();
+	const { promise: received, release: entered } = createGate();
 	let signouts = 0;
 	await page.route("**/api/auth/sign-out", async (route) => {
 		signouts++;
@@ -741,19 +764,10 @@ test("own user settings stay available to a project viewer, with tenant-qualifie
 	expect(signouts).toBe(1);
 	expect(new URL(page.url()).searchParams.get("projectId")).toBe(project.id);
 	await page.unroute("**/api/auth/sign-out");
-	const credentialsPage = await page.goto(
-		workspace.origin + settingsPath("credentials", selected),
-	);
-	expect(credentialsPage?.status()).toBe(200);
+	await page.goto(workspace.origin + settingsPath("collectors", selected));
 	await expect(
-		page.getByRole("heading", { name: "Collector credentials", exact: true }),
+		page.getByRole("heading", { name: "Page not found", exact: true }),
 	).toBeVisible();
-	await expect(
-		page.getByText("You have read access.", { exact: false }),
-	).toBeVisible();
-	await expect(page.getByLabel("Credential name", { exact: true })).toHaveCount(
-		0,
-	);
 	await page.goto(workspace.origin + settingsPath("project-members", selected));
 	await expect(
 		page.getByRole("heading", { name: "Something went wrong", exact: true }),

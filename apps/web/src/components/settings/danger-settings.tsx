@@ -1,117 +1,127 @@
 import { m } from "@recount/i18n/messages";
-import { ArrowRightIcon, ExternalLinkIcon, Trash2Icon } from "lucide-react";
-import type {
-	OrganizationSummary,
-	ProjectSummary,
-} from "../../organizations/contracts";
+import { ArrowRightIcon, Trash2Icon } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "../ui/button";
-import { PageHeading } from "../workspace";
-import { SettingsSection } from "./settings-section";
+import { ComingSoonNotice } from "./coming-soon-notice";
+import { SettingsPageHeading } from "./settings-page-heading";
 
-export function OrganizationDeletion({
-	organization,
-}: {
-	organization: OrganizationSummary;
-}) {
+const deletionTicket = {
+	name: "PFE-72",
+	url: "https://linear.app/pfe-telemetry/issue/PFE-72/add-safe-organization-and-project-deletion-across-application-data",
+};
+
+export function OrganizationDeletion() {
 	return (
 		<div className="flex flex-col gap-8">
-			<PageHeading
-				title={m.settings_page({ page: m.settings_delete_organization() })}
-			/>
-			<SettingsSection
-				id="delete-organization"
-				title={m.settings_delete_organization()}
-				description={m.settings_delete_org_description()}
-			>
-				<p
-					id="delete-organization-unavailable"
-					className="max-w-2xl text-sm text-muted-foreground"
-				>
-					{m.settings_deletion_unavailable()}
-				</p>
-				<a
-					className="inline-flex items-center gap-1 text-sm underline underline-offset-4"
-					href="https://linear.app/pfe-telemetry/issue/PFE-72/add-safe-organization-and-project-deletion-across-application-data"
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					{m.settings_view_ticket({ ticket: "PFE-72" })}
-					<ExternalLinkIcon aria-hidden="true" className="size-3.5" />
-				</a>
-				<div>
-					<Button
-						variant="destructive"
-						disabled
-						aria-describedby="delete-organization-unavailable"
-					>
-						<Trash2Icon aria-hidden="true" />
-						{m.settings_action_named({
-							action: m.settings_delete_organization(),
-							name: organization.name,
-						})}
-					</Button>
-				</div>
-			</SettingsSection>
+			<SettingsPageHeading />
+			<DangerZone>
+				<DangerAction
+					id="delete-organization"
+					title={m.settings_delete_organization()}
+					description={m.settings_delete_org_description()}
+					unavailable={m.settings_deletion_unavailable()}
+					ticket={deletionTicket}
+					action={
+						<Button
+							variant="destructive"
+							disabled
+							aria-describedby="delete-organization-unavailable"
+						>
+							<Trash2Icon aria-hidden="true" />
+							{m.settings_delete_organization()}
+						</Button>
+					}
+				/>
+			</DangerZone>
 		</div>
 	);
 }
 
-export function ProjectDangerZone({ project }: { project: ProjectSummary }) {
+export function ProjectDangerZone() {
 	return (
 		<div className="flex flex-col gap-8">
-			<PageHeading
-				title={m.settings_page({ page: m.settings_danger_zone() })}
-			/>
-			<SettingsSection
-				id="move-project"
-				title={m.settings_move_project()}
-				description={m.settings_move_project_description()}
-			>
-				<p
-					id="move-project-unavailable"
-					className="max-w-2xl text-sm text-muted-foreground"
-				>
-					{m.settings_move_unavailable()}
-				</p>
-				<div>
-					<Button
-						variant="outline"
-						disabled
-						aria-describedby="move-project-unavailable"
-					>
-						<ArrowRightIcon aria-hidden="true" />
-						{m.settings_action_named({
-							action: m.settings_move_project(),
-							name: project.name,
-						})}
-					</Button>
-				</div>
-			</SettingsSection>
-			<SettingsSection
-				id="delete-project"
-				title={m.settings_delete_project()}
-				description={m.settings_delete_project_description()}
-			>
-				<p
-					id="delete-project-unavailable"
-					className="max-w-2xl text-sm text-muted-foreground"
-				>
-					{m.settings_deletion_unavailable()}
-				</p>
-				<div>
-					<Button
-						variant="destructive"
-						disabled
-						aria-describedby="delete-project-unavailable"
-					>
-						<Trash2Icon aria-hidden="true" />
-						{m.settings_action_named({
-							action: m.settings_delete_project(),
-							name: project.name,
-						})}
-					</Button>
-				</div>
-			</SettingsSection>
+			<SettingsPageHeading />
+			<DangerZone>
+				<DangerAction
+					id="move-project"
+					title={m.settings_move_project()}
+					description={m.settings_move_project_description()}
+					unavailable={m.settings_move_unavailable()}
+					ticket={{
+						name: "PFE-88",
+						url: "https://linear.app/pfe-telemetry/issue/PFE-88/implement-safe-project-transfers-between-organizations",
+					}}
+					action={
+						<Button
+							variant="outline"
+							disabled
+							aria-describedby="move-project-unavailable"
+						>
+							<ArrowRightIcon aria-hidden="true" />
+							{m.settings_move_project()}
+						</Button>
+					}
+				/>
+				<DangerAction
+					id="delete-project"
+					title={m.settings_delete_project()}
+					description={m.settings_delete_project_description()}
+					unavailable={m.settings_deletion_unavailable()}
+					ticket={deletionTicket}
+					action={
+						<Button
+							variant="destructive"
+							disabled
+							aria-describedby="delete-project-unavailable"
+						>
+							<Trash2Icon aria-hidden="true" />
+							{m.settings_delete_project()}
+						</Button>
+					}
+				/>
+			</DangerZone>
 		</div>
+	);
+}
+
+function DangerZone({ children }: { children: ReactNode }) {
+	return (
+		<div className="max-w-2xl divide-y divide-destructive/20 rounded-lg border border-destructive/40">
+			{children}
+		</div>
+	);
+}
+
+function DangerAction({
+	id,
+	title,
+	description,
+	unavailable,
+	ticket,
+	action,
+}: {
+	id: string;
+	title: string;
+	description: string;
+	unavailable: string;
+	ticket?: { name: string; url: string };
+	action: ReactNode;
+}) {
+	return (
+		<section
+			aria-labelledby={id}
+			className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between"
+		>
+			<div className="flex min-w-0 flex-col gap-2">
+				<h2 id={id} className="scroll-mt-6 text-sm font-semibold">
+					{title}
+				</h2>
+				<p className="text-sm text-muted-foreground">{description}</p>
+				<ComingSoonNotice id={`${id}-unavailable`} ticket={ticket}>
+					{unavailable}
+				</ComingSoonNotice>
+			</div>
+			<div className="shrink-0">{action}</div>
+		</section>
 	);
 }

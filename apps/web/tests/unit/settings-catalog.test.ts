@@ -18,7 +18,6 @@ const project: ProjectSummary = {
 	id: "project",
 	organizationId: "org",
 	name: "Private project value",
-	slug: "private",
 	role: "viewer",
 	tags: [],
 	projectGroup: "",
@@ -33,7 +32,7 @@ test("setting search includes individual controls and excludes unauthorized and 
 			page.settings.map((setting) => setting.id),
 		),
 	).toContain("profile-email");
-	expect(searchSettings(viewer, "clock")).toEqual([]);
+	expect(searchSettings(viewer, "enrollment")).toEqual([]);
 	expect(searchSettings(viewer, "invitations")).toEqual([]);
 	expect(searchSettings(viewer, "Private project value")).toEqual([]);
 	expect(searchSettings(viewer, "billing")).toEqual([]);
@@ -42,10 +41,10 @@ test("setting search includes individual controls and excludes unauthorized and 
 		project: { ...project, role: "admin" },
 	});
 	expect(
-		searchSettings(admin, "  CLOCK  SKEW ").flatMap((page) =>
+		searchSettings(admin, "  ENROLLMENT  KEYS ").flatMap((page) =>
 			page.settings.map((setting) => setting.id),
 		),
-	).toEqual(["credential-clock-skew"]);
+	).toEqual(["enrollment-keys"]);
 	expect(getSettingsGroups({}).map((group) => group.scope)).toEqual(["user"]);
 });
 

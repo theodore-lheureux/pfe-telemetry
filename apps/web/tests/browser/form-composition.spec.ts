@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { Request } from "@playwright/test";
 import { m } from "@recount/i18n/messages";
-import { collectorCredential } from "../../src/db/credentials-schema";
+import { enrollmentKey } from "../../src/db/collectors-schema";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
+import { gate as createGate } from "../gate";
 import {
 	data,
+	dismissPasskeySetup,
 	expect,
 	openInvitationForm,
+	openReauthentication,
 	openSettingsSection,
 	settingsUrl,
 	test,
@@ -43,7 +46,6 @@ for (const locale of ["en", "fr"] as const) {
 			await page
 				.getByLabel(text(m.name), { exact: true })
 				.fill("Recovered project");
-			await page.getByLabel(text(m.slug), { exact: true }).fill("recovered");
 			const writes: string[] = [];
 			await page.route("**/_serverFn/**", async (route) => {
 				if (route.request().method() !== "POST") return route.continue();
@@ -114,7 +116,6 @@ test("a second lost create response exhausts the bounded retry without unlocking
 		return route.abort();
 	});
 	await page.getByLabel("Name", { exact: true }).fill("Only once");
-	await page.getByLabel("Slug", { exact: true }).fill("only-once");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })
 		.click();
@@ -158,7 +159,6 @@ test("organization creation keeps its dedicated uncertain outcome without a crea
 		return route.abort();
 	});
 	await page.getByLabel("Name", { exact: true }).fill("Native create");
-	await page.getByLabel("Slug", { exact: true }).fill("native-create");
 	await page
 		.getByRole("button", { name: "Create organization", exact: true })
 		.click();
@@ -203,7 +203,6 @@ test("a receipt-backed retry is retired before document restoration or a later a
 		return route.abort();
 	});
 	await page.getByLabel("Name", { exact: true }).fill("Saved once");
-	await page.getByLabel("Slug", { exact: true }).fill("saved-once");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })
 		.click();
@@ -226,14 +225,22 @@ test("a receipt-backed retry is retired before document restoration or a later a
 	).toBeDisabled();
 	await openSettingsSection(page, "User settings");
 	await expect(
-		page.getByText("retired-retry@example.invalid", { exact: true }),
-	).toBeVisible();
-	await workspace.signIn(page, "later-account@example.invalid");
-	await openSettingsSection(page, "Organizations");
+		page.getByRole("textbox", { name: "Email address", exact: true }),
+	).toHaveValue("retired-retry@example.invalid");
+	await workspace.enableCodeDelivery(page);
+	await openReauthentication(page);
+	await page
+		.getByLabel("Email address", { exact: true })
+		.fill("later-account@example.invalid");
+	await page
+		.getByRole("button", { name: "Continue with email", exact: true })
+		.click();
+	await workspace.submitReceivedCode(page, "later-account@example.invalid");
+	await dismissPasskeySetup(page);
 	await openSettingsSection(page, "User settings");
 	await expect(
-		page.getByText("later-account@example.invalid", { exact: true }),
-	).toBeVisible();
+		page.getByRole("textbox", { name: "Email address", exact: true }),
+	).toHaveValue("later-account@example.invalid");
 	await expect(
 		page.getByRole("button", { name: "Retry the same creation", exact: true }),
 	).toHaveCount(0);
@@ -271,22 +278,16 @@ test("a later name submission keeps its field and feedback when an older respons
 				requestId: randomUUID(),
 				organizationId: organization.id,
 				name: "Original",
-				slug: "original",
 			}),
 		),
 	);
 	const url = settingsUrl(
 		`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
+		"project-customization",
 	);
 	await page.goto(url);
-	let release!: () => void;
-	let ready!: () => void;
-	const gate = new Promise<void>((resolve) => {
-		release = resolve;
-	});
-	const received = new Promise<void>((resolve) => {
-		ready = resolve;
-	});
+	const { promise: gate, release } = createGate();
+	const { promise: received, release: ready } = createGate();
 	let writes = 0;
 	let delivered = false;
 	await page.route("**/_serverFn/**", async (route) => {
@@ -307,10 +308,12 @@ test("a later name submission keeps its field and feedback when an older respons
 		await page.evaluate(() => {
 			window.location.hash = "main-content";
 		});
+		await expect(page.getByLabel("Name", { exact: true })).toBeEnabled();
+		await expect(page.getByLabel("Name", { exact: true })).toHaveValue("X");
+		await page.getByLabel("Name", { exact: true }).fill("Y");
 		await expect(
 			page.getByRole("button", { name: "Save project", exact: true }),
 		).toBeEnabled();
-		await page.getByLabel("Name", { exact: true }).fill("Y");
 		await page
 			.getByRole("button", { name: "Save project", exact: true })
 			.click();
@@ -358,7 +361,6 @@ for (const locale of ["en", "fr"] as const) {
 			]);
 		await page.goto(`${workspace.origin}/organizations/new`);
 		const name = page.getByLabel(text(m.name), { exact: true });
-		const slug = page.getByLabel(text(m.slug), { exact: true });
 		const submit = page.getByRole("button", {
 			name: text(m.create_organization),
 			exact: true,
@@ -377,7 +379,6 @@ for (const locale of ["en", "fr"] as const) {
 		).toBe(true);
 		expect(writes).toBe(0);
 		await name.fill("   ");
-		await slug.fill(`form-${locale}`);
 		await submit.click();
 		await expect(name).toHaveAttribute("aria-invalid", "true");
 		await expect(name).toHaveAttribute("aria-describedby", /entity-name-error/);
@@ -447,23 +448,18 @@ test("an abandoned entity save cannot invalidate or navigate away from a newer s
 	});
 	page.on("requestfinished", (request) => pendingReads.delete(request));
 	page.on("requestfailed", (request) => pendingReads.delete(request));
-	let release!: () => void;
-	let received!: () => void;
-	const responseReady = new Promise<void>((resolve) => {
-		received = resolve;
-	});
-	const responseReleased = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: responseReady, release: received } = createGate();
+	const { promise: responseReleased, release } = createGate();
+	const { promise: finished, release: delivered } = createGate();
 	await page.route("**/_serverFn/**", async (route) => {
 		if (route.request().method() !== "POST") return route.continue();
 		const response = await route.fetch();
 		received();
 		await responseReleased;
-		await route.fulfill({ response });
+		await route.fulfill({ response }).catch(() => {});
+		delivered();
 	});
 	await page.getByLabel("Name", { exact: true }).fill("Late project");
-	await page.getByLabel("Slug", { exact: true }).fill("late-project");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })
 		.click();
@@ -493,20 +489,17 @@ test("an abandoned entity save cannot invalidate or navigate away from a newer s
 		if (request.method() === "GET" && request.url().includes("/_serverFn/"))
 			reads++;
 	});
-	const response = page.waitForResponse(
-		(response) =>
-			response.request().method() === "POST" &&
-			response.url().includes("/_serverFn/"),
-	);
 	release();
-	await (await response).finished();
+	await finished;
 	await page.evaluate(
 		() =>
 			new Promise<void>((resolve) =>
 				requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
 			),
 	);
-	await expect(page).toHaveURL(settingsUrl(workspace.origin, "user"));
+	await expect(page).toHaveURL(
+		settingsUrl(`${workspace.origin}/organizations/${organization.id}`, "user"),
+	);
 	await expect(
 		page.getByText("Your change was saved. Refreshing the page…", {
 			exact: true,
@@ -530,7 +523,6 @@ test("an acknowledged creation recovers its saved destination after metadata rea
 		return route.abort();
 	});
 	await page.getByLabel("Name", { exact: true }).fill("Recovered organization");
-	await page.getByLabel("Slug", { exact: true }).fill("recovered-organization");
 	await page
 		.getByRole("button", { name: "Create organization", exact: true })
 		.click();
@@ -574,14 +566,8 @@ test("invitation controls stay pending until acknowledged-write reads finish", a
 			"organization-members",
 		),
 	);
-	let ready!: () => void;
-	let release!: () => void;
-	const readsReady = new Promise<void>((resolve) => {
-		ready = resolve;
-	});
-	const readsReleased = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: readsReady, release: ready } = createGate();
+	const { promise: readsReleased, release } = createGate();
 	await page.route("**/_serverFn/**", async (route) => {
 		if (route.request().method() === "POST") return route.continue();
 		ready();
@@ -593,19 +579,21 @@ test("invitation controls stay pending until acknowledged-write reads finish", a
 		.getByLabel("Email address", { exact: true })
 		.fill("pending@example.invalid");
 	await page
-		.getByRole("button", { name: "Send invitation", exact: true })
+		.getByRole("button", { name: "Invite team members", exact: true })
 		.click();
 	await readsReady;
 	await expect(
-		page.getByRole("button", { name: "Send invitation", exact: true }),
+		page.getByRole("button", {
+			name: "Updating invitation list…",
+			exact: true,
+		}),
 	).toBeDisabled();
 	await expect(
-		page.getByLabel("Email address", { exact: true }),
+		page.getByRole("button", { name: "Cancel", exact: true }),
 	).toBeDisabled();
 	release();
-	await expect(
-		page.getByRole("button", { name: "Send invitation", exact: true }),
-	).toBeEnabled();
+	await expect(page.getByRole("dialog")).toHaveCount(0);
+	await openInvitationForm(page);
 	await expect(page.getByLabel("Email address", { exact: true })).toHaveValue(
 		"",
 	);
@@ -630,20 +618,16 @@ test("internal Dates survive SSR hydration and client RPC navigation", async ({
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Dates project",
-				slug: "dates-project",
 			}),
 		),
 	);
 	const expiresAt = new Date("2099-06-20T12:30:00.000Z");
-	await workspace.database.db.insert(collectorCredential).values({
+	await workspace.database.db.insert(enrollmentKey).values({
 		id: randomUUID(),
 		organizationId: organization.id,
 		projectId: project.id,
-		name: "Date credential",
-		sourceId: "date-source",
-		tokenSha256: "a".repeat(64),
-		rootId: "date-node",
-		rootKind: 1,
+		name: "Date key",
+		keySha256: "a".repeat(64),
 		expiresAt,
 	});
 	const errors: string[] = [];
@@ -655,7 +639,7 @@ test("internal Dates survive SSR hydration and client RPC navigation", async ({
 	const response = await page.goto(
 		settingsUrl(
 			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
-			"credentials",
+			"collectors",
 		),
 	);
 	expect(await response?.text()).toContain(expiresAt.toISOString());
@@ -663,14 +647,14 @@ test("internal Dates survive SSR hydration and client RPC navigation", async ({
 		page.locator(`time[datetime="${expiresAt.toISOString()}"]`),
 	).toBeVisible();
 	await expect(
-		page.getByRole("button", { name: "Create credential", exact: true }),
+		page.getByRole("button", { name: "Create enrollment key", exact: true }),
 	).toBeEnabled();
 	await openSettingsSection(page, "Project settings");
 	await openSettingsSection(page, "Customization");
 	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
 		"Dates project",
 	);
-	await openSettingsSection(page, "Collector credentials");
+	await openSettingsSection(page, "Collectors");
 	await expect(
 		page.locator(`time[datetime="${expiresAt.toISOString()}"]`),
 	).toBeVisible();

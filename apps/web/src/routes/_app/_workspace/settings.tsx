@@ -1,19 +1,23 @@
 import { m } from "@recount/i18n/messages";
 import {
 	createFileRoute,
+	isNotFound,
 	notFound,
-	redirect,
+	SearchParamError,
 	useLocation,
-	useRouter,
 	useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
+import {
+	listEnrollmentKeys,
+	listNodes,
+} from "@/collectors/collector.functions";
 import { AppearancePreferences } from "@/components/appearance-settings";
 import { OrganizationInvitations } from "@/components/organization-invitations";
 import { OrganizationMembers } from "@/components/organization-members";
 import { ProjectGrants } from "@/components/project-grants";
 import { twoFactorFeature } from "@/components/settings/authentication-features";
-import { CredentialsSettings } from "@/components/settings/credentials-settings";
+import { CollectorsSettings } from "@/components/settings/collectors-settings";
 import {
 	OrganizationDeletion,
 	ProjectDangerZone,
@@ -27,9 +31,10 @@ import {
 } from "@/components/settings/project-settings";
 import { SettingsNavigation } from "@/components/settings/settings-navigation";
 import { UserProfile } from "@/components/settings/user-profile";
-import { parseSettingsSearch } from "@/components/settings-links";
-import { PageHeading } from "@/components/workspace";
-import { listCollectorCredentials } from "@/credentials/credential.functions";
+import {
+	parseSettingsSearch,
+	settingsScopes,
+} from "@/components/settings-links";
 import type {
 	OrganizationSummary,
 	ProjectSummary,
@@ -46,13 +51,20 @@ import {
 	listProjects,
 } from "@/organizations/organization.functions";
 import { routeData } from "@/organizations/route-data";
+import { SettingsPageHeading } from "../../../components/settings/settings-page-heading";
 
 export const Route = createFileRoute("/_app/_workspace/settings")({
 	validateSearch: parseSettingsSearch,
-	beforeLoad: async ({ search, location }) => {
-		let organization: OrganizationSummary | undefined;
-		let project: ProjectSummary | undefined;
-		let projects: ProjectSummary[] = [];
+	onError: (error) => {
+		// Router wraps search validation failures; malformed scopes remain not-found.
+		if (error instanceof SearchParamError && isNotFound(error.cause))
+			throw error.cause;
+	},
+	beforeLoad: async ({ search, location, context }) => {
+		let organization: OrganizationSummary | undefined =
+			context.workspaceOrganization;
+		let project: ProjectSummary | undefined = context.workspaceProject;
+		let projects: ProjectSummary[] = context.workspaceProjects;
 		if (search.organizationId) {
 			const data = { organizationId: search.organizationId };
 			const [org, visibleProjects] = await Promise.all([
@@ -67,26 +79,9 @@ export const Route = createFileRoute("/_app/_workspace/settings")({
 					location.href,
 				);
 		}
-		if (
-			[
-				"project",
-				"project-customization",
-				"project-danger",
-				"project-members",
-				"credentials",
-			].includes(search.section) &&
-			!project
-		)
+		if (settingsScopes[search.section] === "project" && !project)
 			throw notFound();
-		if (
-			[
-				"organization",
-				"organization-authentication",
-				"organization-delete",
-				"organization-members",
-			].includes(search.section) &&
-			!organization
-		)
+		if (settingsScopes[search.section] === "organization" && !organization)
 			throw notFound();
 		return {
 			settingsOrganization: organization,
@@ -98,18 +93,20 @@ export const Route = createFileRoute("/_app/_workspace/settings")({
 	loader: async ({ context, deps, location }) => {
 		const project = context.settingsProject;
 		const organization = context.settingsOrganization;
-		if (deps.section === "credentials" && project) {
-			if (project.role !== "admin")
-				return { kind: "credentials" as const, loaded: null };
-			const result = await listCollectorCredentials({
-				data: { organizationId: project.organizationId, projectId: project.id },
-			}).catch(() => null);
-			if (result?.error?.code === "UNAUTHENTICATED")
-				throw redirect({ to: "/login", search: { redirect: location.href } });
-			if (result?.error?.code === "NOT_FOUND") throw notFound();
+		if (deps.section === "collectors" && project) {
+			if (project.role !== "admin") throw notFound();
+			const reference = {
+				organizationId: project.organizationId,
+				projectId: project.id,
+			};
+			const [keys, nodes] = await Promise.all([
+				listEnrollmentKeys({ data: reference }),
+				listNodes({ data: { ...reference, status: "active", page: 1 } }),
+			]);
 			return {
-				kind: "credentials" as const,
-				loaded: { result, asOf: Date.now() },
+				kind: "collectors" as const,
+				enrollmentKeys: routeData(keys, location.href),
+				nodes: routeData(nodes, location.href),
 			};
 		}
 		if (deps.section === "project-members" && project) {
@@ -159,7 +156,6 @@ function Settings() {
 	} = Route.useRouteContext();
 	const search = Route.useSearch();
 	const loaded = Route.useLoaderData();
-	const router = useRouter();
 	const hash = useLocation({ select: (location) => location.hash });
 	const locationKey = useLocation({
 		select: (location) => location.state.__TSR_key,
@@ -206,33 +202,28 @@ function Settings() {
 					<ProjectCustomization project={project} />
 				)}
 				{search.section === "project-danger" && project && (
-					<ProjectDangerZone project={project} />
+					<ProjectDangerZone />
 				)}
 				{search.section === "organization-authentication" && organization && (
 					<OrganizationAuthentication />
 				)}
 				{search.section === "organization-delete" && organization && (
-					<OrganizationDeletion organization={organization} />
+					<OrganizationDeletion />
 				)}
 				{search.section === "organization" && organization && (
 					<OrganizationSettings organization={organization} />
 				)}
 				{search.section === "user" && <UserProfile />}
 				{search.section === "appearance" && <AppearancePreferences />}
-				{search.section === "credentials" &&
+				{search.section === "collectors" &&
 					project &&
-					loaded.kind === "credentials" && (
-						<CredentialsSettings
+					loaded.kind === "collectors" && (
+						<CollectorsSettings
+							key={`${project.id}:${user.id}`}
 							project={project}
 							userId={user.id}
-							loaded={loaded.loaded}
-							refreshList={() =>
-								router.invalidate({
-									filter: (match) => match.routeId === Route.id,
-									sync: true,
-								})
-							}
-							refreshAccess={() => router.invalidate({ sync: true })}
+							enrollmentKeys={loaded.enrollmentKeys}
+							initialNodes={loaded.nodes}
 						/>
 					)}
 				{search.section === "project-members" &&
@@ -250,7 +241,7 @@ function Settings() {
 					organization &&
 					loaded.kind === "organization-members" && (
 						<>
-							<PageHeading title={m.settings_page({ page: m.members() })} />
+							<SettingsPageHeading />
 							{loaded.invitations && (
 								<OrganizationInvitations
 									key={`invitations:${organization.id}:${user.id}`}

@@ -1,5 +1,5 @@
 import { notFound, redirect } from "@tanstack/react-router";
-import type { OperationResult } from "./contracts";
+import type { OperationResult } from "../lib/operation-result";
 import {
 	parseOrganizationReference,
 	parseProjectReference,

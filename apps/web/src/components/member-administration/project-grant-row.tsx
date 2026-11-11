@@ -3,14 +3,13 @@ import { m } from "@recount/i18n/messages";
 import { Trash2Icon } from "lucide-react";
 import type { ProjectMembershipSummary } from "../../organizations/contracts";
 import type { MemberSummary } from "../../organizations/member-contracts";
+import { AlertDialogActions } from "../dialog-actions";
 import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
 import {
 	AlertDialog,
-	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
-	AlertDialogFooter,
 	AlertDialogTitle,
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
@@ -125,11 +124,18 @@ export function ProjectGrantRow({
 									: m.remove_access_question({ email: member.email })}
 						</AlertDialogDescription>
 						<FormFeedback
+							reserveLine={false}
 							message={failed ? message : ""}
 							kind="error"
 							pending={pending}
 						/>
-						<AlertDialogFooter>
+						<AlertDialogActions
+							cancel={{
+								label: m.keep_current_access(),
+								disabled: pending,
+								onClick: () => state.setConfirmation(null),
+							}}
+						>
 							<Button
 								variant="destructive"
 								disabled={pending}
@@ -139,14 +145,7 @@ export function ProjectGrantRow({
 							>
 								{m.confirm_access_change()}
 							</Button>
-							<AlertDialogCancel
-								variant="outline"
-								disabled={pending}
-								onClick={() => state.setConfirmation(null)}
-							>
-								{m.keep_current_access()}
-							</AlertDialogCancel>
-						</AlertDialogFooter>
+						</AlertDialogActions>
 					</AlertDialogContent>
 				</AlertDialog>
 			)}

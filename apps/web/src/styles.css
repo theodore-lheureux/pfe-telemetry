@@ -49,3 +49,23 @@ html[data-variant="core"] h1 {
 html[data-variant="core"] :is(.font-semibold, .font-bold) {
 	font-weight: var(--ui-weight);
 }
+
+/* Indeterminate navigation progress: a short bar sweeping across the top edge. */
+@keyframes navigation-progress {
+	from {
+		transform: translateX(-100%);
+	}
+	to {
+		transform: translateX(300%);
+	}
+}
+
+/* Rows that appear after a refresh fade from a highlight to the normal background. */
+@keyframes row-arrival {
+	from {
+		background-color: color-mix(in oklab, var(--primary) 14%, transparent);
+	}
+	to {
+		background-color: transparent;
+	}
+}

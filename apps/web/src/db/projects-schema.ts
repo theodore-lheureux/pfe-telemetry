@@ -25,7 +25,6 @@ export const project = appSchema.table(
 			.notNull()
 			.references(() => organization.id, { onDelete: "cascade" }),
 		name: text("name").notNull(),
-		slug: text("slug").notNull(),
 		tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
 		projectGroup: text("project_group").notNull().default(""),
 		timeZone: text("time_zone").notNull().default("UTC"),
@@ -51,14 +50,7 @@ export const project = appSchema.table(
 			"project_time_zone_bounded",
 			sql`length(${table.timeZone}) BETWEEN 1 AND 100`,
 		),
-		check(
-			"project_week_start_valid",
-			sql`${table.weekStartsOn} BETWEEN 0 AND 6`,
-		),
-		unique("project_organization_slug_unique").on(
-			table.organizationId,
-			table.slug,
-		),
+		check("project_week_start_valid", sql`${table.weekStartsOn} IN (0, 1)`),
 		unique("project_id_organization_unique").on(table.id, table.organizationId),
 	],
 );

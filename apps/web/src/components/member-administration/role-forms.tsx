@@ -139,7 +139,6 @@ export function ProjectGrantForm({
 			>
 				{(field) => (
 					<field.SelectField
-						id={`grant-${member.id}`}
 						label={m.project_role_for({ email: member.email })}
 						disabled={disabled || submitting}
 					>

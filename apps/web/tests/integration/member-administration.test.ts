@@ -1,18 +1,17 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import type { OrganizationInvitationEmailProps } from "@recount/transactional";
 import { and, eq } from "drizzle-orm";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
 import { member, projectMember, user } from "../../src/db/schema";
-import type {
-	OperationResult,
-	OrganizationRole,
-} from "../../src/organizations/contracts";
+import type { OperationResult } from "../../src/lib/operation-result";
+import type { OrganizationRole } from "../../src/organizations/contracts";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 
-import { trustedCodeSignIn } from "../auth-actors";
+import { trustedActor } from "../auth-actors";
 import { createTestDatabase } from "../database";
 
 const origin = "http://localhost:3062";
@@ -20,6 +19,7 @@ let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let auth: ReturnType<typeof createAuth>;
 let operations: ReturnType<typeof actorService>;
 const codes = new Map<string, string>();
+const invitationEmails: OrganizationInvitationEmailProps[] = [];
 let sequence = 0;
 
 beforeAll(async () => {
@@ -36,7 +36,9 @@ beforeAll(async () => {
 			sendSignInCode: async (email, code) => {
 				codes.set(email, code);
 			},
-			sendOrganizationInvitation: async () => {},
+			sendOrganizationInvitation: async (props) => {
+				invitationEmails.push(props);
+			},
 		},
 	);
 	operations = actorService(auth);
@@ -55,22 +57,13 @@ function data<T>(result: OperationResult<T>): T {
 async function actor() {
 	const id = ++sequence;
 	const email = `member-${id}@example.invalid`;
-	const response = await trustedCodeSignIn(
+	const account = await trustedActor(
 		auth,
 		email,
 		(email) => codes.get(email),
 		new Headers({ origin }),
 	);
-	const headers = new Headers({
-		origin,
-		cookie: response.headers
-			.getSetCookie()
-			.map((entry) => entry.split(";")[0])
-			.join("; "),
-	});
-	const session = await auth.api.getSession({ headers });
-	if (!session) throw new Error("Expected session");
-	return { userId: session.user.id, email, headers };
+	return { userId: account.id, email, headers: account.headers };
 }
 
 async function organization(owner: Awaited<ReturnType<typeof actor>>) {
@@ -93,6 +86,56 @@ async function add(
 		body: { organizationId, userId: person.userId, role },
 	});
 }
+
+test("native invitation delivery preserves personalization on resend and enforces bounds", async () => {
+	const owner = await actor();
+	const org = await organization(owner);
+	const email = `personalized-${randomUUID()}@example.invalid`;
+	const body = {
+		organizationId: org.id,
+		email,
+		role: "member" as const,
+		recipientName: "Jane",
+		message: "Welcome\naboard",
+	};
+	const created = await auth.api.createInvitation({
+		headers: owner.headers,
+		body,
+	});
+	expect(created).toMatchObject({
+		recipientName: "Jane",
+		message: "Welcome\naboard",
+	});
+	expect(created.expiresAt.getTime() - Date.now()).toBeGreaterThan(
+		3 * 24 * 60 * 60 * 1000 - 5000,
+	);
+	await auth.api.createInvitation({
+		headers: owner.headers,
+		body: {
+			...body,
+			recipientName: "Replacement",
+			message: "Not used on resend",
+			resend: true,
+		},
+	});
+	const sent = invitationEmails.filter((entry) => entry.email === email);
+	expect(sent).toHaveLength(2);
+	for (const entry of sent)
+		expect(entry).toMatchObject({
+			recipientName: "Jane",
+			message: "Welcome\naboard",
+		});
+	await expect(
+		auth.api.createInvitation({
+			headers: owner.headers,
+			body: {
+				...body,
+				email: "too-long@example.invalid",
+				message: "x".repeat(2001),
+			},
+		}),
+	).rejects.toThrow("Invalid invitation name or message");
+});
 
 test("lists canonical safe member DTOs, excluding outsiders and unverified users", async () => {
 	const owner = await actor();
@@ -349,7 +392,6 @@ test("effective project admins manage same-organization grants, revocation is im
 				requestId: crypto.randomUUID(),
 				organizationId: org.id,
 				name: "Private",
-				slug: "private",
 			}),
 		),
 	);
@@ -505,7 +547,6 @@ test("self-demotion and native leave clear authority and cascade explicit grants
 				requestId: crypto.randomUUID(),
 				organizationId: org.id,
 				name: "Private",
-				slug: "private",
 			}),
 		),
 	);

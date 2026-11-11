@@ -1,5 +1,4 @@
 import { m } from "@recount/i18n/messages";
-import { useRouter } from "@tanstack/react-router";
 import { useRef } from "react";
 import type {
 	ProjectRole,
@@ -14,7 +13,6 @@ import { useAppMutation } from "../use-app-mutation";
 import { usePageConfirmation } from "../use-page-confirmation";
 
 export function useProjectGrants(project: ProjectSummary, userId: string) {
-	const router = useRouter();
 	const heading = useRef<HTMLHeadingElement>(null);
 	const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
 	const [confirmation, setConfirmation] = usePageConfirmation<{
@@ -45,7 +43,7 @@ export function useProjectGrants(project: ProjectSummary, userId: string) {
 		if (!saved || saved.error) return;
 		setConfirmation(null);
 		const refreshed = await saved.refresh(
-			async (follow) => {
+			async (navigate) => {
 				if (
 					member.userId !== userId ||
 					member.role !== "member" ||
@@ -57,8 +55,7 @@ export function useProjectGrants(project: ProjectSummary, userId: string) {
 					params: { organizationId: project.organizationId },
 					replace: true,
 				} as const;
-				follow(router.buildLocation(destination).href);
-				await router.navigate(destination);
+				await navigate(destination);
 			},
 			role
 				? m.project_grant_saved()
@@ -67,6 +64,7 @@ export function useProjectGrants(project: ProjectSummary, userId: string) {
 		if (refreshed) heading.current?.focus();
 	}
 	return {
+		projectId: project.id,
 		heading,
 		confirmationTrigger,
 		pending: mutation.pending,

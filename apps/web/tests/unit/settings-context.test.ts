@@ -1,9 +1,7 @@
 import { expect, test } from "bun:test";
-import { gravatarUrl } from "../../src/components/avatar.server";
-import {
-	parseSettingsSearch,
-	settingsPath,
-} from "../../src/components/settings-links";
+import { gravatarUrl } from "../../src/auth/avatar.server";
+import { parseSettingsSearch } from "../../src/components/settings-links";
+import { settingsPath } from "../settings-path";
 
 test("Gravatar uses normalized SHA256 without raw email or external fallback/profile parameters", () => {
 	const url = new URL(gravatarUrl("  Test@example.com  "));

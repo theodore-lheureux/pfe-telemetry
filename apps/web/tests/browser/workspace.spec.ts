@@ -8,6 +8,7 @@ import {
 	data,
 	expect,
 	openSettingsSection,
+	openWorkspaceMenu,
 	settingsUrl,
 	test,
 } from "./fixtures";
@@ -26,7 +27,6 @@ test("onboards, creates and renames private projects, switches tenants and signs
 		.getByRole("link", { name: "Create organization", exact: true })
 		.click();
 	await page.getByLabel("Name", { exact: true }).fill("Research lab");
-	await page.getByLabel("Slug", { exact: true }).fill("research-lab");
 	await page
 		.getByRole("button", { name: "Create organization", exact: true })
 		.click();
@@ -38,7 +38,6 @@ test("onboards, creates and renames private projects, switches tenants and signs
 	).toBeVisible();
 	await page.getByRole("link", { name: "Create project", exact: true }).click();
 	await page.getByLabel("Name", { exact: true }).fill("GPU benchmarks");
-	await page.getByLabel("Slug", { exact: true }).fill("gpu-benchmarks");
 	await page
 		.getByRole("button", { name: "Create project", exact: true })
 		.click();
@@ -46,13 +45,13 @@ test("onboards, creates and renames private projects, switches tenants and signs
 		page.getByRole("heading", { name: "Executions", exact: true }),
 	).toBeVisible();
 	await expect(
-		page.getByText("No executions recorded on this page."),
+		page.getByRole("heading", { name: "No executions yet", exact: true }),
 	).toBeVisible();
 	const projectURL = page.url().replace(/\/executions\/?$/, "");
 	await openSettingsSection(page, "Project settings");
 	await openSettingsSection(page, "Customization");
 	await page.getByLabel("Name", { exact: true }).fill("GPU comparison");
-	await page.getByRole("button", { name: "Save project" }).click();
+	await page.getByRole("button", { name: "Save project", exact: true }).click();
 	await expect(page.getByText("Changes saved.", { exact: true })).toBeVisible();
 	await expect(
 		page.getByRole("button", {
@@ -64,45 +63,54 @@ test("onboards, creates and renames private projects, switches tenants and signs
 	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
 		"GPU comparison",
 	);
-	await openSettingsSection(page, "Projects");
-	await expect(
-		page.getByRole("link", { name: /GPU comparison/ }),
-	).toBeVisible();
-	await page.getByRole("link", { name: "Create project", exact: true }).click();
-	await page.getByLabel("Name", { exact: true }).fill("Duplicate slug");
-	await page.getByLabel("Slug", { exact: true }).fill("gpu-benchmarks");
+	await openWorkspaceMenu(page);
 	await page
+		.getByRole("menuitem", { name: "Choose project", exact: true })
+		.click();
+	await page
+		.getByRole("menuitem", { name: "New project", exact: true })
+		.click();
+	const createProject = page.getByRole("dialog", {
+		name: "Create project",
+		exact: true,
+	});
+	await createProject.getByLabel("Project name", { exact: true }).fill("   ");
+	await createProject
 		.getByRole("button", { name: "Create project", exact: true })
 		.click();
-	await expect(page.locator("#entity-message").getByRole("alert")).toHaveText(
-		"This slug is already in use. Choose another slug.",
-	);
-	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
-		"Duplicate slug",
-	);
-	await page.getByLabel("Name", { exact: true }).fill("   ");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
-	await expect(page.locator("#entity-name-error")).toHaveText(
-		"Enter a name, not just spaces.",
-	);
-	await openSettingsSection(page, "New organization");
 	await expect(
-		page.getByRole("heading", { name: "Create organization", exact: true }),
+		createProject.getByText("Enter a name, not just spaces.", { exact: true }),
 	).toBeVisible();
-	await page.getByLabel("Name", { exact: true }).fill("Second lab");
-	await page.getByLabel("Slug", { exact: true }).fill("second-lab");
+	await createProject
+		.getByRole("button", { name: "Cancel", exact: true })
+		.click();
+	await openWorkspaceMenu(page);
 	await page
+		.getByRole("menuitem", { name: "Choose organization", exact: true })
+		.click();
+	await page
+		.getByRole("menuitem", { name: "New organization", exact: true })
+		.click();
+	const createOrganization = page.getByRole("dialog", {
+		name: "Create organization",
+		exact: true,
+	});
+	await createOrganization
+		.getByLabel("Organization name", { exact: true })
+		.fill("Second lab");
+	await createOrganization
 		.getByRole("button", { name: "Create organization", exact: true })
 		.click();
+	await expect(createOrganization).toHaveCount(0);
+	await page.goto(`${projectURL}/executions`);
+	// A new organization has no projects, so it opens its empty organization page.
+	await chooseOrganization(page, "Second lab");
 	await expect(
 		page.getByRole("heading", { name: "Second lab", exact: true }),
 	).toBeVisible();
+	// Returning to an organization reopens its remembered project.
 	await chooseOrganization(page, "Research lab");
-	await expect(
-		page.getByRole("heading", { name: "Research lab", exact: true }),
-	).toBeVisible();
+	await expect(page).toHaveURL(`${projectURL}/executions`);
 	await chooseProject(page, "GPU comparison");
 	await expect(page).toHaveURL(`${projectURL}/executions`);
 	const missing = await page.goto(
@@ -188,7 +196,6 @@ test("protects direct links, uses effective roles and handles membership revocat
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Private project",
-				slug: "private-project",
 			}),
 		),
 	);
@@ -220,11 +227,19 @@ test("protects direct links, uses effective roles and handles membership revocat
 		),
 	);
 	await page.goto(settingsUrl(projectURL));
-	await expect(page.getByRole("button", { name: "Save project" })).toHaveCount(
-		0,
-	);
 	await expect(
-		page.getByRole("link", { name: "Collector credentials" }),
+		page.getByRole("button", { name: "Save project", exact: true }),
+	).toHaveCount(0);
+	await page.goto(settingsUrl(projectURL, "collectors"));
+	await expect(
+		page.getByRole("heading", { name: "Page not found", exact: true }),
+	).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Create enrollment key", exact: true }),
+	).toHaveCount(0);
+	await page.goto(settingsUrl(projectURL, "project-customization"));
+	await expect(
+		page.getByRole("button", { name: "Save project", exact: true }),
 	).toHaveCount(0);
 	data(
 		await workspace.operations(owner.headers, (actor) =>
@@ -238,7 +253,7 @@ test("protects direct links, uses effective roles and handles membership revocat
 	);
 	await page.reload();
 	await expect(
-		page.getByRole("button", { name: "Save project" }),
+		page.getByRole("button", { name: "Save project", exact: true }),
 	).toBeVisible();
 	await workspace.database.db
 		.delete(member)
@@ -251,9 +266,9 @@ test("protects direct links, uses effective roles and handles membership revocat
 	const inaccessible = await page.goto(settingsUrl(projectURL));
 	expect(inaccessible?.status()).toBe(404);
 	await workspace.signIn(page, "owner@example.invalid");
-	await page.goto(settingsUrl(projectURL));
+	await page.goto(settingsUrl(projectURL, "project-customization"));
 	await expect(
-		page.getByRole("button", { name: "Save project" }),
+		page.getByRole("button", { name: "Save project", exact: true }),
 	).toBeVisible();
 	const invalid = await page.goto(
 		settingsUrl(
@@ -288,7 +303,6 @@ test("does not mistake transport failures for empty results and rechecks access 
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Original name",
-				slug: "original",
 			}),
 		),
 	);
@@ -312,25 +326,26 @@ test("does not mistake transport failures for empty results and rechecks access 
 		),
 	);
 	const projectURL = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}`;
-	await page.goto(settingsUrl(projectURL));
+	await page.goto(settingsUrl(projectURL, "project-customization"));
 	await page.route("**/_serverFn/**", (route) =>
 		route.request().method() === "POST" ? route.abort() : route.continue(),
 	);
 	await page.getByLabel("Name", { exact: true }).fill("Unsaved name");
-	await page.getByRole("button", { name: "Save project" }).click();
+	await page.getByRole("button", { name: "Save project", exact: true }).click();
 	await expect(page.getByRole("status")).toContainText(
 		"The response was lost; the action may have completed.",
 	);
 	await expect(
-		page.getByRole("button", { name: "Save project" }),
+		page.getByRole("button", { name: "Save project", exact: true }),
 	).toBeDisabled();
 	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
 		"Unsaved name",
 	);
 	await page.unroute("**/_serverFn/**");
 	await page.reload();
+	await page.getByLabel("Name", { exact: true }).fill("Denied name");
 	await expect(
-		page.getByRole("button", { name: "Save project" }),
+		page.getByRole("button", { name: "Save project", exact: true }),
 	).toBeEnabled();
 	data(
 		await workspace.operations(owner.headers, (actor) =>
@@ -341,7 +356,7 @@ test("does not mistake transport failures for empty results and rechecks access 
 			}),
 		),
 	);
-	await page.getByRole("button", { name: "Save project" }).click();
+	await page.getByRole("button", { name: "Save project", exact: true }).click();
 	await expect(
 		page.getByRole("heading", { name: "Page not found" }),
 	).toBeVisible();
@@ -465,13 +480,13 @@ test("acknowledges a saved mutation when subsequent metadata reads fail, then re
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Before refresh",
-				slug: "refresh",
 			}),
 		),
 	);
 	await page.goto(
 		settingsUrl(
 			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
+			"project-customization",
 		),
 	);
 	let writes = 0;
@@ -485,7 +500,7 @@ test("acknowledges a saved mutation when subsequent metadata reads fail, then re
 	await page
 		.getByLabel("Name", { exact: true })
 		.fill("Saved despite refresh failure");
-	await page.getByRole("button", { name: "Save project" }).click();
+	await page.getByRole("button", { name: "Save project", exact: true }).click();
 	await expect(
 		page.getByRole("heading", { name: "Something went wrong" }),
 	).toBeVisible();

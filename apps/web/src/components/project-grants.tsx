@@ -17,6 +17,7 @@ import {
 import { ProjectGrantRow } from "./member-administration/project-grant-row";
 import { ProjectGrantForm } from "./member-administration/role-forms";
 import { useProjectGrants } from "./member-administration/use-project-grants";
+import { SettingsPageHeading } from "./settings/settings-page-heading";
 import { SettingsSection } from "./settings/settings-section";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -125,14 +126,10 @@ export function ProjectGrants({
 	});
 	return (
 		<div className="flex flex-col gap-8">
-			<h1
-				ref={state.heading}
-				tabIndex={-1}
-				id="grants-heading"
-				className="text-2xl font-semibold"
-			>
-				{m.project_access_control()}
-			</h1>
+			<SettingsPageHeading
+				headingRef={state.heading}
+				headingId="grants-heading"
+			/>
 			<SettingsSection
 				id="project-default-access"
 				title={m.project_default_access()}

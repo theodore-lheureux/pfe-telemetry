@@ -1,20 +1,10 @@
-import {
-	afterAll,
-	afterEach,
-	beforeEach,
-	describe,
-	expect,
-	test,
-} from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import type { Locale } from "@recount/i18n";
 import type { OrganizationInvitationEmailProps } from "@recount/transactional";
 import { eq } from "drizzle-orm";
-import { Pool } from "pg";
-import { applyMigrations } from "../../scripts/migrations";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
-import { createDatabase } from "../../src/db/client.server";
 import {
 	invitation,
 	member,
@@ -23,28 +13,19 @@ import {
 	rateLimit,
 	user,
 } from "../../src/db/schema";
+import type { OperationResult } from "../../src/lib/operation-result";
 import { resolveOrganizationRole } from "../../src/organizations/access.server";
-import type {
-	OperationResult,
-	OrganizationRole,
-} from "../../src/organizations/contracts";
+import type { OrganizationRole } from "../../src/organizations/contracts";
 import { parseCreateInvitationInput } from "../../src/organizations/invitation-validation";
 import * as invitationDomain from "../../src/organizations/invitations.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 
-import { trustedCodeSignIn } from "../auth-actors";
+import { trustedActor } from "../auth-actors";
+import { createTestDatabase } from "../database";
 
-const adminUrl = process.env.TEST_DATABASE_URL;
-if (!adminUrl) throw new Error("TEST_DATABASE_URL is required");
-const admin = new Pool({
-	connectionString: adminUrl,
-	max: 1,
-	connectionTimeoutMillis: 5000,
-});
 const origin = "http://localhost:3001";
-let databaseName: string;
-let database: ReturnType<typeof createDatabase>;
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let auth: ReturnType<typeof createAuth>;
 let authInstances: ReturnType<typeof createAuth>[];
 let operations: ReturnType<typeof actorService>;
@@ -56,12 +37,7 @@ let signInLocales: Locale[];
 
 beforeEach(async () => {
 	authInstances = [];
-	databaseName = `recount_org_test_${randomUUID().replaceAll("-", "")}`;
-	await admin.query(`CREATE DATABASE "${databaseName}"`);
-	const url = new URL(adminUrl);
-	url.pathname = `/${databaseName}`;
-	await applyMigrations(url.toString());
-	database = createDatabase({ connectionString: url.toString(), max: 4 });
+	database = await createTestDatabase("organizations");
 	codes = new Map();
 	actorCount = 0;
 	invitationEmails = [];
@@ -1223,11 +1199,7 @@ afterEach(async () => {
 	await Promise.all(
 		authInstances.map((instance) => instance.emailDelivery.close()),
 	);
-	await database?.pool.end();
-	await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
-});
-afterAll(async () => {
-	await admin.end();
+	await database?.close();
 });
 
 function post(path: string, body: unknown, headers = new Headers()) {
@@ -1250,20 +1222,13 @@ function data<T>(result: OperationResult<T>): T {
 async function actor() {
 	actorCount++;
 	const email = `user-${actorCount}@example.invalid`;
-	const signedIn = await trustedCodeSignIn(
+	const account = await trustedActor(
 		auth,
 		email,
 		(email) => codes.get(email),
 		new Headers({ origin }),
 	);
-	const cookie = signedIn.headers
-		.getSetCookie()
-		.map((value) => value.split(";")[0])
-		.join("; ");
-	const headers = new Headers({ cookie, origin });
-	const session = await auth.api.getSession({ headers });
-	if (!session) throw new Error("Expected test session");
-	return { headers, userId: session.user.id, email };
+	return { headers: account.headers, userId: account.id, email };
 }
 
 async function createOrganization(
@@ -1382,7 +1347,6 @@ describe("organization and project boundaries", () => {
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Private project",
-					slug: "private-project",
 				}),
 			),
 		);
@@ -1411,7 +1375,6 @@ describe("organization and project boundaries", () => {
 						requestId: crypto.randomUUID(),
 						organizationId: organization.id,
 						name: "Denied",
-						slug: "denied",
 					}),
 				)
 			).error?.code,
@@ -1490,18 +1453,6 @@ describe("organization and project boundaries", () => {
 				),
 			).role,
 		).toBe("admin");
-		expect(
-			(
-				await operations(owner.headers, (actor) =>
-					projectDomain.createProject(database.db, actor, {
-						requestId: crypto.randomUUID(),
-						organizationId: organization.id,
-						name: "Duplicate",
-						slug: project.slug,
-					}),
-				)
-			).error?.code,
-		).toBe("CONFLICT");
 		const second = await createOrganization(owner, "second-org");
 		expect(
 			data(
@@ -1510,7 +1461,6 @@ describe("organization and project boundaries", () => {
 						requestId: crypto.randomUUID(),
 						organizationId: second.id,
 						name: "Independent",
-						slug: project.slug,
 					}),
 				),
 			).organizationId,
@@ -1544,7 +1494,6 @@ describe("organization and project boundaries", () => {
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Project",
-					slug: "project",
 				}),
 			),
 		);

@@ -1,5 +1,7 @@
+import { parseIdentifier } from "../lib/input";
 import type { OrganizationRole, ProjectRole } from "./contracts";
-import { parseIdentifier, parseOrganizationReference } from "./validation";
+import { isOrganizationGrantRole } from "./roles";
+import { parseOrganizationReference } from "./validation";
 
 export interface MemberSummary {
 	id: string;
@@ -43,7 +45,7 @@ export function parseMemberReference(value: unknown): MemberReference {
 export function parseMemberRole(value: unknown): MemberRoleInput {
 	const reference = parseMemberReference(value);
 	const role = (value as Record<string, unknown>).role;
-	if (role !== "owner" && role !== "admin" && role !== "member")
+	if (!isOrganizationGrantRole(role))
 		throw new Error("Select an organization role");
 	return { ...reference, role };
 }

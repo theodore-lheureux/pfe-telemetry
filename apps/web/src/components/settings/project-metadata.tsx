@@ -1,7 +1,8 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { getRouteApi } from "@tanstack/react-router";
-import { CheckIcon, ChevronsUpDownIcon, PlusIcon, XIcon } from "lucide-react";
+import { cn } from "cn";
+import { ChevronDownIcon, PlusIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import type {
 	ProjectCustomizationChange,
@@ -14,13 +15,18 @@ import { Button } from "../ui/button";
 import {
 	Command,
 	CommandEmpty,
+	CommandGroup,
 	CommandInput,
 	CommandItem,
 	CommandList,
 } from "../ui/command";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { NativeSelect, NativeSelectOption } from "../ui/native-select";
+import {
+	NativeSelect,
+	NativeSelectOption,
+	nativeSelectControl,
+} from "../ui/native-select";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useAppMutation } from "../use-app-mutation";
 import { SettingsSection } from "./settings-section";
@@ -180,27 +186,30 @@ export function ProjectMetadata({ project }: { project: ProjectSummary }) {
 				title={m.project_date_time()}
 				description={m.project_date_time_description()}
 			>
-				<div className="grid max-w-4xl items-start gap-6 sm:grid-cols-[minmax(0,1fr)_12rem]">
+				<div className="grid max-w-2xl items-start gap-6 sm:grid-cols-[minmax(0,1fr)_12rem]">
 					<div className="flex min-w-0 flex-col gap-2">
 						<Label htmlFor="project-time-zone">{m.project_time_zone()}</Label>
 						<Popover open={zoneOpen} onOpenChange={setZoneOpen}>
 							<PopoverTrigger asChild>
-								<Button
+								<button
+									type="button"
 									id="project-time-zone"
 									role="combobox"
 									aria-expanded={zoneOpen}
-									variant="outline"
-									className="w-full justify-between"
+									className={cn(
+										nativeSelectControl,
+										"relative text-left disabled:opacity-50",
+									)}
 									disabled={disabled}
 								>
-									<span className="truncate">
+									<span className="block truncate">
 										{timeZoneLabel(project.timeZone)}
 									</span>
-									<ChevronsUpDownIcon
+									<ChevronDownIcon
 										aria-hidden="true"
-										className="size-4 shrink-0"
+										className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
 									/>
-								</Button>
+								</button>
 							</PopoverTrigger>
 							<PopoverContent
 								className="w-(--radix-popover-trigger-width) min-w-64 p-0"
@@ -213,30 +222,25 @@ export function ProjectMetadata({ project }: { project: ProjectSummary }) {
 									/>
 									<CommandList>
 										<CommandEmpty>{m.no_matching_choices()}</CommandEmpty>
-										{[...new Set([...timeZones, project.timeZone])].map(
-											(timeZone) => (
-												<CommandItem
-													key={timeZone}
-													value={timeZone}
-													disabled={disabled}
-													onSelect={() => {
-														setZoneOpen(false);
-														if (timeZone !== project.timeZone)
-															void change({ action: "time-zone", timeZone });
-													}}
-												>
-													{timeZone}
-													<CheckIcon
-														aria-hidden="true"
-														className={
-															timeZone === project.timeZone
-																? "ml-auto size-4"
-																: "ml-auto size-4 invisible"
-														}
-													/>
-												</CommandItem>
-											),
-										)}
+										<CommandGroup>
+											{[...new Set([...timeZones, project.timeZone])].map(
+												(timeZone) => (
+													<CommandItem
+														key={timeZone}
+														data-checked={timeZone === project.timeZone}
+														value={timeZone}
+														disabled={disabled}
+														onSelect={() => {
+															setZoneOpen(false);
+															if (timeZone !== project.timeZone)
+																void change({ action: "time-zone", timeZone });
+														}}
+													>
+														{timeZone}
+													</CommandItem>
+												),
+											)}
+										</CommandGroup>
 									</CommandList>
 								</Command>
 							</PopoverContent>
@@ -255,7 +259,7 @@ export function ProjectMetadata({ project }: { project: ProjectSummary }) {
 								})
 							}
 						>
-							{[0, 1, 2, 3, 4, 5, 6].map((day) => (
+							{[0, 1].map((day) => (
 								<NativeSelectOption key={day} value={day}>
 									{weekdays.format(new Date(Date.UTC(2026, 10, 8 + day)))}
 								</NativeSelectOption>

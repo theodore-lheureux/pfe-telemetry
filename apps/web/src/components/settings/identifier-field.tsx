@@ -43,3 +43,12 @@ export function IdentifierField({ value }: { value: string }) {
 		</div>
 	);
 }
+
+/** A read-only identifier in a card, as shown on the general settings pages. */
+export function IdentifierCard({ value }: { value: string }) {
+	return (
+		<div className="max-w-2xl rounded-md border bg-card p-4">
+			<IdentifierField value={value} />
+		</div>
+	);
+}

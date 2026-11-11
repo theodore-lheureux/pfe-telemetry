@@ -110,6 +110,29 @@ function DropdownMenuItem({
 		/>
 	);
 }
+function DropdownMenuCheckboxItem({
+	className,
+	children,
+	...props
+}: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem>) {
+	return (
+		<DropdownMenuPrimitive.CheckboxItem
+			data-slot="dropdown-menu-checkbox-item"
+			className={cn(
+				"relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50",
+				className,
+			)}
+			{...props}
+		>
+			<span className="pointer-events-none absolute right-2 flex items-center justify-center">
+				<DropdownMenuPrimitive.ItemIndicator>
+					<CheckIcon aria-hidden="true" className="size-4" />
+				</DropdownMenuPrimitive.ItemIndicator>
+			</span>
+			{children}
+		</DropdownMenuPrimitive.CheckboxItem>
+	);
+}
 function DropdownMenuLabel({
 	className,
 	inset,
@@ -189,6 +212,7 @@ function DropdownMenuSubContent({
 
 export {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuGroup,
 	DropdownMenuItem,

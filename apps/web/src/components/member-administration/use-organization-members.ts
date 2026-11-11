@@ -1,5 +1,4 @@
 import { m } from "@recount/i18n/messages";
-import { useRouter } from "@tanstack/react-router";
 import { useRef } from "react";
 import type {
 	OrganizationRole,
@@ -22,7 +21,6 @@ export function useOrganizationMembers(
 	organization: OrganizationSummary,
 	userId: string,
 ) {
-	const router = useRouter();
 	const heading = useRef<HTMLHeadingElement>(null);
 	const [confirm, setConfirm] = usePageConfirmation<string>();
 	const mutation = useAppMutation<MemberChange, unknown>({
@@ -50,10 +48,9 @@ export function useOrganizationMembers(
 		if (!saved || saved.error) return;
 		setConfirm(null);
 		const refreshed = await saved.refresh(
-			async (follow) => {
+			async (navigate) => {
 				if (input.action !== "leave") return;
-				follow(router.buildLocation({ to: "/" }).href);
-				await router.navigate({ to: "/", replace: true });
+				await navigate({ to: "/", replace: true });
 			},
 			input.action === "role"
 				? m.member_role_updated()

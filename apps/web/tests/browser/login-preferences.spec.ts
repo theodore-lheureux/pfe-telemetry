@@ -1,5 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import * as organizationDomain from "../../src/organizations/organizations.server";
+import { gate as createGate } from "../gate";
 import { data, expect, settingsUrl, test } from "./fixtures";
 
 test("email-first login exposes localized errors and quiet footer preferences", async ({
@@ -227,10 +228,7 @@ test("a delayed conditional options response cannot reopen WebAuthn after email 
 			},
 		});
 	});
-	let release!: () => void;
-	const held = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: held, release } = createGate();
 	let optionsRequests = 0;
 	await page.route(
 		"**/api/auth/passkey/generate-authenticate-options",
@@ -313,10 +311,7 @@ test("selected conditional authentication keeps submission ownership across navi
 				}),
 		});
 	});
-	let release!: () => void;
-	const held = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: held, release } = createGate();
 	let verificationRequests = 0;
 	let emailRequests = 0;
 	await page.route(

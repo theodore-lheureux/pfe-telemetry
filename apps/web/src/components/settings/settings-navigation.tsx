@@ -128,7 +128,7 @@ export function SettingsNavigation({
 								<div className="min-h-0 flex-1 overflow-y-auto p-1">
 									{groups.map((group) => (
 										<Collapsible
-											key={`${group.label}/${Boolean(query)}`}
+											key={group.scope}
 											defaultOpen
 											className="mb-1 last:mb-0"
 										>

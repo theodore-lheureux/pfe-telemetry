@@ -1,6 +1,17 @@
-import { formatDate } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { ListIcon } from "lucide-react";
+import { settingsSearch } from "@/components/settings-links";
+import { TimeDisplayRange } from "@/components/time-display";
+import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
 import { EmptyState, PageHeading } from "@/components/workspace";
 import { CreateExecutionForm } from "@/executions/create-execution-form";
 import {
@@ -38,12 +49,44 @@ export const Route = createFileRoute(
 function Executions() {
 	const page = Route.useLoaderData();
 	const params = Route.useParams();
+	const { beforeId } = Route.useSearch();
 	const { user, project } = Route.useRouteContext();
+	const paged = !!beforeId || !!page.nextCursor;
 	return (
 		<>
 			<PageHeading title={m.executions()} />
 			{page.executions.length === 0 ? (
-				<EmptyState title={m.no_executions_recorded_on_this_page()} />
+				beforeId ? (
+					<EmptyState title={m.no_executions_recorded_on_this_page()} />
+				) : (
+					<Empty className="border border-dashed bg-card">
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<ListIcon aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>
+								<h2>{m.executions_empty_title()}</h2>
+							</EmptyTitle>
+							<EmptyDescription>
+								{project.role === "admin"
+									? m.executions_empty_description()
+									: m.execution_source_required()}
+							</EmptyDescription>
+						</EmptyHeader>
+						{project.role === "admin" && (
+							<EmptyContent>
+								<Button asChild variant="outline">
+									<Link
+										to="/settings"
+										search={settingsSearch("collectors", params)}
+									>
+										{m.settings_manage_credentials()}
+									</Link>
+								</Button>
+							</EmptyContent>
+						)}
+					</Empty>
+				)
 			) : (
 				<ul className="divide-y rounded-md border bg-card text-card-foreground">
 					{page.executions.map((entry) => (
@@ -62,49 +105,48 @@ function Executions() {
 								})}
 							</p>
 							<p className="text-sm">
-								{m.interval_display({
-									from: formatDate(
-										entry.startedAt,
-										undefined,
-										project.timeZone,
-									),
-									to: formatDate(entry.endedAt, undefined, project.timeZone),
-									timeZone: project.timeZone,
-								})}
+								<TimeDisplayRange
+									from={entry.startedAt}
+									to={entry.endedAt}
+									timeZone={project.timeZone}
+								/>
 							</p>
 						</li>
 					))}
 				</ul>
 			)}
-			<nav aria-label={m.execution_pages()} className="flex gap-4">
-				<Link
-					to="/organizations/$organizationId/projects/$projectId/executions"
-					params={params}
-					search={{}}
-				>
-					{m.newest_executions()}
-				</Link>
-				{page.nextCursor && (
-					<Link
-						to="/organizations/$organizationId/projects/$projectId/executions"
-						params={params}
-						search={{ beforeId: page.nextCursor }}
-					>
-						{m.older_executions()}
-					</Link>
-				)}
-			</nav>
-			{page.canCreate &&
-				(page.sources.length ? (
-					<CreateExecutionForm
-						key={`${user.id}/${params.projectId}`}
-						userId={user.id}
-						reference={params}
-						sources={page.sources}
-					/>
-				) : (
-					<p>{m.execution_source_required()}</p>
-				))}
+			{paged && (
+				<nav aria-label={m.execution_pages()} className="flex gap-2">
+					<Button asChild variant="outline" size="sm">
+						<Link
+							to="/organizations/$organizationId/projects/$projectId/executions"
+							params={params}
+							search={{}}
+						>
+							{m.newest_executions()}
+						</Link>
+					</Button>
+					{page.nextCursor && (
+						<Button asChild variant="outline" size="sm">
+							<Link
+								to="/organizations/$organizationId/projects/$projectId/executions"
+								params={params}
+								search={{ beforeId: page.nextCursor }}
+							>
+								{m.older_executions()}
+							</Link>
+						</Button>
+					)}
+				</nav>
+			)}
+			{page.canCreate && page.sources.length > 0 && (
+				<CreateExecutionForm
+					key={`${user.id}/${params.projectId}`}
+					userId={user.id}
+					reference={params}
+					sources={page.sources}
+				/>
+			)}
 		</>
 	);
 }

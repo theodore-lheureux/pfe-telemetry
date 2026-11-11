@@ -1,4 +1,4 @@
-import { InputError } from "../lib/input-error";
+import { parseIdentifier, parseName, parseRequestId } from "../lib/input";
 import type {
 	CreateProjectInput,
 	OrganizationInput,
@@ -11,18 +11,6 @@ function record(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		throw new Error("Invalid request");
 	return value as Record<string, unknown>;
-}
-
-export function parseIdentifier(value: unknown) {
-	if (typeof value !== "string" || !value || value.length > 128)
-		throw new Error("Invalid identifier");
-	return value;
-}
-
-export function parseName(value: unknown) {
-	if (typeof value !== "string" || !value.trim() || value.trim().length > 120)
-		throw new InputError("INVALID_NAME", "Name must contain 1–120 characters");
-	return value.trim();
 }
 
 export function parseOrganizationInput(value: unknown): OrganizationInput {
@@ -54,22 +42,12 @@ export function parseUpdateOrganizationInput(value: unknown) {
 }
 
 export function parseCreateProjectInput(value: unknown): CreateProjectInput {
+	const input = record(value);
 	return {
-		requestId: parseRequestId(record(value).requestId),
-		...parseOrganizationInput(value),
+		requestId: parseRequestId(input.requestId),
+		name: parseName(input.name),
 		...parseOrganizationReference(value),
 	};
-}
-
-export function parseRequestId(value: unknown) {
-	if (
-		typeof value !== "string" ||
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-			value,
-		)
-	)
-		throw new Error("Invalid request identifier");
-	return value.toLowerCase();
 }
 
 export function parseProjectReference(value: unknown): ProjectReference {

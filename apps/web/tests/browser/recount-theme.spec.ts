@@ -10,6 +10,7 @@ import {
 	closePreferences,
 	data,
 	expect,
+	openInvitationForm,
 	openPreferences,
 	openSettingsSection,
 	settingsUrl,
@@ -186,7 +187,7 @@ test("cookie SSR, hydration, translated toggle and form state stay consistent", 
 	expect(errors).toEqual([]);
 });
 
-test("real workspace, credentials and administration retain Core geometry and keyboard behavior", async ({
+test("real workspace, collectors and administration retain Core geometry and keyboard behavior", async ({
 	page,
 	workspace,
 }) => {
@@ -212,16 +213,15 @@ test("real workspace, credentials and administration retain Core geometry and ke
 				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
 				name: "Private collector project",
-				slug: "private-collector",
 			}),
 		),
 	);
 	const paths = {
 		auth: "/login",
 		workspace: "/",
-		credentials: settingsUrl(
+		collectors: settingsUrl(
 			`/organizations/${organization.id}/projects/${project.id}`,
-			"credentials",
+			"collectors",
 		),
 		admin: settingsUrl(
 			`/organizations/${organization.id}`,
@@ -249,16 +249,17 @@ test("real workspace, credentials and administration retain Core geometry and ke
 					}),
 				).toBeEnabled();
 				if (screen !== "auth") await closePreferences(page);
+				if (screen === "admin") await openInvitationForm(page);
 				const readyControl =
 					screen === "workspace"
-						? page.getByRole("button", {
-								name: "Switch project, organization or account",
-								exact: true,
-							})
+						? page.getByRole("heading", { name: "Executions", level: 1 })
 						: page.getByLabel(
-								screen === "credentials" ? "Credential name" : "Email address",
+								screen === "collectors"
+									? "Search hosts, machine IDs or labels"
+									: "Email address",
 								{ exact: true },
 							);
+				await expect(readyControl).toBeVisible();
 				await expect(readyControl).toBeEnabled();
 				if (screen !== "workspace")
 					await expect(readyControl).toHaveCSS(
@@ -276,13 +277,17 @@ test("real workspace, credentials and administration retain Core geometry and ke
 						.getByRole("link", { name: "Skip to content", exact: true })
 						.focus();
 					await page.keyboard.press("Enter");
-					await expect(page.locator("main")).toBeFocused();
+					await expect(page.locator("#main-content")).toBeFocused();
 				}
 				const contrasts: Record<string, number> = {};
 				if (width === 1440) {
 					contrasts.heading = await contrast(page.locator("h1").first());
 					contrasts.secondary = await contrast(
-						page.locator("main .text-muted-foreground").first(),
+						page
+							.locator(
+								`${screen === "auth" ? "#page-content" : "#main-content"} .text-muted-foreground`,
+							)
+							.first(),
 					);
 					const selected = page.locator("a.active").first();
 					if (await selected.count())
@@ -319,6 +324,7 @@ test("real workspace, credentials and administration retain Core geometry and ke
 					.locator(
 						'[data-slot="button"], [data-slot="input"], [data-slot="native-select"]',
 					)
+					.filter({ visible: true })
 					.evaluateAll((elements) =>
 						elements.map((element) => {
 							const style = getComputedStyle(element);
@@ -329,6 +335,7 @@ test("real workspace, credentials and administration retain Core geometry and ke
 							};
 						}),
 					);
+				if (screen !== "workspace") expect(controls.length).toBeGreaterThan(0);
 				for (const control of controls)
 					expect(control).toEqual({
 						height: "32px",
@@ -389,57 +396,36 @@ test("real workspace, credentials and administration retain Core geometry and ke
 		});
 	}
 	await page.emulateMedia({ reducedMotion: "reduce" });
-	await page.goto(workspace.origin + paths.credentials);
-	const name = page.getByLabel("Credential name", { exact: true });
-	const credentialName = "ThemeLifecycle".repeat(8);
-	await name.fill(credentialName);
-	await page.getByLabel("Source ID", { exact: true }).fill("theme-source");
-	const root = page.getByRole("textbox", {
-		name: m.enrolled_root_id({}, { locale: "en" }),
+	await page.goto(workspace.origin + paths.collectors);
+	const keyName = "ThemeLifecycle".repeat(8);
+	const openCreate = page.getByRole("button", {
+		name: "Create enrollment key",
 		exact: true,
 	});
-	await expect(root).toHaveAttribute("required", "");
-	await expect(root).toHaveAccessibleDescription(
-		m.enrolled_root_help({}, { locale: "en" }),
-	);
-	const create = page.getByRole("button", {
-		name: "Create credential",
-		exact: true,
-	});
-	await create.focus();
+	await expect(openCreate).toBeEnabled();
+	await openCreate.focus();
 	await page.keyboard.press("Enter");
-	await expect(root).toBeFocused();
-	expect(
-		await root.evaluate(
-			(element: HTMLInputElement) => element.validity.valueMissing,
-		),
-	).toBe(true);
-	const token = page.getByLabel("One-time collector token", { exact: true });
-	await expect(token).toHaveCount(0);
-	await page.keyboard.type("theme-host");
-	await expect(root).toHaveValue("theme-host");
-	const timing = page.locator("details").filter({
-		hasText: m.submission_timing_policy({}, { locale: "en" }),
+	const createDialog = page.getByRole("dialog", {
+		name: "Create enrollment key",
 	});
-	const timingToggle = timing.locator("summary");
-	await timingToggle.focus();
-	await expect(timingToggle).toBeFocused();
-	await page.keyboard.press("Space");
-	await expect(timing).toHaveAttribute("open", "");
-	await page.keyboard.press("Space");
-	await expect(timing).not.toHaveAttribute("open", "");
-	await create.focus();
-	await page.keyboard.press("Enter");
-	await expect(token).toBeVisible();
-	const initialToken = await token.inputValue();
+	const name = createDialog.getByLabel("Name", { exact: true });
+	await expect(name).toHaveAttribute("required", "");
+	await name.fill(keyName);
+	await createDialog
+		.getByRole("button", { name: "Create enrollment key", exact: true })
+		.click();
+	const reveal = page.getByRole("dialog", { name: "Save your enrollment key" });
+	await expect(reveal).toBeVisible();
+	const initialKey = (await reveal.locator("code").first().textContent()) ?? "";
+	await reveal.getByRole("button", { name: "Done", exact: true }).click();
+	await expect(reveal).toHaveCount(0);
+	expect((await page.content()).includes(initialKey)).toBe(false);
 	await openPreferences(page);
 	await chooseTheme(page, "light");
 	await expect(page.getByLabel("Language", { exact: true })).toBeEnabled();
 	await closePreferences(page);
-	await expect(token).toHaveCount(0);
-	expect((await page.content()).includes(initialToken)).toBe(false);
 	const rotate = page.getByRole("button", {
-		name: `Rotate ${credentialName}`,
+		name: `Revoke ${keyName}`,
 		exact: true,
 	});
 	await rotate.focus();
@@ -482,26 +468,29 @@ test("real workspace, credentials and administration retain Core geometry and ke
 	await rotate.click();
 	await expect(dialog).toHaveCSS("background-color", "rgb(19, 36, 41)");
 	await page.keyboard.press("Escape");
-	await openSettingsSection(page, "Organizations");
+	await openSettingsSection(page, "User settings");
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "tide-dark");
 	await page.goBack();
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "tide-dark");
 	await page.goto(workspace.origin);
 	await expect(
 		page.getByRole("button", {
-			name: "Switch project, organization or account",
+			name: "Open navigation",
 			exact: true,
 		}),
 	).toBeEnabled();
 	await page.route("**/_serverFn/**", (route) => route.abort());
-	await page.getByRole("link", { name: new RegExp(organization.name) }).click();
+	await page
+		.getByRole("button", { name: "Open navigation", exact: true })
+		.click();
+	await page.getByRole("link", { name: "Settings", exact: true }).click();
 	await expect(
 		page.getByRole("heading", { name: "Something went wrong" }),
 	).toBeVisible();
 	await expect(page.locator("html")).toHaveAttribute("data-theme", "tide-dark");
 	await noOverflow(page);
 	expect(
-		await contrast(page.locator('[data-slot="alert-description"]')),
+		await contrast(page.locator('[data-slot="empty-description"]')),
 	).toBeGreaterThanOrEqual(4.5);
 	await page.unroute("**/_serverFn/**");
 	for (const dark of [false, true]) {
@@ -516,6 +505,7 @@ test("real workspace, credentials and administration retain Core geometry and ke
 		for (const width of [1440, 768, 375, 320]) {
 			await page.setViewportSize({ width, height: 1000 });
 			await page.goto(workspace.origin + paths.admin);
+			await openInvitationForm(page, "fr");
 			await expect(
 				page.getByLabel(m.email_address({}, { locale: "fr" }), { exact: true }),
 			).toBeEnabled();
@@ -536,15 +526,18 @@ test("real workspace, credentials and administration retain Core geometry and ke
 				overflow: false,
 			});
 		}
-		await page.goto(workspace.origin + paths.credentials);
+		await page.goto(workspace.origin + paths.collectors);
 		await page
 			.getByRole("button", {
-				name: m.rotate_named({ name: credentialName }, { locale: "fr" }),
+				name: m.enrollment_key_revoke_named(
+					{ name: keyName },
+					{ locale: "fr" },
+				),
 				exact: true,
 			})
 			.click();
 		await expect(dialog).toHaveAccessibleName(
-			m.confirm_rotate_named({ name: credentialName }, { locale: "fr" }),
+			m.enrollment_key_revoke_title({ name: keyName }, { locale: "fr" }),
 		);
 		expect(
 			await dialog.evaluate(
@@ -556,7 +549,7 @@ test("real workspace, credentials and administration retain Core geometry and ke
 			await page.screenshot({
 				path: join(
 					artifactDirectory,
-					`credential-dialog-fr-${dark ? "dark" : "light"}-320.png`,
+					`enrollment-key-dialog-fr-${dark ? "dark" : "light"}-320.png`,
 				),
 			});
 		await page.keyboard.press("Escape");
@@ -571,8 +564,8 @@ test("real workspace, credentials and administration retain Core geometry and ke
 					errors,
 					zoom: "200% CSS zoom on each screen/mode",
 					keyboard:
-						"toggle, required root entry, timing disclosure, real credential dialog containment/Escape/focus return",
-					token: "preserved through mode change, dismissed before artifacts",
+						"toggle, required key name, real revoke dialog containment/Escape/focus return",
+					key: "shown once and dismissed before artifacts",
 				},
 				null,
 				2,

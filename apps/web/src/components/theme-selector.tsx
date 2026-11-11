@@ -1,5 +1,11 @@
 import { m } from "@recount/i18n/messages";
-import { ChevronRightIcon, MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
+import {
+	ChevronDownIcon,
+	ChevronRightIcon,
+	MonitorIcon,
+	MoonIcon,
+	SunIcon,
+} from "lucide-react";
 import type { ThemeMode } from "../lib/theme";
 import { Button } from "./ui/button";
 import {
@@ -14,10 +20,13 @@ export function ThemeSelector({
 	mode,
 	onModeChange,
 	disabled,
+	compact = false,
 }: {
 	mode: ThemeMode;
 	onModeChange: (mode: ThemeMode) => void;
 	disabled: boolean;
+	/** A quieter trigger that opens upward, for the public footer. */
+	compact?: boolean;
 }) {
 	const choices = [
 		{ value: "light", label: m.theme_light(), Icon: SunIcon },
@@ -29,15 +38,25 @@ export function ThemeSelector({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="outline" disabled={disabled} aria-label={m.theme()}>
+				<Button
+					variant={compact ? "ghost" : "outline"}
+					size={compact ? "sm" : "default"}
+					disabled={disabled}
+					aria-label={m.theme()}
+					className={compact ? "text-muted-foreground" : undefined}
+				>
 					<selected.Icon aria-hidden="true" />
 					{selected.label}
-					<ChevronRightIcon aria-hidden="true" className="ml-3 size-4" />
+					{compact ? (
+						<ChevronDownIcon aria-hidden="true" className="size-3.5" />
+					) : (
+						<ChevronRightIcon aria-hidden="true" className="ml-3 size-4" />
+					)}
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent
-				side="right"
-				align="start"
+				side={compact ? "top" : "right"}
+				align={compact ? "end" : "start"}
 				className="min-w-(--radix-dropdown-menu-trigger-width)"
 			>
 				<DropdownMenuRadioGroup

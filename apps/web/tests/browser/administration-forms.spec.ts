@@ -2,6 +2,7 @@ import { m } from "@recount/i18n/messages";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
+import { gate as createGate } from "../gate";
 import {
 	data,
 	editMemberRole,
@@ -34,7 +35,6 @@ for (const locale of ["en", "fr"] as const) {
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Private",
-					slug: "private",
 				}),
 			),
 		);
@@ -113,14 +113,8 @@ for (const locale of ["en", "fr"] as const) {
 			);
 			await expect(submit).toBeEnabled();
 			await select.selectOption(kind === "member" ? "admin" : "member");
-			let ready!: () => void;
-			let release!: () => void;
-			const received = new Promise<void>((resolve) => {
-				ready = resolve;
-			});
-			const gate = new Promise<void>((resolve) => {
-				release = resolve;
-			});
+			const { promise: received, release: ready } = createGate();
+			const { promise: gate, release } = createGate();
 			let writes = 0;
 			await page.route("**/_serverFn/**", async (route) => {
 				if (route.request().method() !== "POST") return route.continue();
@@ -211,7 +205,6 @@ for (const kind of ["member", "grant"] as const) {
 					requestId: crypto.randomUUID(),
 					organizationId: organization.id,
 					name: "Private",
-					slug: "private",
 				}),
 			),
 		);
@@ -244,10 +237,7 @@ for (const kind of ["member", "grant"] as const) {
 		});
 		await expect(submit).toBeEnabled();
 		await select.selectOption(kind === "member" ? "admin" : "member");
-		let release!: () => void;
-		const gate = new Promise<void>((resolve) => {
-			release = resolve;
-		});
+		const { promise: gate, release } = createGate();
 		let received = false;
 		let settled = false;
 		let writes = 0;

@@ -13,7 +13,6 @@ import {
 	tableFeatures,
 } from "@tanstack/react-table";
 import { ArrowDownIcon, ArrowDownUpIcon, ArrowUpIcon } from "lucide-react";
-import { Button } from "../ui/button";
 import { TableHead, TableHeader, TableRow } from "../ui/table";
 
 export const memberTableFeatures = tableFeatures({
@@ -51,7 +50,6 @@ export function MemberTableHeader<T extends RowData>({
 						return (
 							<TableHead
 								key={header.id}
-								className="text-[11px] font-semibold uppercase tracking-wide"
 								aria-sort={
 									sorted === "asc"
 										? "ascending"
@@ -61,17 +59,16 @@ export function MemberTableHeader<T extends RowData>({
 								}
 							>
 								{header.column.getCanSort() ? (
-									<Button
-										variant="ghost"
+									<button
+										type="button"
 										disabled={!hydrated}
-										size="sm"
-										className="-ml-2 text-[11px] uppercase"
+										className="-ml-2 inline-flex h-7 items-center gap-1 rounded-md px-2 font-semibold uppercase tracking-wide hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
 										aria-label={m.settings_sort_by({ column: label })}
 										onClick={header.column.getToggleSortingHandler()}
 									>
 										<table.FlexRender header={header} />
 										<Icon aria-hidden="true" className="size-3.5" />
-									</Button>
+									</button>
 								) : (
 									<table.FlexRender header={header} />
 								)}

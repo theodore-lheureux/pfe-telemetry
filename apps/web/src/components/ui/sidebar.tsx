@@ -22,8 +22,6 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-const SIDEBAR_COOKIE_NAME = "recount_sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "18rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
@@ -72,8 +70,6 @@ function SidebarProvider({
 			const openState = typeof value === "function" ? value(open) : value;
 			if (setOpenProp) setOpenProp(openState);
 			else _setOpen(openState);
-			// biome-ignore lint/suspicious/noDocumentCookie: Cookie Store is not available in every supported browser.
-			document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
 		},
 		[setOpenProp, open],
 	);

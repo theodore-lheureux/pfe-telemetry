@@ -126,6 +126,108 @@ test("manages native memberships and restricts administrator owner controls", as
 	).toHaveLength(0);
 });
 
+test("embedded grant editors give the same member independent labels, writes and local focus in two projects", async ({
+	page,
+	workspace,
+}) => {
+	const owner = await workspace.signIn(page, "owner@example.invalid");
+	const org = data(
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Embedded grants",
+				slug: "embedded-grants",
+			}),
+		),
+	);
+	const collaborator = await workspace.signIn(page, "embedded@example.invalid");
+	const membership = await workspace.auth.api.addMember({
+		body: {
+			organizationId: org.id,
+			userId: collaborator.userId,
+			role: "member",
+		},
+	});
+	const projects = [];
+	for (const slug of ["first", "second"])
+		projects.push(
+			data(
+				await workspace.operations(owner.headers, (actor) =>
+					projectDomain.createProject(workspace.database.db, actor, {
+						requestId: crypto.randomUUID(),
+						organizationId: org.id,
+						name: `Embedded ${slug}`,
+					}),
+				),
+			),
+		);
+	await workspace.signIn(page, "owner@example.invalid");
+	await page.goto(
+		settingsUrl(
+			`${workspace.origin}/organizations/${org.id}`,
+			"organization-members",
+		),
+	);
+	await openMemberActions(page, "embedded@example.invalid");
+	await page
+		.getByRole("menuitem", { name: "Manage project access", exact: true })
+		.click();
+	const first = page.getByRole("region", {
+		name: projects[0].name,
+		exact: true,
+	});
+	const second = page.getByRole("region", {
+		name: projects[1].name,
+		exact: true,
+	});
+	const label = "Project role for embedded@example.invalid";
+	const firstId = await first
+		.getByLabel(label, { exact: true })
+		.getAttribute("id");
+	const secondId = await second
+		.getByLabel(label, { exact: true })
+		.getAttribute("id");
+	expect(firstId).not.toBe(secondId);
+	for (const [section, role, project] of [
+		[first, "viewer", projects[0]],
+		[second, "admin", projects[1]],
+	] as const) {
+		await section.getByLabel(label, { exact: true }).selectOption(role);
+		await section
+			.getByRole("button", {
+				name: "Save project grant for embedded@example.invalid",
+				exact: true,
+			})
+			.click();
+		await expect(
+			section.getByRole("heading", { name: project.name, exact: true }),
+		).toBeFocused();
+		const grants = data(
+			await workspace.operations(owner.headers, (actor) =>
+				projectDomain.listProjectMembers(workspace.database.db, actor, {
+					organizationId: org.id,
+					projectId: project.id,
+				}),
+			),
+		);
+		expect(grants.find((grant) => grant.memberId === membership.id)?.role).toBe(
+			role,
+		);
+	}
+	await first
+		.getByRole("button", {
+			name: "Remove explicit project grant for embedded@example.invalid",
+			exact: true,
+		})
+		.click();
+	await page
+		.getByRole("button", { name: "Confirm access change", exact: true })
+		.click();
+	await expect(
+		first.getByRole("heading", { name: projects[0].name, exact: true }),
+	).toBeFocused();
+	await expect(second.getByLabel(label, { exact: true })).toHaveValue("admin");
+});
+
 test("effective project administrators grant access and can give up their own administration", async ({
 	page,
 	workspace,
@@ -145,7 +247,6 @@ test("effective project administrators grant access and can give up their own ad
 				requestId: crypto.randomUUID(),
 				organizationId: org.id,
 				name: "Private project",
-				slug: "private",
 			}),
 		),
 	);
@@ -617,8 +718,9 @@ test("recovers pending invitation delivery with native resend and renews expired
 		.getByLabel("Email address", { exact: true })
 		.fill("delivery@example.invalid");
 	await page
-		.getByRole("button", { name: "Send invitation", exact: true })
+		.getByRole("button", { name: "Invite team members", exact: true })
 		.click();
+	await expect(page.getByRole("dialog")).toHaveCount(0);
 	await expect(
 		page.getByText("Invitation created.", { exact: false }),
 	).toBeVisible();

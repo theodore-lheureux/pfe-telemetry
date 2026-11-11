@@ -3,6 +3,7 @@ import { and, asc, eq, or, sql } from "drizzle-orm";
 import type { getDatabase } from "../db/client.server";
 import { member, project, projectMember } from "../db/schema";
 import { createOnce } from "../lib/create-once.server";
+import { OperationError } from "../lib/operation-error";
 import {
 	type Actor,
 	requireOrganization,
@@ -20,11 +21,11 @@ import type {
 	ProjectSummary,
 	UpdateProjectInput,
 } from "./contracts";
-import { OperationError } from "./errors";
 import {
 	changedProjectTags,
 	parseProjectCustomization,
 } from "./project-customization";
+import { projectSummaryColumns } from "./project-summary.server";
 import { parseCreateProjectInput } from "./validation";
 
 type Database = ReturnType<typeof getDatabase>;
@@ -37,14 +38,7 @@ export async function listProjects(
 	const membership = await requireOrganization(database, actor, organizationId);
 	const entries = await database
 		.select({
-			id: project.id,
-			organizationId: project.organizationId,
-			name: project.name,
-			slug: project.slug,
-			tags: project.tags,
-			projectGroup: project.projectGroup,
-			timeZone: project.timeZone,
-			weekStartsOn: project.weekStartsOn,
+			...projectSummaryColumns,
 			assignedRole: projectMember.role,
 		})
 		.from(project)
@@ -87,13 +81,12 @@ export async function createProject(
 	input = parseCreateProjectInput(input);
 	return createOnce(database, {
 		actorId: actor.id,
-		requestId: input.requestId,
 		scope: {
 			operation: "create-project",
 			organizationId: input.organizationId,
 			projectId: null,
 		},
-		values: [input.name, input.slug],
+		submission: input,
 		resourceId: randomUUID(),
 		authorize: async (tx) => {
 			const membership = await requireOrganization(
@@ -113,7 +106,6 @@ export async function createProject(
 				id,
 				organizationId: input.organizationId,
 				name: input.name,
-				slug: input.slug,
 				createdBy: actor.id,
 			});
 		},

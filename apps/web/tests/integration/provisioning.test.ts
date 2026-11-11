@@ -56,13 +56,11 @@ test("shipped ingestion grants are repeatable, SELECT-only and deny unrelated au
 		await provision();
 		await database.pool.query(`
 			INSERT INTO app.organization (id,name,slug,created_at) VALUES ('test-org','Test','test',now());
-			INSERT INTO app.project (id,organization_id,name,slug) VALUES ('019a4790-d1da-7000-8000-000000000002','test-org','Test','test');
-			INSERT INTO ingestion.collector_credential (id,organization_id,project_id,source_id,name,token_sha256,root_id,root_kind)
-			VALUES ('019a4790-d1da-7000-8000-000000000001','test-org','019a4790-d1da-7000-8000-000000000002','source','Test',repeat('a',64),'node1',1);
-			INSERT INTO ingestion.collector_root_grant (credential_id,project_id,organization_id,resource_id,resource_kind,adapter,allowed_local_kinds)
-			VALUES ('019a4790-d1da-7000-8000-000000000001','019a4790-d1da-7000-8000-000000000002','test-org','node1',1,'linux',ARRAY[4]);
-			INSERT INTO ingestion.collector_resource_grant (credential_id,project_id,organization_id,resource_id,resource_kind)
-			VALUES ('019a4790-d1da-7000-8000-000000000001','019a4790-d1da-7000-8000-000000000002','test-org','sensor1',8);
+			INSERT INTO app.project (id,organization_id,name) VALUES ('019a4790-d1da-7000-8000-000000000002','test-org','Test');
+			INSERT INTO ingestion.enrollment_key (id,organization_id,project_id,name,key_sha256)
+			VALUES ('019a4790-d1da-7000-8000-000000000001','test-org','019a4790-d1da-7000-8000-000000000002','Test',repeat('a',64));
+			INSERT INTO ingestion.collector_node (id,organization_id,project_id,enrollment_key_id,machine_id,hostname,public_key,revoked_at)
+			VALUES ('019a4790-d1da-7000-8000-000000000003','test-org','019a4790-d1da-7000-8000-000000000002','019a4790-d1da-7000-8000-000000000001','node1','node1',repeat('A',43),now());
 		`);
 		const url = new URL(database.url);
 		url.username = role;
@@ -73,24 +71,10 @@ test("shipped ingestion grants are repeatable, SELECT-only and deny unrelated au
 		expect(
 			(
 				await roleClient.query(
-					"SELECT project_id FROM ingestion.collector_credential WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at > statement_timestamp())",
+					"SELECT id FROM ingestion.collector_node WHERE revoked_at IS NOT NULL",
 				)
 			).rows,
-		).toEqual([{ project_id: "019a4790-d1da-7000-8000-000000000002" }]);
-		expect(
-			(
-				await roleClient.query(
-					"SELECT resource_id FROM ingestion.collector_root_grant",
-				)
-			).rows,
-		).toEqual([{ resource_id: "node1" }]);
-		expect(
-			(
-				await roleClient.query(
-					"SELECT resource_id FROM ingestion.collector_resource_grant",
-				)
-			).rows,
-		).toEqual([{ resource_id: "sensor1" }]);
+		).toEqual([{ id: "019a4790-d1da-7000-8000-000000000003" }]);
 		expect(
 			(
 				await roleClient.query(
@@ -106,15 +90,12 @@ test("shipped ingestion grants are repeatable, SELECT-only and deny unrelated au
 			'SELECT * FROM app."user"',
 			"SELECT * FROM app.session",
 			"SELECT * FROM app.project",
-			"INSERT INTO ingestion.collector_credential SELECT * FROM ingestion.collector_credential",
-			"UPDATE ingestion.collector_credential SET name='denied'",
-			"DELETE FROM ingestion.collector_credential",
+			"SELECT public_key FROM ingestion.collector_node",
+			"SELECT * FROM ingestion.collector_node",
+			"SELECT * FROM ingestion.enrollment_key",
+			"UPDATE ingestion.collector_node SET revoked_at=NULL",
+			"DELETE FROM ingestion.collector_node",
 			"CREATE TABLE ingestion.denied (id integer)",
-			"INSERT INTO ingestion.collector_root_grant SELECT * FROM ingestion.collector_root_grant",
-			"UPDATE ingestion.collector_root_grant SET allowed_local_kinds=ARRAY[4]",
-			"DELETE FROM ingestion.collector_root_grant",
-			"INSERT INTO ingestion.collector_resource_grant SELECT * FROM ingestion.collector_resource_grant",
-			"DELETE FROM ingestion.collector_resource_grant",
 		])
 			await expect(roleClient.query(query)).rejects.toMatchObject({
 				code: "42501",
