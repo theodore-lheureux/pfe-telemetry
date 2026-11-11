@@ -27,7 +27,8 @@
 
 ## Frontend
 
-- Prefer appropriate shadcn/ui components using the existing `apps/web/components.json` configuration. Keep native form semantics, typed Router links and accessible async confirmation behavior.
+- Prefer appropriate shadcn/ui components using the existing `apps/web/components.json` configuration. When a needed component is missing, add it with the shadcn CLI instead of hand-building an equivalent; the shadcn MCP server configured in `.mcp.json` and `opencode.json` searches the registry and its examples. Keep native form semantics, typed Router links and accessible async confirmation behavior.
+- Before writing a component or helper, look for an existing one across the web application and extend or share it rather than duplicating it. Split pages into focused components and hooks; a file that mixes several views, data loading and table definitions should be divided.
 - Support English and French throughout the UI and transactional emails with shared compiled catalogs and locale-aware formatting. Resolve locale per request; pass email locale explicitly. Keep technical identifiers, commands and protocol values unchanged.
 - Position form dialogs near the top of the viewport, with responsive width and scrollable content. Avoid repeating the same information in the title, description, field label and action: simple single-field dialogs need one clear title, an accessible field label (visually hidden when redundant), and concise Cancel/Save actions. Add descriptions only when they explain a constraint or consequence.
 - Build dialog buttons with `DialogActions` or `AlertDialogActions` from `apps/web/src/components/dialog-actions.tsx`: an outline cancel comes first and the confirming action last. Stack alternative full-width actions with `ActionStack`, and keep a field's label and input in their own group. Biome rejects hand-built dialog footers.

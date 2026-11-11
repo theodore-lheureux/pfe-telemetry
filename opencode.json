@@ -1,0 +1,10 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "shadcn": {
+      "type": "local",
+      "command": ["bunx", "shadcn@4.23.0", "mcp", "--cwd", "apps/web"],
+      "enabled": true
+    }
+  }
+}
