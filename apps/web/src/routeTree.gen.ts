@@ -11,17 +11,25 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as DotwellKnownRecountCollectorKeysRouteImport } from './routes/[.]well-known/recount-collector-keys'
 import { Route as AppWorkspaceRouteRouteImport } from './routes/_app/_workspace/route'
+import { Route as ApiReauthenticationRouteImport } from './routes/api/reauthentication'
 import { Route as InvitationsInvitationIdRouteImport } from './routes/invitations/$invitationId'
 import { Route as AppWorkspaceIndexRouteImport } from './routes/_app/_workspace/index'
 import { Route as AppWorkspaceSettingsRouteImport } from './routes/_app/_workspace/settings'
+import { Route as ApiActivityLiveRouteImport } from './routes/api/activity/live'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiCollectorsEnrollRouteImport } from './routes/api/collectors/enroll'
+import { Route as ApiCollectorsTokenRouteImport } from './routes/api/collectors/token'
 import { Route as AppWorkspaceOrganizationsOrganizationIdRouteRouteImport } from './routes/_app/_workspace/organizations/$organizationId/route'
 import { Route as AppWorkspaceOrganizationsNewRouteImport } from './routes/_app/_workspace/organizations/new'
 import { Route as AppWorkspaceOrganizationsOrganizationIdIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/index'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/route'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsNewRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/new'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/index'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/route'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/index'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/live'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/index'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionId'
 
@@ -34,9 +42,20 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownRecountCollectorKeysRoute =
+  DotwellKnownRecountCollectorKeysRouteImport.update({
+    id: '/.well-known/recount-collector-keys',
+    path: '/.well-known/recount-collector-keys',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AppWorkspaceRouteRoute = AppWorkspaceRouteRouteImport.update({
   id: '/_workspace',
   getParentRoute: () => AppRouteRoute,
+} as any)
+const ApiReauthenticationRoute = ApiReauthenticationRouteImport.update({
+  id: '/api/reauthentication',
+  path: '/api/reauthentication',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const InvitationsInvitationIdRoute = InvitationsInvitationIdRouteImport.update({
   id: '/invitations/$invitationId',
@@ -53,9 +72,24 @@ const AppWorkspaceSettingsRoute = AppWorkspaceSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppWorkspaceRouteRoute,
 } as any)
+const ApiActivityLiveRoute = ApiActivityLiveRouteImport.update({
+  id: '/api/activity/live',
+  path: '/api/activity/live',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCollectorsEnrollRoute = ApiCollectorsEnrollRouteImport.update({
+  id: '/api/collectors/enroll',
+  path: '/api/collectors/enroll',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCollectorsTokenRoute = ApiCollectorsTokenRouteImport.update({
+  id: '/api/collectors/token',
+  path: '/api/collectors/token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppWorkspaceOrganizationsOrganizationIdRouteRoute =
@@ -99,6 +133,33 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute =
         AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
     } as any,
   )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteImport.update(
+    {
+      id: '/activity',
+      path: '/activity',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRouteImport.update(
+    {
+      id: '/',
+      path: '/',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRouteImport.update(
+    {
+      id: '/live',
+      path: '/live',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute,
+    } as any,
+  )
 const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute =
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRouteImport.update(
     {
@@ -121,29 +182,44 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutio
 export interface FileRoutesByFullPath {
   '/': typeof AppWorkspaceIndexRoute
   '/login': typeof LoginRoute
+  '/.well-known/recount-collector-keys': typeof DotwellKnownRecountCollectorKeysRoute
+  '/api/reauthentication': typeof ApiReauthenticationRoute
   '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/settings': typeof AppWorkspaceSettingsRoute
+  '/api/activity/live': typeof ApiActivityLiveRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/collectors/enroll': typeof ApiCollectorsEnrollRoute
+  '/api/collectors/token': typeof ApiCollectorsTokenRoute
   '/organizations/$organizationId': typeof AppWorkspaceOrganizationsOrganizationIdRouteRouteWithChildren
   '/organizations/new': typeof AppWorkspaceOrganizationsNewRoute
   '/organizations/$organizationId/': typeof AppWorkspaceOrganizationsOrganizationIdIndexRoute
   '/organizations/$organizationId/projects/$projectId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteWithChildren
   '/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
+  '/organizations/$organizationId/projects/$projectId/activity': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren
   '/organizations/$organizationId/projects/$projectId/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
+  '/organizations/$organizationId/projects/$projectId/activity/live': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute
   '/organizations/$organizationId/projects/$projectId/executions/$executionId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute
+  '/organizations/$organizationId/projects/$projectId/activity/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
   '/organizations/$organizationId/projects/$projectId/executions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppWorkspaceIndexRoute
   '/login': typeof LoginRoute
+  '/.well-known/recount-collector-keys': typeof DotwellKnownRecountCollectorKeysRoute
+  '/api/reauthentication': typeof ApiReauthenticationRoute
   '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/settings': typeof AppWorkspaceSettingsRoute
+  '/api/activity/live': typeof ApiActivityLiveRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/collectors/enroll': typeof ApiCollectorsEnrollRoute
+  '/api/collectors/token': typeof ApiCollectorsTokenRoute
   '/organizations/new': typeof AppWorkspaceOrganizationsNewRoute
   '/organizations/$organizationId': typeof AppWorkspaceOrganizationsOrganizationIdIndexRoute
   '/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
   '/organizations/$organizationId/projects/$projectId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
+  '/organizations/$organizationId/projects/$projectId/activity/live': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute
   '/organizations/$organizationId/projects/$projectId/executions/$executionId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute
+  '/organizations/$organizationId/projects/$projectId/activity': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
   '/organizations/$organizationId/projects/$projectId/executions': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
 }
 export interface FileRoutesById {
@@ -151,17 +227,25 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/_workspace': typeof AppWorkspaceRouteRouteWithChildren
+  '/.well-known/recount-collector-keys': typeof DotwellKnownRecountCollectorKeysRoute
+  '/api/reauthentication': typeof ApiReauthenticationRoute
   '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/_app/_workspace/settings': typeof AppWorkspaceSettingsRoute
+  '/api/activity/live': typeof ApiActivityLiveRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/collectors/enroll': typeof ApiCollectorsEnrollRoute
+  '/api/collectors/token': typeof ApiCollectorsTokenRoute
   '/_app/_workspace/': typeof AppWorkspaceIndexRoute
   '/_app/_workspace/organizations/$organizationId': typeof AppWorkspaceOrganizationsOrganizationIdRouteRouteWithChildren
   '/_app/_workspace/organizations/new': typeof AppWorkspaceOrganizationsNewRoute
   '/_app/_workspace/organizations/$organizationId/': typeof AppWorkspaceOrganizationsOrganizationIdIndexRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteWithChildren
   '/_app/_workspace/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/live': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
 }
 export interface FileRouteTypes {
@@ -169,54 +253,82 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/.well-known/recount-collector-keys'
+    | '/api/reauthentication'
     | '/invitations/$invitationId'
     | '/settings'
+    | '/api/activity/live'
     | '/api/auth/$'
+    | '/api/collectors/enroll'
+    | '/api/collectors/token'
     | '/organizations/$organizationId'
     | '/organizations/new'
     | '/organizations/$organizationId/'
     | '/organizations/$organizationId/projects/$projectId'
     | '/organizations/$organizationId/projects/new'
+    | '/organizations/$organizationId/projects/$projectId/activity'
     | '/organizations/$organizationId/projects/$projectId/'
+    | '/organizations/$organizationId/projects/$projectId/activity/live'
     | '/organizations/$organizationId/projects/$projectId/executions/$executionId'
+    | '/organizations/$organizationId/projects/$projectId/activity/'
     | '/organizations/$organizationId/projects/$projectId/executions/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/.well-known/recount-collector-keys'
+    | '/api/reauthentication'
     | '/invitations/$invitationId'
     | '/settings'
+    | '/api/activity/live'
     | '/api/auth/$'
+    | '/api/collectors/enroll'
+    | '/api/collectors/token'
     | '/organizations/new'
     | '/organizations/$organizationId'
     | '/organizations/$organizationId/projects/new'
     | '/organizations/$organizationId/projects/$projectId'
+    | '/organizations/$organizationId/projects/$projectId/activity/live'
     | '/organizations/$organizationId/projects/$projectId/executions/$executionId'
+    | '/organizations/$organizationId/projects/$projectId/activity'
     | '/organizations/$organizationId/projects/$projectId/executions'
   id:
     | '__root__'
     | '/_app'
     | '/login'
     | '/_app/_workspace'
+    | '/.well-known/recount-collector-keys'
+    | '/api/reauthentication'
     | '/invitations/$invitationId'
     | '/_app/_workspace/settings'
+    | '/api/activity/live'
     | '/api/auth/$'
+    | '/api/collectors/enroll'
+    | '/api/collectors/token'
     | '/_app/_workspace/'
     | '/_app/_workspace/organizations/$organizationId'
     | '/_app/_workspace/organizations/new'
     | '/_app/_workspace/organizations/$organizationId/'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId'
     | '/_app/_workspace/organizations/$organizationId/projects/new'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/live'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionId'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   AppRouteRoute: typeof AppRouteRouteWithChildren
   LoginRoute: typeof LoginRoute
+  DotwellKnownRecountCollectorKeysRoute: typeof DotwellKnownRecountCollectorKeysRoute
+  ApiReauthenticationRoute: typeof ApiReauthenticationRoute
   InvitationsInvitationIdRoute: typeof InvitationsInvitationIdRoute
+  ApiActivityLiveRoute: typeof ApiActivityLiveRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiCollectorsEnrollRoute: typeof ApiCollectorsEnrollRoute
+  ApiCollectorsTokenRoute: typeof ApiCollectorsTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -235,12 +347,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/.well-known/recount-collector-keys': {
+      id: '/.well-known/recount-collector-keys'
+      path: '/.well-known/recount-collector-keys'
+      fullPath: '/.well-known/recount-collector-keys'
+      preLoaderRoute: typeof DotwellKnownRecountCollectorKeysRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/_workspace': {
       id: '/_app/_workspace'
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppWorkspaceRouteRouteImport
       parentRoute: typeof AppRouteRoute
+    }
+    '/api/reauthentication': {
+      id: '/api/reauthentication'
+      path: '/api/reauthentication'
+      fullPath: '/api/reauthentication'
+      preLoaderRoute: typeof ApiReauthenticationRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/invitations/$invitationId': {
       id: '/invitations/$invitationId'
@@ -263,11 +389,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceSettingsRouteImport
       parentRoute: typeof AppWorkspaceRouteRoute
     }
+    '/api/activity/live': {
+      id: '/api/activity/live'
+      path: '/api/activity/live'
+      fullPath: '/api/activity/live'
+      preLoaderRoute: typeof ApiActivityLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/collectors/enroll': {
+      id: '/api/collectors/enroll'
+      path: '/api/collectors/enroll'
+      fullPath: '/api/collectors/enroll'
+      preLoaderRoute: typeof ApiCollectorsEnrollRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/collectors/token': {
+      id: '/api/collectors/token'
+      path: '/api/collectors/token'
+      fullPath: '/api/collectors/token'
+      preLoaderRoute: typeof ApiCollectorsTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/_workspace/organizations/$organizationId': {
@@ -312,6 +459,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRouteImport
       parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
     }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity'
+      path: '/activity'
+      fullPath: '/organizations/$organizationId/projects/$projectId/activity'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/'
+      path: '/'
+      fullPath: '/organizations/$organizationId/projects/$projectId/activity/'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/live': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/live'
+      path: '/live'
+      fullPath: '/organizations/$organizationId/projects/$projectId/activity/live'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute
+    }
     '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/': {
       id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/'
       path: '/executions'
@@ -329,7 +497,26 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteChildren {
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
+}
+
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteChildren: AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteChildren =
+  {
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute,
+  }
+
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute._addFileChildren(
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteChildren,
+  )
+
 interface AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren {
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
@@ -337,6 +524,8 @@ interface AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChil
 
 const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren: AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren =
   {
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren,
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute:
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute,
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionIdRoute:
@@ -404,8 +593,13 @@ const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   AppRouteRoute: AppRouteRouteWithChildren,
   LoginRoute: LoginRoute,
+  DotwellKnownRecountCollectorKeysRoute: DotwellKnownRecountCollectorKeysRoute,
+  ApiReauthenticationRoute: ApiReauthenticationRoute,
   InvitationsInvitationIdRoute: InvitationsInvitationIdRoute,
+  ApiActivityLiveRoute: ApiActivityLiveRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiCollectorsEnrollRoute: ApiCollectorsEnrollRoute,
+  ApiCollectorsTokenRoute: ApiCollectorsTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -4,12 +4,21 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
 import { nitro } from "nitro/vite";
-import { defineConfig, loadEnv } from "vite";
-import { validatePublicAssets } from "../../infra/local/artifacts.ts";
+import { defineConfig, loadEnv, type UserConfig } from "vite";
 import { compilerOptions } from "../../packages/i18n/config.ts";
+import { validateMessageCatalogs } from "../../packages/i18n/scripts/catalogs.ts";
+import { validatePublicAssets } from "../../tooling/artifact-policy.ts";
+import { compileTelemetrySchema } from "./scripts/compile-telemetry.ts";
 import { drainProcessAuthEmailDelivery } from "./src/auth/email-delivery.server.ts";
 
-export default defineConfig(({ mode }) => {
+async function closeLiveActivity() {
+	const activity = await import("./src/activity/live.server.ts");
+	await activity.closeLiveStreams();
+}
+
+export default defineConfig(async ({ mode }) => {
+	await validateMessageCatalogs();
+	await compileTelemetrySchema();
 	const env = loadEnv(
 		mode,
 		fileURLToPath(new URL(".", import.meta.url)),
@@ -43,9 +52,18 @@ export default defineConfig(({ mode }) => {
 			},
 			{
 				name: "recount-auth-email-lifecycle",
-				closeServer: ({ reason }) =>
-					drainProcessAuthEmailDelivery(reason === "close"),
-				closePreviewServer: () => drainProcessAuthEmailDelivery(true),
+				closeServer: async ({ reason }) => {
+					await Promise.all([
+						drainProcessAuthEmailDelivery(reason === "close"),
+						closeLiveActivity(),
+					]);
+				},
+				closePreviewServer: async () => {
+					await Promise.all([
+						drainProcessAuthEmailDelivery(true),
+						closeLiveActivity(),
+					]);
+				},
 			},
 			paraglideVitePlugin({
 				...compilerOptions,
@@ -72,5 +90,5 @@ export default defineConfig(({ mode }) => {
 				},
 			}),
 		],
-	};
+	} satisfies UserConfig;
 });

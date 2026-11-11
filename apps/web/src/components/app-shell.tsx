@@ -5,12 +5,14 @@ import {
 	useMatch,
 	useMatchRoute,
 } from "@tanstack/react-router";
-import { ListIcon, SettingsIcon } from "lucide-react";
+import { ListIcon, RadioIcon, SettingsIcon } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
+import { rememberWorkspacePreference } from "../organizations/workspace-preference";
 import type { ApplicationUser } from "./identity-avatar";
 import { PasskeyEnrollmentPrompt } from "./passkey-enrollment-prompt";
 import { settingsSearch } from "./settings-links";
+import { ProjectTimeDisplayProvider } from "./time-display";
 import { Button } from "./ui/button";
 import {
 	ResizableHandle,
@@ -88,168 +90,212 @@ function AppShellContent({
 		shouldThrow: false,
 	});
 	const settings =
-		settingsMatch?.status === "success" ? settingsMatch : undefined;
+		workspace?.status === "success" && settingsMatch?.status === "success"
+			? settingsMatch
+			: undefined;
 	const organization = settings
 		? settings.context.settingsOrganization
 		: organizationMatch?.status === "success"
 			? organizationMatch.context.organization
-			: undefined;
+			: workspace?.context.workspaceOrganization;
 	const project = settings
-		? settings.context.settingsProject
+		? (settings.context.settingsProject ?? workspace?.context.workspaceProject)
 		: projectMatch?.status === "success"
 			? projectMatch.context.project
-			: undefined;
+			: workspace?.context.workspaceProject;
 	const projects = settings
 		? settings.context.settingsProjects
 		: organizationMatch?.status === "success"
 			? organizationMatch.context.projects
-			: [];
+			: (workspace?.context.workspaceProjects ?? []);
 	const organizations =
 		workspace?.status === "success" ? workspace.context.organizations : [];
 	const selection = {
 		organizationId: organization?.id,
 		projectId: project?.id,
 	};
+	const retainedOrganizationId = project?.organizationId;
+	const retainedProjectId = project?.id;
+	useEffect(() => {
+		if (!retainedOrganizationId || !retainedProjectId) return;
+		rememberWorkspacePreference(user.id, {
+			organizationId: retainedOrganizationId,
+			id: retainedProjectId,
+		});
+	}, [retainedOrganizationId, retainedProjectId, user.id]);
 	return (
-		<ResizablePanelGroup
-			orientation="horizontal"
-			disabled={isMobile || !hydrated}
-			className="max-md:[&>[data-panel]:first-child]:hidden!"
-			style={{ "--sidebar-width": `${width}px` } as CSSProperties}
-		>
-			<ResizablePanel
-				id="navigation"
-				panelRef={panelRef}
-				defaultSize={200}
-				minSize={isMobile ? 0 : 200}
-				maxSize={isMobile ? 0 : 360}
-				collapsedSize={isMobile ? 0 : 48}
-				collapsible
-				groupResizeBehavior="preserve-pixel-size"
-				className="[&_[data-slot=sidebar-gap]]:hidden"
-				onResize={({ inPixels }) => {
-					if (isMobile || inPixels === 0) return;
-					setWidth(inPixels);
-					const expanded = inPixels > 49;
-					if (expanded !== open) setOpen(expanded);
-				}}
+		<ProjectTimeDisplayProvider project={project}>
+			<ResizablePanelGroup
+				orientation="horizontal"
+				disabled={isMobile || !hydrated}
+				className="group/shell max-md:[&>[data-panel]:first-child]:hidden!"
+				style={{ "--sidebar-width": `${width}px` } as CSSProperties}
 			>
-				<Sidebar
-					collapsible="icon"
-					className="border-r-0 transition-none [&_[data-slot=sidebar-inner]]:bg-muted"
-					aria-label={m.project_navigation()}
+				<ResizablePanel
+					id="navigation"
+					panelRef={panelRef}
+					defaultSize={200}
+					minSize={isMobile ? 0 : 200}
+					maxSize={isMobile ? 0 : 360}
+					collapsedSize={isMobile ? 0 : 48}
+					collapsible
+					groupResizeBehavior="preserve-pixel-size"
+					className="[&_[data-slot=sidebar-gap]]:hidden"
+					onResize={({ inPixels }) => {
+						if (isMobile || inPixels === 0) return;
+						setWidth(inPixels);
+						const expanded = inPixels > 49;
+						if (expanded !== open) setOpen(expanded);
+					}}
 				>
-					<SidebarHeader className="gap-0 p-1.5">
-						<WorkspaceMenu
-							user={user}
-							onNavigate={() => setOpenMobile(false)}
-							selection={{
-								organization,
-								project,
-								projects,
-								organizations,
-								settingsSection: settings?.search.section,
-							}}
-						/>
-					</SidebarHeader>
-					<SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
-						<SidebarGroup className="p-1.5 pt-1">
-							<nav aria-label={m.project_navigation()}>
-								<SidebarMenu>
-									{project && (
-										<SidebarMenuItem>
-											<SidebarMenuButton
-												asChild
-												tooltip={m.executions()}
-												isActive={
-													!!matchRoute({
-														to: "/organizations/$organizationId/projects/$projectId/executions",
-														params: {
-															organizationId: project.organizationId,
-															projectId: project.id,
-														},
-														fuzzy: true,
-													})
-												}
-											>
-												<Link
-													to="/organizations/$organizationId/projects/$projectId/executions"
-													params={{
-														organizationId: project.organizationId,
-														projectId: project.id,
-													}}
-													activeProps={{ className: "active" }}
-													onClick={() => setOpenMobile(false)}
-												>
-													<ListIcon aria-hidden="true" />
-													<span>{m.executions()}</span>
-												</Link>
-											</SidebarMenuButton>
-										</SidebarMenuItem>
-									)}
-								</SidebarMenu>
-							</nav>
-						</SidebarGroup>
-					</SidebarContent>
-					<SidebarSeparator className="mx-2" />
-					<SidebarFooter className="gap-1 p-1.5">
-						<SidebarMenu>
-							<SidebarMenuItem>
-								<SidebarMenuButton
-									asChild
-									tooltip={m.settings()}
-									isActive={!!settings}
-								>
-									<Link
-										to="/settings"
-										search={settingsSearch(
-											project
-												? "project"
-												: organization
-													? "organization"
-													: "user",
-											selection,
+					<Sidebar
+						collapsible="icon"
+						className="transition-none group-data-[side=left]:border-r-0 group-data-[side=right]:border-l-0 [&_[data-slot=sidebar-inner]]:bg-muted"
+						aria-label={m.project_navigation()}
+					>
+						<SidebarHeader className="gap-0 p-1.5">
+							<WorkspaceMenu
+								user={user}
+								onNavigate={() => setOpenMobile(false)}
+								selection={{
+									organization,
+									project,
+									projects,
+									organizations,
+									settingsSection: settings?.search.section,
+								}}
+							/>
+						</SidebarHeader>
+						<SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
+							<SidebarGroup className="p-1.5 pt-1">
+								<nav aria-label={m.project_navigation()}>
+									<SidebarMenu>
+										{project && (
+											<>
+												<SidebarMenuItem>
+													<SidebarMenuButton
+														asChild
+														tooltip={m.activity_title()}
+														isActive={
+															!!matchRoute({
+																to: "/organizations/$organizationId/projects/$projectId/activity",
+																params: {
+																	organizationId: project.organizationId,
+																	projectId: project.id,
+																},
+																fuzzy: true,
+															})
+														}
+													>
+														<Link
+															to="/organizations/$organizationId/projects/$projectId/activity"
+															params={{
+																organizationId: project.organizationId,
+																projectId: project.id,
+															}}
+															onClick={() => setOpenMobile(false)}
+														>
+															<RadioIcon aria-hidden="true" />
+															<span>{m.activity_title()}</span>
+														</Link>
+													</SidebarMenuButton>
+												</SidebarMenuItem>
+												<SidebarMenuItem>
+													<SidebarMenuButton
+														asChild
+														tooltip={m.executions()}
+														isActive={
+															!!matchRoute({
+																to: "/organizations/$organizationId/projects/$projectId/executions",
+																params: {
+																	organizationId: project.organizationId,
+																	projectId: project.id,
+																},
+																fuzzy: true,
+															})
+														}
+													>
+														<Link
+															to="/organizations/$organizationId/projects/$projectId/executions"
+															params={{
+																organizationId: project.organizationId,
+																projectId: project.id,
+															}}
+															activeProps={{ className: "active" }}
+															onClick={() => setOpenMobile(false)}
+														>
+															<ListIcon aria-hidden="true" />
+															<span>{m.executions()}</span>
+														</Link>
+													</SidebarMenuButton>
+												</SidebarMenuItem>
+											</>
 										)}
-										activeOptions={{ includeSearch: false }}
-										onClick={() => setOpenMobile(false)}
+									</SidebarMenu>
+								</nav>
+							</SidebarGroup>
+						</SidebarContent>
+						<SidebarSeparator className="mx-2" />
+						<SidebarFooter className="gap-1 p-1.5">
+							<SidebarMenu>
+								<SidebarMenuItem>
+									<SidebarMenuButton
+										asChild
+										tooltip={m.settings()}
+										isActive={!!settings}
 									>
-										<SettingsIcon aria-hidden="true" />
-										<span>{m.settings()}</span>
-									</Link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						</SidebarMenu>
+										<Link
+											to="/settings"
+											search={settingsSearch(
+												project
+													? "project"
+													: organization
+														? "organization"
+														: "user",
+												selection,
+											)}
+											activeOptions={{ includeSearch: false }}
+											onClick={() => setOpenMobile(false)}
+										>
+											<SettingsIcon aria-hidden="true" />
+											<span>{m.settings()}</span>
+										</Link>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+							</SidebarMenu>
+							{isMobile && (
+								<SheetClose asChild>
+									<Button variant="outline">{m.close()}</Button>
+								</SheetClose>
+							)}
+						</SidebarFooter>
+					</Sidebar>
+				</ResizablePanel>
+				<ResizableHandle
+					data-sidebar-resize=""
+					aria-label={m.project_navigation()}
+					className="z-20 hidden w-0 bg-transparent focus-visible:ring-0 after:inset-y-1 after:w-3 md:flex"
+				/>
+				<ResizablePanel id="content" minSize={0} className="flex min-w-0">
+					<SidebarInset
+						id="main-content"
+						tabIndex={-1}
+						className="min-h-0 min-w-0 overflow-y-auto bg-background transition-[border-color,box-shadow] focus-visible:outline-none md:my-1 md:mr-1 md:rounded-lg md:border md:group-has-[[data-sidebar-resize]:hover]/shell:border-l-sidebar-ring md:group-has-[[data-sidebar-resize]:hover]/shell:shadow-[inset_2px_0_0_var(--sidebar-ring)] md:group-has-[[data-sidebar-resize][data-separator=active]]/shell:border-l-sidebar-ring md:group-has-[[data-sidebar-resize][data-separator=active]]/shell:shadow-[inset_2px_0_0_var(--sidebar-ring)] md:group-has-[[data-sidebar-resize]:focus-visible]/shell:border-l-sidebar-ring md:group-has-[[data-sidebar-resize]:focus-visible]/shell:shadow-[inset_2px_0_0_var(--sidebar-ring)]"
+					>
 						{isMobile && (
-							<SheetClose asChild>
-								<Button variant="outline">{m.close()}</Button>
-							</SheetClose>
+							<SidebarTrigger
+								aria-label={m.open_navigation()}
+								disabled={!hydrated}
+								className="fixed top-3 left-3 z-30 border bg-card shadow-sm"
+							/>
 						)}
-					</SidebarFooter>
-				</Sidebar>
-			</ResizablePanel>
-			<ResizableHandle
-				aria-label={m.project_navigation()}
-				className="z-20 hidden bg-transparent hover:bg-sidebar-ring focus-visible:bg-sidebar-ring md:flex"
-			/>
-			<ResizablePanel id="content" minSize={0} className="flex min-w-0">
-				<SidebarInset
-					id="main-content"
-					tabIndex={-1}
-					className="min-h-0 min-w-0 overflow-y-auto bg-background focus-visible:outline-none md:my-1 md:mr-1 md:rounded-lg md:border"
-				>
-					{isMobile && (
-						<SidebarTrigger
-							aria-label={m.open_navigation()}
-							disabled={!hydrated}
-							className="fixed top-3 left-3 z-30 border bg-card shadow-sm"
-						/>
-					)}
-					<div className="flex min-w-0 flex-col gap-6 p-4 pt-14 md:p-6">
-						<PasskeyEnrollmentPrompt />
-						{children}
-					</div>
-				</SidebarInset>
-			</ResizablePanel>
-		</ResizablePanelGroup>
+						<div className="flex min-w-0 flex-col gap-6 p-4 pt-14 md:p-6">
+							<PasskeyEnrollmentPrompt />
+							{children}
+						</div>
+					</SidebarInset>
+				</ResizablePanel>
+			</ResizablePanelGroup>
+		</ProjectTimeDisplayProvider>
 	);
 }

@@ -1,6 +1,7 @@
 import { paraglideMiddleware } from "@recount/i18n/server";
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 import { useNitroHooks as nitroHooks } from "nitro/app";
+import { closeLiveStreams } from "./activity/live.server";
 import { drainProcessAuthEmailDelivery } from "./auth/email-delivery.server";
 import { closeDatabase } from "./db/client.server";
 import { closeTelemetryClient } from "./executions/telemetry.server";
@@ -14,6 +15,7 @@ async function close() {
 	}
 	const results = await Promise.allSettled([
 		closeTelemetryClient(),
+		closeLiveStreams(),
 		closeDatabase(),
 	]);
 	if (failed || results.some((result) => result.status === "rejected")) {
