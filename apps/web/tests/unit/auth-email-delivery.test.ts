@@ -4,12 +4,10 @@ import {
 	drainProcessAuthEmailDelivery,
 	processAuthEmailDelivery,
 } from "../../src/auth/email-delivery.server";
+import { gate as createGate } from "../gate";
 
 test("email tasks stay owned after dispatch and drain waits for completion", async () => {
-	let release!: () => void;
-	const gate = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: gate, release } = createGate();
 	let completed = false;
 	const delivery = createAuthEmailDelivery();
 	delivery.track(
@@ -40,10 +38,7 @@ test("delivery failures are handled without exposing payloads and shutdown is bo
 	);
 	await delivery.drain();
 	expect(reports).toBe(1);
-	let release!: () => void;
-	const gate = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: gate, release } = createGate();
 	delivery.track(gate);
 	await expect(delivery.drain(5)).rejects.toThrow(
 		"did not drain before shutdown",
@@ -56,10 +51,7 @@ test("source and bundled host integration share one process-owned registry", asy
 	const first = processAuthEmailDelivery();
 	const second = processAuthEmailDelivery();
 	expect(first).toBe(second);
-	let release!: () => void;
-	const gate = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: gate, release } = createGate();
 	first.track(gate);
 	let closed = false;
 	const closing = drainProcessAuthEmailDelivery(true).then(() => {

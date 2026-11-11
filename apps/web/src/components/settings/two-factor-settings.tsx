@@ -1,24 +1,27 @@
 import { m } from "@recount/i18n/messages";
 import { getRouteApi, useHydrated } from "@tanstack/react-router";
-import { getGlobalBroadcastChannel } from "better-auth/client";
-import { DownloadIcon, ShieldCheckIcon } from "lucide-react";
+import {
+	CheckIcon,
+	CircleCheckIcon,
+	CopyIcon,
+	ShieldCheckIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { accountContextHeader } from "../../auth/account-context";
 import { authClient } from "../../auth/client";
 import { broadcastBetterAuthIdentity } from "../../auth/identity-state";
+import { AlertDialogActions } from "../dialog-actions";
 import { FormFeedback } from "../form-feedback";
 import { useLocaleChangeBlocker } from "../locale-safety";
+import { useMutationFeedback } from "../mutation-feedback";
+import { useStepUpAuthentication } from "../step-up-authentication";
 import {
 	AlertDialog,
-	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
-	AlertDialogFooter,
 	AlertDialogTitle,
 } from "../ui/alert-dialog";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -29,10 +32,14 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { useMutationOwner } from "../use-mutation-owner";
+import { usePageConfirmation } from "../use-page-confirmation";
 import { SettingsSection } from "./settings-section";
+
+type Copied = "copied" | "failed" | null;
 
 export function TwoFactorSettings() {
 	const { user } = getRouteApi("/_app").useRouteContext();
+	const requireStepUp = useStepUpAuthentication();
 	const hydrated = useHydrated();
 	const { begin, router } = useMutationOwner(user.id);
 	const session = authClient.useSession();
@@ -44,29 +51,24 @@ export function TwoFactorSettings() {
 	const liveIdentity = useRef<string | null>(null);
 	liveIdentity.current = session.error ? null : (session.data?.user.id ?? null);
 	const secretEpoch = useRef(0);
+	const setFeedback = useMutationFeedback();
 	const [setup, setSetup] = useState<{
-		uri?: string;
+		secret: string;
 		qr?: string;
-		codes: string[];
 	} | null>(null);
-	const [saved, setSaved] = useState(false);
+	// Open while the recovery codes dialog is shown; codes are held only until it closes.
+	const [recovery, setRecovery] = useState<{ codes: string[] | null } | null>(
+		null,
+	);
+	const [copied, setCopied] = useState<Copied>(null);
+	const [keyCopied, setKeyCopied] = useState<Copied>(null);
+	const codeInput = useRef<HTMLInputElement>(null);
 	const [code, setCode] = useState("");
 	const [pending, setPending] = useState(false);
 	const [message, setMessage] = useState("");
-	const [confirm, setConfirm] = useState<"disable" | "regenerate" | null>(null);
+	const [confirm, setConfirm] = usePageConfirmation<"disable">();
 	const busy = useRef(false);
 	useLocaleChangeBlocker(pending);
-	useEffect(
-		() =>
-			getGlobalBroadcastChannel().subscribe(() => {
-				secretEpoch.current++;
-				setSetup(null);
-				setCode("");
-				setSaved(false);
-				setConfirm(null);
-			}),
-		[],
-	);
 	useEffect(() => {
 		if (
 			session.isPending ||
@@ -74,9 +76,9 @@ export function TwoFactorSettings() {
 		)
 			return;
 		setSetup(null);
+		setRecovery(null);
 		secretEpoch.current++;
 		setCode("");
-		setSaved(false);
 		setConfirm(null);
 		if (!session.error) void router.invalidate({ sync: true }).catch(() => {});
 	}, [
@@ -85,29 +87,25 @@ export function TwoFactorSettings() {
 		session.data?.user.id,
 		user.id,
 		router,
+		setConfirm,
 	]);
-	useEffect(() => {
-		const clear = () => {
-			setSetup(null);
-			setCode("");
-			setSaved(false);
-		};
-		window.addEventListener("pagehide", clear);
-		return () => window.removeEventListener("pagehide", clear);
-	}, []);
 	async function run<T>(
 		action: (
 			signal: AbortSignal,
 		) => Promise<{ data: T | null; error: { code?: string } | null }>,
 		complete: (data: T, current: () => boolean) => void | Promise<void>,
 		refresh = false,
+		rejected?: (code: string | undefined) => string | undefined,
 	) {
 		if (busy.current || !accountMatches) return;
+		if (!(await requireStepUp({ userId: user.id, email: user.email }))) return;
 		const operation = begin(() => {
 			busy.current = false;
 			setPending(false);
 			setSetup(null);
+			setRecovery(null);
 			setCode("");
+			setConfirm(null);
 		});
 		if (!operation) return;
 		const epoch = secretEpoch.current;
@@ -124,6 +122,7 @@ export function TwoFactorSettings() {
 			if (result.error || !result.data) {
 				if (result.error?.code === "ACCOUNT_CHANGED") {
 					setSetup(null);
+					setRecovery(null);
 					setCode("");
 					setConfirm(null);
 					await router.invalidate({ sync: true }).catch(() => {});
@@ -132,7 +131,8 @@ export function TwoFactorSettings() {
 				setMessage(
 					result.error?.code === "SESSION_NOT_FRESH"
 						? m.error_session_fresh()
-						: m.the_action_was_not_completed_please_try_again(),
+						: (rejected?.(result.error?.code) ??
+								m.the_action_was_not_completed_please_try_again()),
 				);
 				return;
 			}
@@ -143,6 +143,7 @@ export function TwoFactorSettings() {
 			if (!current()) return;
 			if (confirmed.error || confirmed.data?.user.id !== user.id) {
 				setSetup(null);
+				setRecovery(null);
 				setCode("");
 				await router.invalidate({ sync: true }).catch(() => {});
 				return;
@@ -166,87 +167,153 @@ export function TwoFactorSettings() {
 	function securityFetchOptions(signal: AbortSignal) {
 		return { signal, headers: { [accountContextHeader]: user.id } };
 	}
-	function download() {
-		if (!setup || !accountMatches) return;
-		const url = URL.createObjectURL(
-			new Blob([`Recount\n\n${setup.codes.join("\n")}\n`], {
-				type: "text/plain;charset=utf-8",
-			}),
+	async function copy(value: string, done: (state: Copied) => void) {
+		try {
+			await navigator.clipboard.writeText(value);
+			done("copied");
+		} catch {
+			done("failed");
+		}
+	}
+	function closeSetup() {
+		setSetup(null);
+		setKeyCopied(null);
+		setCode("");
+		setMessage("");
+	}
+	function closeRecovery() {
+		setRecovery(null);
+		setCopied(null);
+		setMessage("");
+	}
+	function startSetup() {
+		void run(
+			(signal) =>
+				authClient.twoFactor.enable({
+					method: "totp",
+					fetchOptions: securityFetchOptions(signal),
+				}),
+			async (data, current) => {
+				if (!("totpURI" in data)) return;
+				const uri = data.totpURI;
+				let qr: string | undefined;
+				try {
+					qr = await (await import("qrcode")).toDataURL(uri, {
+						width: 240,
+						margin: 2,
+					});
+				} catch {
+					/* The setup key remains available if QR rendering is unavailable. */
+				}
+				if (!current()) return;
+				setKeyCopied(null);
+				setSetup({ secret: new URL(uri).searchParams.get("secret") ?? "", qr });
+			},
 		);
-		const link = document.createElement("a");
-		link.href = url;
-		link.download = "recount-recovery-codes.txt";
-		link.click();
-		URL.revokeObjectURL(url);
+	}
+	function verifySetup() {
+		if (!/^\d{6}$/.test(code)) {
+			setMessage(m.code_six_digits());
+			codeInput.current?.focus();
+			return;
+		}
+		void run(
+			(signal) =>
+				authClient.twoFactor.verifyTotp({
+					code,
+					trustDevice: false,
+					fetchOptions: securityFetchOptions(signal),
+				}),
+			() => closeSetup(),
+			true,
+			(errorCode) => {
+				if (errorCode !== "INVALID_CODE") return undefined;
+				setCode("");
+				requestAnimationFrame(() => codeInput.current?.focus());
+				return m.two_factor_setup_invalid();
+			},
+		);
+	}
+	function generateRecoveryCodes() {
+		void run(
+			(signal) =>
+				authClient.twoFactor.generateBackupCodes({
+					fetchOptions: securityFetchOptions(signal),
+				}),
+			(data) => {
+				setCopied(null);
+				setRecovery({ codes: data.backupCodes });
+				setFeedback(m.two_factor_recovery_generated(), "success");
+			},
+		);
 	}
 	const visibleSetup = accountMatches ? setup : null;
+	const visibleRecovery = accountMatches ? recovery : null;
+	const dialogHeader = "-mx-4 border-b px-4 pb-3";
 	return (
 		<SettingsSection
 			id="two-factor-authentication"
 			title={m.settings_two_factor()}
 			description={m.two_factor_description()}
 		>
-			<div>
-				<Badge variant="outline">
-					{user.twoFactorEnabled
-						? m.two_factor_enabled()
-						: m.two_factor_disabled()}
-				</Badge>
-			</div>
-			<div className="flex flex-wrap gap-2">
-				{!user.twoFactorEnabled ? (
-					<Button
-						disabled={!hydrated || !accountMatches || pending}
-						onClick={() =>
-							void run(
-								(signal) =>
-									authClient.twoFactor.enable({
-										method: "totp",
-										fetchOptions: securityFetchOptions(signal),
-									}),
-								async (data, current) => {
-									if (!("totpURI" in data) || !("backupCodes" in data)) return;
-									const uri = data.totpURI;
-									let qr: string | undefined;
-									try {
-										qr = await (await import("qrcode")).toDataURL(uri, {
-											width: 240,
-											margin: 2,
-										});
-									} catch {
-										/* The setup key remains available if QR rendering is unavailable. */
-									}
-									if (!current()) return;
-									setSaved(false);
-									setSetup({ uri, qr, codes: data.backupCodes });
-								},
-							)
-						}
-					>
-						<ShieldCheckIcon aria-hidden="true" />
-						{m.two_factor_setup()}
-					</Button>
-				) : (
-					<>
+			{user.twoFactorEnabled ? (
+				<>
+					<p className="flex items-center gap-2 font-medium">
+						<CircleCheckIcon
+							aria-hidden="true"
+							className="size-4 text-primary"
+						/>
+						{m.two_factor_enabled()}
+					</p>
+					<div className="flex max-w-2xl flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+						<div className="flex flex-col gap-1">
+							<p className="font-medium">{m.two_factor_app_title()}</p>
+							<p className="text-sm text-muted-foreground">
+								{m.two_factor_app_enabled()}
+							</p>
+						</div>
+						<div className="flex shrink-0 gap-2">
+							<Button
+								variant="outline"
+								disabled={!hydrated || !accountMatches || pending}
+								onClick={() => {
+									setMessage("");
+									setRecovery({ codes: null });
+								}}
+							>
+								{m.two_factor_recovery_title()}
+							</Button>
+							<Button
+								variant="destructive"
+								disabled={!hydrated || !accountMatches || pending}
+								onClick={() => {
+									setMessage("");
+									setConfirm("disable");
+								}}
+							>
+								{m.two_factor_disable()}
+							</Button>
+						</div>
+					</div>
+				</>
+			) : (
+				<>
+					<p className="text-sm text-muted-foreground">
+						{m.two_factor_disabled()}
+					</p>
+					<div>
 						<Button
-							variant="outline"
 							disabled={!hydrated || !accountMatches || pending}
-							onClick={() => setConfirm("regenerate")}
+							onClick={startSetup}
 						>
-							{m.two_factor_regenerate()}
+							<ShieldCheckIcon aria-hidden="true" />
+							{m.two_factor_setup()}
 						</Button>
-						<Button
-							variant="outline"
-							disabled={!hydrated || !accountMatches || pending}
-							onClick={() => setConfirm("disable")}
-						>
-							{m.two_factor_disable()}
-						</Button>
-					</>
-				)}
-			</div>
+					</div>
+				</>
+			)}
 			<FormFeedback
-				message={setup || confirm ? "" : message}
+				message={setup || recovery || confirm ? "" : message}
 				kind="error"
 				pending={pending}
 				reserveLine={false}
@@ -254,129 +321,176 @@ export function TwoFactorSettings() {
 			<Dialog
 				open={!!visibleSetup}
 				onOpenChange={(open) => {
-					if (!open && !pending) {
-						setSetup(null);
-						setCode("");
-						setSaved(false);
-					}
+					if (!open && !pending) closeSetup();
 				}}
 			>
 				<DialogContent
-					className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg"
+					className="sm:max-w-lg"
 					showCloseButton={!pending}
 					onEscapeKeyDown={(event) => {
 						if (pending) event.preventDefault();
 					}}
-					onInteractOutside={(event) => {
-						if (pending) event.preventDefault();
+					onInteractOutside={(event) => event.preventDefault()}
+					onOpenAutoFocus={(event) => {
+						event.preventDefault();
+						codeInput.current?.focus();
 					}}
 				>
-					<DialogHeader>
-						<DialogTitle>
-							{visibleSetup?.uri
-								? m.two_factor_setup()
-								: m.two_factor_recovery_title()}
-						</DialogTitle>
-						<DialogDescription>
-							{visibleSetup?.uri
-								? m.two_factor_scan()
-								: m.two_factor_recovery_help()}
-						</DialogDescription>
-					</DialogHeader>
-					{visibleSetup?.uri && (
-						<>
+					{visibleSetup && (
+						<form
+							method="post"
+							className="flex flex-col gap-4"
+							onSubmit={(event) => {
+								event.preventDefault();
+								verifySetup();
+							}}
+						>
+							<DialogHeader className={dialogHeader}>
+								<DialogTitle>{m.two_factor_setup()}</DialogTitle>
+							</DialogHeader>
+							<DialogDescription className="text-foreground">
+								{m.two_factor_scan()}
+							</DialogDescription>
 							{visibleSetup.qr && (
 								<img
 									src={visibleSetup.qr}
-									width={240}
-									height={240}
+									width={200}
+									height={200}
 									alt={m.two_factor_qr_alt()}
-									className="mx-auto rounded-md bg-white"
+									className="mx-auto my-2 size-50 rounded-sm bg-white"
 								/>
 							)}
-							<p className="text-sm font-medium">{m.two_factor_setup_key()}</p>
-							<code className="break-all rounded-md border p-2 text-sm select-all">
-								{new URL(visibleSetup.uri).searchParams.get("secret")}
-							</code>
-						</>
-					)}
-					<div className="flex flex-col gap-2">
-						<h3 className="font-semibold">{m.two_factor_recovery_title()}</h3>
-						<p className="text-sm text-muted-foreground">
-							{m.two_factor_recovery_help()}
-						</p>
-						<pre className="grid grid-cols-2 gap-2 rounded-md border p-3 text-sm select-all">
-							{visibleSetup?.codes.map((value) => (
-								<code key={value}>{value}</code>
-							))}
-						</pre>
-						<Button variant="outline" onClick={download}>
-							<DownloadIcon aria-hidden="true" />
-							{m.two_factor_download()}
-						</Button>
-					</div>
-					{visibleSetup?.uri && (
-						<form
-							method="post"
-							className="flex flex-col gap-3"
-							onSubmit={(event) => {
-								event.preventDefault();
-								if (saved)
-									void run(
-										(signal) =>
-											authClient.twoFactor.verifyTotp({
-												code,
-												trustDevice: false,
-												fetchOptions: securityFetchOptions(signal),
-											}),
-										() => {
-											setSetup(null);
-											setCode("");
-										},
-										true,
-									);
-							}}
-						>
-							<div className="flex items-center gap-2">
-								<Checkbox
-									id="saved-recovery-codes"
-									checked={saved}
-									onCheckedChange={(value) => setSaved(value === true)}
-									disabled={pending}
-								/>
-								<Label htmlFor="saved-recovery-codes">
-									{m.two_factor_saved_codes()}
-								</Label>
+							<div className="flex flex-col items-center gap-2 text-center">
+								<p className="text-muted-foreground">{m.two_factor_manual()}</p>
+								<div className="flex max-w-full items-center gap-1">
+									<code className="min-w-0 break-all font-mono text-sm select-all">
+										{visibleSetup.secret}
+									</code>
+									<Button
+										type="button"
+										size="icon-xs"
+										variant="ghost"
+										aria-label={m.settings_copy()}
+										onClick={() => void copy(visibleSetup.secret, setKeyCopied)}
+									>
+										{keyCopied === "copied" ? (
+											<CheckIcon aria-hidden="true" />
+										) : (
+											<CopyIcon aria-hidden="true" />
+										)}
+									</Button>
+								</div>
+								<CopyStatus state={keyCopied} />
 							</div>
-							<Label htmlFor="setup-totp-code">
-								{m.two_factor_authenticator_code()}
-							</Label>
-							<Input
-								id="setup-totp-code"
-								value={code}
-								onChange={(event) => setCode(event.target.value)}
-								autoComplete="one-time-code"
-								inputMode="numeric"
-								pattern="[0-9]{6}"
-								required
-								maxLength={6}
-								disabled={pending}
-							/>
+							<div className="mt-2 flex flex-col gap-2">
+								<Label htmlFor="setup-totp-code">
+									{m.two_factor_authenticator_code()}
+								</Label>
+								<Input
+									ref={codeInput}
+									id="setup-totp-code"
+									value={code}
+									onChange={(event) => {
+										setCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+										setMessage("");
+									}}
+									placeholder="123456"
+									autoComplete="one-time-code"
+									inputMode="numeric"
+									pattern="[0-9]{6}"
+									maxLength={6}
+									readOnly={pending}
+									aria-invalid={!!message}
+									aria-describedby="setup-totp-feedback"
+								/>
+							</div>
 							<Button
 								type="submit"
-								disabled={pending || !saved}
+								className="w-full"
+								disabled={pending}
 								pending={pending}
 								pendingLabel={m.verifying_code()}
 							>
 								{m.two_factor_enable()}
 							</Button>
 							<FormFeedback
+								id="setup-totp-feedback"
 								message={message}
 								kind="error"
 								reserveLine={false}
 							/>
 						</form>
 					)}
+				</DialogContent>
+			</Dialog>
+			<Dialog
+				open={!!visibleRecovery}
+				onOpenChange={(open) => {
+					if (!open && !pending) closeRecovery();
+				}}
+			>
+				<DialogContent
+					className="sm:max-w-md"
+					showCloseButton={!pending}
+					onEscapeKeyDown={(event) => {
+						if (pending) event.preventDefault();
+					}}
+					onInteractOutside={(event) => event.preventDefault()}
+				>
+					<DialogHeader className={dialogHeader}>
+						<DialogTitle>{m.two_factor_recovery_title()}</DialogTitle>
+					</DialogHeader>
+					<DialogDescription className="text-foreground">
+						{visibleRecovery?.codes
+							? m.two_factor_recovery_save()
+							: m.two_factor_recovery_intro()}
+					</DialogDescription>
+					{visibleRecovery?.codes && (
+						<div className="flex items-start justify-between gap-4 rounded-md bg-muted px-4 py-3">
+							<ul className="flex flex-col gap-1 font-mono text-sm select-all">
+								{visibleRecovery.codes.map((value) => (
+									<li key={value}>{value}</li>
+								))}
+							</ul>
+							<div className="flex flex-col items-end gap-1">
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									onClick={() =>
+										void copy(
+											visibleRecovery.codes?.join("\n") ?? "",
+											setCopied,
+										)
+									}
+								>
+									{copied === "copied" ? (
+										<CheckIcon aria-hidden="true" />
+									) : (
+										<CopyIcon aria-hidden="true" />
+									)}
+									{copied === "copied"
+										? m.settings_copied()
+										: m.two_factor_copy()}
+								</Button>
+								<CopyStatus state={copied} />
+							</div>
+						</div>
+					)}
+					<div>
+						<Button
+							variant="outline"
+							disabled={pending}
+							pending={pending}
+							pendingLabel={m.saving()}
+							onClick={generateRecoveryCodes}
+						>
+							{visibleRecovery?.codes
+								? m.two_factor_regenerate()
+								: m.two_factor_recovery_generate()}
+						</Button>
+					</div>
+					<FormFeedback message={message} kind="error" reserveLine={false} />
 				</DialogContent>
 			</Dialog>
 			<AlertDialog
@@ -390,55 +504,48 @@ export function TwoFactorSettings() {
 						if (pending) event.preventDefault();
 					}}
 				>
-					<AlertDialogTitle>
-						{confirm === "disable"
-							? m.two_factor_disable()
-							: m.two_factor_regenerate()}
-					</AlertDialogTitle>
+					<AlertDialogTitle>{m.two_factor_disable_title()}</AlertDialogTitle>
 					<AlertDialogDescription>
-						{confirm === "disable"
-							? m.two_factor_disable_help()
-							: m.two_factor_regenerate_help()}
+						{m.two_factor_disable_confirm()}
 					</AlertDialogDescription>
 					<FormFeedback message={message} kind="error" reserveLine={false} />
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={pending}>
-							{m.cancel()}
-						</AlertDialogCancel>
+					<AlertDialogActions cancel={{ label: m.cancel(), disabled: pending }}>
 						<Button
+							variant="destructive"
 							disabled={pending}
 							pending={pending}
 							pendingLabel={m.saving()}
-							onClick={() => {
-								if (confirm === "disable")
-									void run(
-										(signal) =>
-											authClient.twoFactor.disable({
-												fetchOptions: securityFetchOptions(signal),
-											}),
-										() => setConfirm(null),
-										true,
-									);
-								else
-									void run(
-										(signal) =>
-											authClient.twoFactor.generateBackupCodes({
-												fetchOptions: securityFetchOptions(signal),
-											}),
-										(data) => {
-											setConfirm(null);
-											setSetup({ codes: data.backupCodes });
-										},
-									);
-							}}
+							onClick={() =>
+								void run(
+									(signal) =>
+										authClient.twoFactor.disable({
+											fetchOptions: securityFetchOptions(signal),
+										}),
+									() => setConfirm(null),
+									true,
+								)
+							}
 						>
-							{confirm === "disable"
-								? m.two_factor_disable()
-								: m.two_factor_regenerate()}
+							{m.two_factor_disable()}
 						</Button>
-					</AlertDialogFooter>
+					</AlertDialogActions>
 				</AlertDialogContent>
 			</AlertDialog>
 		</SettingsSection>
+	);
+}
+
+function CopyStatus({ state }: { state: Copied }) {
+	return (
+		<p
+			role="status"
+			className={state === "failed" ? "text-xs text-destructive" : "sr-only"}
+		>
+			{state === "failed"
+				? m.settings_copy_failed()
+				: state === "copied"
+					? m.settings_copied()
+					: ""}
+		</p>
 	);
 }

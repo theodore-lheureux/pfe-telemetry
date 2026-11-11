@@ -9,8 +9,12 @@ import nodemailer from "nodemailer";
 import { createEmailSender } from "../../src/email/send.server";
 import {
 	parseCreateInvitationInput,
+	parseCreateInvitationsInput,
 	parseInvitationReference,
 } from "../../src/organizations/invitation-validation";
+
+const signInUrl =
+	"https://telemetry.example.com/login#email=member%40example.com&code=012345";
 
 const props: OrganizationInvitationEmailProps = {
 	locale: "en",
@@ -65,7 +69,7 @@ describe("invitation email", () => {
 			},
 		});
 		await sender.sendOrganizationInvitation(props);
-		await sender.sendSignInCode(props.email, "012345", "fr");
+		await sender.sendSignInCode(props.email, "012345", "fr", signInUrl);
 		expect(messages).toHaveLength(2);
 		expect(messages[0]).toMatchObject({
 			to: [{ address: props.email, name: "" }],
@@ -81,7 +85,10 @@ describe("invitation email", () => {
 				contentType: string;
 				contentDisposition: string;
 			}[];
-			expect(images.map((image) => image.cid)).toEqual(["recount-logo-light"]);
+			expect(images.map((image) => image.cid)).toEqual([
+				"recount-logo-light",
+				"recount-symbol",
+			]);
 			expect(
 				images.every(
 					(image) =>
@@ -91,6 +98,7 @@ describe("invitation email", () => {
 			).toBe(true);
 			expect(String(message.html).match(/src="cid:[^"]+"/g)).toEqual([
 				'src="cid:recount-logo-light"',
+				'src="cid:recount-symbol"',
 			]);
 			expect(message.html).not.toContain("cid:recount-logo-dark");
 			expect(message.html).not.toContain("data:image");
@@ -98,7 +106,7 @@ describe("invitation email", () => {
 		expect(messages[1].text).toContain("012345");
 	});
 
-	test("builds real multipart MIME with one referenced inline PNG without a network transport", async () => {
+	test("builds real multipart MIME with referenced inline PNGs without a network transport", async () => {
 		const transport = nodemailer.createTransport({
 			streamTransport: true,
 			buffer: true,
@@ -113,7 +121,7 @@ describe("invitation email", () => {
 			},
 		});
 		await sender.sendOrganizationInvitation({ ...props, locale: "fr" });
-		await sender.sendSignInCode(props.email, "012345", "en");
+		await sender.sendSignInCode(props.email, "012345", "en", signInUrl);
 		for (const mime of messages) {
 			expect(mime).toContain("Content-Type: multipart/alternative;");
 			expect(mime).toContain("Content-Type: multipart/related;");
@@ -121,14 +129,17 @@ describe("invitation email", () => {
 			expect(mime).toContain("Content-Type: text/html; charset=utf-8");
 			expect(mime.match(/^Content-ID: .+$/gm)).toEqual([
 				"Content-ID: <recount-logo-light>",
+				"Content-ID: <recount-symbol>",
 			]);
 			expect(mime.match(/^Content-Type: image\/.+$/gm)).toEqual([
 				"Content-Type: image/png; name=recount-lockup-on-light.png",
+				"Content-Type: image/png; name=recount-symbol-teal.png",
 			]);
 			expect(mime).toContain(
 				"Content-Disposition: inline; filename=recount-lockup-on-light.png",
 			);
 			expect(mime.replace(/=\n/g, "")).toContain("cid:recount-logo-light");
+			expect(mime.replace(/=\n/g, "")).toContain("cid:recount-symbol");
 			expect(mime).not.toContain("recount-logo-dark");
 			const imagePart = mime.split("Content-Type: image/png;")[1];
 			const encoded = imagePart.split("\n\n")[1].split("\n--")[0];
@@ -158,17 +169,17 @@ test("code emails preserve leading zeros and explicit locale with accessible bra
 	const results = await Promise.all(
 		(["en", "fr"] as const).map(async (locale) => ({
 			locale,
-			message: await renderSignInCodeEmail("012345", locale),
+			message: await renderSignInCodeEmail({
+				code: "012345",
+				locale,
+				url: signInUrl,
+			}),
 		})),
 	);
 	for (const { locale, message } of results) {
 		expect(message.html).toContain(`lang="${locale}"`);
 		expect(message.text).toContain("012345");
 		expect(message.html.match(/alt="Recount"/g)).toHaveLength(1);
-		expect(message.html.indexOf("012345")).toBeLessThan(
-			message.html.indexOf('alt="Recount"'),
-		);
-		expect(message.html).toContain("Helvetica Neue");
 		expect(message.html).not.toContain("localhost");
 		expect(message.text).toContain(
 			locale === "fr" ? "Ne communiquez ce code" : "Do not share this code",
@@ -200,14 +211,52 @@ test("escapes invitation identities and fallback URL in both locales", async () 
 			"&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; Partners",
 		);
 		expect(message.html).not.toContain("<img src=x");
-		expect(message.html.match(/<img\b/g)).toHaveLength(1);
+		expect(message.html.match(/<img\b/g)).toHaveLength(2);
+		const site =
+			locale === "fr" ? "https://recount.cloud/fr" : "https://recount.cloud";
 		expect(message.html.match(/href="[^"]+"/g)).toEqual([
 			`href="${props.url}?review=1&amp;source=email"`,
 			`href="${props.url}?review=1&amp;source=email"`,
+			`href="${site}/docs/"`,
+			`href="${site}/privacy/"`,
+			`href="${site}/terms/"`,
+			'href="https://github.com/theodore-lheureux/pfe-telemetry"',
 		]);
 		expect(message.text).toContain(organizationName);
 		expect(message.text).toContain(url);
+		const personalized = await renderOrganizationInvitationEmail({
+			...props,
+			locale,
+			recipientName: "<Jane & team>",
+			message: "Welcome <script>alert(1)</script>\nLet’s collaborate.",
+		});
+		expect(personalized.html).toContain("&lt;Jane &amp; team&gt;");
+		expect(personalized.html).toContain("Welcome &lt;script&gt;");
+		expect(personalized.html).not.toContain("<script>");
+		expect(personalized.text).toContain("Let’s collaborate.");
 	}
+});
+
+test("validates bounded optional invitation names and messages", () => {
+	const input = {
+		organizationId: "org",
+		email: "jane@example.invalid",
+		role: "member",
+		recipientName: " Jane ",
+		message: " Welcome\naboard ",
+	};
+	expect(parseCreateInvitationInput(input)).toMatchObject({
+		recipientName: "Jane",
+		message: "Welcome\naboard",
+	});
+	for (const extra of [
+		{ recipientName: "x".repeat(101) },
+		{ recipientName: "Jane\nDoe" },
+		{ message: "x".repeat(2001) },
+		{ message: "bad\u0000message" },
+		{ message: {} },
+	])
+		expect(() => parseCreateInvitationInput({ ...input, ...extra })).toThrow();
 });
 
 test("validates invitation identifiers, roles and resend input", () => {
@@ -249,4 +298,67 @@ test("validates invitation identifiers, roles and resend input", () => {
 		}),
 	).toThrow();
 	expect(() => parseInvitationReference({ invitationId: "" })).toThrow();
+});
+
+test("validates complete invitation batches before any recipient can be sent", () => {
+	const input = {
+		organizationId: "org",
+		message: " Welcome ",
+		recipients: [
+			{
+				clientId: "first",
+				email: " A@EXAMPLE.INVALID ",
+				role: "member",
+				recipientName: " Jane ",
+			},
+			{ clientId: "second", email: "b@example.invalid", role: "admin" },
+		],
+	};
+	expect(parseCreateInvitationsInput(input)).toMatchObject({
+		organizationId: "org",
+		message: "Welcome",
+		recipients: [
+			{
+				clientId: "first",
+				email: "a@example.invalid",
+				role: "member",
+				recipientName: "Jane",
+			},
+			{ clientId: "second", email: "b@example.invalid", role: "admin" },
+		],
+	});
+	for (const recipients of [
+		[],
+		null,
+		Array.from({ length: 11 }, (_, i) => ({
+			clientId: `${i}`,
+			email: `person-${i}@example.invalid`,
+			role: "member",
+		})),
+		[
+			input.recipients[0],
+			{ ...input.recipients[1], email: "a@example.invalid" },
+		],
+		[input.recipients[0], { ...input.recipients[1], clientId: "first" }],
+		[input.recipients[0], { ...input.recipients[1], email: "invalid" }],
+		[input.recipients[0], { ...input.recipients[1], role: "admin,owner" }],
+	])
+		expect(() =>
+			parseCreateInvitationsInput({ ...input, recipients }),
+		).toThrow();
+});
+
+test("invitations name the inviter when a name is set and fall back to their email", async () => {
+	const named = await renderOrganizationInvitationEmail({
+		...props,
+		inviterName: "Sam Rivera",
+		message: "Welcome",
+	});
+	expect(named.text).toContain("Sam Rivera invited you");
+	expect(named.text).not.toContain(props.inviterEmail);
+	const unnamed = await renderOrganizationInvitationEmail({
+		...props,
+		inviterName: "  ",
+	});
+	expect(unnamed.text).toContain(`${props.inviterEmail} invited you`);
 });

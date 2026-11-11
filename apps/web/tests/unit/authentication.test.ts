@@ -4,6 +4,7 @@ import {
 	type AuthenticationState,
 	provesNewAuthentication,
 } from "../../src/auth/authentication-state";
+import { gate } from "../gate";
 
 function state(
 	id: string | null,
@@ -25,13 +26,111 @@ function state(
 			: null,
 	};
 }
-function deferred<T>() {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((done) => {
-		resolve = done;
+test("menu and profile share one sign-out flight and controller-owned identity refresh", async () => {
+	const reply = gate<boolean>();
+	let posts = 0;
+	let clears = 0;
+	let refreshes = 0;
+	let navigations = 0;
+	const controller = createAuthenticationController({
+		readState: async () => state(null),
+		clearPrivateIdentity: () => {
+			clears++;
+		},
+		refreshIdentity: async () => {
+			refreshes++;
+		},
 	});
-	return { promise, resolve };
-}
+	const signOut = () => {
+		posts++;
+		return reply.promise;
+	};
+	const navigate = async () => {
+		navigations++;
+	};
+	const menu = controller.signOut(signOut, navigate);
+	const profile = controller.signOut(signOut, navigate);
+	expect(menu).toBe(profile);
+	expect(posts).toBe(1);
+	expect(controller.getSnapshot().action).toBe("signout");
+	reply.release(true);
+	expect(await menu).toBe(true);
+	expect({ clears, refreshes, navigations }).toEqual({
+		clears: 2,
+		refreshes: 1,
+		navigations: 1,
+	});
+	expect(controller.getSnapshot().pending).toBe(false);
+});
+
+test("sign-out waits for submitted verification reconciliation without canceling it", async () => {
+	const reply = gate<{ ok: boolean }>();
+	const submitted = gate();
+	let posts = 0;
+	let current = state("before");
+	const controller = createAuthenticationController({
+		readState: async () => current,
+		clearPrivateIdentity: () => {},
+		refreshIdentity: async () => {},
+	});
+	const operation = controller.begin("verify");
+	if (!operation) throw new Error("Expected verification owner");
+	const verification = operation.submit(async () => {
+		submitted.release();
+		return reply.promise;
+	});
+	await submitted.promise;
+	const signOut = controller.signOut(
+		async () => {
+			posts++;
+			return true;
+		},
+		async () => {},
+	);
+	expect(posts).toBe(0);
+	expect(controller.begin("passkey")).toBeNull();
+	expect(operation.signal.aborted).toBe(false);
+	current = state("after", 1001, 1002);
+	reply.release({ ok: true });
+	expect((await verification).status).toBe("authenticated");
+	expect(await signOut).toBe(true);
+	expect(posts).toBe(1);
+});
+
+test("sign-out waits for an in-flight recovery check before clearing recovery", async () => {
+	const checked = gate<AuthenticationState>();
+	let reads = 0;
+	let signouts = 0;
+	const controller = createAuthenticationController({
+		readState: async () =>
+			++reads === 3 ? checked.promise : state("original"),
+		clearPrivateIdentity: () => {},
+		refreshIdentity: async () => {},
+	});
+	const verification = controller.begin("verify");
+	if (!verification) throw new Error("Expected verification owner");
+	expect(
+		(
+			await verification.submit(async () => {
+				throw new Error("Lost response");
+			})
+		).status,
+	).toBe("uncertain");
+	const recovery = controller.recover();
+	const signOut = controller.signOut(
+		async () => {
+			signouts++;
+			return true;
+		},
+		async () => {},
+	);
+	expect(signouts).toBe(0);
+	checked.release(state("original"));
+	expect((await recovery).status).toBe("uncertain");
+	expect(await signOut).toBe(true);
+	expect(signouts).toBe(1);
+	expect(controller.getSnapshot().recovery).toBeNull();
+});
 
 test("a native second-factor challenge is not treated as an authenticated session", async () => {
 	let current = state(null);
@@ -95,7 +194,7 @@ test("lost email verification responses recover a server-confirmed pending chall
 	expect(controller.getSnapshot().recovery).toBeNull();
 });
 test("submitted authentication retains ownership after cancellation and refreshes identity without a UI owner", async () => {
-	const response = deferred<{ ok: boolean }>();
+	const response = gate<{ ok: boolean }>();
 	const states = [state("a"), state("b", 1001, 1002, "b@example.invalid")];
 	let clears = 0;
 	let refreshes = 0;
@@ -122,7 +221,7 @@ test("submitted authentication retains ownership after cancellation and refreshe
 	expect(operation.signal.aborted).toBe(false);
 	expect(controller.getSnapshot().pending).toBe(true);
 	expect(controller.begin("passkey")).toBeNull();
-	response.resolve({ ok: true });
+	response.release({ ok: true });
 	expect((await result).status).toBe("authenticated");
 	expect(clears >= 2).toBe(true);
 	expect(refreshes).toBe(1);
@@ -179,8 +278,8 @@ test("stalled identity revalidation cannot retain ownership after verification h
 });
 for (const method of ["verify", "passkey"] as const) {
 	test(`${method} transport deadline aborts before reconciliation and ignores late settlement`, async () => {
-		const started = deferred<AbortSignal>();
-		const late = deferred<{ ok: boolean }>();
+		const started = gate<AbortSignal>();
+		const late = gate<{ ok: boolean }>();
 		let transport: AbortSignal | undefined;
 		let reads = 0;
 		let posts = 0;
@@ -201,7 +300,7 @@ for (const method of ["verify", "passkey"] as const) {
 		const result = operation.submit((signal) => {
 			transport = signal;
 			posts++;
-			started.resolve(signal);
+			started.release(signal);
 			return late.promise;
 		}, "a@example.invalid");
 		const signal = await started.promise;
@@ -227,7 +326,7 @@ for (const method of ["verify", "passkey"] as const) {
 		controller.clearRecovery();
 		const next = controller.begin("verify");
 		if (!next) throw new Error("Expected new operation after transport abort");
-		late.resolve({ ok: true });
+		late.release({ ok: true });
 		await Promise.resolve();
 		expect(controller.getSnapshot().pending).toBe(true);
 		next.cancel();

@@ -6,6 +6,9 @@ import {
 	renderSignInCodeEmail,
 } from "@recount/transactional";
 import nodemailer, { type Transporter } from "nodemailer";
+import { fetchGravatar, type InlineAvatar } from "./inviter-avatar.server";
+
+const INVITER_AVATAR_CID = "inviter-avatar";
 
 let sender: ReturnType<typeof createEmailSender> | undefined;
 
@@ -20,14 +23,16 @@ export async function sendSignInCode(
 	email: string,
 	code: string,
 	locale: Locale,
+	url: string,
 ) {
 	sender ??= createEmailSender();
-	await sender.sendSignInCode(email, code, locale);
+	await sender.sendSignInCode(email, code, locale, url);
 }
 
 export function createEmailSender(
 	env = process.env,
 	transport?: Pick<Transporter, "sendMail">,
+	loadAvatar: (email: string) => Promise<InlineAvatar | null> = fetchGravatar,
 ) {
 	const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM } = env;
 	if (!SMTP_HOST || !SMTP_USER || !SMTP_PASSWORD || !EMAIL_FROM) {
@@ -58,17 +63,32 @@ export function createEmailSender(
 	async function deliver(
 		email: string,
 		message: { subject: string; html: string; text: string },
+		avatar: InlineAvatar | null = null,
 	) {
 		try {
 			await mailer.sendMail({
 				from: EMAIL_FROM,
 				to: email,
 				...message,
-				attachments: emailBrandImages.map((image) => ({
-					filename: image.filename,
-					cid: image.cid,
-					content: Buffer.from(image.base64, "base64"),
-					contentType: "image/png",
+				attachments: [
+					...emailBrandImages.map((image) => ({
+						filename: image.filename,
+						cid: image.cid,
+						content: Buffer.from(image.base64, "base64"),
+						contentType: "image/png",
+					})),
+					...(avatar
+						? [
+								{
+									filename: `inviter-avatar.${avatar.contentType.slice("image/".length)}`,
+									cid: INVITER_AVATAR_CID,
+									content: avatar.content,
+									contentType: avatar.contentType,
+								},
+							]
+						: []),
+				].map((attachment) => ({
+					...attachment,
 					contentDisposition: "inline" as const,
 				})),
 			});
@@ -77,10 +97,24 @@ export function createEmailSender(
 		}
 	}
 	return {
-		sendSignInCode: async (email: string, code: string, locale: Locale) =>
-			deliver(email, await renderSignInCodeEmail(code, locale)),
+		sendSignInCode: async (
+			email: string,
+			code: string,
+			locale: Locale,
+			url: string,
+		) => deliver(email, await renderSignInCodeEmail({ code, locale, url })),
 		sendOrganizationInvitation: async (
 			props: OrganizationInvitationEmailProps,
-		) => deliver(props.email, await renderOrganizationInvitationEmail(props)),
+		) => {
+			// The photo only appears beside a personal message.
+			const avatar = props.message
+				? await loadAvatar(props.inviterEmail)
+				: null;
+			const message = await renderOrganizationInvitationEmail({
+				...props,
+				inviterAvatar: avatar ? `cid:${INVITER_AVATAR_CID}` : undefined,
+			});
+			await deliver(props.email, message, avatar);
+		},
 	};
 }

@@ -1,18 +1,16 @@
 import { m } from "@recount/i18n/messages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-	getRouteApi,
-	Link,
-	useHydrated,
-	useLocation,
-} from "@tanstack/react-router";
+import { getRouteApi, useHydrated } from "@tanstack/react-router";
 import { LogOutIcon } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import {
 	listWebSessions,
 	revokeWebSession,
 } from "../../auth/profile.functions";
+import { unwrapOperation } from "../../lib/operation-result";
 import { FormFeedback } from "../form-feedback";
+import { useStepUpAuthentication } from "../step-up-authentication";
+import { TimeDisplay } from "../time-display";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -24,22 +22,17 @@ import {
 	TableHeader,
 	TableRow,
 } from "../ui/table";
-import {
-	MutationFailure,
-	unwrapOperation,
-	useAppMutation,
-} from "../use-app-mutation";
-import { SessionTime } from "./session-time";
+import { useAppMutation } from "../use-app-mutation";
 
 export function WebSessions() {
 	const { user, authentication } = getRouteApi("/_app").useRouteContext();
+	const requireStepUp = useStepUpAuthentication();
 	const identity = useSyncExternalStore(
 		authentication.subscribe,
 		authentication.getSnapshot,
 		authentication.getSnapshot,
 	);
 	const hydrated = useHydrated();
-	const redirect = useLocation({ select: (location) => location.href });
 	const client = useQueryClient();
 	const queryKey = ["account-web-sessions", user.id, identity.revision];
 	const sessions = useQuery({
@@ -67,37 +60,23 @@ export function WebSessions() {
 		save: (data: { id: string }, signal) => revokeWebSession({ data, signal }),
 	});
 	async function revoke(id: string) {
+		if (!(await requireStepUp({ userId: user.id, email: user.email }))) return;
 		const result = await mutation.submit({ id });
 		if (result && !result.error)
 			await result.refresh(async () => {
 				await client.invalidateQueries({ queryKey });
 			});
 	}
-	const needsFreshSession =
-		sessions.error instanceof MutationFailure &&
-		sessions.error.failure.code === "SESSION_NOT_FRESH";
 	return (
 		<>
 			{sessions.isPending ? (
 				<p role="status">{m.loading()}</p>
 			) : sessions.isError ? (
 				<div className="flex flex-col items-start gap-2">
-					<p role="alert">
-						{needsFreshSession
-							? m.error_session_fresh()
-							: m.web_sessions_unavailable()}
-					</p>
-					{needsFreshSession ? (
-						<Button variant="outline" asChild>
-							<Link to="/login" search={{ redirect }}>
-								{m.sign_in_again()}
-							</Link>
-						</Button>
-					) : (
-						<Button variant="outline" onClick={() => void sessions.refetch()}>
-							{m.try_again()}
-						</Button>
-					)}
+					<p role="alert">{m.web_sessions_unavailable()}</p>
+					<Button variant="outline" onClick={() => void sessions.refetch()}>
+						{m.try_again()}
+					</Button>
 				</div>
 			) : (
 				<Card className="gap-0 border py-0 ring-0">
@@ -146,15 +125,15 @@ export function WebSessions() {
 												: m.unknown_session_value()}
 									</TableCell>
 									<TableCell className="whitespace-nowrap">
-										<SessionTime value={session.createdAt} />
+										<TimeDisplay value={session.createdAt} mode="compact" />
 									</TableCell>
 									<TableCell
 										className="whitespace-nowrap"
 										title={m.session_activity_help()}
 									>
-										<SessionTime
+										<TimeDisplay
 											value={session.current ? new Date() : session.updatedAt}
-											relative
+											mode="relative"
 										/>
 									</TableCell>
 									<TableCell className="w-12">

@@ -2,11 +2,12 @@ import { m } from "@recount/i18n/messages";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { getCurrentUser } from "@/auth/session.functions";
 import { InvitationPage } from "@/components/member-administration/invitation-page";
+import { parseIdentifier } from "@/lib/input";
 import { inspectInvitation } from "@/organizations/invitation.functions";
-import { parseIdentifier } from "@/organizations/validation";
 
 export const Route = createFileRoute("/invitations/$invitationId")({
-	beforeLoad: async ({ params }) => {
+	beforeLoad: async ({ params, context }) => {
+		await context.authentication.beforePrivateRead();
 		const user = await getCurrentUser();
 		if (!user)
 			throw redirect({

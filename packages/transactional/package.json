@@ -6,7 +6,8 @@
     ".": "./src/index.tsx"
   },
   "scripts": {
-    "dev": "bun run --filter @recount/i18n compile && email dev --dir ./emails --port 3002",
+    "brand:embed": "bun scripts/embed-brand-assets.mjs",
+    "dev": "bun run --filter @recount/i18n compile && RECOUNT_EMAIL_PREVIEW=1 email dev --dir ./emails --port 3002",
     "typecheck": "bun run --filter @recount/i18n compile && tsc --noEmit"
   },
   "dependencies": {

@@ -4,6 +4,7 @@ import { FingerprintPatternIcon } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { registerPasskey } from "../auth/passkey";
 import { useAccountPasskeys } from "../auth/use-account-passkeys";
+import { DialogActions } from "./dialog-actions";
 import { FormFeedback } from "./form-feedback";
 import { useLocaleChangeBlocker } from "./locale-safety";
 import { Button } from "./ui/button";
@@ -11,7 +12,6 @@ import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
-	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from "./ui/dialog";
@@ -123,15 +123,14 @@ function EnrollmentPrompt() {
 					pendingMessage={m.adding_passkey()}
 					reserveLine={false}
 				/>
-				<DialogFooter>
-					<Button
-						ref={later}
-						variant="ghost"
-						onClick={dismiss}
-						disabled={pending}
-					>
-						{m.passkey_prompt_later()}
-					</Button>
+				<DialogActions
+					cancel={{
+						label: m.passkey_prompt_later(),
+						disabled: pending,
+						onClick: dismiss,
+						ref: later,
+					}}
+				>
 					<Button
 						onClick={() => void setup()}
 						disabled={pending}
@@ -141,7 +140,7 @@ function EnrollmentPrompt() {
 						<FingerprintPatternIcon aria-hidden="true" />
 						{m.passkey_prompt_setup()}
 					</Button>
-				</DialogFooter>
+				</DialogActions>
 			</DialogContent>
 		</Dialog>
 	);

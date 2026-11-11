@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import type { Locale } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
+import { gate as createGate } from "../gate";
 import { dismissPasskeySetup, expect, test } from "./fixtures";
 
 async function enterCode(page: Page, code: string, locale: Locale = "en") {
@@ -39,7 +40,10 @@ test("email code signup moves to a focused code form and establishes a verified 
 		.click();
 	await dismissPasskeySetup(page);
 	await expect(
-		page.getByRole("heading", { name: "Your organizations", exact: true }),
+		page.getByRole("heading", {
+			name: "Create your first organization",
+			exact: true,
+		}),
 	).toBeVisible();
 });
 
@@ -102,10 +106,7 @@ test("loading is explicit and retrying does not collapse feedback or change butt
 	page,
 	workspace,
 }) => {
-	let release!: () => void;
-	let held = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	let { promise: held, release } = createGate();
 	let sends = 0;
 	await page.route(
 		"**/api/auth/email-otp/send-verification-otp",
@@ -136,9 +137,7 @@ test("loading is explicit and retrying does not collapse feedback or change butt
 		"We couldn’t request a code",
 	);
 	const afterError = await passkey.boundingBox();
-	held = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	({ promise: held, release } = createGate());
 	await submit.click();
 	await expect(submit).toHaveAttribute("aria-busy", "true");
 	expect((await passkey.boundingBox())?.y).toBe(afterError?.y);

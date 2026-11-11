@@ -194,7 +194,10 @@ test("email sign-in offers optional passkey enrollment and records the actual si
 			.getByRole("button", { name: "Sign in with a passkey", exact: true })
 			.click();
 		await expect(
-			page.getByRole("heading", { name: "Your organizations", exact: true }),
+			page.getByRole("heading", {
+				name: "Create your first organization",
+				exact: true,
+			}),
 		).toBeVisible();
 		expect(
 			(

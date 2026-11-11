@@ -1,9 +1,9 @@
 import { m } from "@recount/i18n/messages";
-import { UserPlusIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
 import type { OrganizationSummary } from "../organizations/contracts";
 import type { MemberSummary } from "../organizations/member-contracts";
 import { FormFeedback } from "./form-feedback";
-import { InvitationForm } from "./member-administration/invitation-form";
+import { InvitationDialogContent } from "./member-administration/invitation-dialog";
 import { InvitationList } from "./member-administration/invitation-list";
 import {
 	type Invitation,
@@ -11,11 +11,7 @@ import {
 } from "./member-administration/use-organization-invitations";
 import { SettingsSection } from "./settings/settings-section";
 import { Button } from "./ui/button";
-import {
-	Collapsible,
-	CollapsibleContent,
-	CollapsibleTrigger,
-} from "./ui/collapsible";
+import { Dialog, DialogTrigger } from "./ui/dialog";
 
 export function OrganizationInvitations({
 	organization,
@@ -37,17 +33,38 @@ export function OrganizationInvitations({
 			title={m.settings_pending_invites()}
 			description={m.settings_invites_description()}
 			headingRef={state.heading}
+			actions={
+				<Dialog
+					open={state.inviting}
+					onOpenChange={(open) => {
+						if (state.pending) return;
+						if (open) state.openInvitationForm();
+						else state.setInviting(null);
+					}}
+				>
+					<DialogTrigger asChild>
+						<Button variant="outline" disabled={state.disabled}>
+							<PlusIcon aria-hidden="true" />
+							{m.settings_invite_member()}
+						</Button>
+					</DialogTrigger>
+					<InvitationDialogContent organization={organization} state={state} />
+				</Dialog>
+			}
 		>
-			<FormFeedback
-				message={state.cancelId ? "" : state.message}
-				kind={state.failed ? "error" : "success"}
-				pending={state.pending && !state.cancelId}
-				pendingMessage={
-					state.activity?.type === "resend"
-						? m.resending_invitation()
-						: m.sending_invitation()
-				}
-			/>
+			{!state.inviting && (
+				<FormFeedback
+					reserveLine={false}
+					message={state.cancelId ? "" : state.message}
+					kind={state.failed ? "error" : "success"}
+					pending={state.pending && !state.cancelId}
+					pendingMessage={
+						state.activity?.type === "resend"
+							? m.resending_invitation()
+							: m.sending_invitation()
+					}
+				/>
+			)}
 			<InvitationList
 				state={state}
 				invitations={invitations.filter(
@@ -58,17 +75,6 @@ export function OrganizationInvitations({
 				members={members}
 				userId={userId}
 			/>
-			<Collapsible>
-				<CollapsibleTrigger asChild>
-					<Button variant="outline" disabled={state.disabled}>
-						<UserPlusIcon aria-hidden="true" />
-						{m.settings_invite_member()}
-					</Button>
-				</CollapsibleTrigger>
-				<CollapsibleContent className="pt-4">
-					<InvitationForm state={state} organizationRole={organization.role} />
-				</CollapsibleContent>
-			</Collapsible>
 		</SettingsSection>
 	);
 }

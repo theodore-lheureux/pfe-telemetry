@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { APIError } from "better-auth/api";
 import { requireVerifiedSession } from "../../src/auth/session-policy";
-import { OperationError } from "../../src/organizations/errors";
+import { OperationError } from "../../src/lib/operation-error";
 
 test("verified-session policy preserves session data and transport-specific failures", () => {
 	const verified = {

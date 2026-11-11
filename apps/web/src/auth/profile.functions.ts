@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { parseIdentifier, parseName } from "../organizations/validation";
+import { parseIdentifier, parseName } from "../lib/input";
 import { withActor } from "./actor.server";
 import { privateOperation } from "./private-operation";
 import * as profile from "./profile.server";
@@ -18,8 +18,8 @@ export const updateProfileName = createServerFn({ method: "POST" })
 
 export const listWebSessions = createServerFn({ method: "GET" })
 	.middleware([privateOperation])
-	.handler(({ context: { identity, auth, headers } }) =>
-		withActor(identity, () => profile.listWebSessions(auth, headers)),
+	.handler(({ context: { identity, database, auth, headers } }) =>
+		withActor(identity, () => profile.listWebSessions(database, auth, headers)),
 	);
 
 export const revokeWebSession = createServerFn({ method: "POST" })

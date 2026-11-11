@@ -12,11 +12,14 @@ import { and, eq, gt, sql } from "drizzle-orm";
 import { requireVerifiedSession } from "../auth/session-policy";
 import type { getDatabase } from "../db/client.server";
 import { invitation, member, rateLimit } from "../db/schema";
+import { parseName } from "../lib/input";
 import { resolveOrganizationRole } from "./access.server";
-import { parseName, parseOrganizationInput, parseSlug } from "./validation";
+import { parseInvitationPersonalization } from "./invitation-validation";
+import { isOrganizationGrantRole } from "./roles";
+import { parseOrganizationInput, parseSlug } from "./validation";
 
 function checkRole(role: unknown) {
-	if (role !== "owner" && role !== "admin" && role !== "member") {
+	if (!isOrganizationGrantRole(role)) {
 		throw new APIError("BAD_REQUEST", {
 			message: "Select one organization role: owner, admin or member",
 		});
@@ -47,6 +50,13 @@ export function invitationSecurity(database: ReturnType<typeof getDatabase>) {
 						);
 						if (ctx.path !== "/organization/invite-member") return;
 						checkRole(ctx.body?.role);
+						try {
+							parseInvitationPersonalization(ctx.body ?? {});
+						} catch {
+							throw new APIError("BAD_REQUEST", {
+								message: "Invalid invitation name or message",
+							});
+						}
 						// Share the send limit with server API calls, within native cleanup's 60-second window.
 						const now = Date.now();
 						const key = `invitation-send:${session.user.id}`;
@@ -114,6 +124,15 @@ export function organizationPlugin(
 	sendInvitation: (props: OrganizationInvitationEmailProps) => Promise<void>,
 ) {
 	return organization({
+		invitationExpiresIn: 3 * 24 * 60 * 60,
+		schema: {
+			invitation: {
+				additionalFields: {
+					recipientName: { type: "string", required: false },
+					message: { type: "string", required: false },
+				},
+			},
+		},
 		allowUserToCreateOrganization: (user) => user.emailVerified,
 		disableOrganizationDeletion: true,
 		requireEmailVerificationOnInvitation: true,
@@ -129,7 +148,9 @@ export function organizationPlugin(
 				role: role as OrganizationInvitationEmailProps["role"],
 				organizationName: organization.name,
 				inviterEmail: inviter.user.email,
+				inviterName: inviter.user.name || undefined,
 				expiresAt: invitation.expiresAt,
+				...parseInvitationPersonalization(invitation),
 			});
 		},
 		organizationHooks: {

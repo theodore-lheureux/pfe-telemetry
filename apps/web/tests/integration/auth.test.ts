@@ -1,28 +1,23 @@
-import { afterAll, afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
-import { Pool } from "pg";
-import { applyMigrations } from "../../scripts/migrations";
 import { readAuthenticationState } from "../../src/auth/authentication-state.server";
 import type { AuthConfig } from "../../src/auth/config.server";
 import { createAuth } from "../../src/auth/create-auth.server";
 import { createAuthEmailDelivery } from "../../src/auth/email-delivery.server";
 import { readAuthSession } from "../../src/auth/session.server";
-import { createDatabase } from "../../src/db/client.server";
 import { passkey } from "../../src/db/schema";
-import { trustedCodeSignIn } from "../auth-actors";
+import { responseCookie as cookie, trustedCodeSignIn } from "../auth-actors";
+import { createTestDatabase } from "../database";
+import { gate as createGate } from "../gate";
 
-const adminUrl = process.env.TEST_DATABASE_URL;
-if (!adminUrl) throw new Error("TEST_DATABASE_URL is required");
-const admin = new Pool({ connectionString: adminUrl, max: 1 });
 const config: AuthConfig = {
 	origin: "http://localhost:36601",
 	rpID: "localhost",
 	secret: `test-only-${randomUUID()}`,
 	allowSignUp: true,
 };
-let databaseName: string;
-let database: ReturnType<typeof createDatabase>;
+let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let sentCodes: { email: string; code: string; locale: string }[];
 let instances: ReturnType<typeof createAuth>[];
 function auth(allowSignUp = true) {
@@ -40,25 +35,14 @@ function auth(allowSignUp = true) {
 beforeEach(async () => {
 	instances = [];
 	sentCodes = [];
-	databaseName = `recount_auth_test_${randomUUID().replaceAll("-", "")}`;
-	await admin.query(`CREATE DATABASE "${databaseName}"`);
-	const url = new URL(adminUrl);
-	url.pathname = `/${databaseName}`;
-	await applyMigrations(url.toString());
-	database = createDatabase({ connectionString: url.toString(), max: 4 });
-	sentCodes = [];
-	instances = [];
+	database = await createTestDatabase("auth");
 }, 60_000);
 afterEach(async () => {
 	await Promise.all(
 		instances.map((instance) => instance.emailDelivery.close()),
 	);
-	await database?.pool.end();
-	await admin.query(`DROP DATABASE IF EXISTS "${databaseName}"`);
+	await database?.close();
 }, 60_000);
-afterAll(async () => {
-	await admin.end();
-});
 function post(
 	path: string,
 	body: unknown,
@@ -75,12 +59,6 @@ function post(
 		},
 		body: JSON.stringify(body),
 	});
-}
-function cookie(response: Response) {
-	return response.headers
-		.getSetCookie()
-		.map((value) => value.split(";")[0])
-		.join("; ");
 }
 async function requestCode(
 	instance: ReturnType<typeof auth>,
@@ -193,10 +171,7 @@ test("email code rotation, expiry and attempt limit are enforced", async () => {
 });
 test("closed registration sends generic acknowledgements without waiting for SMTP", async () => {
 	await signIn(auth(), "existing@example.invalid");
-	let release!: () => void;
-	const gate = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: gate, release } = createGate();
 	let completed = false;
 	let started = false;
 	const instance = createAuth({ ...config, allowSignUp: false }, database.db, {

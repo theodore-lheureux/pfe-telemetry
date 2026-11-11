@@ -1,9 +1,11 @@
 import type { Page } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { passkey } from "../../src/db/schema";
+import { gate as createGate } from "../gate";
 import {
 	dismissPasskeySetup,
 	expect,
+	openReauthentication,
 	openSettingsSection,
 	settingsUrl,
 	test,
@@ -15,10 +17,7 @@ test.afterEach(async () => {
 	gates.clear();
 });
 function deferred() {
-	let resolve!: () => void;
-	const promise = new Promise<void>((done) => {
-		resolve = done;
-	});
+	const { promise, release: resolve } = createGate();
 	gates.add(resolve);
 	return {
 		promise,
@@ -127,17 +126,17 @@ for (const committed of [false, true]) {
 		await workspace.submitReceivedCode(page, "deadline-b@example.invalid");
 		await dismissPasskeySetup(page);
 		await expect(
-			page.getByRole("heading", { name: "Your organizations", exact: true }),
+			page.getByRole("heading", {
+				name: "Create your first organization",
+				exact: true,
+			}),
 		).toBeVisible({ timeout: 30_000 });
 		release.resolve();
 		await delivered.promise;
 		await openSettingsSection(page, "User settings");
 		await expect(
-			page.getByText("deadline-b@example.invalid", { exact: true }),
-		).toBeVisible();
-		await expect(
-			page.getByText("deadline-a@example.invalid", { exact: true }),
-		).toHaveCount(0);
+			page.getByRole("textbox", { name: "Email address", exact: true }),
+		).toHaveValue("deadline-b@example.invalid");
 		expect(posts).toBe(2);
 	});
 }
@@ -195,12 +194,15 @@ test("a committed OTP settles and reconciles identity after Login navigates away
 	release.resolve();
 	await dismissPasskeySetup(page);
 	await expect(
-		page.getByRole("heading", { name: "Your organizations", exact: true }),
+		page.getByRole("heading", {
+			name: "Create your first organization",
+			exact: true,
+		}),
 	).toBeVisible({ timeout: 30_000 });
 	await openSettingsSection(page, "User settings");
 	await expect(
-		page.getByText("late-otp@example.invalid", { exact: true }),
-	).toBeVisible();
+		page.getByRole("textbox", { name: "Email address", exact: true }),
+	).toHaveValue("late-otp@example.invalid");
 	expect(posts).toBe(1);
 	const replay = await workspace.auth.api.signInEmailOTP({
 		body: {
@@ -319,13 +321,21 @@ for (const failFresh of [false, true]) {
 			},
 		);
 		await page
-			.getByRole("button", { name: "Sign out other sessions", exact: true })
+			.getByRole("row")
+			.filter({ hasText: "Private A key" })
+			.getByRole("button", { name: "Rename", exact: true })
 			.click();
+		const rename = page.getByRole("dialog", {
+			name: "Rename passkey",
+			exact: true,
+		});
+		await rename
+			.getByLabel("Passkey name", { exact: true })
+			.fill("Renamed A key");
+		await rename.getByRole("button", { name: "Save", exact: true }).click();
 		await held.promise;
 		await workspace.enableCodeDelivery(page);
-		await page
-			.getByRole("link", { name: "Sign in again", exact: true })
-			.click();
+		await openReauthentication(page);
 		await page
 			.getByLabel("Email address", { exact: true })
 			.fill("keys-b@example.invalid");
@@ -334,15 +344,21 @@ for (const failFresh of [false, true]) {
 			.click();
 		await workspace.submitReceivedCode(page, "keys-b@example.invalid");
 		await expect(
-			page.getByRole("heading", { name: "Your organizations", exact: true }),
+			page.getByRole("heading", {
+				name: "Create your first organization",
+				exact: true,
+			}),
 		).toBeVisible({ timeout: 30_000 });
 		release.resolve();
 		await delivered.promise;
 		await openSettingsSection(page, "User settings");
 		await expect(
-			page.getByText("keys-b@example.invalid", { exact: true }),
-		).toBeVisible();
+			page.getByRole("textbox", { name: "Email address", exact: true }),
+		).toHaveValue("keys-b@example.invalid");
 		await expect(page.getByText("Private A key", { exact: true })).toHaveCount(
+			0,
+		);
+		await expect(page.getByText("Renamed A key", { exact: true })).toHaveCount(
 			0,
 		);
 		if (failFresh) {
@@ -360,6 +376,90 @@ for (const failFresh of [false, true]) {
 			).toBeVisible();
 	});
 }
+
+test("session revocation refreshes sessions only and a late profile response cannot update the next identity", async ({
+	page,
+	workspace,
+}) => {
+	await workspace.signIn(page, "profile-a@example.invalid");
+	await workspace.signIn(page, "profile-b@example.invalid");
+	await workspace.signIn(page, "profile-a@example.invalid");
+	await page.goto(settingsUrl(workspace.origin, "user"));
+	await expect(
+		page.getByText("No passkeys registered yet.", { exact: true }),
+	).toBeVisible();
+	let passkeyReads = 0;
+	await page.route("**/api/auth/passkey/list-user-passkeys**", (route) => {
+		passkeyReads++;
+		return route.continue();
+	});
+	await page
+		.getByRole("button", { name: "Sign out other sessions", exact: true })
+		.click();
+	await expect(
+		page.getByText("Account security updated.", { exact: true }),
+	).toBeVisible();
+	expect(passkeyReads).toBe(0);
+	const held = deferred();
+	const release = deferred();
+	const delivered = deferred();
+	await page.route("**/api/auth/revoke-other-sessions", async (route) => {
+		const response = await route.fetch();
+		held.resolve();
+		await release.promise;
+		try {
+			await route.fulfill({ response });
+		} catch {
+			/* The retired account's transport may already be canceled. */
+		} finally {
+			delivered.resolve();
+		}
+	});
+	await page
+		.getByRole("button", { name: "Sign out other sessions", exact: true })
+		.click();
+	await held.promise;
+	const readsStarted = deferred();
+	const resumeReads = deferred();
+	await page.route("**/_serverFn/**", async (route) => {
+		if (route.request().method() !== "GET") return route.continue();
+		readsStarted.resolve();
+		await resumeReads.promise;
+		await route.continue().catch(() => {});
+	});
+	const second = await page.context().newPage();
+	try {
+		await workspace.enableCodeDelivery(second);
+		await second.goto(`${workspace.origin}/login`);
+		await second
+			.getByLabel("Email address", { exact: true })
+			.fill("profile-b@example.invalid");
+		await second
+			.getByRole("button", { name: "Continue with email", exact: true })
+			.click();
+		await workspace.submitReceivedCode(second, "profile-b@example.invalid");
+		await dismissPasskeySetup(second);
+		await readsStarted.promise;
+		await expect(page.getByLabel("Email address", { exact: true })).toHaveValue(
+			"profile-a@example.invalid",
+		);
+		const freshReads = passkeyReads;
+		release.resolve();
+		await delivered.promise;
+		await expect(
+			page.getByText("Account security updated.", { exact: true }),
+		).toHaveCount(0);
+		expect(passkeyReads).toBe(freshReads);
+		resumeReads.resolve();
+		await expect(page.getByLabel("Email address", { exact: true })).toHaveValue(
+			"profile-b@example.invalid",
+		);
+	} finally {
+		release.resolve();
+		resumeReads.resolve();
+		await second.close();
+	}
+});
 
 test("manual passkeys still verify without native credential JSON helpers", async ({
 	page,
@@ -403,7 +503,10 @@ test("manual passkeys still verify without native credential JSON helpers", asyn
 		.getByRole("button", { name: "Sign in with a passkey", exact: true })
 		.click();
 	await expect(
-		page.getByRole("heading", { name: "Your organizations", exact: true }),
+		page.getByRole("heading", {
+			name: "Create your first organization",
+			exact: true,
+		}),
 	).toBeVisible();
 });
 
@@ -442,11 +545,14 @@ test("pagehide does not abort submitted verification and identity is reconciled 
 		.click();
 	await dismissPasskeySetup(page);
 	await expect(
-		page.getByRole("heading", { name: "Your organizations", exact: true }),
+		page.getByRole("heading", {
+			name: "Create your first organization",
+			exact: true,
+		}),
 	).toBeVisible();
 	expect(failed).toBe(false);
 	await openSettingsSection(page, "User settings");
 	await expect(
-		page.getByText("pagehide@example.invalid", { exact: true }),
-	).toBeVisible();
+		page.getByRole("textbox", { name: "Email address", exact: true }),
+	).toHaveValue("pagehide@example.invalid");
 });

@@ -4,7 +4,7 @@ import {
 	sessionLocation,
 	sessionSignInMethod,
 } from "../../src/auth/session-details.server";
-import { formatSessionTime } from "../../src/components/settings/session-time";
+import { formatCompactTime } from "../../src/lib/time-display";
 
 test("session metadata describes the recorded browser and IP without inventing location or sign-in methods", () => {
 	expect(
@@ -27,15 +27,15 @@ test("session metadata describes the recorded browser and IP without inventing l
 
 test("profile dates omit seconds and distinguish relative, calendar and missing dates", () => {
 	const now = new Date(2026, 10, 9, 12, 0, 0);
-	expect(formatSessionTime(now, false, now, "en")).toContain("today");
+	expect(formatCompactTime(now, false, now, "en")).toContain("today");
 	expect(
-		formatSessionTime(new Date(now.getTime() - 60_000), true, now, "en"),
+		formatCompactTime(new Date(now.getTime() - 60_000), true, now, "en"),
 	).toBe("1 minute ago");
 	expect(
-		formatSessionTime(new Date(now.getTime() - 60_000), true, now, "fr"),
+		formatCompactTime(new Date(now.getTime() - 60_000), true, now, "fr"),
 	).toContain("minute");
 	expect(
-		formatSessionTime(new Date(now.getTime() + 60_000), true, now, "en"),
+		formatCompactTime(new Date(now.getTime() + 60_000), true, now, "en"),
 	).toBe("in 1 minute");
-	expect(formatSessionTime("invalid", false, now, "en")).toBe("—");
+	expect(formatCompactTime("invalid", false, now, "en")).toBe("—");
 });

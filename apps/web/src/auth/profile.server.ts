@@ -1,5 +1,5 @@
-import { OperationError } from "../organizations/errors";
-import { parseName } from "../organizations/validation";
+import { parseName } from "../lib/input";
+import { OperationError } from "../lib/operation-error";
 import type { createAuth } from "./create-auth.server";
 import { applicationSession } from "./session.server";
 import { sessionDevice, sessionLocation } from "./session-details.server";
@@ -20,9 +20,29 @@ export async function updateProfileName(
 	return { name: validName };
 }
 
-export async function listWebSessions(auth: Auth, headers: Headers) {
+export async function listWebSessions(
+	database: ReturnType<typeof getDatabase>,
+	auth: Auth,
+	headers: Headers,
+) {
 	const current = await applicationSession(auth, headers);
-	const sessions = await auth.api.listSessions({ headers });
+	const sessions = await database
+		.select({
+			id: session.id,
+			userId: session.userId,
+			userAgent: session.userAgent,
+			ipAddress: session.ipAddress,
+			signInMethod: session.signInMethod,
+			createdAt: session.createdAt,
+			updatedAt: session.updatedAt,
+		})
+		.from(session)
+		.where(
+			and(
+				eq(session.userId, current.user.id),
+				gt(session.expiresAt, new Date()),
+			),
+		);
 	return sessions
 		.filter((session) => session.userId === current.user.id)
 		.map((session) => ({
@@ -60,3 +80,7 @@ export async function revokeWebSession(
 	await auth.api.revokeSession({ headers, body: { token: target.token } });
 	return { id };
 }
+
+import { and, eq, gt } from "drizzle-orm";
+import type { getDatabase } from "../db/client.server";
+import { session } from "../db/schema";

@@ -7,21 +7,21 @@ import { useMemo, useState } from "react";
 import { currentOrigin } from "../../lib/origin";
 import type { OrganizationRole } from "../../organizations/contracts";
 import type { MemberSummary } from "../../organizations/member-contracts";
+import { AlertDialogActions } from "../dialog-actions";
 import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
-import { SessionTime } from "../settings/session-time";
+import { TimeDisplay } from "../time-display";
 import {
 	AlertDialog,
-	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
-	AlertDialogFooter,
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "../ui/alert-dialog";
 import { Avatar, AvatarFallback } from "../ui/avatar";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
+import { Empty, EmptyDescription } from "../ui/empty";
 import { Table, TableBody, TableCell, TableRow } from "../ui/table";
 import { MemberTableHeader, memberTableFeatures } from "./member-table";
 import type {
@@ -79,18 +79,17 @@ export function InvitationList({
 		columns,
 		getRowId: (invitation) => invitation.id,
 	});
+	if (!invitations.length)
+		return (
+			<Empty className="border border-dashed bg-card p-6">
+				<EmptyDescription>{m.no_invitations()}</EmptyDescription>
+			</Empty>
+		);
 	return (
 		<div className="rounded-md border bg-card text-card-foreground">
 			<Table aria-label={m.invitations()}>
 				<MemberTableHeader table={table} />
 				<TableBody>
-					{!invitations.length && (
-						<TableRow>
-							<TableCell colSpan={6} className="text-muted-foreground">
-								{m.no_invitations()}
-							</TableCell>
-						</TableRow>
-					)}
 					{table.getRowModel().rows.map(({ original: invitation }) => {
 						const creator = members.find(
 							(member) => member.userId === invitation.inviterId,
@@ -139,7 +138,7 @@ export function InvitationList({
 									)}
 								</TableCell>
 								<TableCell className="whitespace-nowrap">
-									<SessionTime value={invitation.createdAt} relative />
+									<TimeDisplay value={invitation.createdAt} mode="relative" />
 								</TableCell>
 								<TableCell>
 									<div className="flex max-w-80 items-center gap-1">
@@ -223,10 +222,12 @@ export function InvitationList({
 														pending={pending}
 														pendingMessage={m.canceling_invitation()}
 													/>
-													<AlertDialogFooter>
-														<AlertDialogCancel disabled={pending}>
-															{m.keep_invitation()}
-														</AlertDialogCancel>
+													<AlertDialogActions
+														cancel={{
+															label: m.keep_invitation(),
+															disabled: pending,
+														}}
+													>
 														<Button
 															variant="destructive"
 															disabled={pending}
@@ -236,7 +237,7 @@ export function InvitationList({
 														>
 															{m.confirm_cancellation()}
 														</Button>
-													</AlertDialogFooter>
+													</AlertDialogActions>
 												</AlertDialogContent>
 											</AlertDialog>
 										)}

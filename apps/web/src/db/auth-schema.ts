@@ -138,6 +138,8 @@ export const invitation = appSchema.table(
 		inviterId: text("inviter_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
+		recipientName: text("recipient_name"),
+		message: text("message"),
 	},
 	(table) => [
 		index("invitation_organizationId_idx").on(table.organizationId),

@@ -1,4 +1,4 @@
-import { OperationError } from "../organizations/errors";
+import { OperationError } from "../lib/operation-error";
 import type { createAuth } from "./create-auth.server";
 import { requireVerifiedSession } from "./session-policy";
 

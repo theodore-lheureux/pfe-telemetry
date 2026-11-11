@@ -9,8 +9,8 @@ import {
 	Trash2Icon,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { accountContextHeader } from "@/auth/account-context";
 import { authClient } from "@/auth/client";
+import { registerPasskey } from "@/auth/passkey";
 import { useAccountPasskeys } from "@/auth/use-account-passkeys";
 import { useAppForm } from "@/components/app-form";
 import { FormFeedback } from "@/components/form-feedback";
@@ -18,10 +18,8 @@ import { useLocaleChangeBlocker } from "@/components/locale-safety";
 import { useMutationFeedback } from "@/components/mutation-feedback";
 import {
 	AlertDialog,
-	AlertDialogCancel,
 	AlertDialogContent,
 	AlertDialogDescription,
-	AlertDialogFooter,
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
@@ -30,8 +28,6 @@ import { Card } from "@/components/ui/card";
 import {
 	Dialog,
 	DialogContent,
-	DialogDescription,
-	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
@@ -46,18 +42,25 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { AlertDialogActions, DialogActions } from "../dialog-actions";
 import { signOutOfApplication } from "../sign-out";
+import { useStepUpAuthentication } from "../step-up-authentication";
+import { TimeDisplay } from "../time-display";
+import { useMutationOwner } from "../use-mutation-owner";
+import { usePageConfirmation } from "../use-page-confirmation";
 import { ProfileDetails } from "./profile-details";
-import { SessionTime } from "./session-time";
+import { SettingsPageHeading } from "./settings-page-heading";
 import { SettingsSection } from "./settings-section";
 import { TwoFactorSettings } from "./two-factor-settings";
 import { WebSessions } from "./web-sessions";
 
 export function UserProfile() {
 	const { user } = getRouteApi("/_app").useRouteContext();
+	const requireStepUp = useStepUpAuthentication();
 	const router = useRouter();
 	const hydrated = useHydrated();
 	const queryClient = useQueryClient();
+	const { begin } = useMutationOwner(user.id);
 	const setFeedback = useMutationFeedback();
 	const { passkeys, identity } = useAccountPasskeys();
 	const [message, setMessage] = useState("");
@@ -71,39 +74,50 @@ export function UserProfile() {
 		defaultValues: { name: "" },
 		onSubmit: async ({ value }) => {
 			if (!hydrated || actionPending) return;
-			await runAction(() =>
-				authClient.passkey.addPasskey({
-					name: value.name.trim() || undefined,
-					fetchOptions: { headers: { [accountContextHeader]: user.id } },
-				}),
+			await runAction((signal) =>
+				registerPasskey(signal, user.id, value.name.trim() || undefined),
 			);
 		},
 	});
 	const addingPasskey = useSelector(form.store, (state) => state.isSubmitting);
-	const pending = actionPending || addingPasskey;
+	const signingOut = identity.action === "signout";
+	const pending = actionPending || addingPasskey || signingOut;
+	const visibleActivity = signingOut ? "signout" : activity;
 	useLocaleChangeBlocker(pending);
-	const [deleteId, setDeleteId] = useState<string | null>(null);
+	const [deleteId, setDeleteId] = usePageConfirmation<string>();
 	const heading = useRef<HTMLHeadingElement>(null);
 	const completedDeletion = useRef<string | null>(null);
-	const [renameId, setRenameId] = useState<string | null>(null);
+	const [renameId, setRenameId] = usePageConfirmation<string>();
 	const [renameName, setRenameName] = useState("");
 	const renameTrigger = useRef<HTMLButtonElement | null>(null);
 
 	async function runAction(
-		action: () => Promise<{
+		action: (signal: AbortSignal) => Promise<{
 			error: { code?: string; message?: string } | null;
 		}>,
 		removedId?: string,
 		kind: "add" | "remove" | "rename" | "sessions" = "add",
 	) {
 		if (actionBusy.current) return;
+		if (!(await requireStepUp({ userId: user.id, email: user.email }))) return;
+		const operation = begin(() => {
+			actionBusy.current = false;
+			setPending(false);
+			setActivity(null);
+			setMessage("");
+			setFailed(false);
+			setRenameName("");
+			completedDeletion.current = null;
+		});
+		if (!operation) return;
 		actionBusy.current = true;
 		setActivity(kind);
 		setPending(true);
 		setMessage("");
 		setFailed(false);
 		try {
-			const result = await action();
+			const result = await action(operation.signal);
+			if (!operation.current()) return;
 			if (result.error) {
 				setFailed(true);
 				setMessage(
@@ -116,67 +130,58 @@ export function UserProfile() {
 				setMessage(m.account_security_updated());
 				setDeleteId(null);
 				setRenameId(null);
-				await passkeys.refetch();
 				if (kind === "sessions")
 					await queryClient.invalidateQueries({
 						queryKey: ["account-web-sessions", user.id],
 					});
+				else await passkeys.refetch();
 			}
 		} catch {
+			if (!operation.current()) return;
 			setFailed(true);
 			setMessage(m.the_action_was_not_completed_please_try_again());
 		} finally {
-			actionBusy.current = false;
-			setPending(false);
+			if (operation.current()) {
+				actionBusy.current = false;
+				setPending(false);
+			}
+			operation.finish();
 		}
 	}
 
 	async function signOut() {
 		if (actionBusy.current) return;
-		actionBusy.current = true;
-		setActivity("signout");
-		setPending(true);
 		setMessage("");
 		setFailed(false);
-		try {
-			const failure = await signOutOfApplication(router, setFeedback);
-			if (failure) {
-				setFailed(true);
-				setMessage(failure);
-			}
-		} finally {
-			actionBusy.current = false;
-			setPending(false);
+		const failure = await signOutOfApplication(router, setFeedback);
+		if (failure) {
+			setActivity("signout");
+			setFailed(true);
+			setMessage(failure);
 		}
 	}
 
 	return (
 		<div className="relative flex min-w-0 flex-col gap-8">
-			<div className="flex flex-wrap items-start justify-between gap-4">
-				<div className="min-w-0">
-					<h1
-						ref={heading}
-						tabIndex={-1}
-						className="text-2xl font-semibold tracking-tight"
+			<SettingsPageHeading
+				headingRef={heading}
+				actions={
+					<Button
+						variant="outline"
+						onClick={signOut}
+						disabled={!hydrated || pending}
+						pending={signingOut}
+						pendingLabel={m.signing_out()}
 					>
-						{m.user_profile()}
-					</h1>
-				</div>
-				<Button
-					variant="outline"
-					onClick={signOut}
-					disabled={!hydrated || pending}
-					pending={pending && activity === "signout"}
-					pendingLabel={m.signing_out()}
-				>
-					<LogOutIcon aria-hidden="true" />
-					{m.sign_out()}
-				</Button>
-			</div>
+						<LogOutIcon aria-hidden="true" />
+						{m.sign_out()}
+					</Button>
+				}
+			/>
 			<FormFeedback
-				message={activity === "signout" ? message : ""}
+				message={visibleActivity === "signout" ? message : ""}
 				kind={failed ? "error" : "success"}
-				pending={pending && activity === "signout"}
+				pending={signingOut}
 				pendingMessage={m.signing_out()}
 				reserveLine={false}
 			/>
@@ -189,7 +194,7 @@ export function UserProfile() {
 			>
 				<form
 					method="post"
-					className="flex flex-wrap items-end gap-2"
+					className="flex max-w-2xl flex-wrap items-end gap-2"
 					onSubmit={(event) => {
 						event.preventDefault();
 						event.stopPropagation();
@@ -252,7 +257,7 @@ export function UserProfile() {
 										</TableCell>
 										<TableCell className="whitespace-nowrap">
 											{key.createdAt ? (
-												<SessionTime value={key.createdAt} />
+												<TimeDisplay value={key.createdAt} mode="compact" />
 											) : (
 												"—"
 											)}
@@ -322,7 +327,13 @@ export function UserProfile() {
 															pending={pending}
 															pendingMessage={m.removing_passkey()}
 														/>
-														<AlertDialogFooter>
+														<AlertDialogActions
+															cancel={{
+																label: m.cancel(),
+																disabled: !hydrated || pending,
+																onClick: () => setDeleteId(null),
+															}}
+														>
 															<Button
 																variant="destructive"
 																disabled={!hydrated || pending}
@@ -330,9 +341,10 @@ export function UserProfile() {
 																pendingLabel={m.removing_passkey()}
 																onClick={() =>
 																	runAction(
-																		() =>
+																		(signal) =>
 																			authClient.passkey.deletePasskey({
 																				id: key.id,
+																				fetchOptions: { signal },
 																			}),
 																		key.id,
 																		"remove",
@@ -341,14 +353,7 @@ export function UserProfile() {
 															>
 																{m.confirm_removal()}
 															</Button>
-															<AlertDialogCancel
-																variant="ghost"
-																disabled={!hydrated || pending}
-																onClick={() => setDeleteId(null)}
-															>
-																{m.cancel()}
-															</AlertDialogCancel>
-														</AlertDialogFooter>
+														</AlertDialogActions>
 													</AlertDialogContent>
 												</AlertDialog>
 											</div>
@@ -386,7 +391,8 @@ export function UserProfile() {
 					pendingLabel={m.revoking_sessions()}
 					onClick={() =>
 						runAction(
-							() => authClient.revokeOtherSessions(),
+							(signal) =>
+								authClient.revokeOtherSessions({ fetchOptions: { signal } }),
 							undefined,
 							"sessions",
 						)
@@ -411,6 +417,7 @@ export function UserProfile() {
 				}}
 			>
 				<DialogContent
+					aria-describedby={undefined}
 					onEscapeKeyDown={(event) => {
 						if (pending) event.preventDefault();
 					}}
@@ -422,9 +429,8 @@ export function UserProfile() {
 						)?.focus();
 					}}
 				>
-					<DialogHeader>
+					<DialogHeader className="border-b pb-4 pr-8">
 						<DialogTitle>{m.rename_passkey()}</DialogTitle>
-						<DialogDescription>{m.passkey_name()}</DialogDescription>
 					</DialogHeader>
 					<form
 						onSubmit={(event) => {
@@ -432,10 +438,11 @@ export function UserProfile() {
 							event.stopPropagation();
 							if (renameId && renameName.trim() && !pending)
 								void runAction(
-									() =>
+									(signal) =>
 										authClient.passkey.updatePasskey({
 											id: renameId,
 											name: renameName.trim(),
+											fetchOptions: { signal },
 										}),
 									undefined,
 									"rename",
@@ -443,7 +450,9 @@ export function UserProfile() {
 						}}
 						className="flex flex-col gap-4"
 					>
-						<Label htmlFor="rename-passkey-name">{m.name()}</Label>
+						<Label className="sr-only" htmlFor="rename-passkey-name">
+							{m.passkey_name()}
+						</Label>
 						<Input
 							id="rename-passkey-name"
 							required
@@ -456,24 +465,23 @@ export function UserProfile() {
 							message={activity === "rename" ? message : ""}
 							kind={failed ? "error" : "success"}
 							pending={pending}
+							reserveLine={false}
 						/>
-						<DialogFooter>
-							<Button
-								type="button"
-								variant="ghost"
-								disabled={pending}
-								onClick={() => setRenameId(null)}
-							>
-								{m.cancel()}
-							</Button>
+						<DialogActions
+							cancel={{
+								label: m.cancel(),
+								disabled: pending,
+								onClick: () => setRenameId(null),
+							}}
+						>
 							<Button
 								type="submit"
 								disabled={pending || !renameName.trim()}
 								pending={pending && activity === "rename"}
 							>
-								{m.save_name()}
+								{m.save_setting()}
 							</Button>
-						</DialogFooter>
+						</DialogActions>
 					</form>
 				</DialogContent>
 			</Dialog>

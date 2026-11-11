@@ -7,7 +7,11 @@ import {
 import { accountContextHeader } from "./account-context";
 import { authClient } from "./client";
 
-export async function registerPasskey(signal: AbortSignal, userId: string) {
+export async function registerPasskey(
+	signal: AbortSignal,
+	userId: string,
+	name?: string,
+) {
 	if (
 		!window.isSecureContext ||
 		typeof PublicKeyCredential !== "function" ||
@@ -26,6 +30,7 @@ export async function registerPasskey(signal: AbortSignal, userId: string) {
 		if (signal.aborted) throw new Error("Registration retired");
 		return await authClient.passkey.verifyRegistration({
 			response,
+			name,
 			fetchOptions: { signal, headers: { [accountContextHeader]: userId } },
 		});
 	} finally {
@@ -90,10 +95,8 @@ export async function preparePasskey(
 		);
 		publicKey.userVerification = "required";
 		const credential = await navigator.credentials.get({
-			publicKey: conditional
-				? { ...publicKey, allowCredentials: [] }
-				: publicKey,
-			mediation: conditional ? "conditional" : "required",
+			publicKey: { ...publicKey, allowCredentials: [] },
+			mediation: "conditional",
 			signal,
 		});
 		if (signal.aborted) return { status: "canceled" };

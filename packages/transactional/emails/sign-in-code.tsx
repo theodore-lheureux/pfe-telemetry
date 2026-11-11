@@ -1,15 +1,25 @@
 import type { Locale } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
-import { Text } from "react-email";
-import { EmailLayout, emailStyles } from "../src/email-layout";
+import {
+	EmailButton,
+	EmailCode,
+	EmailLinkFallback,
+	EmailText,
+} from "../src/email-components";
+import { EmailLayout } from "../src/email-layout";
+
+export interface SignInCodeEmailProps {
+	locale: Locale;
+	code: string;
+	/** Opens sign-in with the code filled in; the person still confirms in the app. */
+	url: string;
+}
 
 export default function SignInCodeEmail({
 	code,
 	locale,
-}: {
-	code: string;
-	locale: Locale;
-}) {
+	url,
+}: SignInCodeEmailProps) {
 	return (
 		<EmailLayout
 			locale={locale}
@@ -17,32 +27,26 @@ export default function SignInCodeEmail({
 			title={m.email_code_heading({}, { locale })}
 			description={m.email_code_instructions({}, { locale })}
 			footer={
-				<>
-					<Text style={emailStyles.footer}>
-						{m.email_code_warning({}, { locale })}
-					</Text>
-					<Text style={emailStyles.footer}>
-						{m.email_code_ignore({}, { locale })}
-					</Text>
-				</>
+				<EmailText tone="footer">
+					{m.email_code_ignore({}, { locale })}
+				</EmailText>
 			}
 		>
-			<Text
-				style={{
-					...emailStyles.text,
-					fontSize: "28px",
-					fontWeight: 600,
-					color: "#18181b",
-					margin: "24px 0 0",
-					lineHeight: "36px",
-					letterSpacing: "6px",
-					fontVariantNumeric: "tabular-nums",
-				}}
-			>
-				{code}
-			</Text>
+			<EmailCode code={code} />
+			<EmailButton href={url}>
+				{m.email_code_button({}, { locale })}
+			</EmailButton>
+			<EmailText tone="small">{m.email_code_warning({}, { locale })}</EmailText>
+			<EmailLinkFallback
+				label={m.email_link_fallback({}, { locale })}
+				href={url}
+			/>
 		</EmailLayout>
 	);
 }
 
-SignInCodeEmail.PreviewProps = { code: "012345", locale: "en" };
+SignInCodeEmail.PreviewProps = {
+	locale: "en",
+	code: "012345",
+	url: "https://telemetry.example.com/login#email=member%40example.com&code=012345",
+} satisfies SignInCodeEmailProps;

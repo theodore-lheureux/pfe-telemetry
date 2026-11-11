@@ -2,11 +2,23 @@ import {
 	APIError,
 	createAuthEndpoint,
 	createAuthMiddleware,
+	freshSessionMiddleware,
 	getSessionFromCtx,
 } from "better-auth/api";
 import { deleteSessionCookie, expireCookie } from "better-auth/cookies";
 import { twoFactor } from "better-auth/plugins";
 import { accountContextHeader } from "./account-context";
+
+export function isTwoFactorEnrollment(ctx: {
+	path?: string;
+	context: { session?: { user: { twoFactorEnabled?: boolean } } | null };
+}) {
+	return (
+		ctx.path === "/two-factor/verify-totp" &&
+		!!ctx.context.session?.user &&
+		!ctx.context.session.user.twoFactorEnabled
+	);
+}
 
 export function recountTwoFactor() {
 	const plugin = twoFactor({
@@ -36,9 +48,11 @@ export function recountTwoFactor() {
 					const user = await ctx.context.internalAdapter.findUserById(
 						record.value,
 					);
+					const current = await getSessionFromCtx(ctx);
 					return ctx.json({
 						pending:
 							!!user &&
+							(!current || current.user.id === user.id) &&
 							"twoFactorEnabled" in user &&
 							user.twoFactorEnabled === true,
 					});
@@ -77,68 +91,116 @@ export function recountTwoFactor() {
 							});
 					}),
 				},
+				{
+					matcher: (ctx: { path?: string }) =>
+						[
+							"/two-factor/enable",
+							"/two-factor/disable",
+							"/two-factor/get-totp-uri",
+							"/two-factor/generate-backup-codes",
+						].includes(ctx.path ?? ""),
+					handler: createAuthMiddleware(async (ctx) => {
+						await freshSessionMiddleware(ctx);
+					}),
+				},
 			],
-			after: plugin.hooks.after.map((hook) => ({
-				...hook,
-				// Native challenge issuance is reused for email-code login. Verified passkeys remain direct.
-				matcher: (context: Parameters<typeof hook.matcher>[0]) =>
-					context.path === "/sign-in/email-otp" || hook.matcher(context),
-				handler: createAuthMiddleware(async (ctx) => {
-					const headers = new Headers(ctx.headers);
-					if (ctx.path === "/sign-in/email-otp") {
-						const trusted = ctx.context.createAuthCookie("trust_device");
-						// Native middleware reparses its input headers, so omit remembered-device cookies before invoking it.
-						headers.set(
-							"cookie",
-							(headers.get("cookie") ?? "")
-								.split(";")
-								.filter(
-									(cookie) => cookie.trim().split("=", 1)[0] !== trusted.name,
-								)
-								.join(";"),
-						);
-						expireCookie(ctx, trusted);
-					}
-					const issued = ctx.context.newSession;
-					try {
-						const result: unknown = await hook.handler({
-							...ctx,
-							headers,
-							returnHeaders: true,
-							asResponse: false,
-						});
-						if (
-							!result ||
-							typeof result !== "object" ||
-							!("headers" in result) ||
-							!(result.headers instanceof Headers) ||
-							!("response" in result)
-						)
-							throw new Error("Invalid authentication middleware response");
-						for (const [name, value] of result.headers)
-							if (name.toLowerCase() !== "set-cookie")
-								ctx.responseHeaders.set(name, value);
-						for (const cookie of result.headers.getSetCookie())
-							ctx.responseHeaders.append("set-cookie", cookie);
-						return result.response;
-					} catch {
-						// Never deliver a provisional session, including in earlier Set-Cookie headers, when challenge issuance fails.
-						ctx.context.responseHeaders?.delete("set-cookie");
-						ctx.responseHeaders.delete("set-cookie");
-						deleteSessionCookie(ctx, true);
-						expireCookie(ctx, ctx.context.createAuthCookie("two_factor"));
-						ctx.context.setNewSession(null);
-						if (issued)
+			after: [
+				...plugin.hooks.after.map((hook) => ({
+					...hook,
+					// Native challenge issuance is reused for email-code login. Verified passkeys remain direct.
+					matcher: (context: Parameters<typeof hook.matcher>[0]) =>
+						context.path === "/sign-in/email-otp" || hook.matcher(context),
+					handler: createAuthMiddleware(async (ctx) => {
+						const headers = new Headers(ctx.headers);
+						if (ctx.path === "/sign-in/email-otp") {
+							const trusted = ctx.context.createAuthCookie("trust_device");
+							// Native middleware reparses its input headers, so omit remembered-device cookies before invoking it.
+							headers.set(
+								"cookie",
+								(headers.get("cookie") ?? "")
+									.split(";")
+									.filter(
+										(cookie) => cookie.trim().split("=", 1)[0] !== trusted.name,
+									)
+									.join(";"),
+							);
+							expireCookie(ctx, trusted);
+						}
+						const issued = ctx.context.newSession;
+						try {
+							const result: unknown = await hook.handler({
+								...ctx,
+								headers,
+								returnHeaders: true,
+								asResponse: false,
+							});
+							if (
+								!result ||
+								typeof result !== "object" ||
+								!("headers" in result) ||
+								!(result.headers instanceof Headers) ||
+								!("response" in result)
+							)
+								throw new Error("Invalid authentication middleware response");
+							for (const [name, value] of result.headers)
+								if (name.toLowerCase() !== "set-cookie")
+									ctx.responseHeaders.set(name, value);
+							for (const cookie of result.headers.getSetCookie())
+								ctx.responseHeaders.append("set-cookie", cookie);
+							return result.response;
+						} catch {
+							// Never deliver a provisional session, including in earlier Set-Cookie headers, when challenge issuance fails.
+							ctx.context.responseHeaders?.delete("set-cookie");
+							ctx.responseHeaders.delete("set-cookie");
+							deleteSessionCookie(ctx, true);
+							expireCookie(ctx, ctx.context.createAuthCookie("two_factor"));
+							ctx.context.setNewSession(null);
+							if (issued)
+								await ctx.context.internalAdapter
+									.deleteSession(issued.session.token)
+									.catch(() => {});
+							throw new APIError("INTERNAL_SERVER_ERROR", {
+								code: "TWO_FACTOR_UNAVAILABLE",
+								message: "Two-factor sign-in is temporarily unavailable",
+							});
+						}
+					}),
+				})),
+				{
+					matcher: (ctx: { path?: string }) =>
+						ctx.path === "/two-factor/verify-totp",
+					handler: createAuthMiddleware(async (ctx) => {
+						const completed = ctx.context.newSession;
+						if (!completed || !isTwoFactorEnrollment(ctx)) return;
+						try {
+							const sessions = await ctx.context.internalAdapter.listSessions(
+								completed.user.id,
+							);
+							await Promise.all(
+								sessions
+									.filter(
+										(session) => session.token !== completed.session.token,
+									)
+									.map((session) =>
+										ctx.context.internalAdapter.deleteSession(session.token),
+									),
+							);
+						} catch {
+							ctx.context.responseHeaders?.delete("set-cookie");
+							ctx.responseHeaders.delete("set-cookie");
+							deleteSessionCookie(ctx, true);
+							ctx.context.setNewSession(null);
 							await ctx.context.internalAdapter
-								.deleteSession(issued.session.token)
+								.deleteSession(completed.session.token)
 								.catch(() => {});
-						throw new APIError("INTERNAL_SERVER_ERROR", {
-							code: "TWO_FACTOR_UNAVAILABLE",
-							message: "Two-factor sign-in is temporarily unavailable",
-						});
-					}
-				}),
-			})),
+							throw new APIError("INTERNAL_SERVER_ERROR", {
+								code: "TWO_FACTOR_UNAVAILABLE",
+								message: "Two-factor enrollment is temporarily unavailable",
+							});
+						}
+					}),
+				},
+			],
 		},
 	};
 }

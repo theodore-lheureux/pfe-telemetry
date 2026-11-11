@@ -1,10 +1,11 @@
-import type { Locale } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { render, toPlainText } from "react-email";
 import OrganizationInvitationEmail, {
 	type OrganizationInvitationEmailProps,
 } from "../emails/organization-invitation";
-import SignInCodeEmail from "../emails/sign-in-code";
+import SignInCodeEmail, {
+	type SignInCodeEmailProps,
+} from "../emails/sign-in-code";
 import { emailBrandAssets } from "./brand-assets";
 
 export const emailBrandImages = [
@@ -13,9 +14,15 @@ export const emailBrandImages = [
 		cid: "recount-logo-light",
 		base64: emailBrandAssets.light,
 	},
+	{
+		filename: "recount-symbol-teal.png",
+		cid: "recount-symbol",
+		base64: emailBrandAssets.symbol,
+	},
 ];
 
 export type { OrganizationInvitationEmailProps } from "../emails/organization-invitation";
+export type { SignInCodeEmailProps } from "../emails/sign-in-code";
 
 export async function renderOrganizationInvitationEmail(
 	props: OrganizationInvitationEmailProps,
@@ -29,12 +36,11 @@ export async function renderOrganizationInvitationEmail(
 }
 
 export async function renderSignInCodeEmail(
-	code: string,
-	locale: Locale,
+	props: SignInCodeEmailProps,
 ): Promise<{ subject: string; html: string; text: string }> {
-	const html = await render(<SignInCodeEmail code={code} locale={locale} />);
+	const html = await render(<SignInCodeEmail {...props} />);
 	return {
-		subject: m.email_code_subject({}, { locale }),
+		subject: m.email_code_subject({}, { locale: props.locale }),
 		html,
 		text: toPlainText(html),
 	};

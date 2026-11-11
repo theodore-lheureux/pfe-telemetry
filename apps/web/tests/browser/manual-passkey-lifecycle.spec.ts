@@ -1,3 +1,4 @@
+import { gate as createGate } from "../gate";
 import { expect, test } from "./fixtures";
 
 for (const stage of ["options", "ceremony"] as const) {
@@ -34,10 +35,7 @@ for (const stage of ["options", "ceremony"] as const) {
 					}),
 			});
 		});
-		let release!: () => void;
-		const held = new Promise<void>((resolve) => {
-			release = resolve;
-		});
+		const { promise: held, release } = createGate();
 		let optionsRequests = 0;
 		let verifications = 0;
 		page.on("request", (request) => {

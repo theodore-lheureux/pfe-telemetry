@@ -4,7 +4,7 @@ import { ExternalLinkIcon, RefreshCwIcon } from "lucide-react";
 import { useState } from "react";
 import { refreshBetterAuthIdentity } from "../../auth/identity-state";
 import { updateProfileName } from "../../auth/profile.functions";
-import { EntityForm } from "../entity-form";
+import { RenameEntityForm } from "../entity-form";
 import { UserAvatar } from "../identity-avatar";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -17,11 +17,10 @@ export function ProfileDetails() {
 	return (
 		<>
 			<SettingsSection id="profile-picture" title={m.profile_picture()}>
-				<div className="flex items-center gap-4">
+				<div className="flex flex-col items-start gap-4 sm:flex-row">
 					<UserAvatar
-						key={`${user.id}/${refresh}`}
 						user={user}
-						className="size-20"
+						className="size-16 shrink-0 text-lg [&_[data-slot=avatar-fallback]]:text-lg"
 						imageSize={256}
 						refresh={refresh}
 					/>
@@ -49,11 +48,11 @@ export function ProfileDetails() {
 				</div>
 			</SettingsSection>
 			<SettingsSection id="details" title={m.profile_details()}>
-				<EntityForm
+				<RenameEntityForm
 					requireChanged
 					reserveFeedbackLine={false}
 					name={user.name}
-					className="max-w-md border-0 bg-transparent p-0"
+					className="max-w-2xl border-0 bg-transparent p-0"
 					submitLabel={m.save_name()}
 					save={({ name }, signal) =>
 						updateProfileName({ data: { name, userId: user.id }, signal })
@@ -80,7 +79,7 @@ export function ProfileDetails() {
 							{m.profile_email_readonly()}
 						</p>
 					</div>
-				</EntityForm>
+				</RenameEntityForm>
 			</SettingsSection>
 		</>
 	);

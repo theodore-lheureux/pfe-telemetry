@@ -25,7 +25,8 @@ import {
 } from "./email-delivery.server";
 import { sessionSignInMethod } from "./session-details.server";
 import { AUTH_FRESH_AGE_SECONDS } from "./session-policy";
-import { recountTwoFactor } from "./two-factor.server";
+import { signInLinkUrl } from "./sign-in-link";
+import { isTwoFactorEnrollment, recountTwoFactor } from "./two-factor.server";
 
 const credentialSecurity = {
 	id: "credential-security",
@@ -45,12 +46,9 @@ const credentialSecurity = {
 				matcher: (ctx) =>
 					ctx.path === "/passkey/delete-passkey" ||
 					ctx.path === "/passkey/update-passkey" ||
-					[
-						"/two-factor/enable",
-						"/two-factor/disable",
-						"/two-factor/get-totp-uri",
-						"/two-factor/generate-backup-codes",
-					].includes(ctx.path ?? ""),
+					ctx.path === "/revoke-session" ||
+					ctx.path === "/revoke-other-sessions" ||
+					ctx.path === "/revoke-sessions",
 				handler: createAuthMiddleware(async (ctx) => {
 					await freshSessionMiddleware(ctx);
 				}),
@@ -91,6 +89,7 @@ export function createAuth(
 			email: string,
 			code: string,
 			locale: Locale,
+			url: string,
 		) => Promise<void>;
 		sendOrganizationInvitation: (
 			props: OrganizationInvitationEmailProps,
@@ -174,7 +173,12 @@ export function createAuth(
 						throw new Error("Unsupported email code purpose");
 					const locale = requestLocale(context?.headers);
 					return emailDelivery.send(() =>
-						email.sendSignInCode(recipient, otp, locale),
+						email.sendSignInCode(
+							recipient,
+							otp,
+							locale,
+							signInLinkUrl(config.origin, recipient, otp),
+						),
 					);
 				},
 			}),
@@ -226,28 +230,7 @@ export function createAuth(
 							handler: createAuthMiddleware(async (ctx) => {
 								const completed = ctx.context.newSession;
 								if (!completed) return;
-								const enrollment =
-									ctx.path === "/two-factor/verify-totp" &&
-									ctx.context.session?.user &&
-									!ctx.context.session.user.twoFactorEnabled;
-								if (enrollment) {
-									const sessions =
-										await ctx.context.internalAdapter.listSessions(
-											completed.user.id,
-										);
-									await Promise.all(
-										sessions
-											.filter(
-												(session) => session.token !== completed.session.token,
-											)
-											.map((session) =>
-												ctx.context.internalAdapter.deleteSession(
-													session.token,
-												),
-											),
-									);
-									return;
-								}
+								if (isTwoFactorEnrollment(ctx)) return;
 								await database
 									.update(schema.user)
 									.set({

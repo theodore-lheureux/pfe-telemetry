@@ -20,7 +20,7 @@ export interface AuthenticationReply {
 }
 export interface AuthenticationSnapshot {
 	twoFactorPending: boolean;
-	action: Method | "check" | null;
+	action: Method | "check" | "signout" | null;
 	pending: boolean;
 	revision: number;
 	recovery: AuthenticationRecovery | null;
@@ -44,6 +44,10 @@ export interface AuthenticationController {
 	beforePrivateRead: () => Promise<void>;
 	clearRecovery: () => void;
 	dismissPasskeyPrompt: (revision: number) => void;
+	signOut: (
+		action: () => Promise<boolean>,
+		onSuccess: () => Promise<void>,
+	) => Promise<boolean>;
 }
 
 export function createAuthenticationController(services: {
@@ -63,12 +67,13 @@ export function createAuthenticationController(services: {
 	};
 	const listeners = new Set<() => void>();
 	let active: {
-		owner: symbol;
 		controller: AbortController;
 		submitted: boolean;
 		settle: () => void;
 		settled: Promise<void>;
+		released: Promise<void>;
 	} | null = null;
+	let signOutFlight: Promise<boolean> | null = null;
 	const publish = (change: Partial<AuthenticationSnapshot>) => {
 		snapshot = { ...snapshot, ...change };
 		for (const listener of listeners) listener();
@@ -83,22 +88,26 @@ export function createAuthenticationController(services: {
 			services.refreshTimeoutMs,
 		);
 	};
-	function acquire(action: Method | "check") {
+	function acquire(action: Method | "check" | "signout") {
 		if (active) return null;
 		let settle!: () => void;
+		let release!: () => void;
 		const operation = {
-			owner: Symbol(action),
 			controller: new AbortController(),
 			submitted: false,
 			settled: new Promise<void>((resolve) => {
 				settle = resolve;
 			}),
 			settle: () => settle(),
+			released: new Promise<void>((resolve) => {
+				release = resolve;
+			}),
 		};
 		active = operation;
 		publish({ action, pending: true });
 		const finish = () => {
 			operation.settle();
+			release();
 			if (active === operation) {
 				active = null;
 				publish({ action: null, pending: false });
@@ -164,6 +173,41 @@ export function createAuthenticationController(services: {
 	}
 	return {
 		getSnapshot: () => snapshot,
+		signOut(action, onSuccess) {
+			if (signOutFlight) return signOutFlight;
+			signOutFlight = (async () => {
+				// Verification and reconciliation must settle cookies before sign-out can write them.
+				if (active && (active.submitted || snapshot.action === "check"))
+					await active.released;
+				else if (active) {
+					active.controller.abort();
+					active.settle();
+					active = null;
+				}
+				const lease = acquire("signout");
+				if (!lease) return false;
+				clear();
+				publish({ recovery: null, twoFactorPending: false });
+				try {
+					let succeeded = false;
+					try {
+						succeeded = await action();
+					} catch {
+						/* A lost sign-out response still retires private identity. */
+					}
+					clear();
+					lease.operation.settle();
+					await refresh();
+					if (succeeded) await onSuccess();
+					return succeeded;
+				} finally {
+					lease.finish();
+				}
+			})().finally(() => {
+				signOutFlight = null;
+			});
+			return signOutFlight;
+		},
 		dismissPasskeyPrompt(revision) {
 			if (revision === snapshot.revision) publish({ passkeyPromptFor: null });
 		},
@@ -172,7 +216,7 @@ export function createAuthenticationController(services: {
 			return () => listeners.delete(listener);
 		},
 		begin(method) {
-			if (snapshot.recovery) return null;
+			if (snapshot.recovery || signOutFlight) return null;
 			const lease = acquire(method);
 			if (!lease) return null;
 			const { operation, finish } = lease;
@@ -233,6 +277,7 @@ export function createAuthenticationController(services: {
 			};
 		},
 		async recover() {
+			if (signOutFlight) return { status: "canceled" };
 			const recovery = snapshot.recovery;
 			if (!recovery) return { status: "canceled" };
 			const lease = acquire("check");

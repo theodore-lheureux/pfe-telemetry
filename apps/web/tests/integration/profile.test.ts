@@ -8,8 +8,7 @@ import {
 } from "../../src/auth/profile.server";
 import { AUTH_FRESH_AGE_SECONDS } from "../../src/auth/session-policy";
 import { session, user } from "../../src/db/schema";
-import { operationResult } from "../../src/organizations/operation-result.server";
-import { trustedCodeSignIn } from "../auth-actors";
+import { sessionHeaders, trustedCodeSignIn } from "../auth-actors";
 import { createTestDatabase } from "../database";
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -23,13 +22,7 @@ async function signIn(email: string) {
 		(email) => codes.get(email),
 		new Headers({ origin }),
 	);
-	return new Headers({
-		origin,
-		cookie: reply.headers
-			.getSetCookie()
-			.map((cookie) => cookie.split(";")[0])
-			.join("; "),
-	});
+	return sessionHeaders(reply, new Headers({ origin }));
 }
 beforeAll(async () => {
 	database = await createTestDatabase("profile");
@@ -85,7 +78,7 @@ test("profile writes bind the displayed identity and sessions expose no bearer t
 	await expect(
 		updateProfileName(auth, new Headers(), "Anonymous", current.user.id),
 	).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
-	const sessions = await listWebSessions(auth, currentHeaders);
+	const sessions = await listWebSessions(database.db, auth, currentHeaders);
 	expect(sessions).toHaveLength(2);
 	expect(
 		sessions.find((row) => row.id === current.session.id)?.signInMethod,
@@ -121,7 +114,9 @@ test("profile writes bind the displayed identity and sessions expose no bearer t
 	await revokeWebSession(auth, currentHeaders, other.session.id);
 	expect(await auth.api.getSession({ headers: otherHeaders })).toBeNull();
 	expect(
-		(await listWebSessions(auth, currentHeaders)).map((session) => session.id),
+		(await listWebSessions(database.db, auth, currentHeaders)).map(
+			(session) => session.id,
+		),
 	).toEqual([current.session.id]);
 	expect(await auth.api.getSession({ headers: foreignHeaders })).not.toBeNull();
 	await database.db
@@ -140,11 +135,12 @@ test("profile writes bind the displayed identity and sessions expose no bearer t
 			createdAt: new Date(Date.now() - (AUTH_FRESH_AGE_SECONDS + 1) * 1000),
 		})
 		.where(eq(session.id, current.session.id));
-	await expect(listWebSessions(auth, currentHeaders)).rejects.toMatchObject({
-		body: { code: "SESSION_NOT_FRESH" },
-	});
 	expect(
-		(await operationResult(() => listWebSessions(auth, currentHeaders))).error
-			?.code,
-	).toBe("SESSION_NOT_FRESH");
+		(await listWebSessions(database.db, auth, currentHeaders)).map(
+			(entry) => entry.id,
+		),
+	).toEqual([current.session.id]);
+	await expect(
+		auth.api.revokeOtherSessions({ headers: currentHeaders }),
+	).rejects.toMatchObject({ body: { code: "SESSION_NOT_FRESH" } });
 });

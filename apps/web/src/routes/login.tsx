@@ -25,7 +25,10 @@ import {
 	preparePasskey,
 } from "../auth/passkey";
 import { loginSearch } from "../auth/redirect";
+import { readSignInLink } from "../auth/sign-in-link";
 import { useAppForm } from "../components/app-form";
+import { AuthCard, AuthDivider } from "../components/auth-card";
+import { ActionStack } from "../components/dialog-actions";
 import { type FeedbackKind, FormFeedback } from "../components/form-feedback";
 import { useLocaleChangeBlocker } from "../components/locale-safety";
 import { useMutationFeedback } from "../components/mutation-feedback";
@@ -149,6 +152,30 @@ function Login() {
 		previousPhase.current = phase;
 		(phase === "code" ? codeInput.current : emailInput.current)?.focus();
 	}, [phase]);
+
+	// A link from the sign-in email opens the code step with the code filled in. The fragment
+	// is dropped from the address bar and history before anything else happens.
+	const openSignInLink = useEffectEvent(() => {
+		const link = readSignInLink(window.location.hash);
+		if (!link) return;
+		window.history.replaceState(
+			window.history.state,
+			"",
+			window.location.pathname + window.location.search,
+		);
+		if (operation.current || authentication.getSnapshot().pending) return;
+		conditional.current?.cancel();
+		authentication.clearRecovery();
+		setSentEmail(link.email);
+		codeForm.setFieldValue("code", link.code);
+		setCodeInvalid(false);
+		setUncertain(false);
+		setMessage(null);
+		setPhase("code");
+	});
+	useEffect(() => {
+		if (hydrated) openSignInLink();
+	}, [hydrated]);
 
 	async function presentAuthentication(
 		outcome: AuthenticationOutcome,
@@ -546,6 +573,18 @@ function Login() {
 					? m.checking_signin()
 					: m.sending_code();
 
+	// Shown under the code field in the code step and above the passkey option otherwise.
+	const feedback = (
+		<FormFeedback
+			key={phase}
+			id="signin-feedback"
+			message={message?.text ?? ""}
+			kind={message?.kind ?? "success"}
+			pending={busy}
+			pendingMessage={pendingText}
+			reserveLine={false}
+		/>
+	);
 	if (
 		!uncertain &&
 		(identity.twoFactorPending || (loaded.twoFactorPending && !factorDismissed))
@@ -554,17 +593,14 @@ function Login() {
 			<TwoFactorSignIn onVerify={verifySecondFactor} onBack={changeEmail} />
 		);
 	return (
-		<main className="mx-auto my-8 flex w-[calc(100%_-_2rem)] max-w-md flex-col gap-6 rounded-lg border bg-card p-5 text-card-foreground sm:my-16">
-			<div>
-				<h1 className="text-[22px] font-medium">
-					{phase === "email" ? m.sign_in() : m.check_your_email()}
-				</h1>
-				<p className="mt-2 text-sm text-muted-foreground">
-					{phase === "email"
-						? m.use_a_passkey_or_get_a_secure_signin()
-						: m.code_for_email({ email: sentEmail })}
-				</p>
-			</div>
+		<AuthCard
+			title={phase === "email" ? m.sign_in() : m.check_your_email()}
+			description={
+				phase === "email"
+					? m.use_a_passkey_or_get_a_secure_signin()
+					: m.code_for_email({ email: sentEmail })
+			}
+		>
 			{phase === "email" ? (
 				<form
 					method="post"
@@ -664,7 +700,8 @@ function Login() {
 							);
 						}}
 					</codeForm.Field>
-					<div className="flex flex-col gap-2">
+					{feedback}
+					<ActionStack>
 						<Button
 							type="submit"
 							disabled={busy || (!uncertain && verifyRemaining > 0)}
@@ -679,43 +716,40 @@ function Login() {
 									? m.verify_code_in({ seconds: verifyRemaining })
 									: m.verify_code()}
 						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							className="w-full disabled:text-muted-foreground disabled:opacity-100"
-							disabled={busy || remaining > 0}
-							pending={action === "resend"}
-							pendingLabel={m.sending_code()}
-							onClick={() => void requestCode(sentEmail, true)}
-						>
-							{remaining
-								? m.resend_code_in({ seconds: remaining })
-								: m.resend_code()}
-						</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							className="w-full text-muted-foreground"
-							disabled={busy}
-							onClick={changeEmail}
-						>
-							<ArrowLeftIcon aria-hidden="true" />
-							{m.change_email()}
-						</Button>
-					</div>
+						<div className="-mx-2 flex flex-wrap items-center justify-between gap-2">
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="text-muted-foreground"
+								disabled={busy}
+								onClick={changeEmail}
+							>
+								<ArrowLeftIcon aria-hidden="true" />
+								{m.change_email()}
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className="text-muted-foreground disabled:opacity-100"
+								disabled={busy || remaining > 0}
+								pending={action === "resend"}
+								pendingLabel={m.sending_code()}
+								onClick={() => void requestCode(sentEmail, true)}
+							>
+								{remaining
+									? m.resend_code_in({ seconds: remaining })
+									: m.resend_code()}
+							</Button>
+						</div>
+					</ActionStack>
 				</form>
 			)}
-			<FormFeedback
-				key={phase}
-				id="signin-feedback"
-				message={message?.text ?? ""}
-				kind={message?.kind ?? "success"}
-				pending={busy}
-				pendingMessage={pendingText}
-				reserveLine={false}
-			/>
+			{phase === "email" && feedback}
 			{phase === "email" && (
-				<div className="flex flex-col gap-3 border-t pt-6">
+				<div className="flex flex-col gap-4">
+					<AuthDivider>{m.auth_or()}</AuthDivider>
 					<Button
 						type="button"
 						variant="outline"
@@ -736,6 +770,6 @@ function Login() {
 					)}
 				</div>
 			)}
-		</main>
+		</AuthCard>
 	);
 }

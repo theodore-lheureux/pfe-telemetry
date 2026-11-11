@@ -3,8 +3,8 @@ import {
 	getRequestHeaders,
 	setResponseHeader,
 } from "@tanstack/react-start/server";
-import { gravatarUrl } from "../components/avatar.server";
 import { getAuth } from "./auth.server";
+import { gravatarUrl } from "./avatar.server";
 import { readAuthSession } from "./session.server";
 
 export const getCurrentUser = createServerFn({ method: "GET" }).handler(
