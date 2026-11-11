@@ -3,17 +3,24 @@ import { parseProjectReference } from "../organizations/validation";
 import {
 	type AnalyticsQuery,
 	type Calculation,
+	COMPARE_UNITS,
 	type Combine,
+	type CompareUnit,
+	type Comparison,
 	type CoreField,
+	DEFAULT_SERIES_LIMIT,
 	type Filter,
 	type FilterOperator,
 	INTERVALS,
 	type Interval,
 	MAX_BUCKETS,
 	MAX_FILTERS,
+	MAX_FORMULAS,
 	MAX_GROUP_BY,
 	MAX_MEASURES,
 	MAX_RANGE_SECONDS,
+	MAX_RESULT_POINTS,
+	MAX_SERIES,
 	type Measure,
 	type MetricAttributesInput,
 	type MetricBehavior,
@@ -22,6 +29,7 @@ import {
 	type RunQueryInput,
 } from "./contracts";
 import { parseAttributeField } from "./fields";
+import { FormulaError, parseFormula } from "./formula";
 
 const CORE_FIELDS: readonly CoreField[] = [
 	"node",
@@ -187,12 +195,13 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		throw new InputError("INVALID_QUERY", "Invalid result shape");
 	const range = parseRange(input.range);
 	let interval: Interval | undefined;
+	let buckets = 1;
 	if (input.shape === "timeseries") {
 		if (!Object.hasOwn(INTERVALS, input.interval as string))
 			throw new InputError("INVALID_QUERY", "Invalid interval");
 		interval = input.interval as Interval;
 		const { from, to } = resolveRange(range);
-		const buckets = Math.ceil(
+		buckets = Math.ceil(
 			(to.getTime() - from.getTime()) / 1000 / INTERVALS[interval],
 		);
 		if (buckets > MAX_BUCKETS)
@@ -212,14 +221,104 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 	for (const field of groupBy) parseField(field);
 	if (new Set(groupBy).size !== groupBy.length)
 		throw new InputError("INVALID_QUERY", "Grouping fields must be unique");
+	const formulas = list(input.formulas, MAX_FORMULAS, "formulas").map(
+		(entry) => {
+			const formula = record(entry, "formula");
+			if (typeof formula.name !== "string" || !MEASURE_NAME.test(formula.name))
+				throw new InputError("INVALID_QUERY", "Invalid formula name");
+			if (typeof formula.expression !== "string")
+				throw new InputError("INVALID_QUERY", "Invalid formula");
+			try {
+				parseFormula(
+					formula.expression,
+					measures.map((measure) => measure.name),
+				);
+			} catch (error) {
+				throw new InputError(
+					"INVALID_QUERY",
+					error instanceof FormulaError ? error.message : "Invalid formula",
+				);
+			}
+			return { name: formula.name, expression: formula.expression };
+		},
+	);
+	const names = [...measures, ...formulas].map((entry) => entry.name);
+	if (new Set(names).size !== names.length)
+		throw new InputError("INVALID_QUERY", "Series names must be unique");
+	if (
+		input.limit !== undefined &&
+		(!Number.isInteger(input.limit) ||
+			(input.limit as number) < 1 ||
+			(input.limit as number) > MAX_SERIES)
+	)
+		throw new InputError("INVALID_QUERY", "Invalid series limit");
+	if (input.other !== undefined && typeof input.other !== "boolean")
+		throw new InputError("INVALID_QUERY", "Invalid other option");
+	// Every measure returns up to limit + 1 groups (the extra one, or Other) per bucket.
+	const groups = groupBy.length
+		? ((input.limit as number | undefined) ?? DEFAULT_SERIES_LIMIT) + 1
+		: 1;
+	if (measures.length * groups * buckets > MAX_RESULT_POINTS)
+		throw new InputError(
+			"INVALID_QUERY",
+			"Too many series for this range: lower the series limit or use a longer interval",
+		);
 	return {
 		shape: input.shape,
 		range,
 		...(interval && { interval }),
 		measures,
+		...(formulas.length ? { formulas } : {}),
 		filters: list(input.filters, MAX_FILTERS, "filters").map(parseFilter),
 		groupBy: groupBy as string[],
+		...(input.limit !== undefined ? { limit: input.limit as number } : {}),
+		...(input.other ? { other: true } : {}),
+		...(input.compare !== undefined
+			? { compare: parseComparison(input.compare) }
+			: {}),
 	};
+}
+
+function parseComparison(value: unknown): Comparison {
+	const input = record(value, "comparison");
+	if (input.previous === true) return { previous: true };
+	if (
+		COMPARE_UNITS.includes(input.unit as CompareUnit) &&
+		Number.isInteger(input.amount) &&
+		(input.amount as number) >= 1 &&
+		(input.amount as number) <= 365
+	)
+		return { amount: input.amount as number, unit: input.unit as CompareUnit };
+	throw new InputError("INVALID_QUERY", "Invalid comparison");
+}
+
+/** The comparison window for a resolved range. */
+export function comparisonRange(
+	comparison: Comparison,
+	from: Date,
+	to: Date,
+): { from: Date; to: Date } {
+	if ("previous" in comparison) {
+		const length = to.getTime() - from.getTime();
+		return { from: new Date(from.getTime() - length), to: from };
+	}
+	const shift = (date: Date) => {
+		const shifted = new Date(date);
+		if (comparison.unit === "months")
+			shifted.setUTCMonth(shifted.getUTCMonth() - comparison.amount);
+		else
+			shifted.setTime(
+				shifted.getTime() -
+					comparison.amount *
+						(comparison.unit === "hours"
+							? 3_600_000
+							: comparison.unit === "days"
+								? 86_400_000
+								: 604_800_000),
+			);
+		return shifted;
+	};
+	return { from: shift(from), to: shift(to) };
 }
 
 export function parseRunQueryInput(value: unknown): RunQueryInput {

@@ -1,39 +1,8 @@
 import type { AnalyticsQuery, Filter, MetricBehavior } from "./contracts";
-import { INTERVALS, MAX_SERIES, type Measure } from "./contracts";
+import { DEFAULT_SERIES_LIMIT, INTERVALS, type Measure } from "./contracts";
 import { type ParsedField, parseField } from "./validation";
 
-export interface CompiledMeasure {
-	sql: string;
-	params: Record<string, string | number | string[]>;
-	groupColumns: string[];
-}
-
-export interface CompileScope {
-	projectId: string;
-	from: Date;
-	to: Date;
-	/** Stored kind of the measured metric, so mixed-kind names are never combined. */
-	kind: number;
-	behavior: MetricBehavior;
-}
-
 const NS_PER_MS = 1_000_000n;
-
-// Series identity: everything that distinguishes a logical stream, except continuity
-// markers, which the counter calculation handles through `stream_id` instead.
-function canonical(column: string, excluded: string[]) {
-	const nodes = excluded.length
-		? `arrayFilter(a -> a.path NOT IN (${excluded.map((path) => `'${path}'`).join(",")}), ${column})`
-		: column;
-	return `arraySort(a -> a.1, arrayMap(a -> tuple(a.path, a.kind, a.string_value, a.int_value,
-    if(isNull(a.double_value), NULL, reinterpretAsUInt64(assumeNotNull(a.double_value))),
-    a.bool_value, a.bytes_value), ${nodes}))`;
-}
-const SERIES = `cityHash64(tuple(source_id, resource_id, resource_kind, host_id, device_id,
-    scope_name, scope_version, metric_name, unit,
-    ${canonical("resource_attributes", ["/recount.host.boot_id", "/recount.collection.epoch_id"])},
-    ${canonical("scope_attributes", [])},
-    ${canonical("point_attributes", ["/recount.counter.segment_id"])}))`;
 
 // Missing or no-recorded values stay NULL and are skipped, never counted as zero.
 const VALUE = `if(bitAnd(flags, 1) = 0,
@@ -113,6 +82,7 @@ export function compileFields(fields: string[]) {
 function perSeries(
 	measure: Measure,
 	behavior: MetricBehavior,
+	cte: (name: string) => string,
 	groups: string,
 	timeseries: boolean,
 ) {
@@ -126,8 +96,8 @@ function perSeries(
 			min: "min(v)",
 			max: "max(v)",
 		}[measure.calculation as "last" | "avg" | "min" | "max"];
-		return `per_series AS (
-  SELECT ${keys}, ${aggregate} AS value FROM base WHERE v IS NOT NULL GROUP BY ${keys}
+		return `${cte("per_series")} AS (
+  SELECT ${keys}, ${aggregate} AS value FROM ${cte("base")} WHERE v IS NOT NULL GROUP BY ${keys}
 )`;
 	}
 	// Rates divide by the time the range covers within each bucket, so the current,
@@ -137,46 +107,56 @@ function perSeries(
 		: "{seconds:Float64}";
 	const scale = measure.calculation === "rate" ? ` / ${covered}` : "";
 	if (behavior === "delta")
-		return `per_series AS (
-  SELECT ${keys}, sum(v)${scale} AS value FROM base WHERE v IS NOT NULL GROUP BY ${keys}
+		return `${cte("per_series")} AS (
+  SELECT ${keys}, sum(v)${scale} AS value FROM ${cte("base")} WHERE v IS NOT NULL GROUP BY ${keys}
 )`;
 	// Cumulative counters: positive differences within one continuity segment. The first
 	// point of a segment has no predecessor, so it contributes nothing.
-	return `diffs AS (
+	return `${cte("diffs")} AS (
   SELECT ${keys}, v - lagInFrame(v) OVER w AS d, row_number() OVER w AS n
-  FROM base WHERE v IS NOT NULL
+  FROM ${cte("base")} WHERE v IS NOT NULL
   WINDOW w AS (PARTITION BY stream ORDER BY t, sample_id
     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
 ),
-per_series AS (
-  SELECT ${keys}, sum(greatest(d, 0))${scale} AS value FROM diffs WHERE n > 1 GROUP BY ${keys}
+${cte("per_series")} AS (
+  SELECT ${keys}, sum(greatest(d, 0))${scale} AS value FROM ${cte("diffs")} WHERE n > 1 GROUP BY ${keys}
 )`;
 }
 
-/** Compiles one measure of a validated query into a parameterized ClickHouse query. */
-export function compileMeasure(
+/** The stored kind and behavior of a measured metric. */
+export interface MeasureScope {
+	/** Stored kind of the measured metric, so mixed-kind names are never combined. */
+	kind: number;
+	behavior: MetricBehavior;
+}
+
+export interface CompiledQuery {
+	sql: string;
+	params: Record<string, string | number | string[]>;
+	/** Output columns holding group values, in `groupBy` order. */
+	groupColumns: string[];
+}
+
+/** One measure's rows: its CTEs and final selection, tagged with the measure's index. */
+function measureSelect(
 	query: AnalyticsQuery,
 	measure: Measure,
-	scope: CompileScope,
-): CompiledMeasure {
-	const params = new Params();
+	index: number,
+	scope: MeasureScope,
+	params: Params,
+) {
+	const cte = (name: string) => `m${index}_${name}`;
 	const groupBy = query.groupBy ?? [];
-	const groupColumns = groupBy.map((_, index) => `g${index}`);
+	const groupColumns = groupBy.map((_, column) => `g${column}`);
 	const groupSelect = groupBy
 		.map(
-			(field, index) =>
-				`${fieldExpression(parseField(field), params)} AS ${groupColumns[index]}`,
+			(field, column) =>
+				`${fieldExpression(parseField(field), params)} AS ${groupColumns[column]}`,
 		)
 		.join(",\n    ");
 	const filters = [...(query.filters ?? []), ...(measure.filters ?? [])].map(
 		(filter) => filterExpression(filter, params),
 	);
-	const from = BigInt(scope.from.getTime()) * NS_PER_MS,
-		to = BigInt(scope.to.getTime()) * NS_PER_MS;
-	const bucketSeconds =
-		query.shape === "timeseries" && query.interval
-			? INTERVALS[query.interval]
-			: (scope.to.getTime() - scope.from.getTime()) / 1000;
 	// Timeseries buckets align to the interval; a table result is one bucket.
 	const bucket =
 		query.shape === "timeseries"
@@ -184,45 +164,74 @@ export function compileMeasure(
 			: "toUInt64(0)";
 	const groups = groupColumns.join(", ");
 	const partition = groups ? `PARTITION BY ${groups}` : "";
-	const sql = `
-WITH base AS (
-  SELECT ${SERIES} AS series, stream_id AS stream,
+	const ranked = cte("ranked");
+	// Groups past the limit fold into one "Other" row per bucket, combined the same way.
+	const selection =
+		groups && query.other
+			? `SELECT ${index} AS measure_index, ${groupColumns.map((column) => `if(rank <= {seriesLimit:UInt32}, ${column}, NULL) AS k_${column}`).join(", ")},
+  rank > {seriesLimit:UInt32} AS other, toString(bucket) AS bucket_ns, ${measure.combine}(value) AS series_value, min(rank) AS series_rank
+FROM ${ranked} GROUP BY ${groupColumns.map((column) => `k_${column}`).join(", ")}, other, bucket_ns`
+			: `SELECT ${index} AS measure_index, ${groupColumns.map((column) => `${column} AS k_${column}`).join(", ")}${groups ? ", " : ""}0 AS other, toString(bucket) AS bucket_ns, value AS series_value, rank AS series_rank
+FROM ${ranked} WHERE rank <= {seriesLimit:UInt32} + 1`;
+	return `WITH ${cte("base")} AS (
+  SELECT series_id AS series, stream_id AS stream,
     ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_nano AS t, sample_id,
     ${bucket} AS bucket, ${VALUE} AS v
   FROM metric_points FINAL
   WHERE project_id = {project:String}
     AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}
     AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}
-    AND metric_name = {metric:String} AND CAST(metric_kind, 'Int16') = {kind:Int16}${filters.map((filter) => `\n    AND ${filter}`).join("")}
+    AND metric_name = ${params.bind(measure.metric, "String")} AND CAST(metric_kind, 'Int16') = ${params.bind(scope.kind, "Int16")}${filters.map((filter) => `\n    AND ${filter}`).join("")}
 ),
-${perSeries(measure, scope.behavior, groups, query.shape === "timeseries")},
-combined AS (
+${perSeries(measure, scope.behavior, cte, groups, query.shape === "timeseries")},
+${cte("combined")} AS (
   SELECT ${groups ? `${groups}, ` : ""}bucket, ${measure.combine}(value) AS value
-  FROM per_series GROUP BY ${groups ? `${groups}, ` : ""}bucket
+  FROM ${cte("per_series")} GROUP BY ${groups ? `${groups}, ` : ""}bucket
 ),
-ranked AS (
+${ranked} AS (
   SELECT *, dense_rank() OVER (ORDER BY weight DESC${groups ? `, ${groups}` : ""}) AS rank
-  FROM (SELECT *, sum(abs(value)) OVER (${partition}) AS weight FROM combined)
+  FROM (SELECT *, sum(abs(value)) OVER (${partition}) AS weight FROM ${cte("combined")})
 )
-SELECT ${groups ? `${groups}, ` : ""}toString(bucket) AS bucket, value, rank
-FROM ranked WHERE rank <= {seriesLimit:UInt32}
-ORDER BY rank, bucket`;
+${selection}`;
+}
+
+/**
+ * Compiles every measure of a validated query for one time window into a single
+ * parameterized ClickHouse statement, so an insight costs one query per window
+ * however many series it has. Rows carry `measure_index`; their order is unspecified.
+ */
+export function compileQuery(
+	query: AnalyticsQuery,
+	scopes: MeasureScope[],
+	window: { projectId: string; from: Date; to: Date },
+): CompiledQuery {
+	const params = new Params();
+	const sql = query.measures
+		.map(
+			(measure, index) =>
+				`SELECT * FROM (\n${measureSelect(query, measure, index, scopes[index], params)}\n)`,
+		)
+		.join("\nUNION ALL\n");
+	const from = BigInt(window.from.getTime()) * NS_PER_MS,
+		to = BigInt(window.to.getTime()) * NS_PER_MS;
+	const bucketSeconds =
+		query.shape === "timeseries" && query.interval
+			? INTERVALS[query.interval]
+			: (window.to.getTime() - window.from.getTime()) / 1000;
 	return {
 		sql,
 		params: {
 			...params.values,
-			project: scope.projectId,
-			metric: measure.metric,
-			kind: scope.kind,
+			project: window.projectId,
 			from: from.toString(),
 			to: to.toString(),
 			step: (BigInt(Math.round(bucketSeconds)) * 1_000_000_000n).toString(),
 			seconds: bucketSeconds,
-			firstDay: Math.floor(scope.from.getTime() / 86_400_000),
-			lastDay: Math.floor((scope.to.getTime() - 1) / 86_400_000),
+			firstDay: Math.floor(window.from.getTime() / 86_400_000),
+			lastDay: Math.floor((window.to.getTime() - 1) / 86_400_000),
 			// One extra group reveals whether the limit cut any series.
-			seriesLimit: MAX_SERIES + 1,
+			seriesLimit: query.limit ?? DEFAULT_SERIES_LIMIT,
 		},
-		groupColumns,
+		groupColumns: (query.groupBy ?? []).map((_, column) => `k_g${column}`),
 	};
 }

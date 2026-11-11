@@ -6,6 +6,7 @@ import {
 	listMetrics,
 } from "../../src/analytics/discovery.server";
 import { runQuery } from "../../src/analytics/runner.server";
+import { parseQuery } from "../../src/analytics/validation";
 import { InputError } from "../../src/lib/input-error";
 import {
 	createPointFixture,
@@ -260,4 +261,108 @@ test("discovery catalogs metrics and attributes as points arrive", async () => {
 	expect(keys).not.toContain("resource:recount.host.boot_id");
 	expect(keys).not.toContain("resource:recount.collection.epoch_id");
 	expect(await listMetrics(fixture.reader, randomUUID())).toEqual([]);
+});
+
+test("formulas combine measures per group, extra groups fold into Other, and comparisons line up", async () => {
+	const project = randomUUID();
+	await gauge(project, "node-a", 0n, 300);
+	await gauge(project, "node-b", 0n, 200);
+	await gauge(project, "node-c", 0n, 100);
+	// The previous five minutes: one earlier reading for node-a.
+	await gauge(project, "node-a", -240n, 150);
+	const memory = (name: string) => ({
+		name,
+		metric: "recount.node.memory.total",
+		calculation: "avg" as const,
+		combine: "sum" as const,
+	});
+	const result = await run(project, {
+		shape: "timeseries",
+		range,
+		interval: "1m",
+		measures: [memory("total"), memory("other")],
+		formulas: [{ name: "share", expression: "(total - other / 2) / 100" }],
+		groupBy: ["node"],
+		limit: 2,
+		other: true,
+		compare: { previous: true },
+	});
+	const current = (measure: string) =>
+		Object.fromEntries(
+			result.series
+				.filter((series) => series.measure === measure && !series.comparison)
+				.map((series) => [
+					series.other ? "Other" : series.group[0],
+					series.points[0]?.value,
+				]),
+		);
+	expect(current("total")).toEqual({
+		"node-a": 300,
+		"node-b": 200,
+		Other: 100,
+	});
+	expect(current("share")).toEqual({ "node-a": 1.5, "node-b": 1, Other: 0.5 });
+	expect(result.limited).toBe(true);
+	const earlier = result.series.find(
+		(series) => series.measure === "total" && series.comparison,
+	);
+	// Shifted forward by the window length, so it lines up with the current buckets.
+	expect(earlier?.group).toEqual(["node-a"]);
+	expect(earlier?.points).toEqual([
+		{ bucketMs: from.getTime() + 60_000, value: 150 },
+	]);
+	expect(result.compared?.to).toEqual(from);
+	// Without collector heartbeats, whether a node was online is unknown rather than false.
+	expect(result.coverage).toBeNull();
+	// Formulas may only name the query's own measures.
+	expect(() =>
+		parseQuery({
+			shape: "table",
+			range,
+			measures: [memory("total")],
+			formulas: [{ name: "bad", expression: "total + missing" }],
+		}),
+	).toThrow(InputError);
+});
+
+test("timeseries report which buckets each node's collector was online in", async () => {
+	const project = randomUUID();
+	const heartbeat = async (node: string, at: bigint) =>
+		fixture.client.command({
+			query: insertPoints({
+				metric_name: "'recount.collection.discovered.processes'",
+			}),
+			query_params: {
+				project,
+				source: node,
+				host: node,
+				time: (ns + at * SECOND).toString(),
+				integer: "10",
+				sample: randomUUID(),
+				stream: `${node}/heartbeat`,
+				epoch: "epoch",
+			},
+		});
+	await gauge(project, "node-a", 0n, 100);
+	await heartbeat("node-a", 0n);
+	await heartbeat("node-a", 70n);
+	await heartbeat("node-b", 130n);
+	const result = await run(project, {
+		shape: "timeseries",
+		range,
+		interval: "1m",
+		measures: [
+			{
+				name: "memory",
+				metric: "recount.node.memory.total",
+				calculation: "avg",
+				combine: "sum",
+			},
+		],
+	});
+	const minute = (n: number) => from.getTime() + n * 60_000;
+	expect(result.coverage).toEqual({
+		"node-a": [minute(0), minute(1)],
+		"node-b": [minute(2)],
+	});
 });

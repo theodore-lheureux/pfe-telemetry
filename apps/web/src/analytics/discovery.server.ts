@@ -67,25 +67,26 @@ export async function listMetrics(
 	return (await result.json<MetricRow>()).map(definition);
 }
 
-/** The most recently seen variant of one metric, which decides its calculations. */
-export async function metricDefinition(
+/** The most recently seen variant of each metric, which decides its calculations. */
+export async function metricDefinitions(
 	connection: ClickHouseClient,
 	projectId: string,
-	metric: string,
+	metrics: string[],
 	signal?: AbortSignal,
-): Promise<MetricDefinition | null> {
+): Promise<Map<string, MetricDefinition>> {
 	const result = await connection.query({
-		query: `${METRICS} AND metric_name = {metric:String}
+		query: `${METRICS} AND metric_name IN {metrics:Array(String)}
   GROUP BY name, kind, temporality, monotonic, unit
   ORDER BY max(last_seen_unix_nano) DESC
-  LIMIT 1`,
+  LIMIT 1 BY name`,
 		format: "JSONEachRow",
-		query_params: { project: projectId, metric },
+		query_params: { project: projectId, metrics: [...new Set(metrics)] },
 		abort_signal: signal,
 		clickhouse_settings: SETTINGS,
 	});
-	const [row] = await result.json<MetricRow>();
-	return row ? definition(row) : null;
+	return new Map(
+		(await result.json<MetricRow>()).map((row) => [row.name, definition(row)]),
+	);
 }
 
 /** Attribute keys seen on one metric, for grouping and filtering choices. */

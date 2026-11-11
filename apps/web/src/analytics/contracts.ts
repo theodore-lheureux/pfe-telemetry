@@ -25,10 +25,17 @@ export type RelativeRange = keyof typeof RELATIVE_RANGES;
 
 export const MAX_RANGE_SECONDS = 2592000;
 export const MAX_BUCKETS = 600;
-export const MAX_MEASURES = 4;
+/** Series letters A–Z. */
+export const MAX_MEASURES = 26;
 export const MAX_FILTERS = 8;
 export const MAX_GROUP_BY = 2;
 export const MAX_SERIES = 50;
+export const DEFAULT_SERIES_LIMIT = 25;
+export const MAX_FORMULAS = 26;
+/** Rows one query may return: measures × groups × buckets, per window. */
+export const MAX_RESULT_POINTS = 200_000;
+export const COMPARE_UNITS = ["hours", "days", "weeks", "months"] as const;
+export type CompareUnit = (typeof COMPARE_UNITS)[number];
 
 /** Core fields, or attribute lookups such as `attributes["cpu.mode"]`. */
 export type FieldName = string;
@@ -65,14 +72,32 @@ export interface Measure {
 
 export type QueryRange = { last: RelativeRange } | { from: string; to: string };
 
+/** A named arithmetic expression over measure names, evaluated per bucket and group. */
+export interface Formula {
+	name: string;
+	expression: string;
+}
+
+/** The earlier window to compare with: the previous period of equal length, or a fixed offset. */
+export type Comparison =
+	| { previous: true }
+	| { amount: number; unit: CompareUnit };
+
 export interface AnalyticsQuery {
 	shape: "timeseries" | "table";
 	range: QueryRange;
 	/** Required for timeseries; ignored for table results. */
 	interval?: Interval;
 	measures: Measure[];
+	/** When present, results show these instead of the measures they read. */
+	formulas?: Formula[];
 	filters?: Filter[];
 	groupBy?: FieldName[];
+	/** Groups kept per measure, largest first; defaults to `DEFAULT_SERIES_LIMIT`. */
+	limit?: number;
+	/** Fold the groups past the limit into one "Other" series. */
+	other?: boolean;
+	compare?: Comparison;
 }
 
 export type RunQueryInput = ProjectReference & { query: AnalyticsQuery };
@@ -101,9 +126,14 @@ export interface AttributeDefinition {
 }
 
 export interface SeriesResult {
+	/** A measure or formula name. */
 	measure: string;
 	/** Group-by values in `groupBy` order; null when a series lacks the field. */
 	group: (string | null)[];
+	/** The remaining groups past the limit, combined. */
+	other?: boolean;
+	/** The comparison window, with buckets shifted to line up with the current ones. */
+	comparison?: boolean;
 	/** Bucket start in milliseconds since the epoch, or null for table results. */
 	points: { bucketMs: number | null; value: number | null }[];
 }
@@ -120,7 +150,16 @@ export interface QueryResult {
 		unit: string;
 		calculation: Calculation;
 	}[];
+	formulas: Formula[];
 	series: SeriesResult[];
 	/** True when more groups matched than the series limit returned. */
 	limited: boolean;
+	/** The comparison window, when one was requested. */
+	compared: { from: Date; to: Date } | null;
+	/**
+	 * Per node, the bucket starts (ms) in which its collector reported at all, which tells
+	 * a node that was offline from one that sent no points for this metric. Null when
+	 * unknown: table results, or projects whose sources do not send collector heartbeats.
+	 */
+	coverage: Record<string, number[]> | null;
 }

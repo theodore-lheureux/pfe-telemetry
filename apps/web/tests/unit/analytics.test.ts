@@ -84,6 +84,33 @@ test("queries are bounded and structurally valid before reaching ClickHouse", ()
 			parseQuery({ ...base, groupBy: ["node", "host", "scope.name"] }),
 		),
 	).toBe("INVALID_QUERY");
+	// 26 broken-down series of 51 groups over 288 buckets would return too many rows.
+	const letters = Array.from({ length: 26 }, (_, index) => ({
+		...base.measures[0],
+		name: String.fromCharCode(65 + index),
+	}));
+	expect(
+		reason(() =>
+			parseQuery({
+				...base,
+				range: { last: "24h" },
+				interval: "5m",
+				measures: letters,
+				groupBy: ["node"],
+				limit: 50,
+			}),
+		),
+	).toBe("INVALID_QUERY");
+	expect(
+		parseQuery({
+			...base,
+			range: { last: "24h" },
+			interval: "5m",
+			measures: letters,
+			groupBy: ["node"],
+			limit: 25,
+		}).measures,
+	).toHaveLength(26);
 });
 
 test("metric behavior follows OTLP kind, temporality and monotonicity", () => {
