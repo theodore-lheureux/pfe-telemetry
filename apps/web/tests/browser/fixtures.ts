@@ -19,6 +19,23 @@ import { trustedCodeSignIn } from "../auth-actors";
 import { createTestDatabase } from "../database";
 import { settingsPath } from "../settings-path";
 
+function narrowestScope(projectId?: string, organizationId?: string) {
+	if (projectId) return "project";
+	if (organizationId) return "organization";
+	return "user";
+}
+
+const THEME_LABEL = {
+	light: m.theme_light,
+	dark: m.theme_dark,
+	system: m.theme_system,
+};
+const SCOPE_LABEL = {
+	project: m.project_settings,
+	organization: m.organization_settings,
+	user: m.user_settings,
+};
+
 export function settingsUrl(scope: string, section?: SettingsSection) {
 	const relative = scope.startsWith("/");
 	const url = new URL(scope, "http://fixture.invalid");
@@ -26,8 +43,7 @@ export function settingsUrl(scope: string, section?: SettingsSection) {
 	const organizationId = parts[1] === "organizations" ? parts[2] : undefined;
 	const projectId = parts[3] === "projects" ? parts[4] : undefined;
 	const path = settingsPath(
-		section ??
-			(projectId ? "project" : organizationId ? "organization" : "user"),
+		section ?? narrowestScope(projectId, organizationId),
 		{ organizationId, projectId },
 	);
 	return relative ? path : `${url.origin}${path}`;
@@ -111,12 +127,7 @@ export async function chooseTheme(
 	await page
 		.getByRole("button", { name: m.theme({}, { locale }), exact: true })
 		.click();
-	const label =
-		mode === "light"
-			? m.theme_light
-			: mode === "dark"
-				? m.theme_dark
-				: m.theme_system;
+	const label = THEME_LABEL[mode];
 	await page
 		.getByRole("menuitemradio", { name: label({}, { locale }), exact: true })
 		.click();
@@ -301,14 +312,7 @@ export async function openSettingsSection(
 		(section) => settingsCatalog[section].label({}, { locale }) === name,
 	);
 	const scope = section && settingsScopes[section];
-	const parent =
-		scope === "project"
-			? m.project_settings({}, { locale })
-			: scope === "organization"
-				? m.organization_settings({}, { locale })
-				: scope === "user"
-					? m.user_settings({}, { locale })
-					: name;
+	const parent = scope ? SCOPE_LABEL[scope]({}, { locale }) : name;
 	await page.getByRole("menuitem", { name: parent, exact: true }).click();
 	if (
 		section ||

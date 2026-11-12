@@ -171,27 +171,7 @@ export async function provisionDemoCollectors(input: Input) {
 		const keyName = "Demo VMs";
 		const keyPath = resolve(directory, "enrollment.key");
 		const saved = (await exists(keyPath))?.trim();
-		if (saved !== undefined) {
-			const [active] = await database.db
-				.select({ id: enrollmentKey.id })
-				.from(enrollmentKey)
-				.where(
-					and(
-						eq(enrollmentKey.projectId, project.id),
-						eq(enrollmentKey.organizationId, organization.id),
-						eq(
-							enrollmentKey.keySha256,
-							createHash("sha256").update(saved, "ascii").digest("hex"),
-						),
-						isNull(enrollmentKey.revokedAt),
-					),
-				);
-			if (!active)
-				throw new Error(
-					"The saved demo enrollment key is revoked or belongs to another project. Restore the correct key or remove the file to create a new one.",
-				);
-			await chmod(keyPath, 0o600);
-		} else {
+		if (saved === undefined) {
 			const [existing] = await database.db
 				.select({ id: enrollmentKey.id })
 				.from(enrollmentKey)
@@ -217,6 +197,26 @@ export async function provisionDemoCollectors(input: Input) {
 			);
 			await writeFile(keyPath, `${created.key}\n`, { flag: "wx", mode: 0o600 });
 			changed = true;
+		} else {
+			const [active] = await database.db
+				.select({ id: enrollmentKey.id })
+				.from(enrollmentKey)
+				.where(
+					and(
+						eq(enrollmentKey.projectId, project.id),
+						eq(enrollmentKey.organizationId, organization.id),
+						eq(
+							enrollmentKey.keySha256,
+							createHash("sha256").update(saved, "ascii").digest("hex"),
+						),
+						isNull(enrollmentKey.revokedAt),
+					),
+				);
+			if (!active)
+				throw new Error(
+					"The saved demo enrollment key is revoked or belongs to another project. Restore the correct key or remove the file to create a new one.",
+				);
+			await chmod(keyPath, 0o600);
 		}
 		const nodes = input.nodes.map((node) => ({
 			name: node.name,

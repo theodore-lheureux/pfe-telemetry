@@ -60,6 +60,37 @@ function isFresh(
 	);
 }
 
+type Phase = "choice" | "email" | "factor";
+
+function rejectionMessage(
+	outcome: { code?: string; httpStatus?: number },
+	phase: Phase,
+) {
+	if (outcome.code === "ACCOUNT_CHANGED") return m.reauth_account_changed();
+	if (outcome.httpStatus === 429) return m.code_rate_limited();
+	if (phase === "factor") return m.two_factor_invalid();
+	return m.code_invalid();
+}
+
+function operationKind(passkey: boolean, phase: Phase) {
+	if (passkey) return "passkey";
+	if (phase === "factor") return "two-factor";
+	return "verify";
+}
+
+function verificationMethod(passkey: boolean, phase: Phase, backup: boolean) {
+	if (passkey) return "passkey";
+	if (phase !== "factor") return "email";
+	return backup ? "backup" : "totp";
+}
+
+function codeLabel(phase: Phase, backup: boolean) {
+	if (phase !== "factor") return m.signin_code();
+	return backup
+		? m.two_factor_recovery_code()
+		: m.two_factor_authenticator_code();
+}
+
 export function StepUpAuthentication({ children }: { children: ReactNode }) {
 	const { authentication } = getRouteApi("__root__").useRouteContext();
 	const router = useRouter();
@@ -240,15 +271,7 @@ export function StepUpAuthentication({ children }: { children: ReactNode }) {
 			setUncertain(true);
 			setMessage(m.signin_uncertain());
 		} else if (outcome.status === "rejected")
-			setMessage(
-				outcome.code === "ACCOUNT_CHANGED"
-					? m.reauth_account_changed()
-					: outcome.httpStatus === 429
-						? m.code_rate_limited()
-						: phase === "factor"
-							? m.two_factor_invalid()
-							: m.code_invalid(),
-			);
+			setMessage(rejectionMessage(outcome, phase));
 	}
 	async function sendCode() {
 		const owner = active.current;
@@ -297,9 +320,7 @@ export function StepUpAuthentication({ children }: { children: ReactNode }) {
 				await present(owner, await authentication.recover());
 				return;
 			}
-			operation = authentication.begin(
-				passkey ? "passkey" : phase === "factor" ? "two-factor" : "verify",
-			);
+			operation = authentication.begin(operationKind(passkey, phase));
 			if (!operation) return;
 			lease.current = operation;
 			let extra: object = { code: code.trim() };
@@ -315,13 +336,7 @@ export function StepUpAuthentication({ children }: { children: ReactNode }) {
 			const outcome = await operation.submit(async (signal) => {
 				const result = await call(
 					owner,
-					passkey
-						? "passkey"
-						: phase === "factor"
-							? backup
-								? "backup"
-								: "totp"
-							: "email",
+					verificationMethod(passkey, phase, backup),
 					signal,
 					extra,
 				);
@@ -406,11 +421,7 @@ export function StepUpAuthentication({ children }: { children: ReactNode }) {
 										{!uncertain && (
 											<div className="flex flex-col gap-2">
 												<Label htmlFor="reauthentication-code">
-													{phase === "factor"
-														? backup
-															? m.two_factor_recovery_code()
-															: m.two_factor_authenticator_code()
-														: m.signin_code()}
+													{codeLabel(phase, backup)}
 												</Label>
 												<Input
 													ref={codeInput}
@@ -478,7 +489,7 @@ export function StepUpAuthentication({ children }: { children: ReactNode }) {
 									disabled: pending,
 									onClick: () => finish(request, false),
 								}}
-							></DialogActions>
+							/>
 						</>
 					)}
 				</DialogContent>

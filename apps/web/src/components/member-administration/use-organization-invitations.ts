@@ -26,6 +26,40 @@ type Action =
 	| { type: "resend"; invitation: Invitation; id: string }
 	| { type: "cancel"; id: string };
 
+const SAVED_MESSAGE = {
+	send: m.invite_batch_processed,
+	resend: m.your_invitation_resend_was_requested,
+	cancel: m.your_invitation_was_canceled,
+};
+const REFRESH_FAILED_MESSAGE = {
+	send: m.invite_batch_refresh_failed,
+	resend: m.your_invitation_resend_was_requested_but_the_list,
+	cancel: m.your_invitation_was_canceled_but_the_list_could,
+};
+const UNKNOWN_MESSAGE = {
+	send: m.invite_batch_unknown,
+	resend: m.the_resend_could_not_be_completed_refresh_the,
+	cancel: m.the_invitation_could_not_be_canceled_refresh_the,
+};
+
+function batchMessage(created: number, remaining: number) {
+	if (remaining) return m.invite_batch_partial({ created, remaining });
+	if (created === 1)
+		return m.invitation_created_ask_the_recipient_to_check_their();
+	return m.invite_batch_created({ count: created });
+}
+
+/** A blocked batch warns; a partly failed one is an error; otherwise the save decides. */
+function feedbackKind(
+	blocked: boolean,
+	partial: boolean,
+	saved: "success" | "error" | "warning",
+) {
+	if (blocked) return "warning" as const;
+	if (partial) return "error" as const;
+	return saved;
+}
+
 export function useOrganizationInvitations(
 	organization: OrganizationSummary,
 	userId: string,
@@ -72,24 +106,9 @@ export function useOrganizationInvitations(
 						});
 			return result.error ? result : { data: { results: [] }, error: null };
 		},
-		saved: ({ type }) =>
-			type === "send"
-				? m.invite_batch_processed()
-				: type === "resend"
-					? m.your_invitation_resend_was_requested()
-					: m.your_invitation_was_canceled(),
-		refreshFailed: ({ type }) =>
-			type === "send"
-				? m.invite_batch_refresh_failed()
-				: type === "resend"
-					? m.your_invitation_resend_was_requested_but_the_list()
-					: m.your_invitation_was_canceled_but_the_list_could(),
-		unknown: ({ type }) =>
-			type === "send"
-				? m.invite_batch_unknown()
-				: type === "resend"
-					? m.the_resend_could_not_be_completed_refresh_the()
-					: m.the_invitation_could_not_be_canceled_refresh_the(),
+		saved: ({ type }) => SAVED_MESSAGE[type](),
+		refreshFailed: ({ type }) => REFRESH_FAILED_MESSAGE[type](),
+		unknown: ({ type }) => UNKNOWN_MESSAGE[type](),
 	});
 	const blocked =
 		activity?.type === "send" &&
@@ -135,11 +154,7 @@ export function useOrganizationInvitations(
 			).length;
 			const created = value.recipients.length - remaining;
 			setStage("refreshing");
-			const success = remaining
-				? m.invite_batch_partial({ created, remaining })
-				: created === 1
-					? m.invitation_created_ask_the_recipient_to_check_their()
-					: m.invite_batch_created({ count: created });
+			const success = batchMessage(created, remaining);
 			if (!(await saved.refresh(undefined, success))) {
 				setStage("idle");
 				return;
@@ -173,12 +188,14 @@ export function useOrganizationInvitations(
 		activity?.type === "send" &&
 		Object.values(outcomes).some((result) => result.status !== "created");
 	const formPending = sending || mutation.pending || stage === "closing";
+	const sendingMany =
+		activity?.type === "send" && activity.recipients.length > 1
+			? m.invite_batch_sending({ count: activity.recipients.length })
+			: m.sending_invitation();
 	const pendingLabel =
 		stage === "refreshing" || stage === "closing"
 			? m.invite_batch_refreshing()
-			: activity?.type === "send" && activity.recipients.length > 1
-				? m.invite_batch_sending({ count: activity.recipients.length })
-				: m.sending_invitation();
+			: sendingMany;
 	return {
 		form,
 		heading,
@@ -191,11 +208,7 @@ export function useOrganizationInvitations(
 		disabled: mutation.disabled || sending,
 		formDisabled: mutation.disabled || formPending || blocked,
 		failed: mutation.kind !== "success" || partial,
-		feedbackKind: blocked
-			? ("warning" as const)
-			: partial
-				? ("error" as const)
-				: mutation.kind,
+		feedbackKind: feedbackKind(blocked, partial, mutation.kind),
 		message: mutation.message,
 		cancelId,
 		setCancelId,

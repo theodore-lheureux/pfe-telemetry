@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { currentOrigin } from "../../lib/origin";
 import type { OrganizationRole } from "../../organizations/contracts";
 import type { MemberSummary } from "../../organizations/member-contracts";
+import { CopyStatus, copyState } from "../copy-status";
 import { AlertDialogActions } from "../dialog-actions";
 import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
@@ -269,16 +270,7 @@ export function InvitationList({
 					})}
 				</TableBody>
 			</Table>
-			<p
-				role="status"
-				className={copyFailed ? "p-2 text-xs text-destructive" : "sr-only"}
-			>
-				{copyFailed
-					? m.settings_copy_failed()
-					: copied
-						? m.settings_copied()
-						: ""}
-			</p>
+			<CopyStatus state={copyState(copied, copyFailed)} className="p-2" />
 		</div>
 	);
 }

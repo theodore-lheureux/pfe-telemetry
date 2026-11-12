@@ -86,14 +86,10 @@ export function DateTimePanel({
 		event.preventDefault();
 		if (valid) onApply(resolved);
 	};
-	const title =
-		kind === "since"
-			? withTime
-				? m.range_select_date_time()
-				: m.range_select_date()
-			: withTime
-				? m.range_select_range_time()
-				: m.range_select_range();
+	const titles = withTime
+		? { since: m.range_select_date_time, between: m.range_select_range_time }
+		: { since: m.range_select_date, between: m.range_select_range };
+	const title = titles[kind]();
 	// Without time, a range is two months side by side, picked as start then end day.
 	const months = kind === "between" && !withTime;
 	const summary = months

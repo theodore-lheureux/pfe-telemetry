@@ -129,7 +129,7 @@ export const Route = createFileRoute("/_app/_workspace/settings")({
 			const data = { organizationId: organization.id };
 			const [members, invitations] = await Promise.all([
 				listOrganizationMembers({ data }),
-				organization.role !== "member" ? listInvitations({ data }) : null,
+				organization.role === "member" ? null : listInvitations({ data }),
 			]);
 			return {
 				kind: "organization-members" as const,

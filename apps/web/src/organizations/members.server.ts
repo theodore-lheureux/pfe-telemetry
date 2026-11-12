@@ -61,12 +61,12 @@ export async function listOrganizationMembers(
 		organizationId,
 		projectAccess: projects.flatMap((project) => {
 			const role =
-				entry.role !== "member"
-					? ("admin" as const)
-					: grants.find(
+				entry.role === "member"
+					? grants.find(
 							(grant) =>
 								grant.memberId === entry.id && grant.projectId === project.id,
-						)?.role;
+						)?.role
+					: ("admin" as const);
 			return role ? [{ id: project.id, name: project.name, role }] : [];
 		}),
 		lastSignedInAt:

@@ -753,165 +753,166 @@ for (const kind of ["invitation", "grant"] as const) {
 	});
 }
 
+function lifecycleTitle(transition: string, leave: boolean) {
+	if (transition === "dismiss-then-navigate")
+		return "a dismissed membership acknowledgement is not revived after navigation abandons its refresh";
+	if (leave)
+		return "navigation during a saved write's pending refresh retires its later error feedback";
+	return "a delayed refresh retains the saved acknowledgement through a later error";
+}
+
 for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 	const leave = transition !== "stay";
-	test(
-		transition === "dismiss-then-navigate"
-			? "a dismissed membership acknowledgement is not revived after navigation abandons its refresh"
-			: leave
-				? "navigation during a saved write's pending refresh retires its later error feedback"
-				: "a delayed refresh retains the saved acknowledgement through a later error",
-		async ({ page, workspace }) => {
-			const owner = await workspace.signIn(page, "owner@example.invalid");
-			const first = data(
-				await workspace.operations(owner.headers, () =>
-					organizationDomain.createOrganization(workspace.auth, owner.headers, {
-						name: "First lab",
-						slug: "first-lab",
-					}),
-				),
-			);
-			const second = data(
-				await workspace.operations(owner.headers, () =>
-					organizationDomain.createOrganization(workspace.auth, owner.headers, {
-						name: "Second lab",
-						slug: "second-lab",
-					}),
-				),
-			);
-			const target = await workspace.signIn(page, "target@example.invalid");
-			await workspace.auth.api.addMember({
-				body: {
-					organizationId: first.id,
-					userId: target.userId,
-					role: "member",
-				},
-			});
-			await workspace.signIn(page, "owner@example.invalid");
-			await page.goto(
+	test(lifecycleTitle(transition, leave), async ({ page, workspace }) => {
+		const owner = await workspace.signIn(page, "owner@example.invalid");
+		const first = data(
+			await workspace.operations(owner.headers, () =>
+				organizationDomain.createOrganization(workspace.auth, owner.headers, {
+					name: "First lab",
+					slug: "first-lab",
+				}),
+			),
+		);
+		const second = data(
+			await workspace.operations(owner.headers, () =>
+				organizationDomain.createOrganization(workspace.auth, owner.headers, {
+					name: "Second lab",
+					slug: "second-lab",
+				}),
+			),
+		);
+		const target = await workspace.signIn(page, "target@example.invalid");
+		await workspace.auth.api.addMember({
+			body: {
+				organizationId: first.id,
+				userId: target.userId,
+				role: "member",
+			},
+		});
+		await workspace.signIn(page, "owner@example.invalid");
+		await page.goto(
+			settingsUrl(
+				`${workspace.origin}/organizations/${first.id}`,
+				"organization-members",
+			),
+		);
+		await editMemberRole(page, "target@example.invalid");
+		await expect(
+			page.getByRole("button", {
+				name: "Save role for target@example.invalid",
+				exact: true,
+			}),
+		).toBeEnabled();
+		const rpc = await serverFunctionPath(
+			page,
+			"member.functions",
+			"listOrganizationMembers",
+		);
+		const { promise: ready, release: started } = createGate();
+		const { promise: gate, release } = createGate();
+		const { promise: finished, release: delivered } = createGate();
+		let intercepted = false;
+		await page.route(
+			`${new URL(rpc, workspace.origin).href}*`,
+			async (route) => {
+				if (intercepted) {
+					await route.continue();
+					return;
+				}
+				intercepted = true;
+				await route.fetch();
+				started();
+				await gate;
+				await route.abort();
+				delivered();
+			},
+		);
+		await page
+			.getByLabel("Role for target@example.invalid", { exact: true })
+			.selectOption("admin");
+		await page
+			.getByRole("button", {
+				name: "Save role for target@example.invalid",
+				exact: true,
+			})
+			.click();
+		await ready;
+		if (transition === "dismiss-then-navigate")
+			await page
+				.getByRole("button", { name: "Dismiss notice", exact: true })
+				.click();
+		if (leave) {
+			await chooseOrganization(page, second.name);
+			await expect(page).toHaveURL(
 				settingsUrl(
-					`${workspace.origin}/organizations/${first.id}`,
+					`${workspace.origin}/organizations/${second.id}`,
 					"organization-members",
 				),
 			);
-			await editMemberRole(page, "target@example.invalid");
 			await expect(
 				page.getByRole("button", {
-					name: "Save role for target@example.invalid",
+					name: "Switch project, organization or account",
 					exact: true,
 				}),
-			).toBeEnabled();
-			const rpc = await serverFunctionPath(
-				page,
-				"member.functions",
-				"listOrganizationMembers",
-			);
-			const { promise: ready, release: started } = createGate();
-			const { promise: gate, release } = createGate();
-			const { promise: finished, release: delivered } = createGate();
-			let intercepted = false;
-			await page.route(
-				`${new URL(rpc, workspace.origin).href}*`,
-				async (route) => {
-					if (intercepted) {
-						await route.continue();
-						return;
-					}
-					intercepted = true;
-					await route.fetch();
-					started();
-					await gate;
-					await route.abort();
-					delivered();
-				},
-			);
-			await page
-				.getByLabel("Role for target@example.invalid", { exact: true })
-				.selectOption("admin");
-			await page
-				.getByRole("button", {
-					name: "Save role for target@example.invalid",
-					exact: true,
-				})
-				.click();
-			await ready;
-			if (transition === "dismiss-then-navigate")
+			).toContainText(second.name);
+			if (transition === "navigate")
 				await page
 					.getByRole("button", { name: "Dismiss notice", exact: true })
 					.click();
-			if (leave) {
-				await chooseOrganization(page, second.name);
-				await expect(page).toHaveURL(
-					settingsUrl(
-						`${workspace.origin}/organizations/${second.id}`,
-						"organization-members",
-					),
-				);
-				await expect(
-					page.getByRole("button", {
-						name: "Switch project, organization or account",
-						exact: true,
-					}),
-				).toContainText(second.name);
-				if (transition === "navigate")
-					await page
-						.getByRole("button", { name: "Dismiss notice", exact: true })
-						.click();
-			} else {
-				await expect(
-					page
-						.getByRole("status")
-						.filter({ hasText: "Your membership change was saved." }),
-				).toBeVisible();
-				await expect(
-					page
-						.getByLabel("Role for target@example.invalid", { exact: true })
-						.locator("xpath=ancestor::form")
-						.locator('button[type="submit"]'),
-				).toBeDisabled();
-			}
-			release();
-			await finished;
-			await page.evaluate(
-				() =>
-					new Promise<void>((resolve) =>
-						requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-					),
+		} else {
+			await expect(
+				page
+					.getByRole("status")
+					.filter({ hasText: "Your membership change was saved." }),
+			).toBeVisible();
+			await expect(
+				page
+					.getByLabel("Role for target@example.invalid", { exact: true })
+					.locator("xpath=ancestor::form")
+					.locator('button[type="submit"]'),
+			).toBeDisabled();
+		}
+		release();
+		await finished;
+		await page.evaluate(
+			() =>
+				new Promise<void>((resolve) =>
+					requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+				),
+		);
+		if (leave) {
+			await expect(page).toHaveURL(
+				settingsUrl(
+					`${workspace.origin}/organizations/${second.id}`,
+					"organization-members",
+				),
 			);
-			if (leave) {
-				await expect(page).toHaveURL(
-					settingsUrl(
-						`${workspace.origin}/organizations/${second.id}`,
-						"organization-members",
+			await expect(
+				page.getByRole("button", { name: "Dismiss notice", exact: true }),
+			).toHaveCount(0);
+		} else {
+			await expect(
+				page.getByRole("heading", {
+					name: "Something went wrong",
+					exact: true,
+				}),
+			).toBeVisible();
+			await expect(page.getByRole("status")).toContainText(
+				"Your membership change was saved, but the page could not refresh.",
+			);
+		}
+		expect(
+			data(
+				await workspace.operations(target.headers, (actor) =>
+					organizationDomain.getOrganization(
+						workspace.database.db,
+						actor,
+						first.id,
 					),
-				);
-				await expect(
-					page.getByRole("button", { name: "Dismiss notice", exact: true }),
-				).toHaveCount(0);
-			} else {
-				await expect(
-					page.getByRole("heading", {
-						name: "Something went wrong",
-						exact: true,
-					}),
-				).toBeVisible();
-				await expect(page.getByRole("status")).toContainText(
-					"Your membership change was saved, but the page could not refresh.",
-				);
-			}
-			expect(
-				data(
-					await workspace.operations(target.headers, (actor) =>
-						organizationDomain.getOrganization(
-							workspace.database.db,
-							actor,
-							first.id,
-						),
-					),
-				).role,
-			).toBe("admin");
-		},
-	);
+				),
+			).role,
+		).toBe("admin");
+	});
 }
 
 test("a saved membership write is acknowledged when its refresh becomes not-found", async ({

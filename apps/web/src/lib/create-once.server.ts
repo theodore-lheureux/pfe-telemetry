@@ -26,7 +26,7 @@ export function createInputHash(
 				...scope,
 				submission: Object.fromEntries(
 					Object.entries(semantic).sort(([left], [right]) =>
-						left < right ? -1 : left > right ? 1 : 0,
+						left.localeCompare(right, "en"),
 					),
 				),
 			}),

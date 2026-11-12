@@ -30,6 +30,21 @@ import { parseCreateProjectInput } from "./validation";
 
 type Database = ReturnType<typeof getDatabase>;
 
+/** The columns one project update changes. */
+function projectPatch(tags: string[], input: ProjectCustomizationInput) {
+	switch (input.action) {
+		case "add-tag":
+		case "remove-tag":
+			return { tags: changedProjectTags(tags, input) };
+		case "group":
+			return { projectGroup: input.projectGroup };
+		case "time-zone":
+			return { timeZone: input.timeZone };
+		default:
+			return { weekStartsOn: input.weekStartsOn };
+	}
+}
+
 export async function listProjects(
 	database: Database,
 	actor: Actor,
@@ -157,14 +172,7 @@ export async function updateProjectCustomization(
 			)
 			.for("update");
 		if (!current) throw new OperationError("NOT_FOUND", "Project not found");
-		const patch =
-			input.action === "add-tag" || input.action === "remove-tag"
-				? { tags: changedProjectTags(current.tags, input) }
-				: input.action === "group"
-					? { projectGroup: input.projectGroup }
-					: input.action === "time-zone"
-						? { timeZone: input.timeZone }
-						: { weekStartsOn: input.weekStartsOn };
+		const patch = projectPatch(current.tags, input);
 		await tx
 			.update(project)
 			.set(patch)

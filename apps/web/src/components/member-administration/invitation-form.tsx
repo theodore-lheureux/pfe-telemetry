@@ -3,6 +3,7 @@ import { PlusIcon, XIcon } from "lucide-react";
 import { useRef } from "react";
 import { operationMessage } from "../../lib/operation-message";
 import type { OrganizationRole } from "../../organizations/contracts";
+import type { InvitationBatchItem } from "../../organizations/invitation-contracts";
 import { MAX_INVITATION_RECIPIENTS } from "../../organizations/invitation-contracts";
 import { isInvitationEmail } from "../../organizations/invitation-email";
 import { DialogActions } from "../dialog-actions";
@@ -11,6 +12,13 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { NativeSelectOption } from "../ui/native-select";
 import type { useOrganizationInvitations } from "./use-organization-invitations";
+
+function RecipientStatus({ result }: { result: InvitationBatchItem }) {
+	if (result.status === "created")
+		return <Badge variant="outline">{m.invite_recipient_created()}</Badge>;
+	if (result.status === "rejected") return operationMessage(result.error);
+	return m.invite_recipient_not_attempted();
+}
 
 export function InvitationForm({
 	state,
@@ -127,15 +135,7 @@ export function InvitationForm({
 											)}
 											{result && (
 												<p id={statusId} className="text-xs md:col-span-4">
-													{created ? (
-														<Badge variant="outline">
-															{m.invite_recipient_created()}
-														</Badge>
-													) : result.status === "rejected" ? (
-														operationMessage(result.error)
-													) : (
-														m.invite_recipient_not_attempted()
-													)}
+													<RecipientStatus result={result} />
 												</p>
 											)}
 										</fieldset>

@@ -107,7 +107,7 @@ function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 		node: row.hostId ? activityNode(projectId, row.hostId, row.hostname) : null,
 		resourceKind: row.resourceKind,
 		kind: row.kind,
-		value: (row.flags & 1) !== 0 ? null : (row.integer ?? row.double),
+		value: (row.flags & 1) === 0 ? (row.integer ?? row.double) : null,
 		count: row.count,
 		unit: row.unit,
 		measuredAt: nanosecondsDate(row.timeNs),
@@ -176,22 +176,24 @@ export async function readPoints(
 		.map((row) => summary(input.projectId, row, fields));
 	const last = points.at(-1);
 	const exhausted = rows.length <= 100 && lowerNs <= fromNs;
+	// A full page resumes after its last point; otherwise the search resumes below the
+	// searched window, until the range is exhausted.
+	let nextCursor: {
+		from: Date;
+		to: Date;
+		timeNs: string;
+		sampleId: string;
+	} | null = exhausted
+		? null
+		: { from, to, timeNs: lowerNs.toString(), sampleId: BEFORE_ALL };
+	if (rows.length > 100 && last)
+		nextCursor = { from, to, timeNs: last.timeNs, sampleId: last.sampleId };
 	return {
 		points,
 		from,
 		to,
 		searchedTo: nanosecondsDate(lowerNs.toString()),
-		nextCursor:
-			rows.length > 100 && last
-				? { from, to, timeNs: last.timeNs, sampleId: last.sampleId }
-				: exhausted
-					? null
-					: {
-							from,
-							to,
-							timeNs: lowerNs.toString(),
-							sampleId: BEFORE_ALL,
-						},
+		nextCursor,
 	};
 }
 

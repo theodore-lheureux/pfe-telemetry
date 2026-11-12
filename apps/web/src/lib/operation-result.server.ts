@@ -20,6 +20,18 @@ function ownerConstraint(error: unknown): boolean {
 	return "cause" in error && ownerConstraint(error.cause);
 }
 
+function organizationFailure(
+	code: string | undefined,
+	duplicate: boolean,
+	unavailable: boolean,
+	fromStatus: OperationErrorCode | undefined,
+): OperationErrorCode {
+	if (code === "SESSION_NOT_FRESH") return "SESSION_NOT_FRESH";
+	if (duplicate) return "CONFLICT";
+	if (unavailable) return "NOT_FOUND";
+	return fromStatus ?? "INVALID_INPUT";
+}
+
 export async function operationResult<T>(
 	operation: () => Promise<T>,
 ): Promise<OperationResult<T>> {
@@ -83,14 +95,12 @@ export async function operationResult<T>(
 			return {
 				data: null,
 				error: {
-					code:
-						error.body?.code === "SESSION_NOT_FRESH"
-							? "SESSION_NOT_FRESH"
-							: duplicate
-								? "CONFLICT"
-								: unavailable
-									? "NOT_FOUND"
-									: (statusCodes[error.statusCode] ?? "INVALID_INPUT"),
+					code: organizationFailure(
+						error.body?.code,
+						duplicate,
+						unavailable,
+						statusCodes[error.statusCode],
+					),
 					message: error.body?.message ?? "Organization operation failed",
 				},
 			};

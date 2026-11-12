@@ -53,6 +53,37 @@ export function configuration(): ComposeConfig {
 	return JSON.parse(compose(["config", "--format", "json"]));
 }
 
+/**
+ * A bind mount must name an existing absolute directory that Compose will not create:
+ * empty to initialize, holding database content to start.
+ */
+function validateBind(
+	service: Role,
+	mount: { source: string; bind?: { create_host_path?: boolean } },
+	mode: Mode,
+) {
+	if (
+		mount.bind?.create_host_path !== false ||
+		!isAbsolute(mount.source) ||
+		!statSync(mount.source).isDirectory()
+	)
+		throw new Error(
+			`${service}: existing absolute bind directory required; automatic creation is forbidden`,
+		);
+	if (mode === "initialize") {
+		if (readdirSync(mount.source).length)
+			throw new Error(`${service}: initialization requires empty data`);
+		return;
+	}
+	for (const marker of markers[service]) {
+		const file = statSync(`${mount.source}/${marker}`);
+		if (!file.isFile() || !file.size)
+			throw new Error(
+				`${service}: database content missing; refusing replacement initialization`,
+			);
+	}
+}
+
 export function validateData(
 	config: ComposeConfig,
 	environment: NodeJS.ProcessEnv,
@@ -76,28 +107,8 @@ export function validateData(
 			);
 		if (mode === "start" && !definition.environment?.RECOUNT_DATA_ID)
 			throw new Error(`${service}: expected database identity required`);
-		if (mount.type === "bind") {
-			if (
-				mount.bind?.create_host_path !== false ||
-				!isAbsolute(mount.source) ||
-				!statSync(mount.source).isDirectory()
-			)
-				throw new Error(
-					`${service}: existing absolute bind directory required; automatic creation is forbidden`,
-				);
-			if (mode === "initialize") {
-				if (readdirSync(mount.source).length)
-					throw new Error(`${service}: initialization requires empty data`);
-			} else {
-				for (const marker of markers[service]) {
-					const file = statSync(`${mount.source}/${marker}`);
-					if (!file.isFile() || !file.size)
-						throw new Error(
-							`${service}: database content missing; refusing replacement initialization`,
-						);
-				}
-			}
-		} else if (mount.type !== "volume" || !config.volumes[mount.source]?.name)
+		if (mount.type === "bind") validateBind(service, mount, mode);
+		else if (mount.type !== "volume" || !config.volumes[mount.source]?.name)
 			throw new Error(
 				`${service}: expected a named volume or explicit existing bind`,
 			);

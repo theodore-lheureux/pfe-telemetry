@@ -111,11 +111,8 @@ export async function closeTelemetryClient() {
 	await current?.close();
 }
 
-export async function readTelemetry(
-	scope: TelemetryScope,
-	signal?: AbortSignal,
-	connection?: ClickHouseClient,
-): Promise<TelemetryResult> {
+/** The chart interval's length in ms; the interval and bucket count are bounded. */
+function validDuration(scope: TelemetryScope) {
 	const duration = scope.to.getTime() - scope.from.getTime();
 	if (
 		!Number.isFinite(duration) ||
@@ -131,6 +128,65 @@ export async function readTelemetry(
 			"Invalid chart interval",
 			"INVALID_TIME_RANGE",
 		);
+	return duration;
+}
+
+/**
+ * Rows grouped into logical series and their continuity segments, each sorted, within
+ * the series and segment limits.
+ */
+function groupRows(rows: Row[]): TelemetrySeries[] {
+	const series = new Map<string, TelemetrySeries>();
+	const segments = new Map<string, TelemetryPoint[]>();
+	for (const row of rows) {
+		const segmentId = `${row.id}/${row.segment}`;
+		let entry = series.get(row.id);
+		if (!entry) {
+			if (series.size >= 24)
+				throw new OperationError(
+					"CAPACITY",
+					"Too many logical telemetry groups",
+				);
+			entry = {
+				id: row.id,
+				metric: row.metric,
+				unit: row.unit,
+				hostId: row.hostId,
+				cpuMode: row.cpuMode,
+				segments: [],
+			};
+			series.set(row.id, entry);
+		}
+		let points = segments.get(segmentId);
+		if (!points) {
+			if (segments.size >= 256)
+				throw new OperationError("CAPACITY", "Too many continuity segments");
+			points = [];
+			segments.set(segmentId, points);
+			entry.segments.push({ id: row.segment, points });
+		}
+		points.push({
+			bucketMs: Number(BigInt(row.bucketNs) / 1000000n),
+			timeNs: row.sample[0],
+			integer: row.sample[1],
+			double: row.sample[2],
+			flags: row.sample[3],
+		});
+	}
+	for (const entry of series.values()) {
+		entry.segments.sort((a, b) => a.id.localeCompare(b.id));
+		for (const segment of entry.segments)
+			segment.points.sort((a, b) => a.bucketMs - b.bucketMs);
+	}
+	return [...series.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export async function readTelemetry(
+	scope: TelemetryScope,
+	signal?: AbortSignal,
+	connection?: ClickHouseClient,
+): Promise<TelemetryResult> {
+	const duration = validDuration(scope);
 	if (signal?.aborted)
 		throw new OperationError("CANCELLED", "Analytics request cancelled");
 	if (active >= 2) throw new OperationError("CAPACITY", "Analytics is busy");
@@ -174,53 +230,12 @@ export async function readTelemetry(
 		const rows = await result.json<Row>();
 		if (signal?.aborted)
 			throw new OperationError("CANCELLED", "Analytics request cancelled");
-		const series = new Map<string, TelemetrySeries>();
-		const segments = new Map<string, TelemetryPoint[]>();
-		for (const row of rows) {
-			const segmentId = `${row.id}/${row.segment}`;
-			let entry = series.get(row.id);
-			if (!entry) {
-				if (series.size >= 24)
-					throw new OperationError(
-						"CAPACITY",
-						"Too many logical telemetry groups",
-					);
-				entry = {
-					id: row.id,
-					metric: row.metric,
-					unit: row.unit,
-					hostId: row.hostId,
-					cpuMode: row.cpuMode,
-					segments: [],
-				};
-				series.set(row.id, entry);
-			}
-			let points = segments.get(segmentId);
-			if (!points) {
-				if (segments.size >= 256)
-					throw new OperationError("CAPACITY", "Too many continuity segments");
-				points = [];
-				segments.set(segmentId, points);
-				entry.segments.push({ id: row.segment, points });
-			}
-			points.push({
-				bucketMs: Number(BigInt(row.bucketNs) / 1000000n),
-				timeNs: row.sample[0],
-				integer: row.sample[1],
-				double: row.sample[2],
-				flags: row.sample[3],
-			});
-		}
-		for (const entry of series.values()) {
-			entry.segments.sort((a, b) => a.id.localeCompare(b.id));
-			for (const segment of entry.segments)
-				segment.points.sort((a, b) => a.bucketMs - b.bucketMs);
-		}
+		const series = groupRows(rows);
 		return {
 			from: scope.from,
 			to: scope.to,
 			bucketMs,
-			series: [...series.values()].sort((a, b) => a.id.localeCompare(b.id)),
+			series,
 		};
 	} catch (error) {
 		if (error instanceof OperationError) throw error;

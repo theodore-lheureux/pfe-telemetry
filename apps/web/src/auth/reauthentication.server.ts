@@ -17,6 +17,69 @@ function reply(status: number, body: object, cookies: string[] = []) {
 	return Response.json(body, { status, headers });
 }
 
+/** The request's JSON object, or the response rejecting it. */
+async function readInput(
+	request: Request,
+): Promise<Record<string, unknown> | Response> {
+	try {
+		const body = await request.text();
+		if (body.length > 32768) return reply(413, { code: "INVALID_INPUT" });
+		const input = JSON.parse(body);
+		if (!input || typeof input !== "object" || Array.isArray(input))
+			throw new Error();
+		return input;
+	} catch {
+		return reply(400, { code: "INVALID_INPUT" });
+	}
+}
+
+type Session = NonNullable<Awaited<ReturnType<typeof readAuthSession>>>;
+type AuthContext = Awaited<Auth["$context"]>;
+
+/**
+ * The body for the native verification endpoint of one action, or the response
+ * rejecting the input. A passkey must belong to the signed-in account.
+ */
+async function verificationBody(
+	action: string,
+	input: Record<string, unknown>,
+	current: Session,
+	context: AuthContext,
+): Promise<object | Response> {
+	if (action === "send") return { email: current.user.email, type: "sign-in" };
+	if (action === "email") {
+		if (typeof input.code !== "string" || !/^\d{6}$/.test(input.code))
+			return reply(400, { code: "INVALID_OTP" });
+		return { email: current.user.email, otp: input.code };
+	}
+	if (action === "passkey") {
+		const response = input.response;
+		if (
+			!response ||
+			typeof response !== "object" ||
+			!("id" in response) ||
+			typeof response.id !== "string"
+		)
+			return reply(400, { code: "INVALID_INPUT" });
+		const credential = await context.adapter.findOne({
+			model: "passkey",
+			where: [
+				{ field: "credentialID", value: response.id },
+				{ field: "userId", value: current.user.id },
+			],
+		});
+		if (!credential) return reply(403, { code: "ACCOUNT_CHANGED" });
+		return { response };
+	}
+	if (
+		!current.user.twoFactorEnabled ||
+		typeof input.code !== "string" ||
+		input.code.length > 32
+	)
+		return reply(400, { code: "INVALID_INPUT" });
+	return { code: input.code, trustDevice: false };
+}
+
 export async function handleReauthentication(
 	request: Request,
 	auth: Auth,
@@ -26,16 +89,8 @@ export async function handleReauthentication(
 		return reply(405, { code: "METHOD_NOT_ALLOWED" });
 	if (request.headers.get("origin") !== origin)
 		return reply(403, { code: "INVALID_ORIGIN" });
-	let input: Record<string, unknown>;
-	try {
-		const body = await request.text();
-		if (body.length > 32768) return reply(413, { code: "INVALID_INPUT" });
-		input = JSON.parse(body);
-		if (!input || typeof input !== "object" || Array.isArray(input))
-			throw new Error();
-	} catch {
-		return reply(400, { code: "INVALID_INPUT" });
-	}
+	const input = await readInput(request);
+	if (input instanceof Response) return input;
 	const action = input.action;
 	if (typeof action !== "string" || !Object.hasOwn(paths, action))
 		return reply(400, { code: "INVALID_INPUT" });
@@ -66,39 +121,8 @@ export async function handleReauthentication(
 			.filter((cookie) => !isSessionCookie(cookie.trim().split("=", 1)[0]))
 			.join(";"),
 	);
-	let body: object;
-	if (action === "send") body = { email: current.user.email, type: "sign-in" };
-	else if (action === "email") {
-		if (typeof input.code !== "string" || !/^\d{6}$/.test(input.code))
-			return reply(400, { code: "INVALID_OTP" });
-		body = { email: current.user.email, otp: input.code };
-	} else if (action === "passkey") {
-		const response = input.response;
-		if (
-			!response ||
-			typeof response !== "object" ||
-			!("id" in response) ||
-			typeof response.id !== "string"
-		)
-			return reply(400, { code: "INVALID_INPUT" });
-		const credential = await context.adapter.findOne({
-			model: "passkey",
-			where: [
-				{ field: "credentialID", value: response.id },
-				{ field: "userId", value: current.user.id },
-			],
-		});
-		if (!credential) return reply(403, { code: "ACCOUNT_CHANGED" });
-		body = { response };
-	} else {
-		if (
-			!current.user.twoFactorEnabled ||
-			typeof input.code !== "string" ||
-			input.code.length > 32
-		)
-			return reply(400, { code: "INVALID_INPUT" });
-		body = { code: input.code, trustDevice: false };
-	}
+	const body = await verificationBody(action, input, current, context);
+	if (body instanceof Response) return body;
 	const response = await auth.handler(
 		new Request(
 			new URL(`/api/auth${paths[action as keyof typeof paths]}`, origin),

@@ -125,17 +125,65 @@ export async function createLiveGateway() {
 	const connections = new Set<AbortController>();
 	const packetReads = new Set<Promise<unknown>>();
 	let closing: Promise<void> | undefined;
+	// The shared secret is compared in constant time.
+	const authorized = (request: Request) => {
+		const authorization = Buffer.from(
+			request.headers.get("authorization") ?? "",
+		);
+		return (
+			authorization.length === secret.length &&
+			timingSafeEqual(authorization, secret)
+		);
+	};
+	// One retained packet; at most two reads run at once.
+	const servePacket = async (
+		request: Request,
+		url: URL,
+		projectId: string,
+	): Promise<Response> => {
+		if (readers >= 2) return new Response(null, { status: 503 });
+		readers++;
+		const lifetime = new AbortController();
+		connections.add(lifetime);
+		let started = false;
+		try {
+			const input = parsePacket({
+				organizationId: "internal",
+				projectId,
+				packetId: url.searchParams.get("packetId"),
+				offset: url.searchParams.get("offset"),
+				partition: Number(url.searchParams.get("partition")),
+			});
+			const read = readRawPacket(
+				kafka,
+				input,
+				AbortSignal.any([request.signal, lifetime.signal]),
+			);
+			started = true;
+			packetReads.add(read.closed);
+			void read.closed
+				.finally(() => {
+					packetReads.delete(read.closed);
+					readers--;
+					connections.delete(lifetime);
+				})
+				.catch(() => {});
+			return Response.json(await read.result, {
+				headers: { "Cache-Control": "no-store" },
+			});
+		} catch {
+			return new Response(null, { status: 404 });
+		} finally {
+			if (!started) {
+				readers--;
+				connections.delete(lifetime);
+			}
+		}
+	};
 	return {
 		async fetch(request: Request): Promise<Response> {
 			if (closing) return new Response(null, { status: 503 });
-			const authorization = Buffer.from(
-				request.headers.get("authorization") ?? "",
-			);
-			if (
-				authorization.length !== secret.length ||
-				!timingSafeEqual(authorization, secret)
-			)
-				return new Response(null, { status: 401 });
+			if (!authorized(request)) return new Response(null, { status: 401 });
 			const url = new URL(request.url);
 			if (request.method !== "GET") return new Response(null, { status: 405 });
 			if (url.pathname === "/health") return Response.json({ ready: true });
@@ -146,46 +194,8 @@ export async function createLiveGateway() {
 				)
 			)
 				return new Response(null, { status: 400 });
-			if (url.pathname === "/packet") {
-				if (readers >= 2) return new Response(null, { status: 503 });
-				readers++;
-				const lifetime = new AbortController();
-				connections.add(lifetime);
-				let started = false;
-				try {
-					const input = parsePacket({
-						organizationId: "internal",
-						projectId,
-						packetId: url.searchParams.get("packetId"),
-						offset: url.searchParams.get("offset"),
-						partition: Number(url.searchParams.get("partition")),
-					});
-					const read = readRawPacket(
-						kafka,
-						input,
-						AbortSignal.any([request.signal, lifetime.signal]),
-					);
-					started = true;
-					packetReads.add(read.closed);
-					void read.closed
-						.finally(() => {
-							packetReads.delete(read.closed);
-							readers--;
-							connections.delete(lifetime);
-						})
-						.catch(() => {});
-					return Response.json(await read.result, {
-						headers: { "Cache-Control": "no-store" },
-					});
-				} catch {
-					return new Response(null, { status: 404 });
-				} finally {
-					if (!started) {
-						readers--;
-						connections.delete(lifetime);
-					}
-				}
-			}
+			if (url.pathname === "/packet")
+				return servePacket(request, url, projectId);
 			if (url.pathname !== "/stream")
 				return new Response(null, { status: 404 });
 			if (viewers >= 512) return new Response(null, { status: 503 });

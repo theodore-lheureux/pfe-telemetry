@@ -36,6 +36,8 @@ import type {
 import { operationMessage } from "../../lib/operation-message";
 import type { OperationResult } from "../../lib/operation-result";
 import type { ProjectSummary } from "../../organizations/contracts";
+import { CopyStatus } from "../copy-status";
+import { DataTable } from "../data-table";
 import { AlertDialogActions, DialogActions } from "../dialog-actions";
 import { FormFeedback } from "../form-feedback";
 import { TimeDisplay } from "../time-display";
@@ -65,14 +67,6 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "../ui/table";
 import { useMutationOwner } from "../use-mutation-owner";
 import { SettingsPageHeading } from "./settings-page-heading";
 import { SettingsSection } from "./settings-section";
@@ -80,6 +74,22 @@ import { SettingsSection } from "./settings-section";
 type Confirmation =
 	| { kind: "revoke-nodes" | "delete-nodes"; nodeIds: string[] }
 	| { kind: "revoke-key"; key: EnrollmentKeySummary };
+
+function confirmationTitle(confirmation: Confirmation | null) {
+	if (confirmation?.kind === "revoke-key")
+		return m.enrollment_key_revoke_title({ name: confirmation.key.name });
+	if (confirmation?.kind === "delete-nodes")
+		return m.nodes_delete_title({ count: confirmation.nodeIds.length });
+	return m.nodes_revoke_title({ count: confirmation?.nodeIds.length ?? 0 });
+}
+
+function confirmationDescription(confirmation: Confirmation | null) {
+	if (confirmation?.kind === "revoke-key")
+		return m.enrollment_key_revoke_description();
+	if (confirmation?.kind === "delete-nodes")
+		return m.nodes_delete_description();
+	return m.nodes_revoke_description();
+}
 
 export function CollectorsSettings({
 	project,
@@ -389,24 +399,9 @@ export function CollectorsSettings({
 						}
 					}}
 				>
-					<AlertDialogTitle>
-						{confirmation?.kind === "revoke-key"
-							? m.enrollment_key_revoke_title({ name: confirmation.key.name })
-							: confirmation?.kind === "delete-nodes"
-								? m.nodes_delete_title({ count: confirmation.nodeIds.length })
-								: m.nodes_revoke_title({
-										count:
-											confirmation?.kind === "revoke-nodes"
-												? confirmation.nodeIds.length
-												: 0,
-									})}
-					</AlertDialogTitle>
+					<AlertDialogTitle>{confirmationTitle(confirmation)}</AlertDialogTitle>
 					<AlertDialogDescription>
-						{confirmation?.kind === "revoke-key"
-							? m.enrollment_key_revoke_description()
-							: confirmation?.kind === "delete-nodes"
-								? m.nodes_delete_description()
-								: m.nodes_revoke_description()}
+						{confirmationDescription(confirmation)}
 					</AlertDialogDescription>
 					<FormFeedback message={error} kind="error" reserveLine={false} />
 					<AlertDialogActions
@@ -478,14 +473,12 @@ type NodeTableMeta = { disabled: boolean };
 const nodeColumns: ColumnDef<typeof nodeTableFeatures, NodeSummary>[] = [
 	{
 		id: "select",
+		meta: { className: "w-10" },
 		header: ({ table }) => (
 			<Checkbox
 				checked={
-					table.getIsAllPageRowsSelected()
-						? true
-						: table.getIsSomePageRowsSelected()
-							? "indeterminate"
-							: false
+					table.getIsAllPageRowsSelected() ||
+					(table.getIsSomePageRowsSelected() && "indeterminate")
 				}
 				disabled={
 					(table.options.meta as NodeTableMeta).disabled ||
@@ -623,6 +616,7 @@ const keyColumns: ColumnDef<typeof keyTableFeatures, EnrollmentKeySummary>[] = [
 	},
 	{
 		id: "created",
+		meta: { className: "whitespace-nowrap" },
 		header: () => m.created(),
 		cell: ({ row }) => (
 			<TimeDisplay value={row.original.createdAt} mode="compact" />
@@ -630,6 +624,7 @@ const keyColumns: ColumnDef<typeof keyTableFeatures, EnrollmentKeySummary>[] = [
 	},
 	{
 		id: "expires",
+		meta: { className: "whitespace-nowrap" },
 		header: () => m.enrollment_key_expires(),
 		cell: ({ row }) =>
 			row.original.expiresAt ? (
@@ -689,48 +684,7 @@ function NodesTable({
 		onRowSelectionChange,
 	});
 	return (
-		<div className="rounded-md border bg-card text-card-foreground">
-			<Table aria-label={m.nodes()}>
-				<TableHeader>
-					{table.getHeaderGroups().map((group) => (
-						<TableRow key={group.id}>
-							{group.headers.map((header) => (
-								<TableHead
-									key={header.id}
-									className={header.column.id === "select" ? "w-10" : undefined}
-								>
-									<table.FlexRender header={header} />
-								</TableHead>
-							))}
-						</TableRow>
-					))}
-				</TableHeader>
-				<TableBody>
-					{table.getRowModel().rows.length === 0 && (
-						<TableRow>
-							<TableCell
-								colSpan={table.getAllLeafColumns().length}
-								className="text-muted-foreground"
-							>
-								{m.nodes_no_match()}
-							</TableCell>
-						</TableRow>
-					)}
-					{table.getRowModel().rows.map((row) => (
-						<TableRow
-							key={row.id}
-							data-state={row.getIsSelected() ? "selected" : undefined}
-						>
-							{row.getAllCells().map((cell) => (
-								<TableCell key={cell.id}>
-									<table.FlexRender cell={cell} />
-								</TableCell>
-							))}
-						</TableRow>
-					))}
-				</TableBody>
-			</Table>
-		</div>
+		<DataTable table={table} label={m.nodes()} empty={m.nodes_no_match()} />
 	);
 }
 
@@ -759,41 +713,7 @@ function EnrollmentKeysTable({
 		meta,
 		getRowId: (key) => key.id,
 	});
-	return (
-		<div className="rounded-md border bg-card text-card-foreground">
-			<Table aria-label={m.enrollment_keys()}>
-				<TableHeader>
-					{table.getHeaderGroups().map((group) => (
-						<TableRow key={group.id}>
-							{group.headers.map((header) => (
-								<TableHead key={header.id}>
-									<table.FlexRender header={header} />
-								</TableHead>
-							))}
-						</TableRow>
-					))}
-				</TableHeader>
-				<TableBody>
-					{table.getRowModel().rows.map((row) => (
-						<TableRow key={row.id}>
-							{row.getAllCells().map((cell) => (
-								<TableCell
-									key={cell.id}
-									className={
-										["created", "expires"].includes(cell.column.id)
-											? "whitespace-nowrap"
-											: undefined
-									}
-								>
-									<table.FlexRender cell={cell} />
-								</TableCell>
-							))}
-						</TableRow>
-					))}
-				</TableBody>
-			</Table>
-		</div>
-	);
+	return <DataTable table={table} label={m.enrollment_keys()} />;
 }
 
 function CreateEnrollmentKeyDialog({
@@ -1035,18 +955,7 @@ function RevealDialog({
 					<p className="text-muted-foreground">{m.collector_setup_run()}</p>
 					<SetupCommand>{runCommand(appOrigin())}</SetupCommand>
 				</section>
-				<p
-					role="status"
-					className={
-						copied === "failed" ? "text-xs text-destructive" : "sr-only"
-					}
-				>
-					{copied === "failed"
-						? m.settings_copy_failed()
-						: copied === "copied"
-							? m.settings_copied()
-							: ""}
-				</p>
+				<CopyStatus state={copied} />
 				<DialogActions cancel={{ label: m.done(), onClick: onClose }}>
 					<Button
 						onClick={async () => {

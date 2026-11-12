@@ -31,6 +31,7 @@ import {
 	timeZoneAbbreviation,
 } from "../lib/time-display";
 import type { ProjectSummary } from "../organizations/contracts";
+import { CopyStatus, copyState } from "./copy-status";
 import { settingsSearch } from "./settings-links";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -311,18 +312,7 @@ function TimestampPopover({
 							</div>
 						))}
 					</div>
-					<p
-						role="status"
-						className={
-							failed ? "px-3 pb-2 text-xs text-destructive" : "sr-only"
-						}
-					>
-						{failed
-							? m.settings_copy_failed()
-							: copied
-								? m.settings_copied()
-								: ""}
-					</p>
+					<CopyStatus state={copyState(copied, failed)} className="px-3 pb-2" />
 				</PopoverContent>
 			)}
 		</Popover>
@@ -344,7 +334,7 @@ export function TimeDisplayRange({
 		<>
 			{recorded && <>{m.recorded_interval_label()} </>}
 			<TimeDisplay value={from} timeZone={timeZone} />
-			{" – "}
+			{` – `}
 			<TimeDisplay value={to} timeZone={timeZone} /> {timeZone}{" "}
 			{recorded ? m.recorded_interval_notice() : m.interval_end_exclusive()}
 		</>

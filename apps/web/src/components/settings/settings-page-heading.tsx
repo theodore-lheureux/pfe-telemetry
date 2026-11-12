@@ -30,15 +30,15 @@ export function SettingsPageHeading({
 	const { settingsOrganization, settingsProject } =
 		settingsRoute.useRouteContext();
 	const scope = settingsScopes[search.section];
-	const parent =
-		scope === "project"
-			? { label: settingsProject?.name, section: "project" as const }
-			: scope === "organization"
-				? {
-						label: settingsOrganization?.name,
-						section: "organization" as const,
-					}
-				: { label: m.user_settings_group(), section: "user" as const };
+	const parents = {
+		project: { label: settingsProject?.name, section: "project" as const },
+		organization: {
+			label: settingsOrganization?.name,
+			section: "organization" as const,
+		},
+		user: { label: m.user_settings_group(), section: "user" as const },
+	};
+	const parent = parents[scope];
 	return (
 		<div className="flex flex-wrap items-start justify-between gap-4">
 			<div className="flex min-w-0 flex-col gap-2">

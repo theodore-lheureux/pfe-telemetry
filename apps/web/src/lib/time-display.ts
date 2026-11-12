@@ -1,5 +1,14 @@
 import { getLocale, type Locale } from "@recount/i18n/runtime";
 
+const DAY = 86400000;
+// Unit, its length and the distance it is used below; longer distances count years.
+const LONG_UNITS = [
+	["day", DAY, 7 * DAY],
+	["week", 7 * DAY, 30 * DAY],
+	["month", 30 * DAY, 365 * DAY],
+] as const;
+const YEAR = ["year", 365 * DAY, Number.POSITIVE_INFINITY] as const;
+
 export type TimeValue = Date | string | number;
 
 export function timeDate(value: TimeValue) {
@@ -41,13 +50,7 @@ export function formatCompactTime(
 		return relativeFormat.format(-Math.trunc(elapsed / 3600000), "hour");
 	if (relative) {
 		const [unit, duration] =
-			distance < 7 * 86400000
-				? (["day", 86400000] as const)
-				: distance < 30 * 86400000
-					? (["week", 7 * 86400000] as const)
-					: distance < 365 * 86400000
-						? (["month", 30 * 86400000] as const)
-						: (["year", 365 * 86400000] as const);
+			LONG_UNITS.find(([, , below]) => distance < below) ?? YEAR;
 		return relativeFormat.format(-Math.trunc(elapsed / duration), unit);
 	}
 	const day = calendarDay(date, timeZone);

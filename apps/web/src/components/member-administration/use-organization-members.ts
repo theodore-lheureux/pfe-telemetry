@@ -27,17 +27,16 @@ export function useOrganizationMembers(
 		userId,
 		save: (input, signal) => {
 			const data = { organizationId: organization.id };
-			return input.action === "leave"
-				? leaveOrganization({ data, signal })
-				: input.action === "remove"
-					? removeOrganizationMember({
-							data: { ...data, memberId: input.memberId },
-							signal,
-						})
-					: updateOrganizationMemberRole({
-							data: { ...data, memberId: input.memberId, role: input.role },
-							signal,
-						});
+			if (input.action === "leave") return leaveOrganization({ data, signal });
+			if (input.action === "remove")
+				return removeOrganizationMember({
+					data: { ...data, memberId: input.memberId },
+					signal,
+				});
+			return updateOrganizationMemberRole({
+				data: { ...data, memberId: input.memberId, role: input.role },
+				signal,
+			});
 		},
 		saved: m.your_membership_change_was_saved(),
 		refreshFailed: m.your_membership_change_was_saved_but_the_page(),

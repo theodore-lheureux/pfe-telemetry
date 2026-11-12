@@ -111,6 +111,35 @@ export interface DecodedPacket {
 	detail: PacketDetail;
 	nodeTimes: { id: string; time: number }[];
 }
+const POINT_KINDS = [
+	"gauge",
+	"sum",
+	"histogram",
+	"exponential_histogram",
+	"summary",
+];
+
+/** Metrics, data points and the latest point time (ms) in one OTLP resource. */
+function countMetrics(resource: JsonObject) {
+	let metrics = 0,
+		points = 0,
+		latest = 0;
+	for (const scope of array(resource.scope_metrics))
+		for (const metric of array(object(scope).metrics)) {
+			metrics++;
+			const data = object(metric);
+			for (const kind of POINT_KINDS)
+				for (const point of array(object(data[kind]).data_points)) {
+					points++;
+					const time = nanosecondsDate(
+						string(object(point).time_unix_nano),
+					).getTime();
+					latest = Math.max(latest, time);
+				}
+		}
+	return { metrics, points, latest };
+}
+
 export function decodePacket(
 	bytes: Buffer,
 	partition: number,
@@ -165,27 +194,10 @@ export function decodePacket(
 					attributes(object(resource.resource).attributes, "host.name"),
 				),
 			);
-		let resourceLatest = 0;
-		for (const scope of array(resource.scope_metrics))
-			for (const metric of array(object(scope).metrics)) {
-				metrics++;
-				const data = object(metric);
-				for (const kind of [
-					"gauge",
-					"sum",
-					"histogram",
-					"exponential_histogram",
-					"summary",
-				]) {
-					for (const point of array(object(data[kind]).data_points)) {
-						points++;
-						const time = nanosecondsDate(
-							string(object(point).time_unix_nano),
-						).getTime();
-						resourceLatest = Math.max(resourceLatest, time);
-					}
-				}
-			}
+		const counted = countMetrics(resource);
+		metrics += counted.metrics;
+		points += counted.points;
+		const resourceLatest = counted.latest;
 		latest = Math.max(latest, resourceLatest);
 		if (hostId)
 			nodeTimes.set(

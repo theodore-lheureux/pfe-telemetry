@@ -38,6 +38,13 @@ import {
 import { TooltipProvider } from "./ui/tooltip";
 import { WorkspaceMenu } from "./workspace-menu";
 
+/** Settings open on the narrowest scope the page is in. */
+function settingsScope(project: unknown, organization: unknown) {
+	if (project) return "project";
+	if (organization) return "organization";
+	return "user";
+}
+
 export function AppShell({
 	children,
 	user,
@@ -93,21 +100,25 @@ function AppShellContent({
 		workspace?.status === "success" && settingsMatch?.status === "success"
 			? settingsMatch
 			: undefined;
+	// Settings name their own scope; otherwise the deepest loaded route decides it.
+	const organizationContext =
+		organizationMatch?.status === "success"
+			? organizationMatch.context
+			: undefined;
+	const projectContext =
+		projectMatch?.status === "success" ? projectMatch.context : undefined;
 	const organization = settings
 		? settings.context.settingsOrganization
-		: organizationMatch?.status === "success"
-			? organizationMatch.context.organization
-			: workspace?.context.workspaceOrganization;
+		: (organizationContext?.organization ??
+			workspace?.context.workspaceOrganization);
 	const project = settings
 		? (settings.context.settingsProject ?? workspace?.context.workspaceProject)
-		: projectMatch?.status === "success"
-			? projectMatch.context.project
-			: workspace?.context.workspaceProject;
+		: (projectContext?.project ?? workspace?.context.workspaceProject);
 	const projects = settings
 		? settings.context.settingsProjects
-		: organizationMatch?.status === "success"
-			? organizationMatch.context.projects
-			: (workspace?.context.workspaceProjects ?? []);
+		: (organizationContext?.projects ??
+			workspace?.context.workspaceProjects ??
+			[]);
 	const organizations =
 		workspace?.status === "success" ? workspace.context.organizations : [];
 	const selection = {
@@ -275,11 +286,7 @@ function AppShellContent({
 										<Link
 											to="/settings"
 											search={settingsSearch(
-												project
-													? "project"
-													: organization
-														? "organization"
-														: "user",
+												settingsScope(project, organization),
 												selection,
 											)}
 											activeOptions={{ includeSearch: false }}

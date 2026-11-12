@@ -11,11 +11,11 @@ import type {
 } from "./contracts";
 
 function label(series: TelemetrySeries) {
-	return series.metric === "recount.node.cpu.time"
-		? m.node_cumulative_cpu_time()
-		: series.metric === "recount.node.memory.total"
-			? m.node_total_memory()
-			: m.node_available_memory();
+	if (series.metric === "recount.node.cpu.time")
+		return m.node_cumulative_cpu_time();
+	if (series.metric === "recount.node.memory.total")
+		return m.node_total_memory();
+	return m.node_available_memory();
 }
 function plotValue(point: TelemetryPoint) {
 	if (point.integer !== null) {
@@ -26,6 +26,17 @@ function plotValue(point: TelemetryPoint) {
 			: null;
 	}
 	return point.double;
+}
+
+/** Exact integers keep every digit; doubles use the chart's formatting. */
+function sampleText(
+	point: { integer: string | null; double: number | null },
+	formatSample: (value: number) => string,
+) {
+	if (point.integer !== null)
+		return new Intl.NumberFormat(getLocale()).format(BigInt(point.integer));
+	if (point.double !== null) return formatSample(point.double);
+	return m.no_recorded_value();
 }
 
 export function formatSample(value: number) {
@@ -126,15 +137,7 @@ function Series({
 											label={point.timeNs}
 										/>
 									</td>
-									<td>
-										{point.integer !== null
-											? new Intl.NumberFormat(getLocale()).format(
-													BigInt(point.integer),
-												)
-											: point.double !== null
-												? formatSample(point.double)
-												: m.no_recorded_value()}
-									</td>
+									<td>{sampleText(point, formatSample)}</td>
 								</tr>
 							)),
 						)}

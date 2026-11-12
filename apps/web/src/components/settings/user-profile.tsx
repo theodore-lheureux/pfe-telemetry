@@ -161,6 +161,154 @@ export function UserProfile() {
 		}
 	}
 
+	const passkeyList = () => {
+		if (identity.pending || passkeys.isPending || passkeys.isFetching)
+			return (
+				<div>
+					<p role="status">{m.loading_passkeys()}</p>
+					<Skeleton aria-hidden="true" className="mt-2 h-12 w-full" />
+				</div>
+			);
+		if (passkeys.error)
+			return (
+				<p role="alert">
+					{m.could_not_load_passkeys_try_refreshing_the_page()}
+				</p>
+			);
+		if (passkeys.data?.length)
+			return (
+				<Card className="gap-0 border py-0 ring-0">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>{m.name()}</TableHead>
+								<TableHead>{m.passkey_type()}</TableHead>
+								<TableHead>{m.created()}</TableHead>
+								<TableHead>
+									<span className="sr-only">{m.actions()}</span>
+								</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{passkeys.data.map((key) => (
+								<TableRow key={key.id}>
+									<TableCell>{key.name || m.passkey()}</TableCell>
+									<TableCell>
+										{key.deviceType === "multiDevice"
+											? m.passkey_synced()
+											: m.passkey_device_bound()}
+									</TableCell>
+									<TableCell className="whitespace-nowrap">
+										{key.createdAt ? (
+											<TimeDisplay value={key.createdAt} mode="compact" />
+										) : (
+											"—"
+										)}
+									</TableCell>
+									<TableCell>
+										<div className="flex justify-end gap-2">
+											<Button
+												variant="ghost"
+												size="icon"
+												aria-label={m.rename()}
+												title={m.rename()}
+												disabled={!hydrated || pending}
+												onClick={(event) => {
+													renameTrigger.current = event.currentTarget;
+													setRenameId(key.id);
+													setRenameName(key.name || "");
+													setMessage("");
+												}}
+											>
+												<PencilIcon aria-hidden="true" />
+											</Button>
+											<AlertDialog
+												open={deleteId === key.id}
+												onOpenChange={(open) => {
+													if (!pending) {
+														if (open) completedDeletion.current = null;
+														setMessage("");
+														setDeleteId(open ? key.id : null);
+													}
+												}}
+											>
+												<AlertDialogTrigger asChild>
+													<Button
+														variant="ghost"
+														size="icon"
+														aria-label={m.remove()}
+														title={m.remove()}
+														className="text-destructive"
+														disabled={!hydrated || pending}
+													>
+														<Trash2Icon aria-hidden="true" />
+													</Button>
+												</AlertDialogTrigger>
+												<AlertDialogContent
+													onEscapeKeyDown={(event) => {
+														if (pending) event.preventDefault();
+													}}
+													onCloseAutoFocus={(event) => {
+														if (
+															completedDeletion.current === key.id ||
+															pending
+														) {
+															event.preventDefault();
+															heading.current?.focus();
+														}
+													}}
+												>
+													<AlertDialogTitle>
+														{m.confirm_removal()}
+													</AlertDialogTitle>
+													<AlertDialogDescription>
+														{key.name || m.passkey()}
+													</AlertDialogDescription>
+													<FormFeedback
+														message={failed ? message : ""}
+														kind="error"
+														pending={pending}
+														pendingMessage={m.removing_passkey()}
+													/>
+													<AlertDialogActions
+														cancel={{
+															label: m.cancel(),
+															disabled: !hydrated || pending,
+															onClick: () => setDeleteId(null),
+														}}
+													>
+														<Button
+															variant="destructive"
+															disabled={!hydrated || pending}
+															pending={pending && activity === "remove"}
+															pendingLabel={m.removing_passkey()}
+															onClick={() =>
+																runAction(
+																	(signal) =>
+																		authClient.passkey.deletePasskey({
+																			id: key.id,
+																			fetchOptions: { signal },
+																		}),
+																	key.id,
+																	"remove",
+																)
+															}
+														>
+															{m.confirm_removal()}
+														</Button>
+													</AlertDialogActions>
+												</AlertDialogContent>
+											</AlertDialog>
+										</div>
+									</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</Card>
+			);
+		return <p className="text-sm">{m.no_passkeys_registered_yet()}</p>;
+	};
 	return (
 		<div className="relative flex min-w-0 flex-col gap-8">
 			<SettingsPageHeading
@@ -224,148 +372,7 @@ export function UserProfile() {
 						{m.add_a_passkey()}
 					</Button>
 				</form>
-				{identity.pending || passkeys.isPending || passkeys.isFetching ? (
-					<div>
-						<p role="status">{m.loading_passkeys()}</p>
-						<Skeleton aria-hidden="true" className="mt-2 h-12 w-full" />
-					</div>
-				) : passkeys.error ? (
-					<p role="alert">
-						{m.could_not_load_passkeys_try_refreshing_the_page()}
-					</p>
-				) : passkeys.data?.length ? (
-					<Card className="gap-0 border py-0 ring-0">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>{m.name()}</TableHead>
-									<TableHead>{m.passkey_type()}</TableHead>
-									<TableHead>{m.created()}</TableHead>
-									<TableHead>
-										<span className="sr-only">{m.actions()}</span>
-									</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{passkeys.data.map((key) => (
-									<TableRow key={key.id}>
-										<TableCell>{key.name || m.passkey()}</TableCell>
-										<TableCell>
-											{key.deviceType === "multiDevice"
-												? m.passkey_synced()
-												: m.passkey_device_bound()}
-										</TableCell>
-										<TableCell className="whitespace-nowrap">
-											{key.createdAt ? (
-												<TimeDisplay value={key.createdAt} mode="compact" />
-											) : (
-												"—"
-											)}
-										</TableCell>
-										<TableCell>
-											<div className="flex justify-end gap-2">
-												<Button
-													variant="ghost"
-													size="icon"
-													aria-label={m.rename()}
-													title={m.rename()}
-													disabled={!hydrated || pending}
-													onClick={(event) => {
-														renameTrigger.current = event.currentTarget;
-														setRenameId(key.id);
-														setRenameName(key.name || "");
-														setMessage("");
-													}}
-												>
-													<PencilIcon aria-hidden="true" />
-												</Button>
-												<AlertDialog
-													open={deleteId === key.id}
-													onOpenChange={(open) => {
-														if (!pending) {
-															if (open) completedDeletion.current = null;
-															setMessage("");
-															setDeleteId(open ? key.id : null);
-														}
-													}}
-												>
-													<AlertDialogTrigger asChild>
-														<Button
-															variant="ghost"
-															size="icon"
-															aria-label={m.remove()}
-															title={m.remove()}
-															className="text-destructive"
-															disabled={!hydrated || pending}
-														>
-															<Trash2Icon aria-hidden="true" />
-														</Button>
-													</AlertDialogTrigger>
-													<AlertDialogContent
-														onEscapeKeyDown={(event) => {
-															if (pending) event.preventDefault();
-														}}
-														onCloseAutoFocus={(event) => {
-															if (
-																completedDeletion.current === key.id ||
-																pending
-															) {
-																event.preventDefault();
-																heading.current?.focus();
-															}
-														}}
-													>
-														<AlertDialogTitle>
-															{m.confirm_removal()}
-														</AlertDialogTitle>
-														<AlertDialogDescription>
-															{key.name || m.passkey()}
-														</AlertDialogDescription>
-														<FormFeedback
-															message={failed ? message : ""}
-															kind="error"
-															pending={pending}
-															pendingMessage={m.removing_passkey()}
-														/>
-														<AlertDialogActions
-															cancel={{
-																label: m.cancel(),
-																disabled: !hydrated || pending,
-																onClick: () => setDeleteId(null),
-															}}
-														>
-															<Button
-																variant="destructive"
-																disabled={!hydrated || pending}
-																pending={pending && activity === "remove"}
-																pendingLabel={m.removing_passkey()}
-																onClick={() =>
-																	runAction(
-																		(signal) =>
-																			authClient.passkey.deletePasskey({
-																				id: key.id,
-																				fetchOptions: { signal },
-																			}),
-																		key.id,
-																		"remove",
-																	)
-																}
-															>
-																{m.confirm_removal()}
-															</Button>
-														</AlertDialogActions>
-													</AlertDialogContent>
-												</AlertDialog>
-											</div>
-										</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
-					</Card>
-				) : (
-					<p className="text-sm">{m.no_passkeys_registered_yet()}</p>
-				)}
+				{passkeyList()}
 				<FormFeedback
 					message={
 						(activity === "add" || activity === "remove") && !deleteId

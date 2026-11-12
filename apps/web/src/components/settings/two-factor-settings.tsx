@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { accountContextHeader } from "../../auth/account-context";
 import { authClient } from "../../auth/client";
 import { broadcastBetterAuthIdentity } from "../../auth/identity-state";
+import { type CopyState, CopyStatus } from "../copy-status";
 import { AlertDialogActions } from "../dialog-actions";
 import { FormFeedback } from "../form-feedback";
 import { useLocaleChangeBlocker } from "../locale-safety";
@@ -35,7 +36,7 @@ import { useMutationOwner } from "../use-mutation-owner";
 import { usePageConfirmation } from "../use-page-confirmation";
 import { SettingsSection } from "./settings-section";
 
-type Copied = "copied" | "failed" | null;
+type Copied = CopyState;
 
 export function TwoFactorSettings() {
 	const { user } = getRouteApi("/_app").useRouteContext();
@@ -89,6 +90,26 @@ export function TwoFactorSettings() {
 		router,
 		setConfirm,
 	]);
+	/** An account switch drops any shown secret and reloads; other failures explain. */
+	async function reportFailure(
+		code: string | undefined,
+		rejected?: (code: string | undefined) => string | undefined,
+	) {
+		if (code === "ACCOUNT_CHANGED") {
+			setSetup(null);
+			setRecovery(null);
+			setCode("");
+			setConfirm(null);
+			await router.invalidate({ sync: true }).catch(() => {});
+			return;
+		}
+		setMessage(
+			code === "SESSION_NOT_FRESH"
+				? m.error_session_fresh()
+				: (rejected?.(code) ??
+						m.the_action_was_not_completed_please_try_again()),
+		);
+	}
 	async function run<T>(
 		action: (
 			signal: AbortSignal,
@@ -120,20 +141,7 @@ export function TwoFactorSettings() {
 			const result = await action(operation.signal);
 			if (!current()) return;
 			if (result.error || !result.data) {
-				if (result.error?.code === "ACCOUNT_CHANGED") {
-					setSetup(null);
-					setRecovery(null);
-					setCode("");
-					setConfirm(null);
-					await router.invalidate({ sync: true }).catch(() => {});
-					return;
-				}
-				setMessage(
-					result.error?.code === "SESSION_NOT_FRESH"
-						? m.error_session_fresh()
-						: (rejected?.(result.error?.code) ??
-								m.the_action_was_not_completed_please_try_again()),
-				);
+				await reportFailure(result.error?.code, rejected);
 				return;
 			}
 			broadcastBetterAuthIdentity();
@@ -247,6 +255,7 @@ export function TwoFactorSettings() {
 			},
 		);
 	}
+	const actionsDisabled = !hydrated || !accountMatches || pending;
 	const visibleSetup = accountMatches ? setup : null;
 	const visibleRecovery = accountMatches ? recovery : null;
 	const dialogHeader = "-mx-4 border-b px-4 pb-3";
@@ -275,7 +284,7 @@ export function TwoFactorSettings() {
 						<div className="flex shrink-0 gap-2">
 							<Button
 								variant="outline"
-								disabled={!hydrated || !accountMatches || pending}
+								disabled={actionsDisabled}
 								onClick={() => {
 									setMessage("");
 									setRecovery({ codes: null });
@@ -285,7 +294,7 @@ export function TwoFactorSettings() {
 							</Button>
 							<Button
 								variant="destructive"
-								disabled={!hydrated || !accountMatches || pending}
+								disabled={actionsDisabled}
 								onClick={() => {
 									setMessage("");
 									setConfirm("disable");
@@ -302,10 +311,7 @@ export function TwoFactorSettings() {
 						{m.two_factor_disabled()}
 					</p>
 					<div>
-						<Button
-							disabled={!hydrated || !accountMatches || pending}
-							onClick={startSetup}
-						>
+						<Button disabled={actionsDisabled} onClick={startSetup}>
 							<ShieldCheckIcon aria-hidden="true" />
 							{m.two_factor_setup()}
 						</Button>
@@ -532,20 +538,5 @@ export function TwoFactorSettings() {
 				</AlertDialogContent>
 			</AlertDialog>
 		</SettingsSection>
-	);
-}
-
-function CopyStatus({ state }: { state: Copied }) {
-	return (
-		<p
-			role="status"
-			className={state === "failed" ? "text-xs text-destructive" : "sr-only"}
-		>
-			{state === "failed"
-				? m.settings_copy_failed()
-				: state === "copied"
-					? m.settings_copied()
-					: ""}
-		</p>
 	);
 }

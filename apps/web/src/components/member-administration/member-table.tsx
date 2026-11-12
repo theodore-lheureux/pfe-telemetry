@@ -25,6 +25,17 @@ export const memberTableFeatures = tableFeatures({
 	filterFns: { includesString: filterFn_includesString },
 });
 
+const SORT_ICON = {
+	asc: ArrowUpIcon,
+	desc: ArrowDownIcon,
+	none: ArrowDownUpIcon,
+};
+const SORT_ARIA = {
+	asc: "ascending",
+	desc: "descending",
+	none: "none",
+} as const;
+
 export function MemberTableHeader<T extends RowData>({
 	table,
 }: {
@@ -37,27 +48,14 @@ export function MemberTableHeader<T extends RowData>({
 				<TableRow key={group.id}>
 					{group.headers.map((header) => {
 						const sorted = header.column.getIsSorted();
-						const Icon =
-							sorted === "asc"
-								? ArrowUpIcon
-								: sorted === "desc"
-									? ArrowDownIcon
-									: ArrowDownUpIcon;
+						const direction = sorted || "none";
+						const Icon = SORT_ICON[direction];
 						const label =
 							typeof header.column.columnDef.header === "string"
 								? header.column.columnDef.header
 								: m.actions();
 						return (
-							<TableHead
-								key={header.id}
-								aria-sort={
-									sorted === "asc"
-										? "ascending"
-										: sorted === "desc"
-											? "descending"
-											: "none"
-								}
-							>
+							<TableHead key={header.id} aria-sort={SORT_ARIA[direction]}>
 								{header.column.getCanSort() ? (
 									<button
 										type="button"

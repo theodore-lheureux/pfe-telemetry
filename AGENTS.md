@@ -32,6 +32,8 @@
 - Support English and French throughout the UI and transactional emails with shared compiled catalogs and locale-aware formatting. Resolve locale per request; pass email locale explicitly. Keep technical identifiers, commands and protocol values unchanged.
 - Position form dialogs near the top of the viewport, with responsive width and scrollable content. Avoid repeating the same information in the title, description, field label and action: simple single-field dialogs need one clear title, an accessible field label (visually hidden when redundant), and concise Cancel/Save actions. Add descriptions only when they explain a constraint or consequence.
 - Build dialog buttons with `DialogActions` or `AlertDialogActions` from `apps/web/src/components/dialog-actions.tsx`: an outline cancel comes first and the confirming action last. Stack alternative full-width actions with `ActionStack`, and keep a field's label and input in their own group. Biome rejects hand-built dialog footers.
+- Express choices with early returns, `if` statements, lookup maps or `cn` rather than nested ternaries; Biome rejects nested ternaries and functions above its cognitive-complexity limit.
+- Before presenting web application changes, review the diff and fix what it finds: shadcn components rather than hand-built equivalents, existing components, hooks and helpers rather than new copies (for example `useAppMutation`, `DataTable` and the `lib/input.ts` parsers), library features rather than hand-written code (TanStack Router, Query, Table and Hotkeys), and files split when they mix views, data loading and table definitions.
 
 ## Naming
 

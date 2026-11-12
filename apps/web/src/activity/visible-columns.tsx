@@ -149,6 +149,11 @@ function VisibleRow({
 }
 
 /** The chosen columns, reordered by dragging or with the keyboard, renamed and removed. */
+/** A column with its custom label; an empty label restores the default name. */
+function labelled(field: string, label: string | undefined): ExplorerColumn {
+	return label ? { field, label } : { field };
+}
+
 export function VisibleColumns({
 	columns,
 	onChange,
@@ -200,9 +205,7 @@ export function VisibleColumns({
 								onChange(
 									columns.map((other) =>
 										other.field === column.field
-											? label
-												? { field: other.field, label }
-												: { field: other.field }
+											? labelled(other.field, label)
 											: other,
 									),
 								)

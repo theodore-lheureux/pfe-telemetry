@@ -81,11 +81,10 @@ export function parseCreateEnrollmentKeyInput(value: unknown) {
 		input.adapter === undefined ? "linux" : (input.adapter as CollectorAdapter);
 	if (adapter !== "linux" && adapter !== "standard")
 		throw new Error("Invalid adapter");
+	const defaultKinds = adapter === "linux" ? DEFAULT_LINUX_LOCAL_KINDS : [];
 	const kinds =
 		input.allowedLocalKinds === undefined
-			? adapter === "linux"
-				? DEFAULT_LINUX_LOCAL_KINDS
-				: []
+			? defaultKinds
 			: input.allowedLocalKinds;
 	if (
 		!Array.isArray(kinds) ||

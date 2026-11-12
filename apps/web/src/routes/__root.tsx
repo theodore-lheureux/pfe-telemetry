@@ -25,7 +25,12 @@ import { StepUpAuthentication } from "../components/step-up-authentication";
 import { TimeDisplayProvider } from "../components/time-display";
 import { AppearanceContext } from "../lib/appearance";
 import { clearValidation, localizeValidation } from "../lib/input-validation";
-import { getInitialTheme, themeCookie } from "../lib/theme";
+import {
+	getInitialTheme,
+	type Theme,
+	type ThemeMode,
+	themeCookie,
+} from "../lib/theme";
 import css from "../styles.css?url";
 
 export const Route = createRootRouteWithContext<{
@@ -54,6 +59,17 @@ export const Route = createRootRouteWithContext<{
 	errorComponent: RouteError,
 });
 
+const THEME_MODE: Record<Theme, ThemeMode> = {
+	system: "system",
+	"tide-dark": "dark",
+	tide: "light",
+};
+const MODE_THEME: Record<ThemeMode, Theme> = {
+	system: "system",
+	dark: "tide-dark",
+	light: "tide",
+};
+
 function RootDocument({ children }: { children: ReactNode }) {
 	const { theme: initialTheme } = Route.useRouteContext();
 	const [theme, setTheme] = useState(initialTheme ?? "tide");
@@ -78,20 +94,10 @@ function RootDocument({ children }: { children: ReactNode }) {
 				<LocaleSafety>
 					<AppearanceContext
 						value={{
-							mode:
-								theme === "system"
-									? "system"
-									: theme === "tide-dark"
-										? "dark"
-										: "light",
+							mode: THEME_MODE[theme],
 							disabled: !hydrated,
 							onModeChange: (mode) => {
-								const next =
-									mode === "system"
-										? "system"
-										: mode === "dark"
-											? "tide-dark"
-											: "tide";
+								const next = MODE_THEME[mode];
 								// biome-ignore lint/suspicious/noDocumentCookie: Cookie Store is not available in every supported browser.
 								document.cookie = `${themeCookie}=${next}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
 								setTheme(next);

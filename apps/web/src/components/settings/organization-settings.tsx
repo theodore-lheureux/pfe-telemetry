@@ -39,7 +39,14 @@ export function OrganizationSettings({
 						/>
 					}
 				>
-					{organization.role !== "member" ? (
+					{organization.role === "member" ? (
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="entity-name" className="sr-only">
+								{m.name()}
+							</Label>
+							<Input id="entity-name" value={organization.name} disabled />
+						</div>
+					) : (
 						<RenameEntityForm
 							labelHidden
 							requireChanged
@@ -54,13 +61,6 @@ export function OrganizationSettings({
 								})
 							}
 						/>
-					) : (
-						<div className="flex flex-col gap-2">
-							<Label htmlFor="entity-name" className="sr-only">
-								{m.name()}
-							</Label>
-							<Input id="entity-name" value={organization.name} disabled />
-						</div>
 					)}
 				</EntityIdentityRow>
 			</SettingsSection>

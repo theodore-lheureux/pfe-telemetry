@@ -9,6 +9,21 @@ import { useEffect, useRef, useState } from "react";
 
 export type FeedbackKind = "success" | "error" | "warning";
 
+const ICON = {
+	error: CircleAlertIcon,
+	warning: TriangleAlertIcon,
+	success: CircleCheckIcon,
+};
+const TONE = {
+	error: "text-destructive",
+	warning: "text-foreground",
+	success: "text-primary",
+};
+const LIVE_ROLE: Record<string, "alert" | "status"> = {
+	true: "alert",
+	false: "status",
+};
+
 export function FormFeedback({
 	message,
 	kind = "success",
@@ -42,13 +57,9 @@ export function FormFeedback({
 		observer.observe(element);
 		return () => observer.disconnect();
 	}, [pending, reserveLine]);
-	const minimumHeight = pending ? settledHeight : reserveLine ? 20 : 0;
-	const Icon =
-		kind === "error"
-			? CircleAlertIcon
-			: kind === "warning"
-				? TriangleAlertIcon
-				: CircleCheckIcon;
+	const minimumHeight = pending ? settledHeight : Number(reserveLine) * 20;
+	const Icon = ICON[kind];
+	const assertive = !pending && kind === "error";
 	return (
 		<div
 			ref={container}
@@ -60,21 +71,13 @@ export function FormFeedback({
 			style={{ minHeight: minimumHeight }}
 		>
 			<p
-				role={
-					text ? (!pending && kind === "error" ? "alert" : "status") : undefined
-				}
-				aria-live={!pending && kind === "error" ? "assertive" : "polite"}
+				role={text ? LIVE_ROLE[String(assertive)] : undefined}
+				aria-live={assertive ? "assertive" : "polite"}
 				aria-atomic="true"
 				className={cn(
 					"flex items-start gap-2 text-sm",
 					pending && "sr-only",
-					pending
-						? "text-muted-foreground"
-						: kind === "error"
-							? "text-destructive"
-							: kind === "success"
-								? "text-primary"
-								: "text-foreground",
+					pending ? "text-muted-foreground" : TONE[kind],
 				)}
 			>
 				{text && !pending && (

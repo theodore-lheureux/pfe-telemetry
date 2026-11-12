@@ -13,6 +13,15 @@ import type { LiveSnapshot } from "./contracts";
 
 export type PausedBy = "user" | "inspector" | "hover";
 
+function statusText(live: LiveSnapshot | undefined, pausedBy: PausedBy | null) {
+	if (pausedBy === "inspector") return m.activity_paused_inspecting();
+	if (pausedBy === "hover") return m.activity_paused_hover();
+	if (pausedBy !== null) return m.activity_paused();
+	if (live?.status === "connected") return m.activity_connected();
+	if (live?.status === "disconnected") return m.activity_disconnected();
+	return m.activity_connecting();
+}
+
 /** The live feed's connection, pause reason, reporting nodes and packet rate. */
 export function LiveStatus({
 	live,
@@ -23,17 +32,8 @@ export function LiveStatus({
 }) {
 	const numbers = new Intl.NumberFormat(getLocale());
 	const paused = pausedBy !== null;
-	const status = paused
-		? pausedBy === "inspector"
-			? m.activity_paused_inspecting()
-			: pausedBy === "hover"
-				? m.activity_paused_hover()
-				: m.activity_paused()
-		: live?.status === "connected"
-			? m.activity_connected()
-			: live?.status === "disconnected"
-				? m.activity_disconnected()
-				: m.activity_connecting();
+	const status = statusText(live, pausedBy);
+	const connected = live?.status === "connected";
 	return (
 		<span
 			role="status"
@@ -44,11 +44,9 @@ export function LiveStatus({
 				aria-hidden="true"
 				className={cn(
 					"size-2 rounded-full",
-					paused
-						? "bg-amber-500"
-						: live?.status === "connected"
-							? "bg-emerald-500 motion-safe:animate-pulse"
-							: "bg-muted-foreground",
+					!paused && !connected && "bg-muted-foreground",
+					!paused && connected && "bg-emerald-500 motion-safe:animate-pulse",
+					paused && "bg-amber-500",
 				)}
 			/>
 			{paused || live?.status !== "connected" ? (

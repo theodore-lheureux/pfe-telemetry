@@ -25,18 +25,54 @@ import { JsonValueView } from "./json-value";
 function isObject(value: JsonValue): value is JsonObject {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
+type Entry = { key: string; value: JsonValue; type?: string };
+
+/** The rows a JSON value shows: typed attribute pairs, object fields or the value itself. */
+function entriesOf(value: JsonValue, attributes?: boolean): Entry[] {
+	if (attributes && Array.isArray(value))
+		return value.map((entry, index) => {
+			const node = isObject(entry) ? entry : {},
+				type = Number(node.kind ?? 0);
+			const field = (
+				{
+					2: "string_value",
+					3: "int_value",
+					4: "double_value",
+					5: "bool_value",
+					6: "bytes_value",
+				} as Record<number, string>
+			)[type];
+			const selected = field ? (node[field] ?? null) : entry;
+			return {
+				key: String(node.path ?? index),
+				value: type === 5 && selected !== null ? Boolean(selected) : selected,
+				type: (
+					{
+						0: "ABSENT",
+						1: "EMPTY",
+						2: "STRING",
+						3: "INTEGER",
+						4: "DOUBLE",
+						5: "BOOLEAN",
+						6: "BYTES",
+						7: "ARRAY",
+						8: "KEY_VALUE_LIST",
+					} as Record<number, string>
+				)[type],
+			};
+		});
+	if (value && typeof value === "object")
+		return Object.entries(value).map(([key, entry]) => ({ key, value: entry }));
+	return [{ key: "value", value }];
+}
+
 function kind(value: JsonValue): string {
-	return value === null
-		? "NULL"
-		: Array.isArray(value)
-			? "ARRAY"
-			: typeof value === "object"
-				? "OBJECT"
-				: typeof value === "number"
-					? "NUMBER"
-					: typeof value === "boolean"
-						? "BOOLEAN"
-						: "STRING";
+	if (value === null) return "NULL";
+	if (Array.isArray(value)) return "ARRAY";
+	if (typeof value === "object") return "OBJECT";
+	if (typeof value === "number") return "NUMBER";
+	if (typeof value === "boolean") return "BOOLEAN";
+	return "STRING";
 }
 
 function CopyValue({
@@ -103,43 +139,7 @@ function PropertyViewer({
 	const hideNullId = useId();
 	const [search, setSearch] = useState(""),
 		[hideNull, setHideNull] = useState(true);
-	const entries: { key: string; value: JsonValue; type?: string }[] =
-		attributes && Array.isArray(value)
-			? value.map((entry, index) => {
-					const node = isObject(entry) ? entry : {},
-						type = Number(node.kind ?? 0);
-					const field = (
-						{
-							2: "string_value",
-							3: "int_value",
-							4: "double_value",
-							5: "bool_value",
-							6: "bytes_value",
-						} as Record<number, string>
-					)[type];
-					const selected = field ? (node[field] ?? null) : entry;
-					return {
-						key: String(node.path ?? index),
-						value:
-							type === 5 && selected !== null ? Boolean(selected) : selected,
-						type: (
-							{
-								0: "ABSENT",
-								1: "EMPTY",
-								2: "STRING",
-								3: "INTEGER",
-								4: "DOUBLE",
-								5: "BOOLEAN",
-								6: "BYTES",
-								7: "ARRAY",
-								8: "KEY_VALUE_LIST",
-							} as Record<number, string>
-						)[type],
-					};
-				})
-			: value && typeof value === "object"
-				? Object.entries(value).map(([key, entry]) => ({ key, value: entry }))
-				: [{ key: "value", value }];
+	const entries = entriesOf(value, attributes);
 	const needle = search.toLocaleLowerCase();
 	const visible = entries.filter(
 		(entry) =>
@@ -276,71 +276,71 @@ export function ActivityInspector({
 		);
 	const stored = details.data.point,
 		incoming = details.data.packet;
-	const tabs: {
+	let tabs: {
 		id: string;
 		title: string;
 		value: JsonValue;
 		attributes?: boolean;
 		note?: string;
-	}[] = stored
-		? [
-				{
-					id: "measurement",
-					title: m.activity_measurement(),
-					value: stored.measurement,
-				},
-				{
-					id: "attributes",
-					title: m.activity_attributes(),
-					value: stored.attributes,
-					attributes: true,
-				},
-				{
-					id: "resource",
-					title: m.activity_resource(),
-					value: stored.resource,
-				},
-				{
-					id: "instrumentation",
-					title: m.activity_instrumentation(),
-					value: stored.instrumentation,
-				},
-				{
-					id: "diagnostics",
-					title: m.activity_diagnostics(),
-					value: stored.provenance.delivery ?? {},
-				},
-				{
-					id: "provenance",
-					title: m.activity_provenance(),
-					value: stored.provenance,
-				},
-				{
-					id: "json",
-					title: m.activity_json(),
-					value: stored.raw,
-				},
-			]
-		: incoming
-			? [
-					{
-						id: "diagnostics",
-						title: m.activity_diagnostics(),
-						value: incoming.delivery,
-					},
-					{
-						id: "metadata",
-						title: m.activity_metadata(),
-						value: incoming.metadata,
-					},
-					{
-						id: "payload",
-						title: m.activity_payload(),
-						value: incoming.payload,
-						note: incoming.truncated ? m.activity_truncated() : undefined,
-					},
-				]
-			: [];
+	}[] = [];
+	if (stored)
+		tabs = [
+			{
+				id: "measurement",
+				title: m.activity_measurement(),
+				value: stored.measurement,
+			},
+			{
+				id: "attributes",
+				title: m.activity_attributes(),
+				value: stored.attributes,
+				attributes: true,
+			},
+			{
+				id: "resource",
+				title: m.activity_resource(),
+				value: stored.resource,
+			},
+			{
+				id: "instrumentation",
+				title: m.activity_instrumentation(),
+				value: stored.instrumentation,
+			},
+			{
+				id: "diagnostics",
+				title: m.activity_diagnostics(),
+				value: stored.provenance.delivery ?? {},
+			},
+			{
+				id: "provenance",
+				title: m.activity_provenance(),
+				value: stored.provenance,
+			},
+			{
+				id: "json",
+				title: m.activity_json(),
+				value: stored.raw,
+			},
+		];
+	else if (incoming)
+		tabs = [
+			{
+				id: "diagnostics",
+				title: m.activity_diagnostics(),
+				value: incoming.delivery,
+			},
+			{
+				id: "metadata",
+				title: m.activity_metadata(),
+				value: incoming.metadata,
+			},
+			{
+				id: "payload",
+				title: m.activity_payload(),
+				value: incoming.payload,
+				note: incoming.truncated ? m.activity_truncated() : undefined,
+			},
+		];
 	return (
 		// The row above already names the point, node and time; the bar holds only tabs and copy.
 		<Tabs defaultValue={tabs[0]?.id} className="gap-0">

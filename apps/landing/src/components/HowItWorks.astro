@@ -85,10 +85,16 @@ const bracket = {
 	y: Math.min(...selected.map((bar) => bar.y)) - 6,
 };
 const tagX = (bracket.x0 + bracket.x1) / 2;
+// The outer ticks align inward so their labels stay inside the figure.
+const tickAnchor = (index: number, count: number) => {
+	if (index === 0) return "start";
+	if (index === count - 1) return "end";
+	return "middle";
+};
 const fullTicks = [9, 11, 13, 15].map((hours, k, all) => ({
 	x: xFull(indexAt(hours)),
 	label: timeLabel(hours),
-	anchor: k === 0 ? "start" : k === all.length - 1 ? "end" : "middle",
+	anchor: tickAnchor(k, all.length),
 }));
 
 // Step three: the moment opened, one row of thin bars per machine (small multiples), on

@@ -1,6 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import { useState } from "react";
+import { CopyStatus, copyState } from "../copy-status";
 import { Button } from "../ui/button";
 
 export function IdentifierField({ value }: { value: string }) {
@@ -34,12 +35,7 @@ export function IdentifierField({ value }: { value: string }) {
 					)}
 				</Button>
 			</div>
-			<p
-				role="status"
-				className={failed ? "mt-2 text-xs text-destructive" : "sr-only"}
-			>
-				{failed ? m.settings_copy_failed() : copied ? m.settings_copied() : ""}
-			</p>
+			<CopyStatus state={copyState(copied, failed)} className="mt-2" />
 		</div>
 	);
 }

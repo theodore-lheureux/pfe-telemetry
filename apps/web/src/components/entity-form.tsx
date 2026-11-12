@@ -146,7 +146,7 @@ function CreateFields<T>({
 }
 
 export function validateName(value: string) {
-	return !value.trim() ? m.enter_a_name_not_just_spaces() : undefined;
+	return value.trim() ? undefined : m.enter_a_name_not_just_spaces();
 }
 function namePresentation(disabled: boolean) {
 	return {

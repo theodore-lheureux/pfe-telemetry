@@ -28,7 +28,22 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "style": {
+        "noNestedTernary": "error",
+        "noNegationElse": "error",
+        "noUselessElse": "error",
+        "useConsistentCurlyBraces": "error",
+        "useSelfClosingElements": "error"
+      },
+      "complexity": {
+        "noExcessiveCognitiveComplexity": {
+          "level": "error",
+          "options": {
+            "maxAllowedComplexity": 30
+          }
+        }
+      }
     }
   },
   "javascript": {
@@ -74,6 +89,16 @@
         "!apps/web/src/components/dialog-actions.tsx"
       ],
       "plugins": ["./apps/web/lint/dialog-actions.grit"]
+    },
+    {
+      "includes": ["**/tests/**", "**/*.test.ts", "**/*.spec.ts"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noExcessiveCognitiveComplexity": "off"
+          }
+        }
+      }
     }
   ]
 }

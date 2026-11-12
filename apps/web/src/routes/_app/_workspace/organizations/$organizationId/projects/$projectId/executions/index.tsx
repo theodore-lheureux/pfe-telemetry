@@ -52,42 +52,43 @@ function Executions() {
 	const { beforeId } = Route.useSearch();
 	const { user, project } = Route.useRouteContext();
 	const paged = !!beforeId || !!page.nextCursor;
+	const empty = page.executions.length === 0;
 	return (
 		<>
 			<PageHeading title={m.executions()} />
-			{page.executions.length === 0 ? (
-				beforeId ? (
-					<EmptyState title={m.no_executions_recorded_on_this_page()} />
-				) : (
-					<Empty className="border border-dashed bg-card">
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<ListIcon aria-hidden="true" />
-							</EmptyMedia>
-							<EmptyTitle>
-								<h2>{m.executions_empty_title()}</h2>
-							</EmptyTitle>
-							<EmptyDescription>
-								{project.role === "admin"
-									? m.executions_empty_description()
-									: m.execution_source_required()}
-							</EmptyDescription>
-						</EmptyHeader>
-						{project.role === "admin" && (
-							<EmptyContent>
-								<Button asChild variant="outline">
-									<Link
-										to="/settings"
-										search={settingsSearch("collectors", params)}
-									>
-										{m.settings_manage_credentials()}
-									</Link>
-								</Button>
-							</EmptyContent>
-						)}
-					</Empty>
-				)
-			) : (
+			{empty && beforeId && (
+				<EmptyState title={m.no_executions_recorded_on_this_page()} />
+			)}
+			{empty && !beforeId && (
+				<Empty className="border border-dashed bg-card">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<ListIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>
+							<h2>{m.executions_empty_title()}</h2>
+						</EmptyTitle>
+						<EmptyDescription>
+							{project.role === "admin"
+								? m.executions_empty_description()
+								: m.execution_source_required()}
+						</EmptyDescription>
+					</EmptyHeader>
+					{project.role === "admin" && (
+						<EmptyContent>
+							<Button asChild variant="outline">
+								<Link
+									to="/settings"
+									search={settingsSearch("collectors", params)}
+								>
+									{m.settings_manage_credentials()}
+								</Link>
+							</Button>
+						</EmptyContent>
+					)}
+				</Empty>
+			)}
+			{!empty && (
 				<ul className="divide-y rounded-md border bg-card text-card-foreground">
 					{page.executions.map((entry) => (
 						<li key={entry.executionId} className="p-4">

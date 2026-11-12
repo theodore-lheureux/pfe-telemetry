@@ -25,6 +25,12 @@ import {
 import { SidebarMenuButton } from "../ui/sidebar";
 import { getSettingsGroups, searchSettings } from "./settings-catalog";
 
+// Scoped sections name their scope for assistive technology.
+const SECTION_LABEL: Partial<Record<string, () => string>> = {
+	project: m.project_settings,
+	organization: m.organization_settings,
+};
+
 export function SettingsNavigation({
 	selection,
 	organization,
@@ -156,13 +162,7 @@ export function SettingsNavigation({
 													>
 														<Link
 															to="/settings"
-															aria-label={
-																item.section === "project"
-																	? m.project_settings()
-																	: item.section === "organization"
-																		? m.organization_settings()
-																		: undefined
-															}
+															aria-label={SECTION_LABEL[item.section]?.()}
 															search={settingsSearch(item.section, selection)}
 															activeOptions={{ exact: true }}
 															activeProps={{

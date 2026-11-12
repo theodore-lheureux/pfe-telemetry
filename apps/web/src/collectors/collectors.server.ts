@@ -192,6 +192,12 @@ export async function revokeEnrollmentKey(
 	return updated;
 }
 
+function statusFilter(status: string) {
+	if (status === "active") return isNull(collectorNode.revokedAt);
+	if (status === "revoked") return isNotNull(collectorNode.revokedAt);
+	return undefined;
+}
+
 export async function listNodes(
 	database: Database,
 	actor: Actor,
@@ -203,11 +209,7 @@ export async function listNodes(
 	const filter = and(
 		tenant(collectorNode, input),
 		isNull(collectorNode.deletedAt),
-		input.status === "active"
-			? isNull(collectorNode.revokedAt)
-			: input.status === "revoked"
-				? isNotNull(collectorNode.revokedAt)
-				: undefined,
+		statusFilter(input.status),
 		input.query
 			? or(
 					ilike(collectorNode.hostname, pattern),

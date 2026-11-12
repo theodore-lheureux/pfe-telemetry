@@ -12,6 +12,15 @@ export function activityNumberFormat(locale: string) {
 const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
 
 /** Readable measurement text; `exact` keeps the stored value and unit for tooltips. */
+/** Seconds in the largest unit that keeps the number readable. */
+function duration(seconds: number, format: Intl.NumberFormat) {
+	const absolute = Math.abs(seconds);
+	if (absolute < 1) return `${format.format(seconds * 1000)} ms`;
+	if (absolute < 120) return `${format.format(seconds)} s`;
+	if (absolute < 7200) return `${format.format(seconds / 60)} min`;
+	return `${format.format(seconds / 3600)} h`;
+}
+
 export function formatMeasurement(
 	value: string | number,
 	unit: string,
@@ -30,16 +39,7 @@ export function formatMeasurement(
 		return { text: `${short.format(scaled)} ${BYTE_UNITS[index]}`, exact };
 	}
 	if (unit === "s") {
-		const absolute = Math.abs(number);
-		const text =
-			absolute < 1
-				? `${short.format(number * 1000)} ms`
-				: absolute < 120
-					? `${short.format(number)} s`
-					: absolute < 7200
-						? `${short.format(number / 60)} min`
-						: `${short.format(number / 3600)} h`;
-		return { text, exact };
+		return { text: duration(number, short), exact };
 	}
 	return { text: exact, exact };
 }

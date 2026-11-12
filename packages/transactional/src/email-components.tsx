@@ -50,6 +50,12 @@ export const emailStyles = {
 	},
 } satisfies Record<string, CSSProperties>;
 
+const TONE_STYLE = {
+	body: emailStyles.text,
+	small: emailStyles.small,
+	footer: emailStyles.footer,
+};
+
 export function EmailText({
 	children,
 	tone = "body",
@@ -59,12 +65,7 @@ export function EmailText({
 	tone?: "body" | "small" | "footer";
 	style?: CSSProperties;
 }) {
-	const base =
-		tone === "small"
-			? emailStyles.small
-			: tone === "footer"
-				? emailStyles.footer
-				: emailStyles.text;
+	const base = TONE_STYLE[tone];
 	return <Text style={{ ...base, ...style }}>{children}</Text>;
 }
 

@@ -272,8 +272,7 @@ export function ActivityPage({
 					{live?.limited && ` · ${m.activity_bounded()}`}
 					{page?.nextCursor && page.points.length < 100 && (
 						<>
-							{" · "}
-							{m.activity_searched_to()}{" "}
+							{` · ${m.activity_searched_to()} `}
 							<TimeDisplay value={page.searchedTo} mode="full" />
 						</>
 					)}

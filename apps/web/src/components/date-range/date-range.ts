@@ -41,6 +41,12 @@ export const CALENDAR_PRESETS = [
 export type CalendarPreset = (typeof CALENDAR_PRESETS)[number];
 export const JUMP_WINDOWS = [1, 5, 15, 60] as const;
 export type JumpAnchor = "around" | "before" | "after";
+/** How much of a jump's span lies before its moment. */
+const ANCHOR_SHARE: Record<JumpAnchor, number> = {
+	after: 0,
+	around: 0.5,
+	before: 1,
+};
 
 export type DateRange =
 	| { kind: "last"; count: number; unit: RangeUnit }
@@ -128,12 +134,7 @@ function resolveZoned(
 		case "jump": {
 			const span = range.minutes * 60_000,
 				at = range.at.getTime();
-			const from =
-				range.anchor === "after"
-					? at
-					: range.anchor === "before"
-						? at - span
-						: at - span / 2;
+			const from = at - span * ANCHOR_SHARE[range.anchor];
 			const to = from + span;
 			return to >= now.getTime()
 				? { from: new Date(from) }

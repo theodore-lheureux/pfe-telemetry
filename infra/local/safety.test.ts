@@ -49,6 +49,17 @@ function config(source: string, bind = false): ComposeConfig {
 	};
 }
 
+/** Services a mocked recipe starts: a failed guard starts none, failed topics stop at Kafka. */
+function startedServices(scenario: string, recipe: string) {
+	if (scenario === "healthy")
+		return recipe === "up"
+			? ["postgres", "kafka", "clickhouse"]
+			: ["ingestion-api", "normalizer", "live", "web"];
+	if (scenario === "topics-failed" && recipe === "up")
+		return ["postgres", "kafka"];
+	return [];
+}
+
 test("data selection rejects ignored binds, missing identity, partial data and nonempty initialization", () => {
 	const path = directory();
 	const selected = config(path, true);
@@ -194,14 +205,7 @@ if (process.env.MOCK_CASE === "topics-failed" && args.includes("kafka-topics") &
 				}
 				return selected;
 			});
-			const expectedServices =
-				scenario === "healthy"
-					? recipe === "up"
-						? ["postgres", "kafka", "clickhouse"]
-						: ["ingestion-api", "normalizer", "live", "web"]
-					: scenario === "topics-failed" && recipe === "up"
-						? ["postgres", "kafka"]
-						: [];
+			const expectedServices = startedServices(scenario, recipe);
 			expect(services.sort()).toEqual(expectedServices.sort());
 			const verification = calls.findIndex(
 				(args) => args.includes("kafka-topics") && args.includes("verify"),

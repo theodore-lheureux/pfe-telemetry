@@ -42,6 +42,61 @@ import {
 } from "../components/ui/input-otp";
 import { currentOrigin } from "../lib/origin";
 
+/** A second factor is pending now, or was when the page loaded and not dismissed. */
+function secondFactorPending(
+	pending: boolean,
+	pendingOnLoad: boolean,
+	dismissed: boolean,
+) {
+	return pending || (pendingOnLoad && !dismissed);
+}
+
+/** How a rejected code is reported, and whether the code field is marked invalid. */
+function rejection(outcome: { httpStatus?: number; code?: string }): {
+	message: Message;
+	codeInvalid: boolean;
+} {
+	if (outcome.httpStatus === 429)
+		return {
+			codeInvalid: false,
+			message: { kind: "warning", text: m.code_rate_limited() },
+		};
+	if (
+		["INVALID_OTP", "OTP_EXPIRED", "TOO_MANY_ATTEMPTS"].includes(
+			outcome.code ?? "",
+		)
+	)
+		return {
+			codeInvalid: true,
+			message: {
+				kind: "error",
+				text:
+					outcome.code === "TOO_MANY_ATTEMPTS"
+						? m.code_attempts_exceeded()
+						: m.code_invalid(),
+			},
+		};
+	return {
+		codeInvalid: false,
+		message: {
+			kind: "error",
+			text: m.signin_is_unavailable_please_try_again(),
+		},
+	};
+}
+
+const PENDING_TEXT: Partial<Record<string, () => string>> = {
+	passkey: m.signing_in,
+	verify: m.verifying_code,
+	check: m.checking_signin,
+};
+
+function verifyLabel(uncertain: boolean, remaining: number) {
+	if (uncertain) return m.check_signin();
+	if (remaining) return m.verify_code_in({ seconds: remaining });
+	return m.verify_code();
+}
+
 export const Route = createFileRoute("/login")({
 	loader: async () => ({
 		twoFactorPending: (await getAuthenticationState()).twoFactorPending,
@@ -194,26 +249,9 @@ function Login() {
 			setUncertain(true);
 			setMessage({ kind: "warning", text: m.signin_uncertain() });
 		} else if (outcome.status === "rejected") {
-			if (outcome.httpStatus === 429)
-				setMessage({ kind: "warning", text: m.code_rate_limited() });
-			else if (
-				["INVALID_OTP", "OTP_EXPIRED", "TOO_MANY_ATTEMPTS"].includes(
-					outcome.code ?? "",
-				)
-			) {
-				setCodeInvalid(true);
-				setMessage({
-					kind: "error",
-					text:
-						outcome.code === "TOO_MANY_ATTEMPTS"
-							? m.code_attempts_exceeded()
-							: m.code_invalid(),
-				});
-			} else
-				setMessage({
-					kind: "error",
-					text: m.signin_is_unavailable_please_try_again(),
-				});
+			const rejected = rejection(outcome);
+			if (rejected.codeInvalid) setCodeInvalid(true);
+			setMessage(rejected.message);
 		} else
 			setMessage({
 				kind: "error",
@@ -564,14 +602,7 @@ function Login() {
 			if (request.current === attempt) request.current = null;
 		}
 	}
-	const pendingText =
-		action === "passkey"
-			? m.signing_in()
-			: action === "verify"
-				? m.verifying_code()
-				: action === "check"
-					? m.checking_signin()
-					: m.sending_code();
+	const pendingText = (PENDING_TEXT[action ?? ""] ?? m.sending_code)();
 
 	// Shown under the code field in the code step and above the passkey option otherwise.
 	const feedback = (
@@ -587,20 +618,29 @@ function Login() {
 	);
 	if (
 		!uncertain &&
-		(identity.twoFactorPending || (loaded.twoFactorPending && !factorDismissed))
+		secondFactorPending(
+			identity.twoFactorPending,
+			loaded.twoFactorPending,
+			factorDismissed,
+		)
 	)
 		return (
 			<TwoFactorSignIn onVerify={verifySecondFactor} onBack={changeEmail} />
 		);
+	const sendWaiting = sendRateLimited && remaining > 0;
+	const verifyWaiting = !uncertain && verifyRemaining > 0;
+	const cardText =
+		phase === "email"
+			? {
+					title: m.sign_in(),
+					description: m.use_a_passkey_or_get_a_secure_signin(),
+				}
+			: {
+					title: m.check_your_email(),
+					description: m.code_for_email({ email: sentEmail }),
+				};
 	return (
-		<AuthCard
-			title={phase === "email" ? m.sign_in() : m.check_your_email()}
-			description={
-				phase === "email"
-					? m.use_a_passkey_or_get_a_secure_signin()
-					: m.code_for_email({ email: sentEmail })
-			}
-		>
+		<AuthCard {...cardText}>
 			{phase === "email" ? (
 				<form
 					method="post"
@@ -628,11 +668,11 @@ function Login() {
 					</emailForm.AppField>
 					<Button
 						type="submit"
-						disabled={!hydrated || busy || (sendRateLimited && remaining > 0)}
+						disabled={!hydrated || busy || sendWaiting}
 						pending={action === "send"}
 						pendingLabel={m.sending_code()}
 					>
-						{sendRateLimited && remaining > 0
+						{sendWaiting
 							? m.verify_code_in({ seconds: remaining })
 							: m.send_code()}
 					</Button>
@@ -704,17 +744,13 @@ function Login() {
 					<ActionStack>
 						<Button
 							type="submit"
-							disabled={busy || (!uncertain && verifyRemaining > 0)}
+							disabled={busy || verifyWaiting}
 							pending={action === "verify" || action === "check"}
 							pendingLabel={
 								uncertain ? m.checking_signin() : m.verifying_code()
 							}
 						>
-							{uncertain
-								? m.check_signin()
-								: verifyRemaining
-									? m.verify_code_in({ seconds: verifyRemaining })
-									: m.verify_code()}
+							{verifyLabel(uncertain, verifyRemaining)}
 						</Button>
 						<div className="-mx-2 flex flex-wrap items-center justify-between gap-2">
 							<Button
@@ -746,29 +782,31 @@ function Login() {
 					</ActionStack>
 				</form>
 			)}
-			{phase === "email" && feedback}
 			{phase === "email" && (
-				<div className="flex flex-col gap-4">
-					<AuthDivider>{m.auth_or()}</AuthDivider>
-					<Button
-						type="button"
-						variant="outline"
-						disabled={busy || !passkeysSupported}
-						pending={action === "passkey"}
-						pendingLabel={m.signing_in()}
-						onClick={() => void signInWithPasskey()}
-					>
-						<FingerprintPatternIcon aria-hidden="true" />
-						{identity.recovery?.method === "passkey"
-							? m.check_signin()
-							: m.sign_in_with_a_passkey()}
-					</Button>
-					{passkeysSupported === false && (
-						<p className="text-sm text-muted-foreground">
-							{m.passkeys_require_a_supported_browser_and_https_or()}
-						</p>
-					)}
-				</div>
+				<>
+					{feedback}
+					<div className="flex flex-col gap-4">
+						<AuthDivider>{m.auth_or()}</AuthDivider>
+						<Button
+							type="button"
+							variant="outline"
+							disabled={busy || !passkeysSupported}
+							pending={action === "passkey"}
+							pendingLabel={m.signing_in()}
+							onClick={() => void signInWithPasskey()}
+						>
+							<FingerprintPatternIcon aria-hidden="true" />
+							{identity.recovery?.method === "passkey"
+								? m.check_signin()
+								: m.sign_in_with_a_passkey()}
+						</Button>
+						{passkeysSupported === false && (
+							<p className="text-sm text-muted-foreground">
+								{m.passkeys_require_a_supported_browser_and_https_or()}
+							</p>
+						)}
+					</div>
+				</>
 			)}
 		</AuthCard>
 	);

@@ -23,6 +23,19 @@ type InputMessage<Input> = string | ((input: Input) => string);
 const inputMessage = <Input>(value: InputMessage<Input>, input: Input) =>
 	typeof value === "function" ? value(input) : value;
 
+/** A failed save is rejected when the server answered; otherwise its outcome is unknown. */
+function errorStatus(isError: boolean, answered: boolean) {
+	if (!isError) return "idle";
+	return answered ? "rejected" : "uncertain";
+}
+
+function feedbackKind(status: string) {
+	if (status === "rejected") return "error" as const;
+	if (status === "uncertain" || status === "refresh-failed")
+		return "warning" as const;
+	return "success" as const;
+}
+
 export function useAppMutation<Input, Data>(options: {
 	userId: string;
 	save: (input: Input, signal: AbortSignal) => Promise<OperationResult<Data>>;
@@ -73,11 +86,10 @@ export function useAppMutation<Input, Data>(options: {
 		mutation.error instanceof MutationFailure ? mutation.error.failure : null;
 	const status =
 		acknowledgement?.status ??
-		(mutation.isError
-			? failure && mutation.variables?.attempt !== "retry"
-				? "rejected"
-				: "uncertain"
-			: "idle");
+		errorStatus(
+			mutation.isError,
+			!!failure && mutation.variables?.attempt !== "retry",
+		);
 	const unknownFor = (input: Input) =>
 		inputMessage(
 			options.unknown ?? m.the_response_was_lost_the_action_may_have(),
@@ -86,13 +98,12 @@ export function useAppMutation<Input, Data>(options: {
 	const unknown = mutation.variables
 		? unknownFor(mutation.variables.input)
 		: m.the_response_was_lost_the_action_may_have();
-	const message =
-		acknowledgement?.message ??
-		(mutation.isError
-			? failure
-				? (options.errorMessage?.(failure) ?? operationMessage(failure))
-				: unknown
-			: "");
+	const message = acknowledgement?.message ?? errorMessage();
+	function errorMessage() {
+		if (!mutation.isError) return "";
+		if (!failure) return unknown;
+		return options.errorMessage?.(failure) ?? operationMessage(failure);
+	}
 	useLocaleChangeBlocker(
 		pending || status === "uncertain" || status === "refresh-failed",
 	);
@@ -184,12 +195,7 @@ export function useAppMutation<Input, Data>(options: {
 		status,
 		message,
 		data: acknowledgement?.data,
-		kind:
-			status === "rejected"
-				? ("error" as const)
-				: status === "uncertain" || status === "refresh-failed"
-					? ("warning" as const)
-					: ("success" as const),
+		kind: feedbackKind(status),
 		canRetry,
 		pending,
 		disabled: !hydrated || pending,

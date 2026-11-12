@@ -45,11 +45,11 @@ export function ProjectGrantRow({
 							<p className="text-sm text-muted-foreground">{member.email}</p>
 						)}
 						<p className="text-sm">
-							{implicit
-								? m.implicit_role({ role: roleLabel(member.role) })
-								: grant
-									? m.explicit_role({ role: roleLabel(grant.role) })
-									: m.no_project_access()}
+							{implicit && m.implicit_role({ role: roleLabel(member.role) })}
+							{!implicit &&
+								grant &&
+								m.explicit_role({ role: roleLabel(grant.role) })}
+							{!implicit && !grant && m.no_project_access()}
 							{implicit && grant
 								? ` · ${m.redundant_role({ role: roleLabel(grant.role) })}`
 								: ""}
@@ -117,11 +117,14 @@ export function ProjectGrantRow({
 							{m.confirm_access_named({ email: member.email })}
 						</AlertDialogTitle>
 						<AlertDialogDescription>
-							{implicit
-								? m.remove_this_redundant_explicit_grant_implicit_administrator_access()
-								: self
-									? m.this_removes_your_project_administrator_access_you_will()
-									: m.remove_access_question({ email: member.email })}
+							{implicit &&
+								m.remove_this_redundant_explicit_grant_implicit_administrator_access()}
+							{!implicit &&
+								self &&
+								m.this_removes_your_project_administrator_access_you_will()}
+							{!implicit &&
+								!self &&
+								m.remove_access_question({ email: member.email })}
 						</AlertDialogDescription>
 						<FormFeedback
 							reserveLine={false}
