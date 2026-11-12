@@ -216,6 +216,64 @@ export function TimeseriesChart({
 			{ label: entry.label, color: entry.color },
 		]),
 	) satisfies ChartConfig;
+	// One mark per series: comparisons are dashed lines, the rest follow the chart type.
+	const mark = (entry: ChartSeries) => {
+		if (entry.comparison)
+			return (
+				<Line
+					key={entry.key}
+					dataKey={entry.key}
+					type="linear"
+					stroke={entry.color}
+					strokeOpacity={0.45 * emphasis(entry.key)}
+					strokeWidth={2}
+					strokeDasharray="4 4"
+					dot={false}
+					isAnimationActive={false}
+				/>
+			);
+		if (bars)
+			return (
+				<Bar
+					key={entry.key}
+					dataKey={entry.key}
+					fill={entry.color}
+					fillOpacity={emphasis(entry.key)}
+					stackId={type === "stacked" ? "stack" : undefined}
+					radius={type === "stacked" ? 0 : [3, 3, 0, 0]}
+					isAnimationActive={false}
+				/>
+			);
+		if (filled)
+			return (
+				<Area
+					key={entry.key}
+					dataKey={entry.key}
+					type="linear"
+					stroke={entry.color}
+					strokeOpacity={emphasis(entry.key)}
+					strokeWidth={2}
+					fill={current.length === 1 ? `url(#${gradient})` : entry.color}
+					fillOpacity={(current.length === 1 ? 1 : 0.12) * emphasis(entry.key)}
+					dot={false}
+					activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
+					isAnimationActive={false}
+				/>
+			);
+		return (
+			<Line
+				key={entry.key}
+				dataKey={entry.key}
+				type="linear"
+				stroke={entry.color}
+				strokeOpacity={emphasis(entry.key)}
+				strokeWidth={2}
+				dot={false}
+				activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
+				isAnimationActive={false}
+			/>
+		);
+	};
 	return (
 		<div className={cn("flex flex-col gap-3", className)}>
 			<ChartContainer
@@ -307,13 +365,7 @@ export function TimeseriesChart({
 						width={72}
 						// A log axis cannot start at zero; non-positive values fall outside it.
 						scale={logScale ? "log" : "auto"}
-						domain={
-							logScale
-								? ["auto", "auto"]
-								: beginAtZero
-									? [0, "auto"]
-									: ["auto", "auto"]
-						}
+						domain={logScale || !beginAtZero ? ["auto", "auto"] : [0, "auto"]}
 						allowDataOverflow={logScale}
 						tickFormatter={(value: number) => format(value)}
 					/>
@@ -337,59 +389,7 @@ export function TimeseriesChart({
 							/>
 						)}
 					/>
-					{series.map((entry) =>
-						entry.comparison ? (
-							<Line
-								key={entry.key}
-								dataKey={entry.key}
-								type="linear"
-								stroke={entry.color}
-								strokeOpacity={0.45 * emphasis(entry.key)}
-								strokeWidth={2}
-								strokeDasharray="4 4"
-								dot={false}
-								isAnimationActive={false}
-							/>
-						) : bars ? (
-							<Bar
-								key={entry.key}
-								dataKey={entry.key}
-								fill={entry.color}
-								fillOpacity={emphasis(entry.key)}
-								stackId={type === "stacked" ? "stack" : undefined}
-								radius={type === "stacked" ? 0 : [3, 3, 0, 0]}
-								isAnimationActive={false}
-							/>
-						) : filled ? (
-							<Area
-								key={entry.key}
-								dataKey={entry.key}
-								type="linear"
-								stroke={entry.color}
-								strokeOpacity={emphasis(entry.key)}
-								strokeWidth={2}
-								fill={current.length === 1 ? `url(#${gradient})` : entry.color}
-								fillOpacity={
-									(current.length === 1 ? 1 : 0.12) * emphasis(entry.key)
-								}
-								dot={false}
-								activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-								isAnimationActive={false}
-							/>
-						) : (
-							<Line
-								key={entry.key}
-								dataKey={entry.key}
-								type="linear"
-								stroke={entry.color}
-								strokeOpacity={emphasis(entry.key)}
-								strokeWidth={2}
-								dot={false}
-								activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-								isAnimationActive={false}
-							/>
-						),
-					)}
+					{series.map(mark)}
 					{(bars ? [] : current).map((entry) => (
 						<Line
 							key={`${entry.key}${TAIL}`}

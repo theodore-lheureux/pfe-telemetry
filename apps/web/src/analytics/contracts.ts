@@ -47,7 +47,19 @@ export type CoreField =
 	| "scope.name";
 
 export type Calculation = "last" | "avg" | "min" | "max" | "rate" | "increase";
-export type Combine = "sum" | "avg" | "min" | "max";
+/** How the values of a measure's sources combine per bucket (and per group). */
+export const COMBINES = [
+	"sum",
+	"avg",
+	"count",
+	"min",
+	"max",
+	"p50",
+	"p90",
+	"p95",
+	"p99",
+] as const;
+export type Combine = (typeof COMBINES)[number];
 export type FilterOperator =
 	| "eq"
 	| "neq"
@@ -98,6 +110,11 @@ export interface AnalyticsQuery {
 	/** Fold the groups past the limit into one "Other" series. */
 	other?: boolean;
 	compare?: Comparison;
+	/**
+	 * Collapses the groups of each measure or formula into one series, after formulas
+	 * run, such as the 99th percentile of CPU usage across nodes. Requires `groupBy`.
+	 */
+	aggregate?: Combine;
 }
 
 export type RunQueryInput = ProjectReference & { query: AnalyticsQuery };
@@ -162,4 +179,6 @@ export interface QueryResult {
 	 * unknown: table results, or projects whose sources do not send collector heartbeats.
 	 */
 	coverage: Record<string, number[]> | null;
+	/** How groups were collapsed, when they were. */
+	aggregate?: Combine;
 }

@@ -46,8 +46,8 @@ export const settingsCatalog = {
 			{ id: "entity-name", label: m.name, permission: "project-admin" },
 			{
 				id: "project-tags",
-				label: m.project_tags,
-				keywords: [m.project_add_tag],
+				label: m.tags,
+				keywords: [m.tag_add],
 			},
 			{ id: "project-group", label: m.project_group },
 			{

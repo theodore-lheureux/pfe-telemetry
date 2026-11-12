@@ -1,3 +1,4 @@
+import { combineValues } from "../aggregate";
 import type { QueryResult, SeriesResult } from "../contracts";
 import type { Display } from "./draft";
 import {
@@ -24,13 +25,13 @@ export function stats(series: SeriesResult) {
 	const values = series.points
 		.map((point) => point.value)
 		.filter((value): value is number => value !== null);
-	if (!values.length)
-		return { latest: null, average: null, min: null, max: null };
 	return {
 		latest: values.at(-1) ?? null,
-		average: values.reduce((total, value) => total + value, 0) / values.length,
-		min: Math.min(...values),
-		max: Math.max(...values),
+		average: combineValues(values, "avg"),
+		min: combineValues(values, "min"),
+		max: combineValues(values, "max"),
+		p95: combineValues(values, "p95"),
+		p99: combineValues(values, "p99"),
 	};
 }
 

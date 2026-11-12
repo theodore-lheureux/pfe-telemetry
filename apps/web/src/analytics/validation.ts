@@ -3,6 +3,7 @@ import { parseProjectReference } from "../organizations/validation";
 import {
 	type AnalyticsQuery,
 	type Calculation,
+	COMBINES,
 	COMPARE_UNITS,
 	type Combine,
 	type CompareUnit,
@@ -46,7 +47,6 @@ const CALCULATIONS: readonly Calculation[] = [
 	"rate",
 	"increase",
 ];
-const COMBINES: readonly Combine[] = ["sum", "avg", "min", "max"];
 const OPERATORS: readonly FilterOperator[] = [
 	"eq",
 	"neq",
@@ -254,10 +254,18 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		throw new InputError("INVALID_QUERY", "Invalid series limit");
 	if (input.other !== undefined && typeof input.other !== "boolean")
 		throw new InputError("INVALID_QUERY", "Invalid other option");
-	// Every measure returns up to limit + 1 groups (the extra one, or Other) per bucket.
-	const groups = groupBy.length
-		? ((input.limit as number | undefined) ?? DEFAULT_SERIES_LIMIT) + 1
-		: 1;
+	if (
+		input.aggregate !== undefined &&
+		(!COMBINES.includes(input.aggregate as Combine) || !groupBy.length)
+	)
+		throw new InputError("INVALID_QUERY", "Invalid group aggregation");
+	// Every measure returns up to limit + 1 groups (the extra one, or Other) per bucket;
+	// an aggregation reads up to the largest groups allowed.
+	const limit =
+		input.aggregate === undefined
+			? ((input.limit as number | undefined) ?? DEFAULT_SERIES_LIMIT)
+			: MAX_SERIES;
+	const groups = groupBy.length ? limit + 1 : 1;
 	if (measures.length * groups * buckets > MAX_RESULT_POINTS)
 		throw new InputError(
 			"INVALID_QUERY",
@@ -271,11 +279,14 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		...(formulas.length ? { formulas } : {}),
 		filters: list(input.filters, MAX_FILTERS, "filters").map(parseFilter),
 		groupBy: groupBy as string[],
-		...(input.limit !== undefined ? { limit: input.limit as number } : {}),
+		...(input.limit === undefined ? {} : { limit: input.limit as number }),
 		...(input.other ? { other: true } : {}),
-		...(input.compare !== undefined
-			? { compare: parseComparison(input.compare) }
-			: {}),
+		...(input.compare === undefined
+			? {}
+			: { compare: parseComparison(input.compare) }),
+		...(input.aggregate === undefined
+			? {}
+			: { aggregate: input.aggregate as Combine }),
 	};
 }
 
@@ -293,6 +304,8 @@ function parseComparison(value: unknown): Comparison {
 }
 
 /** The comparison window for a resolved range. */
+const UNIT_MS = { hours: 3_600_000, days: 86_400_000, weeks: 604_800_000 };
+
 export function comparisonRange(
 	comparison: Comparison,
 	from: Date,
@@ -308,13 +321,7 @@ export function comparisonRange(
 			shifted.setUTCMonth(shifted.getUTCMonth() - comparison.amount);
 		else
 			shifted.setTime(
-				shifted.getTime() -
-					comparison.amount *
-						(comparison.unit === "hours"
-							? 3_600_000
-							: comparison.unit === "days"
-								? 86_400_000
-								: 604_800_000),
+				shifted.getTime() - comparison.amount * UNIT_MS[comparison.unit],
 			);
 		return shifted;
 	};

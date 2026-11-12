@@ -5,7 +5,9 @@ import { Button } from "../../components/ui/button";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
+	SelectLabel,
 	SelectTrigger,
 	SelectValue,
 } from "../../components/ui/select";
@@ -23,7 +25,11 @@ import { metricDescription } from "../metric-names";
 import { MetricPicker } from "../metric-picker";
 import { ALLOWED_CALCULATIONS } from "../validation";
 import type { DraftSeries } from "./draft";
-import { CALCULATION_LABEL, COMBINE_OPTION_LABEL } from "./labels";
+import {
+	CALCULATION_LABEL,
+	COMBINE_GROUPS,
+	COMBINE_OPTION_LABEL,
+} from "./labels";
 import type { Preset } from "./presets";
 
 // Borderless selects read as a phrase, "Rate per second  Sum of all sources", and wrap
@@ -181,13 +187,16 @@ export function SeriesRow({
 								<p className="max-w-64 px-1.5 py-1 text-xs text-muted-foreground">
 									{m.insight_combine_help()}
 								</p>
-								{(Object.keys(COMBINE_OPTION_LABEL) as Combine[]).map(
-									(value) => (
-										<SelectItem key={value} value={value}>
-											{COMBINE_OPTION_LABEL[value]()}
-										</SelectItem>
-									),
-								)}
+								{COMBINE_GROUPS.map((group) => (
+									<SelectGroup key={group.values[0]}>
+										<SelectLabel>{group.label()}</SelectLabel>
+										{group.values.map((value) => (
+											<SelectItem key={value} value={value}>
+												{COMBINE_OPTION_LABEL[value]()}
+											</SelectItem>
+										))}
+									</SelectGroup>
+								))}
 							</SelectContent>
 						</Select>
 					</div>

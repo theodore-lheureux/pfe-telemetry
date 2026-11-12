@@ -22,11 +22,9 @@ export function resolveOrganizationRole(
 	const roles = value.split(",").map((role) => role.trim());
 	if (roles.some((role) => !["owner", "admin", "member"].includes(role)))
 		return null;
-	return roles.includes("owner")
-		? "owner"
-		: roles.includes("admin")
-			? "admin"
-			: "member";
+	if (roles.includes("owner")) return "owner";
+	if (roles.includes("admin")) return "admin";
+	return "member";
 }
 
 export function resolveProjectRole(
@@ -87,7 +85,8 @@ export async function requireProject(
 	database: Database,
 	actor: Actor,
 	reference: ProjectReference,
-	action: "read" | "admin" = "read",
+	/** `write` allows project members and admins; viewers only read. */
+	action: "read" | "write" | "admin" = "read",
 ) {
 	const membership = await requireOrganization(
 		database,
@@ -121,6 +120,8 @@ export async function requireProject(
 			"FORBIDDEN",
 			"Project administrator access required",
 		);
+	if (action === "write" && role === "viewer")
+		throw new OperationError("FORBIDDEN", "Project member access required");
 	const { assignedRole: _, ...summary } = entry;
 	return { ...summary, role } satisfies ProjectSummary;
 }

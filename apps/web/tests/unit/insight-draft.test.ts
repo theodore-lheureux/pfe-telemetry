@@ -4,6 +4,7 @@ import {
 	decodeDraft,
 	encodeDraft,
 	type InsightDraft,
+	sameDraft,
 	toQuery,
 } from "../../src/analytics/insight/draft";
 
@@ -52,4 +53,16 @@ test("drafts survive the URL and become the server's query", () => {
 	// Unreadable URLs fall back to a fresh draft.
 	expect(decodeDraft("{not json")).toBe(DEFAULT_DRAFT);
 	expect(decodeDraft(JSON.stringify({ series: [] }))).toBe(DEFAULT_DRAFT);
+});
+
+test("drafts compare by content, not key order", () => {
+	const reordered = decodeDraft(
+		JSON.stringify(
+			Object.fromEntries(
+				Object.entries(JSON.parse(encodeDraft(draft))).reverse(),
+			),
+		),
+	);
+	expect(sameDraft(reordered, draft)).toBe(true);
+	expect(sameDraft({ ...draft, groupBy: "host" }, draft)).toBe(false);
 });

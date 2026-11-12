@@ -7,7 +7,7 @@ import {
 	clearBetterAuthIdentity,
 	refreshBetterAuthIdentity,
 } from "./auth/identity-state";
-import { RouteError, RoutePending } from "./components/route-feedback";
+import { PageError, RoutePending } from "./components/route-feedback";
 import { routeTree } from "./routeTree.gen";
 
 export function getRouter() {
@@ -46,7 +46,7 @@ export function getRouter() {
 		defaultPreloadGcTime: 0,
 		defaultStaleReloadMode: "blocking",
 		defaultPendingComponent: RoutePending,
-		defaultErrorComponent: RouteError,
+		defaultErrorComponent: PageError,
 		scrollRestoration: true,
 	});
 

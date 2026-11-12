@@ -12,13 +12,15 @@ export function parseName(value: unknown) {
 	return value.trim();
 }
 
-export function parseRequestId(value: unknown) {
-	if (
-		typeof value !== "string" ||
-		!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-			value,
-		)
-	)
-		throw new Error("Invalid request identifier");
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A UUID in lowercase; `what` names it in the error. */
+export function parseUuid(value: unknown, what = "identifier") {
+	if (typeof value !== "string" || !UUID.test(value))
+		throw new Error(`Invalid ${what}`);
 	return value.toLowerCase();
+}
+
+export function parseRequestId(value: unknown) {
+	return parseUuid(value, "request identifier");
 }

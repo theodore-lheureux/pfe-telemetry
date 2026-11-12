@@ -23,6 +23,8 @@ import {
 export const SERIES_NAMES = Array.from({ length: MAX_MEASURES }, (_, index) =>
 	String.fromCharCode(65 + index),
 );
+/** The longest draft text accepted from a URL or for saving. */
+export const MAX_DRAFT_LENGTH = 16_000;
 export const MAX_RANGE_DAYS = MAX_RANGE_SECONDS / 86_400;
 
 export interface DraftSeries {
@@ -68,6 +70,8 @@ export interface InsightDraft {
 	groupBy?: string;
 	limit: number;
 	other: boolean;
+	/** Collapses the breakdown's groups into one line, such as p99 across nodes. */
+	aggregate?: Combine;
 	range: DateRange;
 	interval: Interval | "auto";
 	compare?: Comparison;
@@ -198,6 +202,7 @@ export function toQuery(
 		groupBy: draft.groupBy ? [draft.groupBy] : [],
 		limit: draft.limit,
 		other: draft.other,
+		...(draft.groupBy && draft.aggregate ? { aggregate: draft.aggregate } : {}),
 		...(draft.compare ? { compare: draft.compare } : {}),
 	};
 }
@@ -253,12 +258,32 @@ export function encodeDraft(draft: InsightDraft): string {
 	return JSON.stringify({ ...draft, range: serializeRange(draft.range) });
 }
 
+function sortedKeys(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(sortedKeys);
+	if (value && typeof value === "object")
+		return Object.fromEntries(
+			Object.entries(value)
+				.filter(([, entry]) => entry !== undefined)
+				.sort(([left], [right]) => (left < right ? -1 : 1))
+				.map(([key, entry]) => [key, sortedKeys(entry)]),
+		);
+	return value;
+}
+
+/** Whether two drafts show the same insight, whatever their key order. */
+export function sameDraft(left: InsightDraft, right: InsightDraft) {
+	const canonical = (draft: InsightDraft) =>
+		JSON.stringify(sortedKeys(JSON.parse(encodeDraft(draft))));
+	return canonical(left) === canonical(right);
+}
+
 /**
  * Reads a draft from the URL. Anything unreadable falls back to the default; the server
  * validates the resulting query regardless, so this only protects the editor's shape.
  */
 export function decodeDraft(text: unknown): InsightDraft {
-	if (typeof text !== "string" || text.length > 8000) return DEFAULT_DRAFT;
+	if (typeof text !== "string" || text.length > MAX_DRAFT_LENGTH)
+		return DEFAULT_DRAFT;
 	try {
 		const value = JSON.parse(text) as InsightDraft & { range: SerializedRange };
 		if (

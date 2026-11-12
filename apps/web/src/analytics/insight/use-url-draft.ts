@@ -14,10 +14,14 @@ const STEP_GAP_MS = 1000;
 export function useUrlDraft(
 	/** The `q` parameter the page opened with. */
 	q: string | undefined,
+	/** The draft for entries without `q`, such as a saved insight's. */
+	fallback: string | undefined,
 	write: (q: string, replace: boolean) => void,
 ) {
 	const router = useRouter();
-	const [draft, setDraft] = useState(() => decodeDraft(q));
+	const [draft, setDraft] = useState(() => decodeDraft(q ?? fallback));
+	const base = useRef(fallback);
+	base.current = fallback;
 	const lastEdit = useRef(0);
 	// The browser history, not router state: the router updates only after a navigation's
 	// data loads, so its location can lag an edit made a moment ago.
@@ -33,7 +37,7 @@ export function useUrlDraft(
 			if (action.type === "PUSH" || action.type === "REPLACE") return;
 			if (location.pathname !== page) return;
 			const next = router.options.parseSearch(location.search).q;
-			setDraft(decodeDraft(typeof next === "string" ? next : undefined));
+			setDraft(decodeDraft(typeof next === "string" ? next : base.current));
 		});
 	}, [router]);
 

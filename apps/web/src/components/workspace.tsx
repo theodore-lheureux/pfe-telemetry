@@ -56,6 +56,7 @@ export function IconEmptyState({
 	description,
 	alert,
 	className,
+	children,
 }: {
 	icon: ReactNode;
 	title: string;
@@ -63,6 +64,8 @@ export function IconEmptyState({
 	/** Announces the description, for failures. */
 	alert?: boolean;
 	className?: string;
+	/** Actions under the text, such as a link to where items are made. */
+	children?: ReactNode;
 }) {
 	return (
 		<Empty
@@ -83,6 +86,7 @@ export function IconEmptyState({
 					</EmptyDescription>
 				)}
 			</EmptyHeader>
+			{children && <EmptyContent>{children}</EmptyContent>}
 		</Empty>
 	);
 }

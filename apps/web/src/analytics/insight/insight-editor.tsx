@@ -32,6 +32,8 @@ export function InsightEditor({
 	nodes,
 	draft,
 	onDraft,
+	heading,
+	description,
 }: {
 	userId: string;
 	reference: ProjectReference;
@@ -39,6 +41,9 @@ export function InsightEditor({
 	nodes: { id: string; hostname: string }[];
 	draft: InsightDraft;
 	onDraft: (draft: InsightDraft) => void;
+	/** Replace the page title and description, such as with the insight's name. */
+	heading?: ReactNode;
+	description?: ReactNode;
 }) {
 	const hydrated = useHydrated();
 	const locale = getLocale(),
@@ -94,7 +99,12 @@ export function InsightEditor({
 		seriesView(result.data, applied.display, groupLabel, names, locale);
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
-			<InsightsHeader tab="explore" reference={reference} />
+			<InsightsHeader
+				tab="explore"
+				reference={reference}
+				heading={heading}
+				description={description}
+			/>
 			{usable.length === 0 ? (
 				<IconEmptyState
 					icon={<LineChartIcon aria-hidden="true" />}
@@ -151,7 +161,8 @@ export function InsightEditor({
 							</ResultState>
 						</div>
 						{view && result.data && query !== null && !result.isError && (
-							<div className="rounded-lg border bg-card p-4">
+							<div className="relative overflow-hidden rounded-lg border bg-card p-4">
+								<LoadingBar active={result.isFetching} />
 								<InsightTable
 									result={result.data}
 									view={view}

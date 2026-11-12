@@ -1,5 +1,6 @@
 import { cn } from "cn";
 import type { ReactNode } from "react";
+import { LoadingBar } from "../components/loading-bar";
 import { type ChartPoint, Sparkline } from "./charts";
 
 /**
@@ -18,6 +19,7 @@ export function StatCard({
 	selected,
 	selectLabel,
 	onSelect,
+	loading,
 }: {
 	title: string;
 	value: string;
@@ -30,9 +32,12 @@ export function StatCard({
 	selected?: boolean;
 	selectLabel?: string;
 	onSelect?: () => void;
+	/** Shows the loading bar while its data reloads. */
+	loading?: boolean;
 }) {
 	const body = (
 		<>
+			<LoadingBar active={!!loading} />
 			<div className="flex flex-col gap-1 px-4 pt-3">
 				<div className="flex items-center justify-between gap-2">
 					<span className="truncate text-sm font-medium">{title}</span>
@@ -57,7 +62,7 @@ export function StatCard({
 		</>
 	);
 	const frame =
-		"flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card text-left";
+		"relative flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card text-left";
 	if (!onSelect) return <div className={frame}>{body}</div>;
 	return (
 		<button

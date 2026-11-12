@@ -1,4 +1,5 @@
 import { InputError } from "../lib/input-error";
+import { normalizeTag, withoutTags, withTags } from "../lib/tags";
 import type {
 	ProjectCustomizationChange,
 	ProjectCustomizationInput,
@@ -18,9 +19,8 @@ export function parseProjectCustomization(
 	const reference = parseProjectReference(value);
 	const input = value as Record<string, unknown>;
 	if (input.action === "add-tag" || input.action === "remove-tag") {
-		if (typeof input.tag !== "string") return invalid();
-		const tag = input.tag.trim().normalize("NFC");
-		if (!tag || tag.length > 40 || /\p{Cc}/u.test(tag)) return invalid();
+		const tag = normalizeTag(input.tag);
+		if (!tag) return invalid();
 		return { ...reference, action: input.action, tag };
 	}
 	if (input.action === "group") {
@@ -63,9 +63,6 @@ export function changedProjectTags(
 	tags: string[],
 	change: Extract<ProjectCustomizationChange, { tag: string }>,
 ) {
-	const same = (tag: string) => tag.toLowerCase() === change.tag.toLowerCase();
-	if (change.action === "remove-tag") return tags.filter((tag) => !same(tag));
-	if (tags.some(same)) return tags;
-	if (tags.length >= 20) return invalid();
-	return [...tags, change.tag];
+	if (change.action === "remove-tag") return withoutTags(tags, [change.tag]);
+	return withTags(tags, [change.tag]) ?? invalid();
 }

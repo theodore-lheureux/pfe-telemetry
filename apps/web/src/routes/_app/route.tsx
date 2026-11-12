@@ -1,6 +1,7 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { getCurrentUser } from "@/auth/session.functions";
 import { AppShell } from "@/components/app-shell";
+import { RouteError } from "@/components/route-feedback";
 
 export const Route = createFileRoute("/_app")({
 	beforeLoad: async ({ location, context }) => {
@@ -17,6 +18,8 @@ export const Route = createFileRoute("/_app")({
 	staleTime: 0,
 	gcTime: 0,
 	component: App,
+	// Failing here replaces the app shell and its sidebar, so the error offers a way home.
+	errorComponent: RouteError,
 });
 
 function App() {

@@ -136,6 +136,71 @@ test("gauges average per series, then combine per group and across groups", asyn
 	]);
 });
 
+test("sources combine by count and by exact percentiles", async () => {
+	const project = randomUUID();
+	for (const [node, value] of [
+		["node-a", 10],
+		["node-b", 20],
+		["node-c", 30],
+		["node-d", 100],
+	] as const)
+		await gauge(project, node, 0n, value);
+	const total = (combine: AnalyticsQuery["measures"][number]["combine"]) =>
+		run(project, {
+			shape: "table",
+			range,
+			measures: [
+				{
+					name: "memory",
+					metric: "recount.node.memory.total",
+					calculation: "avg",
+					combine,
+				},
+			],
+		});
+	const count = await total("count");
+	expect(count.series[0].points[0].value).toBe(4);
+	// A count has no unit, whatever the metric measures.
+	expect(count.measures[0].unit).toBe("1");
+	// Percentiles are exact values from the sources, not interpolated.
+	expect((await total("p50")).series[0].points[0].value).toBe(30);
+	expect((await total("p95")).series[0].points[0].value).toBe(100);
+	expect((await total("min")).series[0].points[0].value).toBe(10);
+});
+
+test("a breakdown collapses into one line after formulas run", async () => {
+	const project = randomUUID();
+	for (const [node, value] of [
+		["node-a", 10],
+		["node-b", 20],
+		["node-c", 30],
+		["node-d", 100],
+	] as const)
+		await gauge(project, node, 0n, value);
+	const result = await run(project, {
+		shape: "table",
+		range,
+		measures: [
+			{
+				name: "A",
+				metric: "recount.node.memory.total",
+				calculation: "avg",
+				combine: "sum",
+			},
+		],
+		formulas: [{ name: "F1", expression: "A * 2" }],
+		groupBy: ["node"],
+		aggregate: "p50",
+	});
+	expect(result.aggregate).toBe("p50");
+	// The formula runs per node (20, 40, 60, 200), then the median is taken across nodes.
+	expect(result.series.find((series) => series.measure === "F1")).toEqual({
+		measure: "F1",
+		group: [],
+		points: [{ bucketMs: null, value: 60 }],
+	});
+});
+
 test("counters use positive differences within continuity segments", async () => {
 	const project = randomUUID();
 	await counter(project, "node-a", 0n, 10);

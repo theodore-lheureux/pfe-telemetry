@@ -174,6 +174,25 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 		await expect(
 			results.getByRole("cell", { name: /\(previous\)/ }).first(),
 		).toBeVisible();
+		// Groups collapse into one line after the formula, such as p99 across nodes.
+		await page
+			.getByRole("combobox", { name: "Combine groups", exact: true })
+			.click();
+		await page
+			.getByRole("option", { name: "99th percentile across groups" })
+			.click();
+		await expect(
+			results
+				.getByRole("cell", { name: /99th percentile across groups/ })
+				.first(),
+		).toBeVisible();
+		await expect(
+			results.getByRole("columnheader", { name: "p99", exact: true }),
+		).toBeVisible();
+		await page
+			.getByRole("combobox", { name: "Combine groups", exact: true })
+			.click();
+		await page.getByRole("option", { name: "Show each group" }).click();
 		// A calculated metric fills in named series and a formula from the picker.
 		await page
 			.getByRole("combobox", { name: "Comparison", exact: true })

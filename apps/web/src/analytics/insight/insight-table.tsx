@@ -42,9 +42,11 @@ const TIMESERIES_COLUMNS = [
 	m.insight_calc_avg,
 	m.insight_calc_min,
 	m.insight_calc_max,
+	m.insight_stat_p95,
+	m.insight_stat_p99,
 ];
 
-/** Latest, average, minimum and maximum per visible series, with CSV export. */
+/** Latest, average, minimum, maximum and percentiles per visible series, with CSV export. */
 export function InsightTable({
 	result,
 	view,
@@ -61,8 +63,8 @@ export function InsightTable({
 	const total = result.shape === "table";
 	const columns = total ? [m.insight_total] : TIMESERIES_COLUMNS;
 	const values = (series: SeriesResult) => {
-		const { latest, average, min, max } = stats(series);
-		return total ? [latest] : [latest, average, min, max];
+		const { latest, average, min, max, p95, p99 } = stats(series);
+		return total ? [latest] : [latest, average, min, max, p95, p99];
 	};
 	return (
 		<div className="flex flex-col gap-3">

@@ -1,15 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
-import {
-	AreaChartIcon,
-	BarChart3Icon,
-	BarChartBigIcon,
-	HashIcon,
-	LineChartIcon,
-	type LucideIcon,
-	SlidersHorizontalIcon,
-	TableIcon,
-} from "lucide-react";
+import { SlidersHorizontalIcon } from "lucide-react";
 import { useId } from "react";
 import { resolveRange } from "../../components/date-range/date-range";
 import { DateRangePicker } from "../../components/date-range/date-range-picker";
@@ -40,16 +31,13 @@ import {
 	intervalFits,
 	MAX_RANGE_DAYS,
 } from "./draft";
-import { DISPLAY_LABEL, INTERVAL_LABEL, UNIT_LABEL } from "./labels";
+import {
+	DISPLAY_ICON,
+	DISPLAY_LABEL,
+	INTERVAL_LABEL,
+	UNIT_LABEL,
+} from "./labels";
 
-const DISPLAY_ICON: Record<DisplayType, LucideIcon> = {
-	line: LineChartIcon,
-	area: AreaChartIcon,
-	bar: BarChart3Icon,
-	stacked: BarChartBigIcon,
-	stat: HashIcon,
-	table: TableIcon,
-};
 const COMPARISONS: { key: string; value?: Comparison; label: () => string }[] =
 	[
 		{ key: "none", label: m.insight_compare_none },

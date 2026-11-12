@@ -97,17 +97,15 @@ for (const locale of ["en", "fr"] as const) {
 			`${workspace.origin}${settingsPath("project-customization", selection)}`,
 		);
 		await page
-			.getByRole("button", { name: m.project_add_tag({}, opt), exact: true })
+			.getByRole("button", { name: m.tag_add({}, opt), exact: true })
 			.click();
+		await page.getByLabel(m.tag({}, opt), { exact: true }).fill("production");
 		await page
-			.getByLabel(m.project_tag({}, opt), { exact: true })
-			.fill("production");
-		await page
-			.getByRole("button", { name: m.project_save_tag({}, opt), exact: true })
+			.getByRole("button", { name: m.tag_save({}, opt), exact: true })
 			.click();
 		await expect(
 			page.getByRole("button", {
-				name: m.project_remove_tag({ tag: "production" }, opt),
+				name: m.tag_remove({ tag: "production" }, opt),
 				exact: true,
 			}),
 		).toBeVisible();

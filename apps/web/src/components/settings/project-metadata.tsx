@@ -2,7 +2,7 @@ import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { getRouteApi } from "@tanstack/react-router";
 import { cn } from "cn";
-import { ChevronDownIcon, PlusIcon, XIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
 import type {
 	ProjectCustomizationChange,
@@ -10,7 +10,7 @@ import type {
 } from "../../organizations/contracts";
 import { updateProjectCustomization } from "../../organizations/organization.functions";
 import { FormFeedback } from "../form-feedback";
-import { Badge } from "../ui/badge";
+import { TagList } from "../tag-list";
 import { Button } from "../ui/button";
 import {
 	Command,
@@ -46,9 +46,7 @@ export function timeZoneLabel(timeZone: string, date = new Date()) {
 
 export function ProjectMetadata({ project }: { project: ProjectSummary }) {
 	const { user } = getRouteApi("/_app").useRouteContext();
-	const [tagOpen, setTagOpen] = useState(false);
 	const [zoneOpen, setZoneOpen] = useState(false);
-	const [tag, setTag] = useState("");
 	const [group, setGroup] = useState(project.projectGroup);
 	const mutation = useAppMutation<ProjectCustomizationChange, ProjectSummary>({
 		userId: user.id,
@@ -81,74 +79,15 @@ export function ProjectMetadata({ project }: { project: ProjectSummary }) {
 			<div className="-mt-4 flex flex-col gap-5">
 				<div className="flex flex-col gap-3">
 					<h3 id="project-tags" className="scroll-mt-6 text-sm font-semibold">
-						{m.project_tags()}
+						{m.tags()}
 					</h3>
-					<div className="flex flex-wrap items-center gap-2">
-						{project.tags.map((tag) => (
-							<Badge key={tag} variant="outline" className="gap-1 py-1">
-								{tag}
-								{project.role === "admin" && (
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon-xs"
-										className="size-4"
-										disabled={disabled}
-										aria-label={m.project_remove_tag({ tag })}
-										onClick={() => void change({ action: "remove-tag", tag })}
-									>
-										<XIcon aria-hidden="true" className="size-3" />
-									</Button>
-								)}
-							</Badge>
-						))}
-						<Popover
-							open={tagOpen}
-							onOpenChange={(open) => {
-								if (!mutation.pending) setTagOpen(open);
-							}}
-						>
-							<PopoverTrigger asChild>
-								<Button
-									type="button"
-									size="sm"
-									variant="outline"
-									className="border-dashed"
-									disabled={disabled || project.tags.length >= 20}
-								>
-									<PlusIcon aria-hidden="true" />
-									{m.project_add_tag()}
-								</Button>
-							</PopoverTrigger>
-							<PopoverContent align="start">
-								<form
-									method="post"
-									className="flex flex-col gap-3"
-									onSubmit={async (event) => {
-										event.preventDefault();
-										if (await change({ action: "add-tag", tag })) {
-											setTag("");
-											setTagOpen(false);
-										}
-									}}
-								>
-									<Label htmlFor="project-tag-input">{m.project_tag()}</Label>
-									<Input
-										id="project-tag-input"
-										value={tag}
-										onChange={(event) => setTag(event.target.value)}
-										required
-										maxLength={40}
-										disabled={disabled}
-										autoComplete="off"
-									/>
-									<Button type="submit" disabled={disabled || !tag.trim()}>
-										{m.project_save_tag()}
-									</Button>
-								</form>
-							</PopoverContent>
-						</Popover>
-					</div>
+					<TagList
+						tags={project.tags}
+						editable={project.role === "admin"}
+						disabled={disabled}
+						onAdd={(tag) => change({ action: "add-tag", tag })}
+						onRemove={(tag) => void change({ action: "remove-tag", tag })}
+					/>
 				</div>
 				<form
 					method="post"

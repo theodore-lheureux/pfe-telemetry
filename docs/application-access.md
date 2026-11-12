@@ -10,6 +10,8 @@ New organization grants use one canonical role: `owner`, `admin` or `member`. Na
 
 Project roles are `viewer`, `member` and `admin`. Every role grants project read access. Project admins can update project settings and manage explicit project memberships; viewers and members cannot. Only organization owners/admins create projects. The `member` role is available for non-administrative execution actions as those operations are implemented.
 
+Saved insights belong to their project and are shared by everyone who can read it. Every project role can list, open and run them; project members and admins can also save, rename, duplicate and delete them. Each operation scopes the insight ID to its organization and project, so an ID from another project is not found and cannot be overwritten.
+
 Only effective project admins manage [collector enrollment keys and nodes](collector-enrollment.md), including listing them. Keys, nodes and their lifecycle operations are project-scoped. Collector enrollment and token endpoints authenticate with enrollment keys and node signatures, not user sessions.
 
 Any project reader can read all executions in that project. Execution ownership records attribution and controls permitted modifications, not read visibility. Per-execution private/shared ACLs are not part of this model. Separate projects provide the isolation boundary for unrelated workloads.

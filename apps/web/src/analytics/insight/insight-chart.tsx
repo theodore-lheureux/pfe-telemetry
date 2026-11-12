@@ -98,6 +98,7 @@ export function InsightChart({
 				view={view}
 				display={display}
 				hydrated={hydrated}
+				fetching={fetching}
 				onZoom={onZoom}
 				highlight={highlight}
 			/>
@@ -115,6 +116,7 @@ function ChartBody({
 	view,
 	display,
 	hydrated,
+	fetching,
 	onZoom,
 	highlight,
 }: {
@@ -122,6 +124,7 @@ function ChartBody({
 	view: SeriesView;
 	display: Display;
 	hydrated: boolean;
+	fetching: boolean;
 	onZoom: (from: Date, to: Date) => void;
 	highlight: string | null;
 }) {
@@ -153,6 +156,7 @@ function ChartBody({
 				{view.charted.map((series) => (
 					<StatCard
 						key={identity(series)}
+						loading={fetching}
 						title={view.label(series)}
 						value={view.format(series)(stats(series).latest)}
 						points={pointsOf(series)}
@@ -173,45 +177,34 @@ function ChartBody({
 	}));
 	const bands = offlineBands(grid, result.coverage, bucketSeconds * 1000);
 	return (
-		<>
-			<TimeseriesChart
-				label={m.insight_chart_label()}
-				series={chartSeries}
-				bucketSeconds={bucketSeconds}
-				format={view.format(view.current[0])}
-				type={display.type}
-				logScale={display.logScale}
-				beginAtZero={display.beginAtZero}
-				goal={display.goal}
-				domain={[
-					grid[0] ?? result.from.getTime(),
-					grid.at(-1) ?? result.to.getTime(),
-				]}
-				bands={bands}
-				bandLabel={m.insight_offline()}
-				onZoom={(from, to) => onZoom(new Date(from), new Date(to))}
-				// The results table names every line, and the tooltip names them on hover.
-				legend={false}
-				highlight={
-					chartSeries.find((_, index) => lineId(charting[index]) === highlight)
-						?.key ?? null
-				}
-				gapLabel={(key, bucketMs) => {
-					const series = charting[Number(key.slice(1))];
-					return series
-						? gapReason(result, series, bucketMs)
-						: m.insight_gap_unknown();
-				}}
-			/>
-			{bands.length > 0 && (
-				<p className="flex items-center gap-2 text-xs text-muted-foreground">
-					<span
-						aria-hidden="true"
-						className="inline-block h-3 w-4 rounded-sm bg-muted-foreground/15"
-					/>
-					{m.insight_offline_note()}
-				</p>
-			)}
-		</>
+		<TimeseriesChart
+			label={m.insight_chart_label()}
+			series={chartSeries}
+			bucketSeconds={bucketSeconds}
+			format={view.format(view.current[0])}
+			type={display.type}
+			logScale={display.logScale}
+			beginAtZero={display.beginAtZero}
+			goal={display.goal}
+			domain={[
+				grid[0] ?? result.from.getTime(),
+				grid.at(-1) ?? result.to.getTime(),
+			]}
+			bands={bands}
+			bandLabel={m.insight_offline()}
+			onZoom={(from, to) => onZoom(new Date(from), new Date(to))}
+			// The results table names every line, and the tooltip names them on hover.
+			legend={false}
+			highlight={
+				chartSeries.find((_, index) => lineId(charting[index]) === highlight)
+					?.key ?? null
+			}
+			gapLabel={(key, bucketMs) => {
+				const series = charting[Number(key.slice(1))];
+				return series
+					? gapReason(result, series, bucketMs)
+					: m.insight_gap_unknown();
+			}}
+		/>
 	);
 }

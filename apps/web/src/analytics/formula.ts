@@ -35,9 +35,9 @@ function tokenize(text: string): Token[] {
 			throw new FormulaError(`Unexpected character at ${start + 1}`);
 		if (match[1] !== undefined)
 			tokens.push({ kind: "number", value: Number(match[1]) });
-		else if (match[2] !== undefined)
-			tokens.push({ kind: "name", value: match[2] });
-		else tokens.push({ kind: "symbol", value: match[3] ?? "" });
+		else if (match[2] === undefined)
+			tokens.push({ kind: "symbol", value: match[3] ?? "" });
+		else tokens.push({ kind: "name", value: match[2] });
 	}
 	return tokens;
 }
@@ -126,6 +126,15 @@ export function formulaMeasures(node: FormulaNode): Set<string> {
  * Evaluates a formula for one bucket. A missing input or a division by zero yields null,
  * so gaps stay gaps instead of becoming zeros or infinities.
  */
+const OPERATIONS: Record<
+	"+" | "-" | "*",
+	(left: number, right: number) => number
+> = {
+	"+": (left, right) => left + right,
+	"-": (left, right) => left - right,
+	"*": (left, right) => left * right,
+};
+
 export function evaluateFormula(
 	node: FormulaNode,
 	values: (name: string) => number | null,
@@ -144,12 +153,7 @@ export function evaluateFormula(
 			const right = evaluateFormula(node.right, values);
 			if (left === null || right === null) return null;
 			if (node.op === "/") return right === 0 ? null : left / right;
-			const result =
-				node.op === "+"
-					? left + right
-					: node.op === "-"
-						? left - right
-						: left * right;
+			const result = OPERATIONS[node.op](left, right);
 			return Number.isFinite(result) ? result : null;
 		}
 	}

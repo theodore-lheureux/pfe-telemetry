@@ -1,4 +1,13 @@
 import { m } from "@recount/i18n/messages";
+import {
+	AreaChartIcon,
+	BarChart3Icon,
+	BarChartBigIcon,
+	HashIcon,
+	LineChartIcon,
+	type LucideIcon,
+	TableIcon,
+} from "lucide-react";
 import { formatMeasurement } from "../../activity/format";
 import type {
 	Calculation,
@@ -8,7 +17,7 @@ import type {
 	SeriesResult,
 } from "../contracts";
 import { metricLabel } from "../metric-names";
-import type { DisplayType, DisplayUnit } from "./draft";
+import type { DisplayType, DisplayUnit, InsightDraft } from "./draft";
 
 export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	last: m.insight_calc_last,
@@ -18,19 +27,41 @@ export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	rate: m.insight_calc_rate,
 	increase: m.insight_calc_increase,
 };
-export const COMBINE_LABEL: Record<Combine, () => string> = {
-	sum: m.insight_combine_sum,
-	avg: m.insight_combine_avg,
-	min: m.insight_combine_min,
-	max: m.insight_combine_max,
-};
 /** How sources combine, phrased to read after the calculation: "Rate per second · Sum of all sources". */
 export const COMBINE_OPTION_LABEL: Record<Combine, () => string> = {
 	sum: m.insight_combine_option_sum,
 	avg: m.insight_combine_option_avg,
+	count: m.insight_combine_option_count,
 	min: m.insight_combine_option_min,
 	max: m.insight_combine_option_max,
+	p50: m.insight_combine_option_p50,
+	p90: m.insight_combine_option_p90,
+	p95: m.insight_combine_option_p95,
+	p99: m.insight_combine_option_p99,
 };
+/** How a breakdown's groups were collapsed into one line, as its legend reads. */
+export const AGGREGATE_LABEL: Record<Combine, () => string> = {
+	sum: m.insight_aggregate_sum,
+	avg: m.insight_aggregate_avg,
+	count: m.insight_aggregate_count,
+	min: m.insight_aggregate_min,
+	max: m.insight_aggregate_max,
+	p50: m.insight_aggregate_p50,
+	p90: m.insight_aggregate_p90,
+	p95: m.insight_aggregate_p95,
+	p99: m.insight_aggregate_p99,
+};
+/** The combine menu's sections: aggregations, then percentiles across sources. */
+export const COMBINE_GROUPS: { label: () => string; values: Combine[] }[] = [
+	{
+		label: m.insight_combine_aggregations,
+		values: ["sum", "avg", "count", "min", "max"],
+	},
+	{
+		label: m.insight_combine_percentiles,
+		values: ["p50", "p90", "p95", "p99"],
+	},
+];
 export const INTERVAL_LABEL: Record<Interval, () => string> = {
 	"10s": m.insight_interval_10s,
 	"1m": m.insight_interval_1m,
@@ -38,6 +69,14 @@ export const INTERVAL_LABEL: Record<Interval, () => string> = {
 	"15m": m.insight_interval_15m,
 	"1h": m.insight_interval_1h,
 	"1d": m.insight_interval_1d,
+};
+export const DISPLAY_ICON: Record<DisplayType, LucideIcon> = {
+	line: LineChartIcon,
+	area: AreaChartIcon,
+	bar: BarChart3Icon,
+	stacked: BarChartBigIcon,
+	stat: HashIcon,
+	table: TableIcon,
 };
 export const DISPLAY_LABEL: Record<DisplayType, () => string> = {
 	line: m.insight_display_line,
@@ -153,7 +192,9 @@ export function seriesLabel(
 	names: FormulaNames = {},
 ) {
 	const shown = result.formulas.length || result.measures.length;
-	const group = groupText(series, groupLabel);
+	const group = result.aggregate
+		? AGGREGATE_LABEL[result.aggregate]()
+		: groupText(series, groupLabel);
 	const parts = !group || shown > 1 ? [plotted(result, series, names)] : [];
 	if (group) parts.push(group);
 	const label = parts.join(" · ");
@@ -165,7 +206,7 @@ export function plottedTitle(result: QueryResult, names: FormulaNames = {}) {
 	const [first] = visibleSeries(result);
 	if (!first || (result.formulas.length || result.measures.length) > 1)
 		return null;
-	if (!first.other && !first.group.length) return null;
+	if (!first.other && !first.group.length && !result.aggregate) return null;
 	return plotted(result, first, names);
 }
 
@@ -176,5 +217,16 @@ export function visibleSeries(result: QueryResult) {
 		formulas.size
 			? formulas.has(series.measure)
 			: !formulas.has(series.measure),
+	);
+}
+
+/** What a draft charts: its formulas' names or expressions, otherwise its metrics. */
+export function plottedNames(draft: InsightDraft) {
+	if (draft.formulas.length)
+		return draft.formulas.map(
+			(formula) => formula.name?.trim() || formula.expression,
+		);
+	return draft.series.flatMap((series) =>
+		series.metric ? [metricLabel(series.metric)] : [],
 	);
 }

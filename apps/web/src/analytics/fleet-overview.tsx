@@ -77,11 +77,10 @@ function formatStat(stat: OverviewStat, value: number | null, locale: string) {
 function Delta({ metric, locale }: { metric: OverviewMetric; locale: string }) {
 	if (metric.current === null || metric.previous === null) return null;
 	const ratio = RATIOS.has(metric.stat);
-	const change = ratio
-		? (metric.current - metric.previous) * 100
-		: metric.previous
-			? (metric.current - metric.previous) / metric.previous
-			: null;
+	let change: number | null = null;
+	if (ratio) change = (metric.current - metric.previous) * 100;
+	else if (metric.previous)
+		change = (metric.current - metric.previous) / metric.previous;
 	if (change === null || !Number.isFinite(change)) return null;
 	const text = ratio
 		? m.overview_points({
@@ -110,6 +109,7 @@ function StatTile({
 	bucketSeconds,
 	hydrated,
 	locale,
+	loading,
 	onSelect,
 }: {
 	metric: OverviewMetric;
@@ -117,6 +117,7 @@ function StatTile({
 	bucketSeconds: number;
 	hydrated: boolean;
 	locale: string;
+	loading: boolean;
 	onSelect: () => void;
 }) {
 	const previous =
@@ -137,6 +138,7 @@ function StatTile({
 			selected={selected}
 			selectLabel={m.overview_select_stat({ stat: STAT_LABEL[metric.stat]() })}
 			onSelect={onSelect}
+			loading={loading}
 		/>
 	);
 }
@@ -241,6 +243,7 @@ export function FleetOverview({
 									key={metric.stat}
 									metric={metric}
 									selected={metric.stat === selected?.stat}
+									loading={overview.isFetching}
 									bucketSeconds={data.bucketSeconds}
 									hydrated={hydrated}
 									locale={locale}
@@ -296,7 +299,8 @@ export function FleetOverview({
 									{m.overview_nodes_description()}
 								</p>
 							</div>
-							<div className="rounded-md border bg-card">
+							<div className="relative overflow-hidden rounded-md border bg-card">
+								<LoadingBar active={overview.isFetching} />
 								<Table aria-label={m.overview_nodes()}>
 									<TableHeader>
 										<TableRow>

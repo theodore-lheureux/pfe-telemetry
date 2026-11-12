@@ -2,11 +2,13 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { InputError } from "../lib/input-error";
 import { OperationError } from "../lib/operation-error";
-import { compileQuery, type MeasureScope } from "./compile.server";
+import { aggregateGroups } from "./aggregate";
+import { compileMeasure, type MeasureScope } from "./compile.server";
 import {
 	type AnalyticsQuery,
 	DEFAULT_SERIES_LIMIT,
 	INTERVALS,
+	MAX_SERIES,
 	type QueryResult,
 	type SeriesResult,
 } from "./contracts";
@@ -64,7 +66,7 @@ interface Window {
 	shiftMs: number;
 }
 
-/** Every measure's series for one window, from a single ClickHouse query. */
+/** Every measure's series for one window. */
 async function readWindow(
 	query: AnalyticsQuery,
 	scopes: MeasureScope[],
@@ -73,19 +75,29 @@ async function readWindow(
 	connection: ClickHouseClient,
 	abort: AbortSignal,
 ) {
-	const compiled = compileQuery(query, scopes, {
-		projectId,
-		from: window.from,
-		to: window.to,
-	});
-	const result = await connection.query({
-		query: compiled.sql,
-		format: "JSONEachRow",
-		query_params: compiled.params,
-		abort_signal: abort,
-		clickhouse_settings: SETTINGS,
-	});
-	const rows = await result.json<Record<string, string | number | null>>();
+	// One statement per measure, one after another: every statement has the reader's
+	// memory limit, and a single statement over several metrics under FINAL can exceed it.
+	const rows: Record<string, string | number | null>[] = [];
+	let groupColumns: string[] = [];
+	for (const [index, measure] of query.measures.entries()) {
+		const compiled = compileMeasure(query, measure, scopes[index], {
+			projectId,
+			from: window.from,
+			to: window.to,
+		});
+		groupColumns = compiled.groupColumns;
+		const result = await connection.query({
+			query: compiled.sql,
+			format: "JSONEachRow",
+			query_params: compiled.params,
+			abort_signal: abort,
+			clickhouse_settings: SETTINGS,
+		});
+		for (const row of await result.json<
+			Record<string, string | number | null>
+		>())
+			rows.push({ ...row, measure_index: index });
+	}
 	const limit = query.limit ?? DEFAULT_SERIES_LIMIT;
 	const groups = new Map<string, SeriesResult & { rank: number }>();
 	let limited = false;
@@ -98,7 +110,7 @@ async function readWindow(
 			continue;
 		}
 		const measure = query.measures[Number(row.measure_index)];
-		const group = compiled.groupColumns.map((column) =>
+		const group = groupColumns.map((column) =>
 			row[column] === null ? null : String(row[column]),
 		);
 		const key = JSON.stringify([measure.name, group, other]);
@@ -122,7 +134,7 @@ async function readWindow(
 			value: row.series_value === null ? null : Number(row.series_value),
 		});
 	}
-	// UNION ALL does not keep order: series follow the query's measures, then rank.
+	// Rows arrive unordered: series follow the query's measures, then rank.
 	const series = [...groups.values()]
 		.sort(
 			(a, b) =>
@@ -256,7 +268,7 @@ LIMIT 500`,
 /** Runs a validated query for an already authorized project. */
 export async function runQuery(
 	projectId: string,
-	query: AnalyticsQuery,
+	input: AnalyticsQuery,
 	signal?: AbortSignal,
 	connection: ClickHouseClient = getTelemetryClient(),
 ): Promise<QueryResult> {
@@ -264,6 +276,10 @@ export async function runQuery(
 		throw new OperationError("CANCELLED", "Analytics request cancelled");
 	if (active >= MAX_CONCURRENT)
 		throw new OperationError("CAPACITY", "Analytics is busy");
+	// An aggregation reads up to the largest groups allowed, never folded into Other.
+	const query = input.aggregate
+		? { ...input, limit: MAX_SERIES, other: false }
+		: input;
 	const { from, to } = resolveRange(query.range);
 	const compared = query.compare
 		? comparisonRange(query.compare, from, to)
@@ -324,10 +340,12 @@ export async function runQuery(
 			(measure, index) => ({
 				name: measure.name,
 				metric: measure.metric,
-				unit: scopes[index].unit,
+				// A count of sources has no unit, whatever the metric measures.
+				unit: measure.combine === "count" ? "1" : scopes[index].unit,
 				calculation: measure.calculation,
 			}),
 		);
+		const all = [...series, ...formulaSeries(query, series)];
 		return {
 			shape: query.shape,
 			from,
@@ -350,7 +368,8 @@ export async function runQuery(
 			groupBy: query.groupBy ?? [],
 			measures,
 			formulas: query.formulas ?? [],
-			series: [...series, ...formulaSeries(query, series)],
+			series: query.aggregate ? aggregateGroups(all, query.aggregate) : all,
+			...(query.aggregate ? { aggregate: query.aggregate } : {}),
 			limited,
 			compared,
 		};

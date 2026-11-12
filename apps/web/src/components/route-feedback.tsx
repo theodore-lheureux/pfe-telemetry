@@ -113,7 +113,29 @@ export function NavigationProgress() {
 	);
 }
 
-export function RouteError({ reset }: ErrorComponentProps) {
+/**
+ * A page that failed to load, shown inside the app shell: the sidebar still leads
+ * elsewhere, so it only offers a retry.
+ */
+export function PageError(props: ErrorComponentProps) {
+	return <LoadError {...props} />;
+}
+
+/** A layout that failed to load replaces the shell, so it also offers a way home. */
+export function RouteError(props: ErrorComponentProps) {
+	return (
+		<LoadError {...props}>
+			<Button asChild variant="outline">
+				<Link to="/">{m.go_home()}</Link>
+			</Button>
+		</LoadError>
+	);
+}
+
+function LoadError({
+	reset,
+	children,
+}: ErrorComponentProps & { children?: ReactNode }) {
 	const router = useRouter();
 	const hydrated = useHydrated();
 	const setFeedback = useOptionalMutationFeedback();
@@ -144,9 +166,7 @@ export function RouteError({ reset }: ErrorComponentProps) {
 				<RotateCwIcon aria-hidden="true" />
 				{m.try_again()}
 			</Button>
-			<Button asChild variant="outline">
-				<Link to="/">{m.go_home()}</Link>
-			</Button>
+			{children}
 		</StatusScreen>
 	);
 }
