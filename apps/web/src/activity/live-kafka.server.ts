@@ -1,30 +1,63 @@
 import { createHash, randomUUID } from "node:crypto";
 import { AssignerProtocol, type Consumer, Kafka, logLevel } from "kafkajs";
+import * as z from "zod";
+import { integer, readEnv } from "../lib/env.server";
 import { OperationError } from "../lib/operation-error";
 import { decodePacket } from "./codec.server";
 import type { PacketInput } from "./contracts";
 import { ownLiveConnection } from "./live-connection.server";
 
+const brokersError =
+	"RECOUNT_ACTIVITY_KAFKA_BROKERS must list host:port brokers, separated by commas";
+
+function topicName(name: string) {
+	return z
+		.string()
+		.regex(/^[a-zA-Z0-9_.-]{1,200}$/, `${name} must be a Kafka topic name`);
+}
+
+const settings = z.object({
+	RECOUNT_ACTIVITY_KAFKA_BROKERS: z
+		.string({ error: brokersError })
+		.transform((value) =>
+			value
+				.split(",")
+				.map((broker) => broker.trim())
+				.filter(Boolean),
+		)
+		.pipe(
+			z
+				.array(
+					z
+						.string()
+						.regex(
+							/^(?:[a-zA-Z0-9_.-]+|\[[0-9a-fA-F:]+\]):[0-9]+$/,
+							brokersError,
+						),
+				)
+				.min(1, brokersError),
+		),
+	RECOUNT_LIVE_TOPIC: topicName("RECOUNT_LIVE_TOPIC").default(
+		"recount.metrics.live",
+	),
+	RECOUNT_RAW_TOPIC: topicName("RECOUNT_RAW_TOPIC").default(
+		"recount.metrics.raw",
+	),
+	RECOUNT_LIVE_PARTITIONS: integer("RECOUNT_LIVE_PARTITIONS", 1, 256).default(
+		8,
+	),
+});
+
 export function liveKafkaSettings() {
-	const brokers = process.env.RECOUNT_ACTIVITY_KAFKA_BROKERS?.split(",")
-		.map((v) => v.trim())
-		.filter(Boolean);
-	const topic = process.env.RECOUNT_LIVE_TOPIC ?? "recount.metrics.live";
-	const rawTopic = process.env.RECOUNT_RAW_TOPIC ?? "recount.metrics.raw";
-	const partitions = Number(process.env.RECOUNT_LIVE_PARTITIONS ?? "8");
-	if (
-		!brokers?.length ||
-		brokers.some(
-			(b) => !/^(?:[a-zA-Z0-9_.-]+|\[[0-9a-fA-F:]+\]):[0-9]+$/.test(b),
-		) ||
-		![topic, rawTopic].every((t) => /^[a-zA-Z0-9_.-]{1,200}$/.test(t)) ||
-		topic === rawTopic ||
-		!Number.isInteger(partitions) ||
-		partitions < 1 ||
-		partitions > 256
-	)
-		throw new Error("Invalid Live Kafka configuration");
-	return { brokers, topic, rawTopic, partitions };
+	const parsed = readEnv(settings, process.env);
+	if (parsed.RECOUNT_LIVE_TOPIC === parsed.RECOUNT_RAW_TOPIC)
+		throw new Error("RECOUNT_LIVE_TOPIC and RECOUNT_RAW_TOPIC must differ");
+	return {
+		brokers: parsed.RECOUNT_ACTIVITY_KAFKA_BROKERS,
+		topic: parsed.RECOUNT_LIVE_TOPIC,
+		rawTopic: parsed.RECOUNT_RAW_TOPIC,
+		partitions: parsed.RECOUNT_LIVE_PARTITIONS,
+	};
 }
 
 // Each ephemeral reader owns precisely one partition, without joining pipeline groups.

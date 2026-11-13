@@ -1,33 +1,26 @@
-export function readAuthConfig(env = process.env) {
-	const secret = env.BETTER_AUTH_SECRET;
-	if (!secret || secret.length < 32) {
-		throw new Error("BETTER_AUTH_SECRET must contain at least 32 characters");
-	}
-	let url: URL;
-	try {
-		url = new URL(env.BETTER_AUTH_URL ?? "");
-	} catch {
-		throw new Error("BETTER_AUTH_URL must be the application's public origin");
-	}
-	if (
-		url.username ||
-		url.password ||
-		url.pathname !== "/" ||
-		url.search ||
-		url.hash ||
-		(url.protocol !== "https:" &&
-			!(url.protocol === "http:" && url.hostname === "localhost"))
-	) {
-		throw new Error("BETTER_AUTH_URL requires HTTPS, except on localhost");
-	}
-	if (!["true", "false"].includes(env.RECOUNT_AUTH_ALLOW_SIGN_UP ?? "")) {
-		throw new Error("RECOUNT_AUTH_ALLOW_SIGN_UP must be true or false");
-	}
+import * as z from "zod";
+import { type Env, flag, httpUrl, readEnv, secret } from "../lib/env.server";
+
+const settings = z.object({
+	BETTER_AUTH_SECRET: secret("BETTER_AUTH_SECRET"),
+	BETTER_AUTH_URL: httpUrl("BETTER_AUTH_URL", { root: true }).refine(
+		(value) => {
+			const url = new URL(value);
+			return url.protocol === "https:" || url.hostname === "localhost";
+		},
+		"BETTER_AUTH_URL requires HTTPS, except on localhost",
+	),
+	RECOUNT_AUTH_ALLOW_SIGN_UP: flag("RECOUNT_AUTH_ALLOW_SIGN_UP"),
+});
+
+export function readAuthConfig(env: Env = process.env) {
+	const parsed = readEnv(settings, env);
+	const url = new URL(parsed.BETTER_AUTH_URL);
 	return {
-		secret,
+		secret: parsed.BETTER_AUTH_SECRET,
 		origin: url.origin,
 		rpID: url.hostname,
-		allowSignUp: env.RECOUNT_AUTH_ALLOW_SIGN_UP === "true",
+		allowSignUp: parsed.RECOUNT_AUTH_ALLOW_SIGN_UP,
 	};
 }
 

@@ -1,3 +1,5 @@
+import * as z from "zod";
+import { httpUrl, secret } from "../lib/env.server";
 import { OperationError } from "../lib/operation-error";
 import type { PacketDetail, PacketInput } from "./contracts";
 
@@ -13,18 +15,21 @@ export async function closeLiveStreams() {
 	liveStreamControllers().clear();
 }
 
+const settings = z.object({
+	RECOUNT_LIVE_GATEWAY_URL: httpUrl("RECOUNT_LIVE_GATEWAY_URL"),
+	RECOUNT_LIVE_GATEWAY_SECRET: secret("RECOUNT_LIVE_GATEWAY_SECRET"),
+});
+
 export function gatewayRequest(path: string, params: Record<string, string>) {
-	const base = process.env.RECOUNT_LIVE_GATEWAY_URL;
-	const secret = process.env.RECOUNT_LIVE_GATEWAY_SECRET;
-	if (!base || !secret || secret.length < 32)
+	// Live is optional: without it, Activity reports it as unavailable.
+	const parsed = settings.safeParse(process.env);
+	if (!parsed.success)
 		throw new OperationError("UNAVAILABLE", "Live is not configured");
+	const {
+		RECOUNT_LIVE_GATEWAY_URL: base,
+		RECOUNT_LIVE_GATEWAY_SECRET: secret,
+	} = parsed.data;
 	const url = new URL(path, base);
-	if (
-		!["http:", "https:"].includes(url.protocol) ||
-		url.username ||
-		url.password
-	)
-		throw new OperationError("UNAVAILABLE", "Invalid Live gateway URL");
 	url.search = new URLSearchParams(params).toString();
 	return { url, headers: { Authorization: `Bearer ${secret}` } };
 }

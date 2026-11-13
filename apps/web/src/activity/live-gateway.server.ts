@@ -1,4 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
+import * as z from "zod";
+import { readEnv, secret } from "../lib/env.server";
 import { decodeNotification, liveShard } from "./codec.server";
 import { ownLiveConnection } from "./live-connection.server";
 import { LiveHub } from "./live-hub.server";
@@ -12,13 +14,12 @@ import {
 import { sseChannel, sseHeaders } from "./sse.server";
 import { parsePacket } from "./validation";
 
+const settings = z.object({
+	RECOUNT_LIVE_GATEWAY_SECRET: secret("RECOUNT_LIVE_GATEWAY_SECRET"),
+});
+
 export function gatewaySecret() {
-	const secret = process.env.RECOUNT_LIVE_GATEWAY_SECRET;
-	if (!secret || secret.length < 32)
-		throw new Error(
-			"RECOUNT_LIVE_GATEWAY_SECRET must contain at least 32 characters",
-		);
-	return secret;
+	return readEnv(settings, process.env).RECOUNT_LIVE_GATEWAY_SECRET;
 }
 
 export async function createLiveGateway() {

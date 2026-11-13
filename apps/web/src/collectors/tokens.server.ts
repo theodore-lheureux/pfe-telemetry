@@ -6,6 +6,8 @@ import {
 	sign,
 	verify,
 } from "node:crypto";
+import * as z from "zod";
+import { type Env, readEnv } from "../lib/env.server";
 
 export const ACCESS_TOKEN_SECONDS = 3600;
 export const TOKEN_REQUEST_WINDOW_SECONDS = 120;
@@ -36,15 +38,17 @@ export interface SigningKey {
 	publicJwk: { kty: "OKP"; crv: "Ed25519"; x: string };
 }
 
-export function readSigningKey(env = process.env): SigningKey {
-	const seed = Buffer.from(
-		env.RECOUNT_COLLECTOR_SIGNING_KEY ?? "",
-		"base64url",
-	);
-	if (seed.length !== 32)
-		throw new Error(
-			"RECOUNT_COLLECTOR_SIGNING_KEY must be a base64url-encoded 32-byte Ed25519 seed",
-		);
+const seedError =
+	"RECOUNT_COLLECTOR_SIGNING_KEY must be a base64url-encoded 32-byte Ed25519 seed";
+const settings = z.object({
+	RECOUNT_COLLECTOR_SIGNING_KEY: z
+		.string({ error: seedError })
+		.transform((value) => Buffer.from(value, "base64url"))
+		.refine((seed) => seed.length === 32, seedError),
+});
+
+export function readSigningKey(env: Env = process.env): SigningKey {
+	const seed = readEnv(settings, env).RECOUNT_COLLECTOR_SIGNING_KEY;
 	const privateKey = createPrivateKey({
 		key: Buffer.concat([ED25519_PKCS8_PREFIX, seed]),
 		format: "der",

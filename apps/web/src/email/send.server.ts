@@ -6,9 +6,25 @@ import {
 	renderSignInCodeEmail,
 } from "@recount/transactional";
 import nodemailer, { type Transporter } from "nodemailer";
+import * as z from "zod";
+import { type Env, integer, readEnv } from "../lib/env.server";
 import { fetchGravatar, type InlineAvatar } from "./inviter-avatar.server";
 
 const INVITER_AVATAR_CID = "inviter-avatar";
+
+const required = z
+	.string({
+		error: "SMTP_HOST, SMTP_USER, SMTP_PASSWORD and EMAIL_FROM are required",
+	})
+	.min(1, "SMTP_HOST, SMTP_USER, SMTP_PASSWORD and EMAIL_FROM are required");
+
+const settings = z.object({
+	SMTP_HOST: required,
+	SMTP_PORT: integer("SMTP_PORT", 1, 65535),
+	SMTP_USER: required,
+	SMTP_PASSWORD: required,
+	EMAIL_FROM: required,
+});
 
 let sender: ReturnType<typeof createEmailSender> | undefined;
 
@@ -30,29 +46,18 @@ export async function sendSignInCode(
 }
 
 export function createEmailSender(
-	env = process.env,
+	env: Env = process.env,
 	transport?: Pick<Transporter, "sendMail">,
 	loadAvatar: (email: string) => Promise<InlineAvatar | null> = fetchGravatar,
 ) {
-	const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM } = env;
-	if (!SMTP_HOST || !SMTP_USER || !SMTP_PASSWORD || !EMAIL_FROM) {
-		throw new Error(
-			"SMTP_HOST, SMTP_USER, SMTP_PASSWORD and EMAIL_FROM are required",
-		);
-	}
-	if (
-		!/^\d+$/.test(SMTP_PORT ?? "") ||
-		Number(SMTP_PORT) < 1 ||
-		Number(SMTP_PORT) > 65535
-	) {
-		throw new Error("SMTP_PORT must be an integer from 1 to 65535");
-	}
+	const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM } =
+		readEnv(settings, env);
 	const mailer =
 		transport ??
 		nodemailer.createTransport({
 			host: SMTP_HOST,
-			port: Number(SMTP_PORT),
-			secure: SMTP_PORT === "465",
+			port: SMTP_PORT,
+			secure: SMTP_PORT === 465,
 			requireTLS: true,
 			auth: { user: SMTP_USER, pass: SMTP_PASSWORD },
 			connectionTimeout: 10_000,
