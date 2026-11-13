@@ -17,6 +17,7 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "../../components/ui/popover";
+import { cn } from "../../lib/utils";
 
 export interface FacetOption {
 	value: string;
@@ -34,6 +35,7 @@ export function FacetFilter({
 	options,
 	selected,
 	searchable,
+	disabled,
 	onChange,
 }: {
 	label: string;
@@ -42,6 +44,7 @@ export function FacetFilter({
 	selected: string[];
 	/** Adds a search field, for long lists such as people. */
 	searchable?: boolean;
+	disabled?: boolean;
 	onChange: (selected: string[]) => void;
 }) {
 	const [open, setOpen] = useState(false);
@@ -55,7 +58,12 @@ export function FacetFilter({
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button variant="outline" aria-expanded={open}>
+				<Button
+					variant="outline"
+					aria-expanded={open}
+					disabled={disabled}
+					className={cn(selected.length > 0 && "border-primary/60")}
+				>
 					{icon}
 					{label}
 					{selected.length > 0 && (

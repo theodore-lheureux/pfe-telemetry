@@ -36,6 +36,8 @@ import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecut
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/index'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsExploreRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/explore'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsSavedRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/saved'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/index'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId'
 
 const AppRouteRoute = AppRouteRouteImport.update({
   id: '/_app',
@@ -218,6 +220,24 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsSavedRoute
         AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRoute,
     } as any,
   )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRouteImport.update(
+    {
+      id: '/dashboards/',
+      path: '/dashboards/',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRouteImport.update(
+    {
+      id: '/dashboards/$dashboardId',
+      path: '/dashboards/$dashboardId',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRoute,
+    } as any,
+  )
 
 export interface FileRoutesByFullPath {
   '/': typeof AppWorkspaceIndexRoute
@@ -245,6 +265,8 @@ export interface FileRoutesByFullPath {
   '/organizations/$organizationId/projects/$projectId/activity/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
   '/organizations/$organizationId/projects/$projectId/executions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
   '/organizations/$organizationId/projects/$projectId/insights/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsIndexRoute
+  '/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRoute
+  '/organizations/$organizationId/projects/$projectId/insights/dashboards/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppWorkspaceIndexRoute
@@ -268,6 +290,8 @@ export interface FileRoutesByTo {
   '/organizations/$organizationId/projects/$projectId/activity': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
   '/organizations/$organizationId/projects/$projectId/executions': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
   '/organizations/$organizationId/projects/$projectId/insights': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsIndexRoute
+  '/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRoute
+  '/organizations/$organizationId/projects/$projectId/insights/dashboards': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -298,6 +322,8 @@ export interface FileRoutesById {
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsIndexRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -327,6 +353,8 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/projects/$projectId/activity/'
     | '/organizations/$organizationId/projects/$projectId/executions/'
     | '/organizations/$organizationId/projects/$projectId/insights/'
+    | '/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId'
+    | '/organizations/$organizationId/projects/$projectId/insights/dashboards/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -350,6 +378,8 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/projects/$projectId/activity'
     | '/organizations/$organizationId/projects/$projectId/executions'
     | '/organizations/$organizationId/projects/$projectId/insights'
+    | '/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId'
+    | '/organizations/$organizationId/projects/$projectId/insights/dashboards'
   id:
     | '__root__'
     | '/_app'
@@ -379,6 +409,8 @@ export interface FileRouteTypes {
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -584,6 +616,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsSavedRouteImport
       parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRoute
     }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/'
+      path: '/dashboards'
+      fullPath: '/organizations/$organizationId/projects/$projectId/insights/dashboards/'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRoute
+    }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId'
+      path: '/dashboards/$dashboardId'
+      fullPath: '/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRoute
+    }
   }
 }
 
@@ -609,6 +655,8 @@ interface AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteR
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsExploreRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsExploreRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsSavedRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsSavedRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsIndexRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRoute
 }
 
 const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRouteChildren: AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRouteChildren =
@@ -619,6 +667,10 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRoute
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsSavedRoute,
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsIndexRoute:
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsIndexRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsDashboardIdRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsDashboardsIndexRoute,
   }
 
 const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteRouteWithChildren =

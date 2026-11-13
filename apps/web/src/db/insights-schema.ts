@@ -6,6 +6,7 @@ import {
 	jsonb,
 	text,
 	timestamp,
+	unique,
 	uuid,
 } from "drizzle-orm/pg-core";
 import { appSchema, user } from "./auth-schema";
@@ -44,6 +45,8 @@ export const savedInsight = appSchema.table(
 			columns: [table.projectId, table.organizationId],
 			foreignColumns: [project.id, project.organizationId],
 		}).onDelete("cascade"),
+		// Lets dashboard tiles reference an insight together with its project.
+		unique("saved_insight_id_project_unique").on(table.id, table.projectId),
 		index("saved_insight_project_updated_idx").on(
 			table.projectId,
 			table.updatedAt,

@@ -8,7 +8,11 @@ export function useLiveActivity(
 	reference: ProjectReference,
 	enabled: boolean,
 	generation: number,
+	/** Node IDs to show; empty for every node. */
+	nodes: string[],
 ) {
+	// A new filter opens a new connection, which starts empty rather than replaying.
+	const nodeFilter = nodes.join(",");
 	const [state, setState] = useState(() => ({
 		data: emptyLive(),
 		error: null as Error | null,
@@ -27,7 +31,11 @@ export function useLiveActivity(
 		let rendered = 0,
 			timer: ReturnType<typeof setTimeout> | undefined;
 		const source = new EventSource(
-			`/api/activity/live?${new URLSearchParams({ organizationId: reference.organizationId, projectId: reference.projectId })}`,
+			`/api/activity/live?${new URLSearchParams({
+				organizationId: reference.organizationId,
+				projectId: reference.projectId,
+				...(nodeFilter ? { nodes: nodeFilter } : {}),
+			})}`,
 		);
 		setState({ data: emptyLive(startedAt), error: null });
 		const render = () => {
@@ -92,6 +100,7 @@ export function useLiveActivity(
 				"SESSION_NOT_FRESH",
 				"FORBIDDEN",
 				"NOT_FOUND",
+				"INVALID_INPUT",
 			].includes(code);
 			if (denied) source.close();
 			setState((s) => ({
@@ -112,7 +121,13 @@ export function useLiveActivity(
 			source.close();
 			events = [];
 		};
-	}, [reference.organizationId, reference.projectId, enabled, generation]);
+	}, [
+		reference.organizationId,
+		reference.projectId,
+		enabled,
+		generation,
+		nodeFilter,
+	]);
 	return {
 		...state,
 		isError: state.error !== null,

@@ -6,12 +6,17 @@ import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
 import { withAnalyticsSlot } from "./capacity.server";
 import type {
+	AttributeValuesInput,
 	MetricAttributesInput,
 	OverviewSection,
 	QueryRange,
 	RunQueryInput,
 } from "./contracts";
-import { listAttributes, listMetrics } from "./discovery.server";
+import {
+	listAttributes,
+	listAttributeValues,
+	listMetrics,
+} from "./discovery.server";
 import { buildOverviewSection } from "./overview.server";
 import { runQuery } from "./runner.server";
 
@@ -19,7 +24,8 @@ type Database = ReturnType<typeof getDatabase>;
 const MAX_NODE_NAMES = 1000;
 
 // Revoked and deleted nodes keep their names so older telemetry stays readable.
-function nodeNames(database: Database, input: ProjectReference) {
+/** The project's node names, for labelling results grouped by node. */
+export function nodeNames(database: Database, input: ProjectReference) {
 	return database
 		.select({ id: collectorNode.id, hostname: collectorNode.hostname })
 		.from(collectorNode)
@@ -73,6 +79,24 @@ export async function metricAttributes(
 	await requireProject(database, actor, input);
 	return withAnalyticsSlot(database, input.organizationId, signal, () =>
 		listAttributes(getTelemetryClient(), input.projectId, input.metric, signal),
+	);
+}
+
+export async function attributeValues(
+	database: Database,
+	actor: Actor,
+	input: AttributeValuesInput,
+	signal?: AbortSignal,
+) {
+	await requireProject(database, actor, input);
+	return withAnalyticsSlot(database, input.organizationId, signal, () =>
+		listAttributeValues(
+			getTelemetryClient(),
+			input.projectId,
+			input.field,
+			input.metric,
+			signal,
+		),
 	);
 }
 

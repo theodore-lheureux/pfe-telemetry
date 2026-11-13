@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { cn } from "cn";
 import { ChartNoAxesColumnIcon } from "lucide-react";
 import { Skeleton } from "../../components/ui/skeleton";
 import { IconEmptyState } from "../../components/workspace";
@@ -94,7 +95,8 @@ export function InsightChart({
 	);
 }
 
-function ChartBody({
+/** The plotted result: a chart, stat cards, or nothing when the table shows it. */
+export function ChartBody({
 	result,
 	view,
 	display,
@@ -102,26 +104,32 @@ function ChartBody({
 	fetching,
 	onZoom,
 	highlight,
+	height = "h-72",
+	fill = false,
 }: {
 	result: QueryResult;
 	view: SeriesView;
 	display: Display;
 	hydrated: boolean;
 	fetching: boolean;
-	onZoom: (from: Date, to: Date) => void;
+	onZoom?: (from: Date, to: Date) => void;
 	highlight: string | null;
+	/** The chart's height class; `h-full` fills a sized parent. */
+	height?: string;
+	/** Stretches stat cards across the space, as on a dashboard tile. */
+	fill?: boolean;
 }) {
 	if (view.empty)
 		return (
 			<IconEmptyState
 				icon={<ChartNoAxesColumnIcon aria-hidden="true" />}
 				title={m.insight_empty_result()}
-				className="h-72"
+				className={height}
 			/>
 		);
 	// The table below the chart already shows a table-shaped result.
 	if (display.type === "table") return null;
-	if (!hydrated) return <Skeleton className="h-72 w-full" />;
+	if (!hydrated) return <Skeleton className={`${height} w-full`} />;
 	const bucketSeconds = result.bucketSeconds ?? 60;
 	const grid = bucketGrid(result.from, result.to, bucketSeconds);
 	const pointsOf = (series: SeriesResult) =>
@@ -135,7 +143,15 @@ function ChartBody({
 		);
 	if (display.type === "stat")
 		return (
-			<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+			// Columns follow the space available, so a narrow tile stacks its cards.
+			<div
+				className={cn(
+					"grid gap-3",
+					fill
+						? "grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]"
+						: "grid-cols-[repeat(auto-fill,minmax(12rem,1fr))]",
+				)}
+			>
 				{view.charted.map((series) => (
 					<StatCard
 						key={identity(series)}
@@ -175,7 +191,9 @@ function ChartBody({
 			]}
 			bands={bands}
 			bandLabel={m.insight_offline()}
-			onZoom={(from, to) => onZoom(new Date(from), new Date(to))}
+			height={height}
+			className={height}
+			onZoom={onZoom && ((from, to) => onZoom(new Date(from), new Date(to)))}
 			// The results table names every line, and the tooltip names them on hover.
 			legend={false}
 			highlight={

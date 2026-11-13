@@ -64,6 +64,109 @@ export function isDefaultRange(range: DateRange) {
 	return range.kind === "last" && range.count === 1 && range.unit === "hours";
 }
 
+// Dates inside a range are ISO strings in the URL.
+export type SerializedRange =
+	| Exclude<DateRange, { from: Date } | { at: Date }>
+	| { kind: "since"; from: string }
+	| { kind: "between"; from: string; to: string }
+	| {
+			kind: "jump";
+			at: string;
+			minutes: number;
+			anchor: "around" | "before" | "after";
+	  };
+
+export function serializeRange(range: DateRange): SerializedRange {
+	switch (range.kind) {
+		case "since":
+			return { kind: "since", from: range.from.toISOString() };
+		case "between":
+			return {
+				kind: "between",
+				from: range.from.toISOString(),
+				to: range.to.toISOString(),
+			};
+		case "jump":
+			return { ...range, at: range.at.toISOString() };
+		default:
+			return range;
+	}
+}
+
+export function deserializeRange(range: SerializedRange): DateRange {
+	switch (range.kind) {
+		case "since":
+			return { kind: "since", from: new Date(range.from) };
+		case "between":
+			return {
+				kind: "between",
+				from: new Date(range.from),
+				to: new Date(range.to),
+			};
+		case "jump":
+			return { ...range, at: new Date(range.at) };
+		default:
+			return range;
+	}
+}
+
+const LAST_LIMIT: Record<RangeUnit, number> = {
+	minutes: 525_600,
+	hours: 8_760,
+	days: 365,
+	weeks: 53,
+	months: 12,
+	years: 1,
+};
+
+function isoDate(value: unknown) {
+	if (typeof value !== "string") return null;
+	const date = new Date(value);
+	return Number.isFinite(date.getTime()) ? date : null;
+}
+
+/** A range from untrusted JSON, or null when it is not one this picker can make. */
+export function parseSerializedRange(value: unknown): DateRange | null {
+	if (!value || typeof value !== "object") return null;
+	const range = value as Record<string, unknown>;
+	switch (range.kind) {
+		case "last": {
+			const unit = range.unit as RangeUnit;
+			const count = range.count;
+			return RANGE_UNITS.includes(unit) &&
+				Number.isInteger(count) &&
+				(count as number) >= 1 &&
+				(count as number) <= LAST_LIMIT[unit]
+				? { kind: "last", count: count as number, unit }
+				: null;
+		}
+		case "preset":
+			return CALENDAR_PRESETS.includes(range.preset as CalendarPreset)
+				? { kind: "preset", preset: range.preset as CalendarPreset }
+				: null;
+		case "since": {
+			const from = isoDate(range.from);
+			return from && { kind: "since", from };
+		}
+		case "between": {
+			const from = isoDate(range.from),
+				to = isoDate(range.to);
+			return from && to && from < to ? { kind: "between", from, to } : null;
+		}
+		case "jump": {
+			const at = isoDate(range.at);
+			const anchor = range.anchor as JumpAnchor;
+			return at &&
+				JUMP_WINDOWS.includes(range.minutes as (typeof JUMP_WINDOWS)[number]) &&
+				Object.hasOwn(ANCHOR_SHARE, anchor)
+				? { kind: "jump", at, minutes: range.minutes as number, anchor }
+				: null;
+		}
+		default:
+			return null;
+	}
+}
+
 /** Relative choices listed above the calendar presets, in menu order. */
 export const LAST_PRESETS: { count: number; unit: RangeUnit }[] = [
 	{ count: 1, unit: "hours" },

@@ -143,6 +143,7 @@ export function TimeseriesChart({
 	onZoom,
 	legend = true,
 	highlight = null,
+	height = "h-72",
 }: {
 	series: ChartSeries[];
 	bucketSeconds: number;
@@ -168,6 +169,8 @@ export function TimeseriesChart({
 	legend?: boolean;
 	/** A series key to emphasize; the others fade. */
 	highlight?: string | null;
+	/** The plot's height class; `h-full` fills a sized parent. */
+	height?: string;
 }) {
 	const gradient = useId().replace(/:/g, "");
 	const timeZone = useDisplayTimeZone();
@@ -279,7 +282,8 @@ export function TimeseriesChart({
 			<ChartContainer
 				config={config}
 				className={cn(
-					"aspect-auto h-72 w-full",
+					"aspect-auto w-full",
+					height,
 					onZoom && "cursor-crosshair select-none",
 				)}
 				role="img"
@@ -362,7 +366,8 @@ export function TimeseriesChart({
 						tickLine={false}
 						axisLine={false}
 						tickCount={5}
-						width={72}
+						// Sized to the widest tick label.
+						width="auto"
 						// A log axis cannot start at zero; non-positive values fall outside it.
 						scale={logScale ? "log" : "auto"}
 						domain={logScale || !beginAtZero ? ["auto", "auto"] : [0, "auto"]}

@@ -5,6 +5,7 @@ import { OperationError } from "../lib/operation-error";
 import { parseProjectReference } from "../organizations/validation";
 import { authorizeLive } from "./activity.server";
 import { gatewayRequest, liveStreamControllers } from "./live.server";
+import { parseLiveNodes } from "./live-filter";
 import { sseFrames, sseHeaders } from "./sse.server";
 
 const encoder = new TextEncoder();
@@ -61,11 +62,13 @@ export async function activityStream(
 				"Cross-origin Live connection denied",
 			);
 		await check();
+		const nodes = parseLiveNodes(url.searchParams.get("nodes"));
 		const response = await (
 			open ??
 			((signal) => {
 				const upstream = gatewayRequest("/stream", {
 					projectId: url.searchParams.get("projectId") ?? "",
+					...(nodes.length ? { nodes: nodes.join(",") } : {}),
 				});
 				return fetch(upstream.url, { headers: upstream.headers, signal });
 			})

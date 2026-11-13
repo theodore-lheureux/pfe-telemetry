@@ -53,7 +53,7 @@ test.skipIf(!enabled)(
 		let server: ReturnType<typeof Bun.serve> | undefined;
 		const clients: AbortController[] = [];
 		let created = false;
-		const publish = async (project = projectId) => {
+		const publish = async (project = projectId, nodes: string[] = []) => {
 			const now = (BigInt(Date.now()) * 1000000n).toString(),
 				id = randomUUID();
 			const raw = rawType
@@ -112,6 +112,11 @@ test.skipIf(!enabled)(
 						bytes: raw.length,
 						raw_partition: location.partition,
 						raw_offset: location.baseOffset,
+						nodes: nodes.map((node) => ({
+							id: node,
+							name: node,
+							measured_unix_nano: now,
+						})),
 					}),
 				)
 				.finish();
@@ -131,11 +136,11 @@ test.skipIf(!enabled)(
 				offset: location.baseOffset ?? "0",
 			};
 		};
-		const connect = async () => {
+		const connect = async (filter = "") => {
 			const abort = new AbortController();
 			clients.push(abort);
 			const response = await fetch(
-				`${server?.url}stream?projectId=${projectId}`,
+				`${server?.url}stream?projectId=${projectId}${filter}`,
 				{ headers, signal: abort.signal },
 			);
 			expect(response.headers.get("content-type")).toContain(
@@ -262,6 +267,23 @@ test.skipIf(!enabled)(
 			expect((await reconnected.next("packet")).summary).toMatchObject({
 				id: newest.id,
 			});
+			// A node filter delivers only packets that list a chosen node.
+			const filtered = await connect("&nodes=node-a");
+			await publish(projectId, ["node-b"]);
+			const chosen = await publish(projectId, ["node-b", "node-a"]);
+			expect((await filtered.next("packet")).summary).toMatchObject({
+				id: chosen.id,
+			});
+			expect(
+				(
+					await fetch(
+						`${server.url}stream?projectId=${projectId}&nodes=a%20b`,
+						{
+							headers,
+						},
+					)
+				).status,
+			).toBe(400);
 		} finally {
 			for (const client of clients) client.abort();
 			await gateway?.close();

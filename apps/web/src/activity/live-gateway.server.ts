@@ -3,6 +3,7 @@ import * as z from "zod";
 import { readEnv, secret } from "../lib/env.server";
 import { decodeNotification, liveShard } from "./codec.server";
 import { ownLiveConnection } from "./live-connection.server";
+import { liveMatches, parseLiveNodes } from "./live-filter";
 import { LiveHub } from "./live-hub.server";
 import {
 	createLiveKafka,
@@ -199,6 +200,12 @@ export async function createLiveGateway() {
 				return servePacket(request, url, projectId);
 			if (url.pathname !== "/stream")
 				return new Response(null, { status: 404 });
+			let nodes: Set<string>;
+			try {
+				nodes = new Set(parseLiveNodes(url.searchParams.get("nodes")));
+			} catch {
+				return new Response(null, { status: 400 });
+			}
 			if (viewers >= 512) return new Response(null, { status: 503 });
 			viewers++;
 			const lifetime = new AbortController();
@@ -218,7 +225,10 @@ export async function createLiveGateway() {
 					liveShard(projectId, settings.partitions),
 					projectId,
 					signal,
-					(event) => channel.send("packet", event),
+					// Filters apply here, before delivery; the shard keeps one shared reader.
+					(event) => {
+						if (liveMatches(event, nodes)) channel.send("packet", event);
+					},
 					() => channel.close(),
 				);
 				if (channel.closed) unsubscribe();

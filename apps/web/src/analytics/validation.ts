@@ -2,6 +2,7 @@ import { InputError } from "../lib/input-error";
 import { parseProjectReference } from "../organizations/validation";
 import {
 	type AnalyticsQuery,
+	type AttributeValuesInput,
 	type Calculation,
 	COMBINES,
 	COMPARE_UNITS,
@@ -292,7 +293,7 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 	};
 }
 
-function parseComparison(value: unknown): Comparison {
+export function parseComparison(value: unknown): Comparison {
 	const input = record(value, "comparison");
 	if (input.previous === true) return { previous: true };
 	if (
@@ -349,6 +350,15 @@ export function parseMetricAttributesInput(
 	const metric = record(value, "request").metric;
 	if (metric === undefined) return parseProjectReference(value);
 	return { ...parseProjectReference(value), metric: parseMetricName(metric) };
+}
+
+export function parseAttributeValuesInput(
+	value: unknown,
+): AttributeValuesInput {
+	const field = record(value, "request").field;
+	if (typeof field !== "string" || !parseAttributeField(field))
+		throw new InputError("INVALID_QUERY", "Invalid attribute field");
+	return { ...parseMetricAttributesInput(value), field };
 }
 
 export function parseOverviewInput(value: unknown) {

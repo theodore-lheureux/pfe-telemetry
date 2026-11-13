@@ -86,7 +86,7 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 		// Edits mark the insight changed until they are saved.
 		const save = page.getByRole("button", { name: "Save", exact: true });
 		await expect(save).toBeDisabled();
-		await page.getByRole("combobox", { name: "Group by", exact: true }).click();
+		await page.getByRole("button", { name: /^Breakdown:/ }).click();
 		await page.getByRole("option", { name: "Node", exact: true }).click();
 		await expect(page.getByText("Unsaved changes")).toBeVisible();
 		await save.click();
@@ -187,8 +187,8 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 			"Fleet CPU usage",
 		);
 		await expect(
-			page.getByRole("combobox", { name: "Group by", exact: true }),
-		).toHaveText("Node");
+			page.getByRole("button", { name: /^Breakdown:/ }),
+		).toHaveAccessibleName("Breakdown: Node");
 	} finally {
 		for (const table of [
 			"metric_points",

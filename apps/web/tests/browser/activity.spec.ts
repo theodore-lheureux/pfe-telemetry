@@ -486,6 +486,10 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 			.getByRole("button", { name: "Attribute filters", exact: true })
 			.click();
 		await page.getByRole("option", { name: /host\.name/ }).click();
+		// Recent values are suggested; any other value can still be typed.
+		await expect(
+			page.getByRole("option", { name: "activity-node-1", exact: true }),
+		).toBeVisible();
 		await page.getByLabel("Value", { exact: true }).fill("another-node");
 		await page
 			.getByRole("button", { name: "Apply filter", exact: true })
@@ -632,6 +636,23 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 		expect(
 			(await live.locator("tbody > tr").first().boundingBox())?.height ?? 100,
 		).toBeLessThanOrEqual(34);
+		// A node filter opens a fresh connection that delivers only that node's packets.
+		await expect(
+			page.getByRole("button", { name: "Attribute filters", exact: true }),
+		).toHaveAttribute("aria-disabled", "true");
+		await page
+			.getByRole("button", { name: "Filter by node", exact: true })
+			.click();
+		await page
+			.getByRole("option", { name: "activity-node-1", exact: true })
+			.click();
+		await page.keyboard.press("Escape");
+		await expect(
+			page.getByRole("button", { name: /^Filter by node/ }),
+		).toContainText("1");
+		await expect(
+			live.getByRole("button", { name: /^Inspect / }).first(),
+		).toBeVisible({ timeout: 15000 });
 		await page.getByRole("button", { name: "Pause", exact: true }).click();
 		const frozen = await live.locator("tbody").innerText();
 		await page.waitForTimeout(2300);
@@ -668,7 +689,7 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 		).toBeVisible();
 		await expect(
 			page.getByRole("button", { name: "Filtrer par nœud", exact: true }),
-		).toBeDisabled();
+		).toBeEnabled();
 		await page
 			.context()
 			.addCookies([

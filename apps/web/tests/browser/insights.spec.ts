@@ -187,7 +187,7 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 			"A / B * 100",
 		);
 		await page.getByLabel("Formula mode", { exact: true }).click();
-		await page.getByRole("combobox", { name: "Group by", exact: true }).click();
+		await page.getByRole("button", { name: /^Breakdown:/ }).click();
 		await page.getByRole("option", { name: "Node", exact: true }).click();
 		await expect
 			.poll(() => results.getByRole("row").count())

@@ -1,7 +1,8 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useHydrated } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAnalyticsCatalog } from "../analytics/catalog";
 import {
 	DEFAULT_RANGE,
 	isDefaultRange,
@@ -62,6 +63,7 @@ export function ActivityPage({
 		[generation, setGeneration] = useState(0),
 		[selected, setSelected] = useState<PacketSummary | null>(null),
 		[selection, setSelection] = useState(DEFAULT_SELECTION),
+		[liveNodes, setLiveNodes] = useState<string[]>([]),
 		[columnSettings, setColumnSettings] = useState<ExplorerColumnSettings>(
 			initialColumns?.data ?? {
 				columns: DEFAULT_COLUMNS,
@@ -84,7 +86,17 @@ export function ActivityPage({
 		enabled: mode === "explorer",
 		initial: initial?.data ?? undefined,
 	});
-	const liveResult = useLiveActivity(reference, mode === "live", generation);
+	const liveResult = useLiveActivity(
+		reference,
+		mode === "live",
+		generation,
+		liveNodes,
+	);
+	const catalog = useAnalyticsCatalog(
+		userId,
+		reference,
+		hydrated && mode === "live",
+	);
 	const result = mode === "live" ? liveResult : explorerResult;
 	const data = displayedActivity({
 		paused,
@@ -94,6 +106,30 @@ export function ActivityPage({
 	});
 	const live = data && "packets" in data ? data : undefined,
 		page = data && "points" in data ? data : undefined;
+	// Live filters offer enrolled nodes and any node seen in packets, such as one
+	// sending standard OTLP without enrolling. Names seen once stay on the list.
+	const [seenNodes, setSeenNodes] = useState(() => new Map<string, string>());
+	useEffect(() => {
+		const fresh = (live?.packets ?? [])
+			.flatMap((packet) => packet.nodes)
+			.filter((node) => seenNodes.get(node.id) !== node.name);
+		if (fresh.length)
+			setSeenNodes(
+				(current) =>
+					new Map([
+						...current,
+						...fresh.map((node) => [node.id, node.name] as const),
+					]),
+			);
+	}, [live, seenNodes]);
+	const nodeOptions = useMemo(() => {
+		const names = new Map(seenNodes);
+		for (const node of catalog.data?.nodes ?? [])
+			names.set(node.id, node.hostname);
+		return [...names]
+			.map(([id, hostname]) => ({ id, hostname }))
+			.sort((a, b) => a.hostname.localeCompare(b.hostname));
+	}, [catalog.data, seenNodes]);
 	const rows = useMemo<ActivityRow[]>(
 		() =>
 			live
@@ -204,6 +240,12 @@ export function ActivityPage({
 						pausedBy={pausedBy}
 						unseen={unseen}
 						hydrated={hydrated}
+						nodes={nodeOptions}
+						selectedNodes={liveNodes}
+						onNodes={(next) => {
+							resume();
+							setLiveNodes(next);
+						}}
 						onReload={reload}
 						onPause={() => pause("user")}
 						onResume={resume}

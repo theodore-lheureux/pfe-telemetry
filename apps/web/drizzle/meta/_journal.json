@@ -127,6 +127,13 @@
       "when": 1794503826601,
       "tag": "0017_analytics_slots",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1794538795109,
+      "tag": "0018_dashboards",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,7 @@ import {
 	parseUpdateInsightTags,
 } from "./saved-insights-validation";
 import {
+	parseAttributeValuesInput,
 	parseMetricAttributesInput,
 	parseOverviewInput,
 	parseRunQueryInput,
@@ -40,6 +41,15 @@ export const getMetricAttributes = createServerFn({ method: "GET" })
 	.handler(({ data, context: { identity, database, request } }) =>
 		withActor(identity, (actor) =>
 			analytics.metricAttributes(database, actor, data, request.signal),
+		),
+	);
+
+export const getAttributeValues = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
+	.validator(parseAttributeValuesInput)
+	.handler(({ data, context: { identity, database, request } }) =>
+		withActor(identity, (actor) =>
+			analytics.attributeValues(database, actor, data, request.signal),
 		),
 	);
 

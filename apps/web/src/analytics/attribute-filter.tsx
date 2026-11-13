@@ -4,13 +4,11 @@ import { type FormEvent, useId, useState } from "react";
 import { Button } from "../components/ui/button";
 import {
 	Command,
-	CommandEmpty,
 	CommandGroup,
 	CommandInput,
 	CommandItem,
 	CommandList,
 } from "../components/ui/command";
-import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import {
 	NativeSelect,
@@ -21,8 +19,10 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 } from "../components/ui/popover";
+import { AttributeList } from "./attribute-list";
+import { useAttributeValues, type ValueSource } from "./catalog";
 import type { AttributeDefinition, Filter, FilterOperator } from "./contracts";
-import { attributeField, isFieldKey } from "./fields";
+import { attributeField } from "./fields";
 import { attributeLabel } from "./metric-names";
 
 type Operator = Extract<FilterOperator, "eq" | "neq" | "exists" | "not_exists">;
@@ -40,14 +40,20 @@ export function AttributeFilter({
 	loading,
 	disabled,
 	trigger = "button",
+	label,
+	values,
 	onOpen,
 	onAdd,
 }: {
 	attributes: AttributeDefinition[] | undefined;
+	/** Where the chosen attribute's recent values are suggested from. */
+	values: ValueSource;
 	loading: boolean;
 	disabled: boolean;
 	/** `button` for toolbars, `ghost` for panel sections, `icon` inside a series row. */
 	trigger?: "button" | "ghost" | "icon";
+	/** The button's text, when the default does not fit the place. */
+	label?: string;
 	onOpen: () => void;
 	onAdd: (filter: Filter) => void;
 }) {
@@ -61,27 +67,24 @@ export function AttributeFilter({
 		setOperator("eq");
 		setValue("");
 	};
-	const filterable = (attributes ?? []).filter((attribute) =>
-		isFieldKey(attribute.key),
-	);
-	const groups = [
-		{ scope: "point", label: m.activity_attribute_point() },
-		{ scope: "resource", label: m.activity_attribute_resource() },
-	] as const;
 	const needsValue = operator === "eq" || operator === "neq";
-	const submit = (event: FormEvent) => {
-		event.preventDefault();
-		if (!field || (needsValue && !value.trim())) return;
+	const chosen = field && attributeField(field.scope, field.key);
+	const suggestions = useAttributeValues(
+		values,
+		open && needsValue ? chosen : null,
+	);
+	const add = (text: string) => {
+		if (!chosen || (needsValue && !text.trim())) return;
 		onAdd(
 			needsValue
-				? {
-						field: attributeField(field.scope, field.key),
-						op: operator,
-						values: [value.trim()],
-					}
-				: { field: attributeField(field.scope, field.key), op: operator },
+				? { field: chosen, op: operator, values: [text.trim()] }
+				: { field: chosen, op: operator },
 		);
 		setOpen(false);
+	};
+	const submit = (event: FormEvent) => {
+		event.preventDefault();
+		add(value);
 	};
 	return (
 		<Popover
@@ -113,9 +116,10 @@ export function AttributeFilter({
 						disabled={disabled}
 					>
 						<PlusIcon aria-hidden="true" />
-						{trigger === "ghost"
-							? m.insight_filter_add()
-							: m.activity_attribute_filter()}
+						{label ??
+							(trigger === "ghost"
+								? m.insight_filter_add()
+								: m.activity_attribute_filter())}
 					</Button>
 				)}
 			</PopoverTrigger>
@@ -156,65 +160,91 @@ export function AttributeFilter({
 							</NativeSelect>
 						</div>
 						{needsValue && (
-							<div className="flex flex-col gap-1.5">
-								<Label htmlFor={`${id}-value`} className="sr-only">
-									{m.activity_filter_value()}
-								</Label>
-								<Input
-									id={`${id}-value`}
-									value={value}
-									maxLength={1024}
-									autoComplete="off"
-									placeholder={m.activity_filter_value()}
-									onChange={(event) => setValue(event.target.value)}
-									autoFocus
-								/>
-							</div>
+							<ValueField
+								value={value}
+								suggestions={suggestions.data}
+								loading={suggestions.isFetching}
+								onChange={setValue}
+								onPick={add}
+							/>
 						)}
 						<Button type="submit" disabled={needsValue && !value.trim()}>
 							{m.activity_filter_apply()}
 						</Button>
 					</form>
 				) : (
-					<Command>
-						<CommandInput placeholder={m.activity_attribute_search()} />
-						<CommandList>
-							<CommandEmpty>
-								{loading
-									? m.activity_attribute_loading()
-									: m.activity_attribute_none()}
-							</CommandEmpty>
-							{groups.map((group) => {
-								const items = filterable.filter(
-									(attribute) => attribute.scope === group.scope,
-								);
-								return items.length ? (
-									<CommandGroup key={group.scope} heading={group.label}>
-										{items.map((attribute) => (
-											<CommandItem
-												key={`${attribute.scope}/${attribute.key}/${attribute.kind}`}
-												value={`${group.scope} ${attributeLabel(attribute.key)} ${attribute.key}`}
-												onSelect={() => setField(attribute)}
-											>
-												<span className="flex min-w-0 flex-1 flex-col">
-													<span className="truncate">
-														{attributeLabel(attribute.key)}
-													</span>
-													{attributeLabel(attribute.key) !== attribute.key && (
-														<span className="truncate font-mono text-[11px] text-muted-foreground">
-															{attribute.key}
-														</span>
-													)}
-												</span>
-											</CommandItem>
-										))}
-									</CommandGroup>
-								) : null;
-							})}
-						</CommandList>
-					</Command>
+					<AttributeList
+						attributes={attributes}
+						loading={loading}
+						onSelect={(_, attribute) => attribute && setField(attribute)}
+					/>
 				)}
 			</PopoverContent>
 		</Popover>
+	);
+}
+
+/**
+ * The value to compare with: typed freely, or picked from the attribute's recent
+ * values. Enter applies the highlighted suggestion or the typed text.
+ */
+function ValueField({
+	value,
+	suggestions,
+	loading,
+	onChange,
+	onPick,
+}: {
+	value: string;
+	suggestions: string[] | undefined;
+	loading: boolean;
+	onChange: (value: string) => void;
+	onPick: (value: string) => void;
+}) {
+	const typed = value.trim();
+	return (
+		// cmdk names its input with this label; it replaces the input's own ID.
+		<Command className="rounded-md border" label={m.activity_filter_value()}>
+			<CommandInput
+				value={value}
+				maxLength={1024}
+				placeholder={m.activity_filter_value()}
+				onValueChange={onChange}
+				autoFocus
+			/>
+			<CommandList className="max-h-48">
+				{typed && !suggestions?.includes(typed) && (
+					<CommandGroup>
+						<CommandItem
+							value={`typed ${typed}`}
+							onSelect={() => onPick(typed)}
+						>
+							{m.activity_filter_use_value({ value: typed })}
+						</CommandItem>
+					</CommandGroup>
+				)}
+				{suggestions?.length ? (
+					<CommandGroup heading={m.activity_filter_recent_values()}>
+						{suggestions.map((suggestion) => (
+							<CommandItem
+								key={suggestion}
+								value={suggestion}
+								onSelect={() => onPick(suggestion)}
+							>
+								<span className="truncate font-mono text-xs">{suggestion}</span>
+							</CommandItem>
+						))}
+					</CommandGroup>
+				) : (
+					!typed && (
+						<p className="px-3 py-2 text-xs text-muted-foreground">
+							{loading
+								? m.activity_attribute_loading()
+								: m.activity_filter_no_values()}
+						</p>
+					)
+				)}
+			</CommandList>
+		</Command>
 	);
 }

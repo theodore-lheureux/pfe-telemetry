@@ -1,4 +1,5 @@
 import type { ClickHouseClient } from "@clickhouse/client";
+import { compileFields } from "./compile.server";
 import type { AttributeDefinition, MetricDefinition } from "./contracts";
 import { metricBehavior } from "./validation";
 
@@ -112,4 +113,57 @@ export async function listAttributes(
 		clickhouse_settings: SETTINGS,
 	});
 	return result.json<AttributeDefinition>();
+}
+
+/** Suggested values come from the last day of points, most frequent first. */
+const VALUE_WINDOW_MS = 86_400_000;
+export const MAX_VALUE_SUGGESTIONS = 20;
+
+/**
+ * The values an attribute field took recently. The scan stops after a bounded number
+ * of points, so a busy project gets suggestions from a sample rather than a failure.
+ */
+export async function listAttributeValues(
+	connection: ClickHouseClient,
+	projectId: string,
+	field: string,
+	metric: string | undefined,
+	signal?: AbortSignal,
+	now = Date.now(),
+): Promise<string[]> {
+	const {
+		expressions: [value],
+		params,
+	} = compileFields([field]);
+	const from = now - VALUE_WINDOW_MS;
+	const result = await connection.query({
+		query: `SELECT value FROM (
+    SELECT ${value} AS value
+    FROM metric_points
+    WHERE project_id = {project:String}
+      AND event_day >= {firstDay:UInt32}
+      AND time_unix_nano >= {from:UInt64}${metric === undefined ? "" : "\n      AND metric_name = {metric:String}"}
+  )
+  WHERE value IS NOT NULL AND value != ''
+  GROUP BY value
+  ORDER BY count() DESC, value
+  LIMIT ${MAX_VALUE_SUGGESTIONS}`,
+		format: "JSONEachRow",
+		query_params: {
+			...params,
+			project: projectId,
+			firstDay: Math.floor(from / 86_400_000),
+			from: (BigInt(from) * 1_000_000n).toString(),
+			...(metric === undefined ? {} : { metric }),
+		},
+		abort_signal: signal,
+		clickhouse_settings: {
+			...SETTINGS,
+			max_rows_to_read: "500000",
+			read_overflow_mode: "break",
+			max_rows_to_group_by: "10000",
+			group_by_overflow_mode: "any",
+		},
+	});
+	return (await result.json<{ value: string }>()).map((row) => row.value);
 }

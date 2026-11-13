@@ -20,6 +20,7 @@ export function PageHeader({
 	description,
 	tabs,
 	heading,
+	actions,
 }: {
 	icon: LucideIcon;
 	/** Names the page, and its tab bar for assistive technology. */
@@ -29,16 +30,25 @@ export function PageHeader({
 	tabs: ReactNode;
 	/** Replaces the pinned title, such as an editable name; it provides its own `h1`. */
 	heading?: ReactNode;
+	/** Controls pinned at the right of the title. */
+	actions?: ReactNode;
 }) {
 	return (
 		<>
 			<StickyHeader>
-				{heading ?? (
-					<h1 className="flex items-center gap-2 text-xl font-semibold">
-						<Icon aria-hidden="true" className="size-5" />
-						{title}
-					</h1>
-				)}
+				<div className="flex flex-wrap items-center gap-2">
+					{heading ?? (
+						<h1 className="flex items-center gap-2 text-xl font-semibold">
+							<Icon aria-hidden="true" className="size-5" />
+							{title}
+						</h1>
+					)}
+					{actions && (
+						<div className="ml-auto flex flex-wrap items-center gap-2">
+							{actions}
+						</div>
+					)}
+				</div>
 			</StickyHeader>
 			{/* Only the title stays pinned. The header's bottom padding covers 12px below the
 			    title, so the description can move up at most 8px without being hidden. */}

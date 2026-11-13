@@ -88,6 +88,8 @@ export function DataTable<
 					{rows.map((row) => (
 						<TableRow
 							key={row.id}
+							// Lets a cell's link stretch over the whole row.
+							className="relative"
 							data-state={
 								(row as Selectable).getIsSelected?.() ? "selected" : undefined
 							}

@@ -1,7 +1,10 @@
 import {
 	type DateRange,
 	DEFAULT_RANGE,
+	deserializeRange,
 	resolveRange,
+	type SerializedRange,
+	serializeRange,
 } from "../../components/date-range/date-range";
 import {
 	type AnalyticsQuery,
@@ -175,52 +178,6 @@ export function toQuery(
 		...(draft.groupBy && draft.aggregate ? { aggregate: draft.aggregate } : {}),
 		...(draft.compare ? { compare: draft.compare } : {}),
 	};
-}
-
-// Dates inside a range are ISO strings in the URL.
-type SerializedRange =
-	| Exclude<DateRange, { from: Date } | { at: Date }>
-	| { kind: "since"; from: string }
-	| { kind: "between"; from: string; to: string }
-	| {
-			kind: "jump";
-			at: string;
-			minutes: number;
-			anchor: "around" | "before" | "after";
-	  };
-
-function serializeRange(range: DateRange): SerializedRange {
-	switch (range.kind) {
-		case "since":
-			return { kind: "since", from: range.from.toISOString() };
-		case "between":
-			return {
-				kind: "between",
-				from: range.from.toISOString(),
-				to: range.to.toISOString(),
-			};
-		case "jump":
-			return { ...range, at: range.at.toISOString() };
-		default:
-			return range;
-	}
-}
-
-function deserializeRange(range: SerializedRange): DateRange {
-	switch (range.kind) {
-		case "since":
-			return { kind: "since", from: new Date(range.from) };
-		case "between":
-			return {
-				kind: "between",
-				from: new Date(range.from),
-				to: new Date(range.to),
-			};
-		case "jump":
-			return { ...range, at: new Date(range.at) };
-		default:
-			return range;
-	}
 }
 
 /** The URL form of a draft. */

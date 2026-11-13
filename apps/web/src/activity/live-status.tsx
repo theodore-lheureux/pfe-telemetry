@@ -7,9 +7,16 @@ import {
 	PlusIcon,
 	RefreshCwIcon,
 } from "lucide-react";
+import { FacetFilter } from "../analytics/saved/facet-filter";
 import { Button } from "../components/ui/button";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 import type { LiveSnapshot } from "./contracts";
+import { MAX_LIVE_NODES } from "./live-filter";
 
 export type PausedBy = "user" | "inspector" | "hover";
 
@@ -82,6 +89,9 @@ export function LiveToolbar({
 	pausedBy,
 	unseen,
 	hydrated,
+	nodes,
+	selectedNodes,
+	onNodes,
 	onReload,
 	onPause,
 	onResume,
@@ -91,6 +101,10 @@ export function LiveToolbar({
 	/** Packets that arrived while the list was frozen. */
 	unseen: number;
 	hydrated: boolean;
+	/** The project's nodes, to filter by. */
+	nodes: { id: string; hostname: string }[];
+	selectedNodes: string[];
+	onNodes: (nodes: string[]) => void;
 	onReload: () => void;
 	onPause: () => void;
 	onResume: () => void;
@@ -119,14 +133,35 @@ export function LiveToolbar({
 				>
 					<RefreshCwIcon aria-hidden="true" />
 				</Button>
-				<Button variant="outline" disabled>
-					<ListFilterIcon aria-hidden="true" />
-					{m.activity_node_filter()}
-				</Button>
-				<Button variant="outline" disabled>
-					<PlusIcon aria-hidden="true" />
-					{m.activity_attribute_filter()}
-				</Button>
+				<FacetFilter
+					label={m.activity_node_filter()}
+					icon={<ListFilterIcon aria-hidden="true" />}
+					searchable
+					disabled={!hydrated}
+					selected={selectedNodes}
+					onChange={(next) => onNodes(next.slice(0, MAX_LIVE_NODES))}
+					options={nodes.map((node) => ({
+						value: node.id,
+						label: node.hostname,
+					}))}
+				/>
+				{/* Live notifications carry no attributes, so only Explorer filters by them. */}
+				<Tooltip>
+					<TooltipTrigger asChild>
+						{/* Stays focusable, unlike a disabled button, so the reason can be read. */}
+						<Button
+							variant="outline"
+							aria-disabled="true"
+							className="cursor-not-allowed opacity-50"
+						>
+							<PlusIcon aria-hidden="true" />
+							{m.activity_attribute_filter()}
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>
+						{m.activity_live_attribute_unavailable()}
+					</TooltipContent>
+				</Tooltip>
 				<Button
 					variant="outline"
 					disabled={!hydrated}

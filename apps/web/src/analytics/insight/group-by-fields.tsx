@@ -17,15 +17,13 @@ import {
 	type Combine,
 	MAX_SERIES,
 } from "../contracts";
-import { attributeField } from "../fields";
-import { attributeLabel } from "../metric-names";
+import { GroupByPicker } from "../group-by-picker";
 import type { InsightDraft } from "./draft";
 import { AGGREGATE_LABEL, COMBINE_GROUPS } from "./labels";
 
 // Radix Select cannot use an empty value, so "no grouping" and "each group" have sentinels.
 const NO_GROUP = "-";
 const EACH_GROUP = "-";
-const CORE_GROUPS = ["node", "host", "resource.id"];
 
 /** The breakdown attribute, how many groups to keep and whether the rest form "Other". */
 export function GroupByFields({
@@ -43,63 +41,23 @@ export function GroupByFields({
 	onChange: (draft: InsightDraft) => void;
 }) {
 	const id = useId();
-	const byScope = (scope: "point" | "resource") =>
-		(attributes ?? []).filter((attribute) => attribute.scope === scope);
-	// A saved grouping stays selectable before attributes load.
-	const listed = new Set([
-		...CORE_GROUPS,
-		...(attributes ?? []).map((attribute) =>
-			attributeField(attribute.scope, attribute.key),
-		),
-	]);
-	const unlisted =
-		draft.groupBy && !listed.has(draft.groupBy) ? draft.groupBy : undefined;
 	return (
 		<>
-			<Select
+			<GroupByPicker
 				value={draft.groupBy ?? NO_GROUP}
+				choices={[{ value: NO_GROUP, label: m.insight_group_none() }]}
+				attributes={attributes}
+				loading={!attributes}
 				disabled={disabled}
-				onOpenChange={(open) => open && onOpen()}
-				onValueChange={(value) =>
+				className="w-full max-w-none"
+				onOpen={onOpen}
+				onChange={(value) =>
 					onChange({
 						...draft,
 						groupBy: value === NO_GROUP ? undefined : value,
 					})
 				}
-			>
-				<SelectTrigger aria-label={m.insight_group_by()} className="w-full">
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent position="popper" align="start">
-					<SelectItem value={NO_GROUP}>{m.insight_group_none()}</SelectItem>
-					<SelectItem value="node">{m.insight_group_node()}</SelectItem>
-					<SelectItem value="host">{m.insight_group_host()}</SelectItem>
-					<SelectItem value="resource.id">
-						{m.insight_group_resource()}
-					</SelectItem>
-					{(["point", "resource"] as const).map(
-						(scope) =>
-							byScope(scope).length > 0 && (
-								<SelectGroup key={scope}>
-									<SelectLabel>
-										{scope === "point"
-											? m.insight_group_attributes()
-											: m.insight_group_resource_attributes()}
-									</SelectLabel>
-									{byScope(scope).map((attribute) => (
-										<SelectItem
-											key={`${scope}/${attribute.key}`}
-											value={attributeField(scope, attribute.key)}
-										>
-											{attributeLabel(attribute.key)}
-										</SelectItem>
-									))}
-								</SelectGroup>
-							),
-					)}
-					{unlisted && <SelectItem value={unlisted}>{unlisted}</SelectItem>}
-				</SelectContent>
-			</Select>
+			/>
 			{draft.groupBy && (
 				<Select
 					value={draft.aggregate ?? EACH_GROUP}

@@ -160,8 +160,11 @@ export function RangeMenu({
 	onChoose,
 	onChange,
 	onCustom,
+	none,
 }: {
 	value: DateRange;
+	/** A first choice that sets no range, such as keeping each insight's own. */
+	none?: { label: string; selected: boolean; onSelect: () => void };
 	/** Hides presets longer than this. */
 	maxDays?: number;
 	/** Applies a preset and closes the picker. */
@@ -171,11 +174,25 @@ export function RangeMenu({
 	onCustom: (view: CustomView) => void;
 }) {
 	const locale = getLocale();
-	const selected = presetKey(value);
+	const selected = none?.selected ? null : presetKey(value);
 	return (
 		<Command>
 			{/* One list, so arrow keys move through presets and custom entries alike. */}
 			<CommandList className="max-h-[min(36rem,var(--radix-popover-content-available-height))]">
+				{none && (
+					<>
+						<CommandGroup>
+							<CommandItem
+								value="none"
+								data-checked={none.selected}
+								onSelect={none.onSelect}
+							>
+								{none.label}
+							</CommandItem>
+						</CommandGroup>
+						<Separator />
+					</>
+				)}
 				<CommandGroup>
 					{PRESETS.filter((range) => fits(range, maxDays)).map((range) => (
 						<CommandItem

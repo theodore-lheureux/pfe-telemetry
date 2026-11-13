@@ -130,6 +130,7 @@ export function QueryPanel({
 						trigger="ghost"
 						attributes={attributes.data}
 						loading={attributes.isFetching}
+						values={{ userId, reference }}
 						disabled={disabled}
 						onOpen={() => setWantsAttributes(true)}
 						onAdd={(filter) =>

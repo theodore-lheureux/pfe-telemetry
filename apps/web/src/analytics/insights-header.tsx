@@ -4,6 +4,7 @@ import {
 	BookmarkIcon,
 	LayoutDashboardIcon,
 	LineChartIcon,
+	PanelsTopLeftIcon,
 	TelescopeIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -15,18 +16,22 @@ export function InsightsHeader({
 	reference,
 	heading,
 	description,
+	actions,
 }: {
-	tab: "overview" | "explore" | "saved";
+	tab: "overview" | "dashboards" | "explore" | "saved";
 	reference: ProjectReference;
 	/** Replaces the page title, such as the open insight's name. */
 	heading?: ReactNode;
 	description?: ReactNode;
+	/** Controls pinned at the right of the title. */
+	actions?: ReactNode;
 }) {
 	return (
 		<PageHeader
 			icon={LineChartIcon}
 			title={m.insights()}
 			heading={heading}
+			actions={actions}
 			description={description ?? m.insights_description()}
 			tabs={
 				<>
@@ -39,6 +44,15 @@ export function InsightsHeader({
 					>
 						<LayoutDashboardIcon aria-hidden="true" className="size-4" />
 						{m.insight_tab_overview()}
+					</Link>
+					<Link
+						to="/organizations/$organizationId/projects/$projectId/insights/dashboards"
+						params={reference}
+						className={pageTabClass(tab === "dashboards")}
+						aria-current={tab === "dashboards" ? "page" : undefined}
+					>
+						<PanelsTopLeftIcon aria-hidden="true" className="size-4" />
+						{m.dashboards()}
 					</Link>
 					<Link
 						to="/organizations/$organizationId/projects/$projectId/insights/explore"

@@ -15,7 +15,23 @@ export function StickyHeader({
 	// A zero-height marker sits where the header starts; once it scrolls out of view
 	// the header is stuck. Ancestor overflow clipping counts, so no explicit root is needed.
 	const marker = useRef<HTMLDivElement>(null);
+	const header = useRef<HTMLDivElement>(null);
 	const [stuck, setStuck] = useState(false);
+	// Content that sticks below the header, such as a toolbar, offsets itself by
+	// `--sticky-header-height`, set on the header's parent.
+	useEffect(() => {
+		const node = header.current;
+		const parent = node?.parentElement;
+		if (!node || !parent) return;
+		const observer = new ResizeObserver(() =>
+			parent.style.setProperty(
+				"--sticky-header-height",
+				`${node.getBoundingClientRect().height}px`,
+			),
+		);
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, []);
 	useEffect(() => {
 		const node = marker.current;
 		if (!node) return;
@@ -34,6 +50,7 @@ export function StickyHeader({
 				className="pointer-events-none absolute h-px w-px"
 			/>
 			<div
+				ref={header}
 				data-stuck={stuck}
 				className={cn(
 					// Bleed into the page gutters so content scrolling underneath stays hidden;

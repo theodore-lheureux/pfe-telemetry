@@ -20,7 +20,7 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { hasTag } from "../../lib/tags";
 import type { InsightDraft } from "../insight/draft";
 import { DISPLAY_ICON } from "../insight/labels";
-import type { SavedInsight } from "../saved-insights";
+import type { InsightPerson, SavedInsight } from "../saved-insights";
 
 export interface SavedRow {
 	insight: SavedInsight;
@@ -64,6 +64,25 @@ function TagSummary({ tags }: { tags: string[] }) {
 					{m.saved_more({ count: tags.length - SHOWN_TAGS })}
 				</Badge>
 			)}
+		</span>
+	);
+}
+
+/** Who created a row, shown as "You" for the current user. */
+export function CreatorCell({
+	person,
+	userId,
+}: {
+	person: InsightPerson | null;
+	userId: string;
+}) {
+	if (!person) return <span className="text-muted-foreground">—</span>;
+	return (
+		<span className="flex items-center gap-2">
+			<UserAvatar user={person} className="size-6" />
+			<span className="truncate">
+				{person.id === userId ? m.saved_you() : person.name}
+			</span>
 		</span>
 	);
 }
@@ -155,18 +174,12 @@ export const savedColumns: Column[] = [
 		header: ({ column }) => (
 			<SortableHeader label={m.saved_created_by()} column={column} />
 		),
-		cell: ({ row, table }) => {
-			const person = row.original.insight.createdBy;
-			if (!person) return <span className="text-muted-foreground">—</span>;
-			return (
-				<span className="flex items-center gap-2">
-					<UserAvatar user={person} className="size-6" />
-					<span className="truncate">
-						{person.id === meta(table).userId ? m.saved_you() : person.name}
-					</span>
-				</span>
-			);
-		},
+		cell: ({ row, table }) => (
+			<CreatorCell
+				person={row.original.insight.createdBy}
+				userId={meta(table).userId}
+			/>
+		),
 	},
 	{
 		id: "createdAt",

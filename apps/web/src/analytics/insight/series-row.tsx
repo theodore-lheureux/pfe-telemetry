@@ -205,6 +205,7 @@ export function SeriesRow({
 							trigger="icon"
 							attributes={attributes.data}
 							loading={attributes.isFetching}
+							values={{ userId, reference, metric: series.metric }}
 							disabled={disabled}
 							onOpen={() => setWantsAttributes(true)}
 							onAdd={(filter) =>

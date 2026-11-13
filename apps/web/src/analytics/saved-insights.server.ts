@@ -9,6 +9,7 @@ import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
 import type {
 	DeleteInsightsInput,
+	InsightPerson,
 	SavedInsight,
 	SavedInsightReference,
 	SaveInsightInput,
@@ -58,16 +59,24 @@ function present({
 	return {
 		...row,
 		draft: JSON.stringify(row.draft),
-		createdBy:
-			creatorId && creatorEmail
-				? {
-						id: creatorId,
-						name: creatorName ?? "",
-						email: creatorEmail,
-						image: creatorImage,
-						gravatarUrl: gravatarUrl(creatorEmail),
-					}
-				: null,
+		createdBy: person(creatorId, creatorName, creatorEmail, creatorImage),
+	};
+}
+
+/** Who created something, from a left-joined account that may have been deleted. */
+export function person(
+	id: string | null,
+	name: string | null,
+	email: string | null,
+	image: string | null,
+): InsightPerson | null {
+	if (!id || !email) return null;
+	return {
+		id,
+		name: name ?? "",
+		email,
+		image,
+		gravatarUrl: gravatarUrl(email),
 	};
 }
 

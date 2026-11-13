@@ -123,6 +123,8 @@ export interface AnalyticsQuery {
 export type RunQueryInput = ProjectReference & { query: AnalyticsQuery };
 /** Without a metric, lists the attributes seen on any metric in the project. */
 export type MetricAttributesInput = ProjectReference & { metric?: string };
+/** An attribute field whose recent values are suggested, optionally for one metric. */
+export type AttributeValuesInput = MetricAttributesInput & { field: string };
 
 /** How a stored metric behaves, which decides the calculations it allows. */
 export type MetricBehavior = "gauge" | "counter" | "delta" | "unsupported";

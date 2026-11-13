@@ -60,6 +60,7 @@ export function ExplorerFilterBar({
 			<AttributeFilter
 				attributes={attributes.data}
 				loading={attributes.isFetching}
+				values={{ userId, reference, metric: value.metric }}
 				disabled={disabled || value.filters.length >= MAX_FILTERS}
 				onOpen={() => setWantsAttributes(true)}
 				onAdd={(filter) => {

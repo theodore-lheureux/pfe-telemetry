@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { AnalyticsQuery } from "../../src/analytics/contracts";
 import {
 	listAttributes,
+	listAttributeValues,
 	listMetrics,
 } from "../../src/analytics/discovery.server";
 import { runQuery } from "../../src/analytics/runner.server";
@@ -326,6 +327,40 @@ test("discovery catalogs metrics and attributes as points arrive", async () => {
 	expect(keys).not.toContain("resource:recount.host.boot_id");
 	expect(keys).not.toContain("resource:recount.collection.epoch_id");
 	expect(await listMetrics(fixture.reader, randomUUID())).toEqual([]);
+});
+
+test("attribute value suggestions list a project's recent values, most frequent first", async () => {
+	const project = randomUUID();
+	for (const [at, mode] of [
+		[0n, "user"],
+		[10n, "user"],
+		[20n, "system"],
+	] as const)
+		await counter(project, "node-a", at, 1, { mode });
+	await counter(randomUUID(), "node-b", 0n, 1, { mode: "steal" });
+	const field = 'attributes["cpu.mode"]';
+	const now = from.getTime() + 300_000;
+	expect(
+		await listAttributeValues(
+			fixture.reader,
+			project,
+			field,
+			"recount.node.cpu.time",
+			undefined,
+			now,
+		),
+	).toEqual(["user", "system"]);
+	// Values from more than a day before are not suggested.
+	expect(
+		await listAttributeValues(
+			fixture.reader,
+			project,
+			field,
+			undefined,
+			undefined,
+			now + 2 * 86_400_000,
+		),
+	).toEqual([]);
 });
 
 test("formulas combine measures per group, extra groups fold into Other, and comparisons line up", async () => {

@@ -36,32 +36,35 @@ import {
 	UNIT_LABEL,
 } from "./labels";
 
-const COMPARISONS: { key: string; value?: Comparison; label: () => string }[] =
-	[
-		{ key: "none", label: m.insight_compare_none },
-		{
-			key: "previous",
-			value: { previous: true },
-			label: m.insight_compare_previous,
-		},
-		{
-			key: "1d",
-			value: { amount: 1, unit: "days" },
-			label: m.insight_compare_day,
-		},
-		{
-			key: "1w",
-			value: { amount: 1, unit: "weeks" },
-			label: m.insight_compare_week,
-		},
-		{
-			key: "1mo",
-			value: { amount: 1, unit: "months" },
-			label: m.insight_compare_month,
-		},
-	];
+export const COMPARISONS: {
+	key: string;
+	value?: Comparison;
+	label: () => string;
+}[] = [
+	{ key: "none", label: m.insight_compare_none },
+	{
+		key: "previous",
+		value: { previous: true },
+		label: m.insight_compare_previous,
+	},
+	{
+		key: "1d",
+		value: { amount: 1, unit: "days" },
+		label: m.insight_compare_day,
+	},
+	{
+		key: "1w",
+		value: { amount: 1, unit: "weeks" },
+		label: m.insight_compare_week,
+	},
+	{
+		key: "1mo",
+		value: { amount: 1, unit: "months" },
+		label: m.insight_compare_month,
+	},
+];
 
-function comparisonKey(comparison: Comparison | undefined) {
+export function comparisonKey(comparison: Comparison | undefined) {
 	return (
 		COMPARISONS.find(
 			(option) => JSON.stringify(option.value) === JSON.stringify(comparison),

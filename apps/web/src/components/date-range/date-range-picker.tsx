@@ -24,10 +24,16 @@ export function DateRangePicker({
 	value,
 	disabled,
 	maxDays,
+	none,
 	onChange,
 }: {
 	value: DateRange;
 	disabled: boolean;
+	/**
+	 * A first choice that sets no range, named on the trigger while it is chosen. Its
+	 * `selected` flag means `value` is only where custom ranges start.
+	 */
+	none?: { label: string; selected: boolean; onClear: () => void };
 	/** Hides presets longer than this; custom ranges are checked by the server. */
 	maxDays?: number;
 	onChange: (value: DateRange) => void;
@@ -57,7 +63,7 @@ export function DateRangePicker({
 				!(midnight(from) && (value.kind === "since" || midnight(to))),
 		};
 	};
-	const label = rangeLabel(value, locale, zone);
+	const label = none?.selected ? none.label : rangeLabel(value, locale, zone);
 	return (
 		<Popover
 			open={open}
@@ -92,6 +98,16 @@ export function DateRangePicker({
 						onChoose={choose}
 						onChange={onChange}
 						onCustom={setView}
+						none={
+							none && {
+								label: none.label,
+								selected: none.selected,
+								onSelect: () => {
+									none.onClear();
+									setOpen(false);
+								},
+							}
+						}
 					/>
 				)}
 				{(view === "since" || view === "between") && (

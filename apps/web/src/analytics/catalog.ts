@@ -3,8 +3,16 @@ import { unwrapOperation } from "../lib/operation-result";
 import type { ProjectReference } from "../organizations/contracts";
 import {
 	getAnalyticsCatalog,
+	getAttributeValues,
 	getMetricAttributes,
 } from "./analytics.functions";
+
+/** Where attribute value suggestions come from: a project and, optionally, one metric. */
+export interface ValueSource {
+	userId: string;
+	reference: ProjectReference;
+	metric?: string;
+}
 
 /** The project's discovered metrics and node names. */
 export function useAnalyticsCatalog(
@@ -39,6 +47,34 @@ export function useMetricAttributes(
 				}),
 			),
 		enabled,
+		staleTime: 60_000,
+		retry: false,
+	});
+}
+
+/** Recent values of an attribute field, most frequent first, once a field is chosen. */
+export function useAttributeValues(source: ValueSource, field: string | null) {
+	const { userId, reference, metric } = source;
+	return useQuery({
+		queryKey: [
+			"attribute-values",
+			userId,
+			reference.projectId,
+			metric ?? null,
+			field,
+		],
+		queryFn: async ({ signal }) =>
+			unwrapOperation(
+				await getAttributeValues({
+					data: {
+						...reference,
+						field: field as string,
+						...(metric === undefined ? {} : { metric }),
+					},
+					signal,
+				}),
+			),
+		enabled: field !== null,
 		staleTime: 60_000,
 		retry: false,
 	});
