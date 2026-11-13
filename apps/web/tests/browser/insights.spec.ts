@@ -96,6 +96,33 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 			path: testInfo.outputPath("insights-overview.png"),
 			fullPage: true,
 		});
+		// The overview uses the shared range picker; a new range recomputes everything.
+		await page
+			.getByRole("button", { name: "Time range: Last hour", exact: true })
+			.click();
+		await page
+			.getByRole("option", { name: "Last 24 hours", exact: true })
+			.click();
+		await expect(
+			page.getByRole("button", {
+				name: "Time range: Last 24 hours",
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(page.getByText(/^Computed/).first()).toBeVisible();
+		await expect(
+			page.getByRole("img", { name: "CPU utilization over time" }),
+		).toBeVisible();
+		// Numbers sort largest first, so the busiest node leads.
+		await page
+			.getByRole("table", { name: "Nodes" })
+			.getByRole("button", { name: "CPU utilization", exact: true })
+			.click();
+		await expect(
+			page
+				.getByRole("table", { name: "Nodes" })
+				.getByRole("columnheader", { name: "CPU utilization" }),
+		).toHaveAttribute("aria-sort", "descending");
 		await page
 			.getByRole("button", {
 				name: "Show Memory used in the chart",

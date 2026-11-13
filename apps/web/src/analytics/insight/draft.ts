@@ -10,12 +10,11 @@ import {
 	type Comparison,
 	DEFAULT_SERIES_LIMIT,
 	type Filter,
-	INTERVALS,
 	type Interval,
-	MAX_BUCKETS,
 	MAX_MEASURES,
 	MAX_RANGE_SECONDS,
 } from "../contracts";
+import { effectiveInterval } from "../intervals";
 
 // An insight being edited. It is plain JSON so it can live in the URL and later be
 // saved; `toQuery` turns it into the server's query object when it runs.
@@ -118,35 +117,6 @@ export function removeSeries(draft: InsightDraft, name: string): InsightDraft {
 		series: series.length ? series : [newSeries("A")],
 		formulas: draft.formulas.filter((formula) => !removed(formula)),
 	};
-}
-
-/** The finest interval that keeps a range to roughly 150 buckets and under the limit. */
-export function autoInterval(from: Date, to: Date): Interval {
-	const seconds = (to.getTime() - from.getTime()) / 1000;
-	const intervals = Object.entries(INTERVALS) as [Interval, number][];
-	return (
-		intervals.find(([, step]) => seconds / step <= 150)?.[0] ??
-		intervals.at(-1)?.[0] ??
-		"1d"
-	);
-}
-
-/** The interval a query uses: the chosen one when it fits the range, otherwise automatic. */
-export function effectiveInterval(
-	chosen: Interval | "auto",
-	from: Date,
-	to: Date,
-): Interval {
-	return chosen !== "auto" && intervalFits(chosen, from, to)
-		? chosen
-		: autoInterval(from, to);
-}
-
-/** Whether an interval keeps a range under the bucket limit. */
-export function intervalFits(interval: Interval, from: Date, to: Date) {
-	return (
-		(to.getTime() - from.getTime()) / 1000 / INTERVALS[interval] <= MAX_BUCKETS
-	);
 }
 
 /** The server name of each formula: F1, F2… by position in the draft. */

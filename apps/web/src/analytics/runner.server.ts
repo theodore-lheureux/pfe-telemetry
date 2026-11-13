@@ -38,9 +38,6 @@ const SETTINGS = {
 	max_bytes_before_external_sort: "0",
 	output_format_json_quote_64bit_integers: 1,
 } as const;
-const MAX_CONCURRENT = 2;
-let active = 0;
-
 /** Maps ClickHouse failures to operation errors; limits never yield partial results. */
 function analyticsError(error: unknown, signal?: AbortSignal): never {
 	if (error instanceof OperationError || error instanceof InputError)
@@ -274,8 +271,6 @@ export async function runQuery(
 ): Promise<QueryResult> {
 	if (signal?.aborted)
 		throw new OperationError("CANCELLED", "Analytics request cancelled");
-	if (active >= MAX_CONCURRENT)
-		throw new OperationError("CAPACITY", "Analytics is busy");
 	// An aggregation reads up to the largest groups allowed, never folded into Other.
 	const query = input.aggregate
 		? { ...input, limit: MAX_SERIES, other: false }
@@ -298,7 +293,6 @@ export async function runQuery(
 	];
 	const deadline = AbortSignal.timeout(10_000);
 	const abort = signal ? AbortSignal.any([signal, deadline]) : deadline;
-	active++;
 	try {
 		const definitions = await metricDefinitions(
 			connection,
@@ -375,7 +369,5 @@ export async function runQuery(
 		};
 	} catch (error) {
 		analyticsError(error, signal);
-	} finally {
-		active--;
 	}
 }

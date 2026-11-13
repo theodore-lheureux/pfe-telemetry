@@ -1,33 +1,27 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import type {
-	AnalyticsQuery,
-	Interval,
 	Measure,
+	OverviewSection,
+	QueryRange,
 	QueryResult,
-	RelativeRange,
 } from "./contracts";
-import { INTERVALS, RELATIVE_RANGES } from "./contracts";
-import { listMetrics } from "./discovery.server";
+import { INTERVALS } from "./contracts";
+import { metricDefinitions } from "./discovery.server";
+import { autoInterval } from "./intervals";
 import { runQuery } from "./runner.server";
+import { resolveRange } from "./validation";
 
 // The fixed fleet overview: premade queries over the collector's node metrics, compared
-// with the previous period of the same length. It uses only the semantic runner.
-
-export const OVERVIEW_RANGES = ["1h", "24h", "7d"] as const;
-export type OverviewRange = (typeof OVERVIEW_RANGES)[number];
-const OVERVIEW_INTERVAL: Record<OverviewRange, Interval> = {
-	"1h": "1m",
-	"24h": "15m",
-	"7d": "1h",
-};
+// with the previous period of the same length. Each section is one runner query, so the
+// page shows each as soon as it arrives; the Nodes statistic and table combine them.
 
 const CPU = "recount.node.cpu.time";
 const MEMORY_TOTAL = "recount.node.memory.total";
 const MEMORY_AVAILABLE = "recount.node.memory.available";
 const PROCESSES = "recount.collection.discovered.processes";
 
-export type OverviewStat = "nodes" | "cpu" | "memory" | "processes";
+export type OverviewStat = "nodes" | OverviewSection;
 
 export interface OverviewPoint {
 	bucketMs: number;
@@ -44,33 +38,58 @@ export interface OverviewMetric {
 	previousSeries: OverviewPoint[];
 }
 
+export type NodeValue = "cpu" | "memory" | "memoryTotal" | "processes";
+
 export interface OverviewNode {
 	id: string;
 	/** The enrolled node's hostname; null for telemetry from an unknown source. */
 	hostname: string | null;
-	cpu: number | null;
-	memory: number | null;
-	memoryTotal: number | null;
-	processes: number | null;
+	/** The values of the sections loaded so far. */
+	values: Partial<Record<NodeValue, number | null>>;
 }
 
-export interface Overview {
-	range: OverviewRange;
-	from: Date;
-	to: Date;
+export interface OverviewSectionResult {
+	section: OverviewSection;
 	bucketSeconds: number;
-	metrics: OverviewMetric[];
+	metric: OverviewMetric;
+	/**
+	 * Per node, the buckets in which it sent this section's metric, in this period and
+	 * the previous one (shifted like `previousSeries`).
+	 */
+	reporting: {
+		current: Record<string, number[]>;
+		previous: Record<string, number[]>;
+	};
 	nodes: OverviewNode[];
-	/** False when the project has not sent the node metrics the overview needs. */
-	available: boolean;
 }
 
 type ByNode = Map<string, Map<number, number>>;
+/** Each measure's values by node and bucket, for one period. */
+type Readings = Record<string, ByNode>;
 
-function byNode(result: QueryResult, measure: string): ByNode {
+interface SectionSpec {
+	metrics: string[];
+	measures: Measure[];
+	/** The measure whose samples count a node as reporting. */
+	reportedBy: string;
+	at: (data: Readings, bucket: number) => number | null;
+	/** The whole range's value; the mean of `at` when absent. */
+	summary?: (data: Readings) => number | null;
+	node: (
+		data: Readings,
+		id: string,
+	) => Partial<Record<NodeValue, number | null>>;
+}
+
+function byNode(result: QueryResult, measure: string, comparison: boolean) {
 	const nodes: ByNode = new Map();
 	for (const series of result.series) {
-		if (series.measure !== measure || series.group[0] === null) continue;
+		if (
+			series.measure !== measure ||
+			!!series.comparison !== comparison ||
+			series.group[0] === null
+		)
+			continue;
 		const buckets = new Map<number, number>();
 		for (const point of series.points)
 			if (point.bucketMs !== null && point.value !== null)
@@ -105,6 +124,20 @@ function sumAt(values: ByNode, bucket: number) {
 	return seen ? total : null;
 }
 
+function total(values: Iterable<number>) {
+	let sum = 0,
+		seen = false;
+	for (const value of values) {
+		sum += value;
+		seen = true;
+	}
+	return seen ? sum : null;
+}
+
+function totalOf(values: ByNode) {
+	return total([...values.values()].flatMap((node) => [...node.values()]));
+}
+
 function ratio(numerator: number | null, denominator: number | null) {
 	return numerator !== null && denominator ? numerator / denominator : null;
 }
@@ -112,94 +145,8 @@ function ratio(numerator: number | null, denominator: number | null) {
 function mean(values: (number | null)[]) {
 	const present = values.filter((value): value is number => value !== null);
 	return present.length
-		? present.reduce((total, value) => total + value, 0) / present.length
+		? present.reduce((sum, value) => sum + value, 0) / present.length
 		: null;
-}
-
-interface Period {
-	from: Date;
-	to: Date;
-	buckets: number[];
-	cpuBusy: ByNode;
-	cpuTotal: ByNode;
-	memoryAvailable: ByNode;
-	memoryTotal: ByNode;
-	processes: ByNode;
-}
-
-async function period(
-	projectId: string,
-	query: Omit<AnalyticsQuery, "measures">,
-	measures: Measure[],
-	from: Date,
-	to: Date,
-	seconds: number,
-	signal?: AbortSignal,
-	connection?: ClickHouseClient,
-): Promise<Period> {
-	const result = await runQuery(
-		projectId,
-		{ ...query, measures },
-		signal,
-		connection,
-	);
-	return {
-		from,
-		to,
-		buckets: buckets(from, to, seconds),
-		cpuBusy: byNode(result, "cpuBusy"),
-		cpuTotal: byNode(result, "cpuTotal"),
-		memoryAvailable: byNode(result, "memoryAvailable"),
-		memoryTotal: byNode(result, "memoryTotal"),
-		processes: byNode(result, "processes"),
-	};
-}
-
-function fleetSeries(data: Period, stat: OverviewStat, shiftMs = 0) {
-	return data.buckets.map((bucket) => {
-		let value: number | null;
-		if (stat === "cpu")
-			value = ratio(sumAt(data.cpuBusy, bucket), sumAt(data.cpuTotal, bucket));
-		else if (stat === "memory") {
-			const used = ratio(
-				sumAt(data.memoryAvailable, bucket),
-				sumAt(data.memoryTotal, bucket),
-			);
-			value = used === null ? null : 1 - used;
-		} else if (stat === "processes") value = sumAt(data.processes, bucket);
-		else {
-			// Nodes reporting: any node with a CPU or memory sample in the bucket.
-			const reporting = new Set<string>();
-			for (const values of [data.cpuTotal, data.memoryTotal])
-				for (const [node, points] of values)
-					if (points.has(bucket)) reporting.add(node);
-			value = reporting.size || null;
-		}
-		return { bucketMs: bucket + shiftMs, value };
-	});
-}
-
-function total(values: ByNode) {
-	let sum = 0,
-		seen = false;
-	for (const node of values.values())
-		for (const value of node.values()) {
-			sum += value;
-			seen = true;
-		}
-	return seen ? sum : null;
-}
-
-function summary(data: Period, stat: OverviewStat) {
-	if (stat === "cpu") return ratio(total(data.cpuBusy), total(data.cpuTotal));
-	if (stat === "nodes") {
-		const nodes = new Set([
-			...data.cpuTotal.keys(),
-			...data.memoryTotal.keys(),
-		]);
-		return nodes.size || null;
-	}
-	return mean(fleetSeries(data, stat).map((point) => point.value));
 }
 
 function latest(values: Map<number, number> | undefined) {
@@ -207,29 +154,17 @@ function latest(values: Map<number, number> | undefined) {
 	return values.get(Math.max(...values.keys())) ?? null;
 }
 
-/** Builds the overview for an already authorized project. */
-export async function buildOverview(
-	projectId: string,
-	range: OverviewRange,
-	signal?: AbortSignal,
-	connection: ClickHouseClient = getTelemetryClient(),
-): Promise<Overview> {
-	const interval = OVERVIEW_INTERVAL[range];
-	const seconds = INTERVALS[interval];
-	const length = RELATIVE_RANGES[range as RelativeRange] * 1000;
-	const to = new Date();
-	const from = new Date(to.getTime() - length);
-	const previousFrom = new Date(from.getTime() - length);
-	const known = new Set(
-		(await listMetrics(connection, projectId, signal)).map(
-			(metric) => metric.name,
-		),
-	);
-	const measures: Measure[] = [];
-	if (known.has(CPU))
-		measures.push(
+function used(available: number | null, capacity: number | null) {
+	const free = ratio(available, capacity);
+	return free === null ? null : 1 - free;
+}
+
+const SECTIONS: Record<OverviewSection, SectionSpec> = {
+	cpu: {
+		metrics: [CPU],
+		measures: [
 			{
-				name: "cpuBusy",
+				name: "busy",
 				metric: CPU,
 				calculation: "rate",
 				combine: "sum",
@@ -237,116 +172,142 @@ export async function buildOverview(
 					{ field: 'attributes["cpu.mode"]', op: "neq", values: ["idle"] },
 				],
 			},
-			{ name: "cpuTotal", metric: CPU, calculation: "rate", combine: "sum" },
-		);
-	if (known.has(MEMORY_TOTAL) && known.has(MEMORY_AVAILABLE))
-		measures.push(
+			{ name: "total", metric: CPU, calculation: "rate", combine: "sum" },
+		],
+		reportedBy: "total",
+		at: (data, bucket) =>
+			ratio(sumAt(data.busy, bucket), sumAt(data.total, bucket)),
+		summary: (data) => ratio(totalOf(data.busy), totalOf(data.total)),
+		node: (data, id) => ({
+			cpu: ratio(
+				total(data.busy.get(id)?.values() ?? []),
+				total(data.total.get(id)?.values() ?? []),
+			),
+		}),
+	},
+	memory: {
+		metrics: [MEMORY_TOTAL, MEMORY_AVAILABLE],
+		measures: [
 			{
-				name: "memoryTotal",
+				name: "total",
 				metric: MEMORY_TOTAL,
 				calculation: "avg",
 				combine: "sum",
 			},
 			{
-				name: "memoryAvailable",
+				name: "available",
 				metric: MEMORY_AVAILABLE,
 				calculation: "avg",
 				combine: "sum",
 			},
-		);
-	if (known.has(PROCESSES))
-		measures.push({
-			name: "processes",
-			metric: PROCESSES,
-			calculation: "avg",
-			combine: "sum",
-		});
-	if (!measures.length)
-		return {
-			range,
-			from,
-			to,
-			bucketSeconds: seconds,
-			metrics: [],
-			nodes: [],
-			available: false,
-		};
-	const query = {
-		shape: "timeseries" as const,
-		interval,
-		groupBy: ["node"],
-	};
-	// Sequential: the runner allows two concurrent analyses per process.
-	const current = await period(
-		projectId,
-		{ ...query, range: { from: from.toISOString(), to: to.toISOString() } },
-		measures,
-		from,
-		to,
-		seconds,
-		signal,
-		connection,
+		],
+		reportedBy: "total",
+		at: (data, bucket) =>
+			used(sumAt(data.available, bucket), sumAt(data.total, bucket)),
+		node: (data, id) => {
+			const memoryTotal = latest(data.total.get(id));
+			return {
+				memory: used(latest(data.available.get(id)), memoryTotal),
+				memoryTotal,
+			};
+		},
+	},
+	processes: {
+		metrics: [PROCESSES],
+		measures: [
+			{
+				name: "processes",
+				metric: PROCESSES,
+				calculation: "avg",
+				combine: "sum",
+			},
+		],
+		reportedBy: "processes",
+		at: (data, bucket) => sumAt(data.processes, bucket),
+		node: (data, id) => ({ processes: latest(data.processes.get(id)) }),
+	},
+};
+
+function reporting(values: ByNode) {
+	return Object.fromEntries(
+		[...values].map(([node, points]) => [node, [...points.keys()]]),
 	);
-	const previous = await period(
+}
+
+/**
+ * Builds one overview section for an already authorized project, or null when the
+ * project has not sent the metrics it needs.
+ */
+export async function buildOverviewSection(
+	projectId: string,
+	range: QueryRange,
+	section: OverviewSection,
+	signal?: AbortSignal,
+	connection: ClickHouseClient = getTelemetryClient(),
+): Promise<OverviewSectionResult | null> {
+	const spec = SECTIONS[section];
+	// Any range, at the interval Explore would pick, compared with the period before it.
+	const { from, to } = resolveRange(range);
+	const interval = autoInterval(from, to);
+	const known = await metricDefinitions(
+		connection,
+		projectId,
+		spec.metrics,
+		signal,
+	);
+	if (spec.metrics.some((metric) => !known.has(metric))) return null;
+	const result = await runQuery(
 		projectId,
 		{
-			...query,
-			range: { from: previousFrom.toISOString(), to: from.toISOString() },
+			shape: "timeseries",
+			range: { from: from.toISOString(), to: to.toISOString() },
+			interval,
+			groupBy: ["node"],
+			compare: { previous: true },
+			measures: spec.measures,
 		},
-		measures,
-		previousFrom,
-		from,
-		seconds,
 		signal,
 		connection,
 	);
-	const stats: OverviewStat[] = ["nodes"];
-	if (known.has(CPU)) stats.push("cpu");
-	if (known.has(MEMORY_TOTAL) && known.has(MEMORY_AVAILABLE))
-		stats.push("memory");
-	if (known.has(PROCESSES)) stats.push("processes");
-	const metrics = stats.map((stat) => ({
-		stat,
-		current: summary(current, stat),
-		previous: summary(previous, stat),
-		series: fleetSeries(current, stat),
-		previousSeries: fleetSeries(previous, stat, length),
-	}));
-	const ids = new Set([
-		...current.cpuTotal.keys(),
-		...current.memoryTotal.keys(),
-		...current.processes.keys(),
-	]);
-	const nodes = [...ids].map((id) => {
-		const cpu = ratio(
-			[...(current.cpuBusy.get(id)?.values() ?? [])].reduce((a, b) => a + b, 0),
-			[...(current.cpuTotal.get(id)?.values() ?? [])].reduce(
-				(a, b) => a + b,
-				0,
-			),
+	const period = (comparison: boolean): Readings =>
+		Object.fromEntries(
+			spec.measures.map((measure) => [
+				measure.name,
+				byNode(result, measure.name, comparison),
+			]),
 		);
-		const memoryTotal = latest(current.memoryTotal.get(id));
-		const memoryAvailable = latest(current.memoryAvailable.get(id));
-		return {
+	const current = period(false);
+	const previous = period(true);
+	const list = buckets(from, to, INTERVALS[interval]);
+	const pointsOf = (data: Readings) =>
+		list.map((bucket) => ({ bucketMs: bucket, value: spec.at(data, bucket) }));
+	const summaryOf = (data: Readings, points: OverviewPoint[]) =>
+		spec.summary
+			? spec.summary(data)
+			: mean(points.map((point) => point.value));
+	const series = pointsOf(current);
+	const previousSeries = pointsOf(previous);
+	const ids = new Set(
+		Object.values(current).flatMap((values) => [...values.keys()]),
+	);
+	return {
+		section,
+		bucketSeconds: INTERVALS[interval],
+		metric: {
+			stat: section,
+			current: summaryOf(current, series),
+			previous: summaryOf(previous, previousSeries),
+			series,
+			previousSeries,
+		},
+		reporting: {
+			current: reporting(current[spec.reportedBy]),
+			previous: reporting(previous[spec.reportedBy]),
+		},
+		nodes: [...ids].map((id) => ({
 			id,
 			hostname: null,
-			cpu,
-			memory:
-				memoryTotal && memoryAvailable !== null
-					? 1 - memoryAvailable / memoryTotal
-					: null,
-			memoryTotal,
-			processes: latest(current.processes.get(id)),
-		};
-	});
-	nodes.sort((a, b) => (b.cpu ?? -1) - (a.cpu ?? -1));
-	return {
-		range,
-		from,
-		to,
-		bucketSeconds: seconds,
-		metrics,
-		nodes,
-		available: true,
+			values: spec.node(current, id),
+		})),
 	};
 }

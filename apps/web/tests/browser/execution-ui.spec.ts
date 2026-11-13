@@ -225,60 +225,55 @@ for (const failure of ["unknown-write", "refresh", "refresh-away"] as const) {
 				).executions,
 			).toHaveLength(1);
 			return;
-		} else {
-			await expect(
-				page.getByRole("heading", { name: "Something went wrong" }),
-			).toBeVisible();
-			await expect(page.getByRole("status")).toContainText(
-				"Execution recorded",
-			);
-			expect(
-				data(
-					await requests(owner.headers, (actor) =>
-						executionDomain.listExecutions(
-							workspace.database.db,
-							actor,
-							reference,
-						),
-					),
-				).executions,
-			).toHaveLength(1);
-			await page.unroute("**/_serverFn/**");
-			if (failure === "refresh-away") {
-				await page.getByRole("link", { name: "Go home", exact: true }).click();
-				await expect(page.getByText(/^Execution recorded/)).toHaveCount(0);
-				await openPreferences(page);
-				await page.getByLabel("Language", { exact: true }).selectOption("fr");
-				await expect(
-					page.getByRole("alertdialog", {
-						name: "Change language and reload?",
-					}),
-				).toBeVisible();
-				await page
-					.getByRole("button", { name: "Change language", exact: true })
-					.click();
-				await expect(page.locator("html")).toHaveAttribute("lang", "fr");
-				expect(writes).toBe(1);
-				return;
-			}
-			await page
-				.getByRole("button", { name: "Try again", exact: true })
-				.click();
-			await expect(
-				page.getByRole("link", { name: "Saved capture", exact: true }),
-			).toBeVisible();
-			expect(
-				data(
-					await requests(owner.headers, (actor) =>
-						executionDomain.listExecutions(
-							workspace.database.db,
-							actor,
-							reference,
-						),
-					),
-				).executions,
-			).toHaveLength(1);
 		}
+		await expect(
+			page.getByRole("heading", { name: "Something went wrong" }),
+		).toBeVisible();
+		await expect(page.getByRole("status")).toContainText("Execution recorded");
+		expect(
+			data(
+				await requests(owner.headers, (actor) =>
+					executionDomain.listExecutions(
+						workspace.database.db,
+						actor,
+						reference,
+					),
+				),
+			).executions,
+		).toHaveLength(1);
+		await page.unroute("**/_serverFn/**");
+		if (failure === "refresh-away") {
+			await page.getByRole("link", { name: "Go home", exact: true }).click();
+			await expect(page.getByText(/^Execution recorded/)).toHaveCount(0);
+			await openPreferences(page);
+			await page.getByLabel("Language", { exact: true }).selectOption("fr");
+			await expect(
+				page.getByRole("alertdialog", {
+					name: "Change language and reload?",
+				}),
+			).toBeVisible();
+			await page
+				.getByRole("button", { name: "Change language", exact: true })
+				.click();
+			await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+			expect(writes).toBe(1);
+			return;
+		}
+		await page.getByRole("button", { name: "Try again", exact: true }).click();
+		await expect(
+			page.getByRole("link", { name: "Saved capture", exact: true }),
+		).toBeVisible();
+		expect(
+			data(
+				await requests(owner.headers, (actor) =>
+					executionDomain.listExecutions(
+						workspace.database.db,
+						actor,
+						reference,
+					),
+				),
+			).executions,
+		).toHaveLength(1);
 		expect(writes).toBe(1);
 	});
 }

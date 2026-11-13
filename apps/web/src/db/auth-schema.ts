@@ -185,6 +185,8 @@ export const twoFactor = appSchema.table("two_factor", {
 	lockedUntil: timestamp("locked_until", { withTimezone: true }),
 });
 
+// UNLOGGED (set by migration): counters change on every limited auth request, and a
+// crash that forgets them only resets the current windows.
 export const rateLimit = appSchema.table("rate_limit", {
 	id: text("id").primaryKey(),
 	key: text("key").notNull().unique(),

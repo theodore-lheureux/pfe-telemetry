@@ -22,13 +22,11 @@ import {
 } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import { type Comparison, INTERVALS, type Interval } from "../contracts";
+import { autoInterval, effectiveInterval, intervalFits } from "../intervals";
 import {
-	autoInterval,
 	type DisplayType,
 	type DisplayUnit,
-	effectiveInterval,
 	type InsightDraft,
-	intervalFits,
 	MAX_RANGE_DAYS,
 } from "./draft";
 import {

@@ -4,9 +4,15 @@ import { collectorNode } from "../db/schema";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
-import type { MetricAttributesInput, RunQueryInput } from "./contracts";
+import { withAnalyticsSlot } from "./capacity.server";
+import type {
+	MetricAttributesInput,
+	OverviewSection,
+	QueryRange,
+	RunQueryInput,
+} from "./contracts";
 import { listAttributes, listMetrics } from "./discovery.server";
-import { buildOverview, type OverviewRange } from "./overview.server";
+import { buildOverviewSection } from "./overview.server";
 import { runQuery } from "./runner.server";
 
 type Database = ReturnType<typeof getDatabase>;
@@ -36,7 +42,9 @@ export async function runAnalyticsQuery(
 	run = runQuery,
 ) {
 	await requireProject(database, actor, input);
-	return run(input.projectId, input.query, signal);
+	return withAnalyticsSlot(database, input.organizationId, signal, () =>
+		run(input.projectId, input.query, signal),
+	);
 }
 
 /** The builder's vocabulary: discovered metrics and node display names. */
@@ -48,7 +56,9 @@ export async function analyticsCatalog(
 ) {
 	await requireProject(database, actor, input);
 	const [metrics, nodes] = await Promise.all([
-		listMetrics(getTelemetryClient(), input.projectId, signal),
+		withAnalyticsSlot(database, input.organizationId, signal, () =>
+			listMetrics(getTelemetryClient(), input.projectId, signal),
+		),
 		nodeNames(database, input),
 	]);
 	return { metrics, nodes };
@@ -61,29 +71,33 @@ export async function metricAttributes(
 	signal?: AbortSignal,
 ) {
 	await requireProject(database, actor, input);
-	return listAttributes(
-		getTelemetryClient(),
-		input.projectId,
-		input.metric,
-		signal,
+	return withAnalyticsSlot(database, input.organizationId, signal, () =>
+		listAttributes(getTelemetryClient(), input.projectId, input.metric, signal),
 	);
 }
 
-/** The fixed fleet overview; readers see it for any project they can open. */
-export async function fleetOverview(
+/** One section of the fixed fleet overview; readers see it for any project they can open. */
+export async function overviewSection(
 	database: Database,
 	actor: Actor,
-	input: ProjectReference & { range: OverviewRange },
+	input: ProjectReference & { range: QueryRange; section: OverviewSection },
 	signal?: AbortSignal,
 ) {
 	await requireProject(database, actor, input);
-	const overview = await buildOverview(input.projectId, input.range, signal);
+	const result = await withAnalyticsSlot(
+		database,
+		input.organizationId,
+		signal,
+		() =>
+			buildOverviewSection(input.projectId, input.range, input.section, signal),
+	);
+	if (!result) return null;
 	const names = new Map(
 		(await nodeNames(database, input)).map((node) => [node.id, node.hostname]),
 	);
 	return {
-		...overview,
-		nodes: overview.nodes.map((node) => ({
+		...result,
+		nodes: result.nodes.map((node) => ({
 			...node,
 			hostname: names.get(node.id) ?? null,
 		})),

@@ -1,5 +1,6 @@
 import { and, desc, eq, lt } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
+import { withAnalyticsSlot } from "../analytics/capacity.server";
 import { listSourceNodes } from "../collectors/collectors.server";
 import type { getDatabase } from "../db/client.server";
 import { collectorNode } from "../db/collectors-schema";
@@ -205,15 +206,17 @@ export async function queryExecutionTelemetry(
 			"Select an interval within the recording, at most 24 hours",
 			"INVALID_TIME_RANGE",
 		);
-	return read(
-		{
-			projectId: entry.projectId,
-			sourceId: entry.sourceId,
-			hostId: entry.hostId,
-			from,
-			to,
-			buckets,
-		},
-		signal,
+	return withAnalyticsSlot(database, input.organizationId, signal, () =>
+		read(
+			{
+				projectId: entry.projectId,
+				sourceId: entry.sourceId,
+				hostId: entry.hostId,
+				from,
+				to,
+				buckets,
+			},
+			signal,
+		),
 	);
 }

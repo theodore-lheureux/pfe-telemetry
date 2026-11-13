@@ -120,6 +120,13 @@
       "when": 1794449311950,
       "tag": "0016_saved_insights",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794503826601,
+      "tag": "0017_analytics_slots",
+      "breakpoints": true
     }
   ]
 }

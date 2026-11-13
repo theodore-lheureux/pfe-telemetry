@@ -1,3 +1,4 @@
+import { withAnalyticsSlot } from "../analytics/capacity.server";
 import type { getDatabase } from "../db/client.server";
 import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
@@ -15,7 +16,9 @@ export async function listPoints(
 	read = readPoints,
 ) {
 	await requireProject(database, actor, input);
-	return read(input, signal);
+	return withAnalyticsSlot(database, input.organizationId, signal, () =>
+		read(input, signal),
+	);
 }
 export async function pointDetail(
 	database: Database,
@@ -25,7 +28,9 @@ export async function pointDetail(
 	read = readPoint,
 ) {
 	await requireProject(database, actor, input);
-	return read(input, signal);
+	return withAnalyticsSlot(database, input.organizationId, signal, () =>
+		read(input, signal),
+	);
 }
 export async function authorizeLive(
 	database: Database,

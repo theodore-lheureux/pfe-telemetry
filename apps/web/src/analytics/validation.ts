@@ -25,6 +25,8 @@ import {
 	type Measure,
 	type MetricAttributesInput,
 	type MetricBehavior,
+	OVERVIEW_SECTIONS,
+	type OverviewSection,
 	RELATIVE_RANGES,
 	type RelativeRange,
 	type RunQueryInput,
@@ -349,13 +351,13 @@ export function parseMetricAttributesInput(
 	return { ...parseProjectReference(value), metric: parseMetricName(metric) };
 }
 
-const OVERVIEW_RANGES = ["1h", "24h", "7d"] as const;
 export function parseOverviewInput(value: unknown) {
-	const range = record(value, "request").range;
-	if (!OVERVIEW_RANGES.includes(range as (typeof OVERVIEW_RANGES)[number]))
-		throw new InputError("INVALID_TIME_RANGE", "Invalid overview range");
+	const request = record(value, "request");
+	if (!OVERVIEW_SECTIONS.includes(request.section as OverviewSection))
+		throw new InputError("INVALID_QUERY", "Invalid overview section");
 	return {
 		...parseProjectReference(value),
-		range: range as (typeof OVERVIEW_RANGES)[number],
+		range: parseRange(request.range),
+		section: request.section as OverviewSection,
 	};
 }

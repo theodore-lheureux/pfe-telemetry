@@ -229,17 +229,11 @@ test("a real SELECT-only reader supports concurrent reads but cannot write or in
 		source = randomUUID();
 	await seed(project, source);
 	const expected = await read(scope(project, source));
-	const pending = Promise.all(
+	const results = await Promise.all(
 		Array.from({ length: 2 }, () =>
 			readTelemetry(scope(project, source), undefined, fixture.reader),
 		),
 	);
-	const [results] = await Promise.all([
-		pending,
-		expect(
-			readTelemetry(scope(project, source), undefined, fixture.reader),
-		).rejects.toMatchObject({ code: "CAPACITY" }),
-	]);
 	for (const result of results) expect(result).toEqual(expected);
 	for (const query of [
 		"INSERT INTO metric_points SELECT * FROM metric_points",

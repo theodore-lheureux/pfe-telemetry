@@ -34,6 +34,9 @@ export const DEFAULT_SERIES_LIMIT = 25;
 export const MAX_FORMULAS = 26;
 /** Rows one query may return: measures × groups × buckets, per window. */
 export const MAX_RESULT_POINTS = 200_000;
+/** The overview's independently loaded parts, each one runner query. */
+export const OVERVIEW_SECTIONS = ["cpu", "memory", "processes"] as const;
+export type OverviewSection = (typeof OVERVIEW_SECTIONS)[number];
 export const COMPARE_UNITS = ["hours", "days", "weeks", "months"] as const;
 export type CompareUnit = (typeof COMPARE_UNITS)[number];
 

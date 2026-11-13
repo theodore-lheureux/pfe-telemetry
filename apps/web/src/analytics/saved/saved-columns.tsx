@@ -9,16 +9,13 @@ import {
 	rowSortingFeature,
 	sortFn_datetime,
 	sortFn_text,
-	type Column as TableColumn,
 	tableFeatures,
 } from "@tanstack/react-table";
-import { cn } from "cn";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { PlainHeader, SortableHeader } from "../../components/data-table";
 import { UserAvatar } from "../../components/identity-avatar";
 import { TimeDisplay } from "../../components/time-display";
 import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { hasTag } from "../../lib/tags";
 import type { InsightDraft } from "../insight/draft";
@@ -49,48 +46,6 @@ export interface SavedTableMeta {
 }
 
 type Column = ColumnDef<typeof savedFeatures, SavedRow>;
-
-const HEADER_CLASS =
-	"-ml-2 h-7 px-2 text-xs font-semibold tracking-wide uppercase";
-
-/** A header styled like the sortable ones, for columns that do not sort. */
-function PlainHeader({ label }: { label: string }) {
-	return (
-		<Button
-			asChild
-			variant="ghost"
-			size="sm"
-			className={cn(HEADER_CLASS, "pointer-events-none")}
-		>
-			<span>{label}</span>
-		</Button>
-	);
-}
-
-function SortHeader({
-	label,
-	column,
-}: {
-	label: string;
-	column: TableColumn<typeof savedFeatures, SavedRow>;
-}) {
-	const sorted = column.getIsSorted();
-	const Icon = sorted === "asc" ? ArrowUpIcon : ArrowDownIcon;
-	return (
-		<Button
-			variant="ghost"
-			size="sm"
-			className={HEADER_CLASS}
-			onClick={column.getToggleSortingHandler()}
-		>
-			{label}
-			<Icon
-				aria-hidden="true"
-				className={cn("size-3.5", !sorted && "opacity-0")}
-			/>
-		</Button>
-	);
-}
 
 // Rows show the first few tags; the rest are counted.
 const SHOWN_TAGS = 3;
@@ -151,7 +106,7 @@ export const savedColumns: Column[] = [
 			row.original.insight.name
 				.toLocaleLowerCase()
 				.includes(value.toLocaleLowerCase()),
-		header: ({ column }) => <SortHeader label={m.name()} column={column} />,
+		header: ({ column }) => <SortableHeader label={m.name()} column={column} />,
 		cell: ({ row, table }) => {
 			const Icon = DISPLAY_ICON[row.original.draft.display.type];
 			return (
@@ -198,7 +153,7 @@ export const savedColumns: Column[] = [
 		filterFn: (row, _id, value: string[]) =>
 			value.includes(row.original.insight.createdBy?.id ?? ""),
 		header: ({ column }) => (
-			<SortHeader label={m.saved_created_by()} column={column} />
+			<SortableHeader label={m.saved_created_by()} column={column} />
 		),
 		cell: ({ row, table }) => {
 			const person = row.original.insight.createdBy;
@@ -219,7 +174,7 @@ export const savedColumns: Column[] = [
 		accessorFn: (row) => row.insight.createdAt,
 		sortFn: "datetime",
 		header: ({ column }) => (
-			<SortHeader label={m.saved_created()} column={column} />
+			<SortableHeader label={m.saved_created()} column={column} />
 		),
 		cell: ({ row }) => (
 			<span className="text-muted-foreground">
@@ -233,7 +188,7 @@ export const savedColumns: Column[] = [
 		accessorFn: (row) => row.insight.updatedAt,
 		sortFn: "datetime",
 		header: ({ column }) => (
-			<SortHeader label={m.saved_modified()} column={column} />
+			<SortableHeader label={m.saved_modified()} column={column} />
 		),
 		cell: ({ row }) => (
 			<span className="text-muted-foreground">

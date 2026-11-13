@@ -1,6 +1,7 @@
 import { cn } from "cn";
 import type { ReactNode } from "react";
 import { LoadingBar } from "../components/loading-bar";
+import { Skeleton } from "../components/ui/skeleton";
 import { type ChartPoint, Sparkline } from "./charts";
 
 /**
@@ -20,6 +21,7 @@ export function StatCard({
 	selectLabel,
 	onSelect,
 	loading,
+	pending,
 }: {
 	title: string;
 	value: string;
@@ -34,6 +36,8 @@ export function StatCard({
 	onSelect?: () => void;
 	/** Shows the loading bar while its data reloads. */
 	loading?: boolean;
+	/** No value yet: placeholders stand in for the value, detail and sparkline. */
+	pending?: boolean;
 }) {
 	const body = (
 		<>
@@ -43,15 +47,25 @@ export function StatCard({
 					<span className="truncate text-sm font-medium">{title}</span>
 					{aside}
 				</div>
-				<span className="text-3xl font-semibold tracking-tight tabular-nums">
-					{value}
-				</span>
-				{detail && (
-					<span className="text-xs text-muted-foreground">{detail}</span>
+				{pending ? (
+					<>
+						<Skeleton className="my-1 h-7 w-20" />
+						<Skeleton className="h-3 w-28" />
+					</>
+				) : (
+					<>
+						<span className="text-3xl font-semibold tracking-tight tabular-nums">
+							{value}
+						</span>
+						{detail && (
+							<span className="text-xs text-muted-foreground">{detail}</span>
+						)}
+					</>
 				)}
 			</div>
 			<div className="mt-2 h-12">
-				{hydrated && (
+				{pending && <Skeleton className="mx-4 h-9" />}
+				{hydrated && !pending && (
 					<Sparkline
 						points={points}
 						bucketSeconds={bucketSeconds}

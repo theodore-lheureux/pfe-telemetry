@@ -5,7 +5,9 @@ import type {
 	TableFeatures,
 } from "@tanstack/react-table";
 import { cn } from "cn";
+import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "./ui/button";
 import {
 	Table,
 	TableBody,
@@ -113,5 +115,53 @@ export function DataTable<
 				</TableBody>
 			</Table>
 		</div>
+	);
+}
+
+const HEADER_CLASS =
+	"-ml-2 h-7 px-2 text-xs font-semibold tracking-wide uppercase";
+
+/** A column header that sorts its column, showing the direction when sorted. */
+export function SortableHeader({
+	label,
+	column,
+	className,
+}: {
+	label: string;
+	column: {
+		getIsSorted: () => false | "asc" | "desc";
+		getToggleSortingHandler: () => undefined | ((event: unknown) => void);
+	};
+	className?: string;
+}) {
+	const sorted = column.getIsSorted();
+	const Icon = sorted === "asc" ? ArrowUpIcon : ArrowDownIcon;
+	return (
+		<Button
+			variant="ghost"
+			size="sm"
+			className={cn(HEADER_CLASS, className)}
+			onClick={column.getToggleSortingHandler()}
+		>
+			{label}
+			<Icon
+				aria-hidden="true"
+				className={cn("size-3.5", !sorted && "opacity-0")}
+			/>
+		</Button>
+	);
+}
+
+/** A header styled like the sortable ones, for columns that do not sort. */
+export function PlainHeader({ label }: { label: string }) {
+	return (
+		<Button
+			asChild
+			variant="ghost"
+			size="sm"
+			className={cn(HEADER_CLASS, "pointer-events-none")}
+		>
+			<span>{label}</span>
+		</Button>
 	);
 }

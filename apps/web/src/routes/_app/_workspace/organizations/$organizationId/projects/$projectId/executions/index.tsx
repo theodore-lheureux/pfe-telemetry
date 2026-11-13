@@ -5,14 +5,10 @@ import { settingsSearch } from "@/components/settings-links";
 import { TimeDisplayRange } from "@/components/time-display";
 import { Button } from "@/components/ui/button";
 import {
-	Empty,
-	EmptyContent,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from "@/components/ui/empty";
-import { EmptyState, PageHeading } from "@/components/workspace";
+	EmptyState,
+	IconEmptyState,
+	PageHeading,
+} from "@/components/workspace";
 import { CreateExecutionForm } from "@/executions/create-execution-form";
 import {
 	listExecutionSources,
@@ -60,33 +56,27 @@ function Executions() {
 				<EmptyState title={m.no_executions_recorded_on_this_page()} />
 			)}
 			{empty && !beforeId && (
-				<Empty className="border border-dashed bg-card">
-					<EmptyHeader>
-						<EmptyMedia variant="icon">
-							<ListIcon aria-hidden="true" />
-						</EmptyMedia>
-						<EmptyTitle>
-							<h2>{m.executions_empty_title()}</h2>
-						</EmptyTitle>
-						<EmptyDescription>
-							{project.role === "admin"
-								? m.executions_empty_description()
-								: m.execution_source_required()}
-						</EmptyDescription>
-					</EmptyHeader>
+				<IconEmptyState
+					icon={<ListIcon aria-hidden="true" />}
+					title={m.executions_empty_title()}
+					description={
+						project.role === "admin"
+							? m.executions_empty_description()
+							: m.execution_source_required()
+					}
+					className="bg-card"
+				>
 					{project.role === "admin" && (
-						<EmptyContent>
-							<Button asChild variant="outline">
-								<Link
-									to="/settings"
-									search={settingsSearch("collectors", params)}
-								>
-									{m.settings_manage_credentials()}
-								</Link>
-							</Button>
-						</EmptyContent>
+						<Button asChild variant="outline">
+							<Link
+								to="/settings"
+								search={settingsSearch("collectors", params)}
+							>
+								{m.settings_manage_credentials()}
+							</Link>
+						</Button>
 					)}
-				</Empty>
+				</IconEmptyState>
 			)}
 			{!empty && (
 				<ul className="divide-y rounded-md border bg-card text-card-foreground">

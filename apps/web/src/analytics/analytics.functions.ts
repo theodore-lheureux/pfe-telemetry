@@ -43,12 +43,12 @@ export const getMetricAttributes = createServerFn({ method: "GET" })
 		),
 	);
 
-export const getFleetOverview = createServerFn({ method: "GET" })
+export const getOverviewSection = createServerFn({ method: "GET" })
 	.middleware([privateOperation])
 	.validator(parseOverviewInput)
 	.handler(({ data, context: { identity, database, request } }) =>
 		withActor(identity, (actor) =>
-			analytics.fleetOverview(database, actor, data, request.signal),
+			analytics.overviewSection(database, actor, data, request.signal),
 		),
 	);
 

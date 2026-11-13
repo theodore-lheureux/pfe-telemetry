@@ -57,6 +57,7 @@ export function IconEmptyState({
 	alert,
 	className,
 	children,
+	heading: Heading = "h2",
 }: {
 	icon: ReactNode;
 	title: string;
@@ -66,6 +67,8 @@ export function IconEmptyState({
 	className?: string;
 	/** Actions under the text, such as a link to where items are made. */
 	children?: ReactNode;
+	/** The title's level, so it fits under the section it appears in. */
+	heading?: "h2" | "h3";
 }) {
 	return (
 		<Empty
@@ -78,7 +81,7 @@ export function IconEmptyState({
 			<EmptyHeader>
 				<EmptyMedia variant="icon">{icon}</EmptyMedia>
 				<EmptyTitle>
-					<h2>{title}</h2>
+					<Heading>{title}</Heading>
 				</EmptyTitle>
 				{description && (
 					<EmptyDescription role={alert ? "alert" : undefined}>

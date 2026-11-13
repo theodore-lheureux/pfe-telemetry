@@ -56,16 +56,23 @@ export function formatCompactTime(
 	const day = calendarDay(date, timeZone);
 	const today = calendarDay(now, timeZone);
 	const difference = (day.ordinal - today.ordinal) / 86400000;
+	// The day and the time are formatted apart and joined here: runtimes join a combined
+	// date-time differently ("Jun 20, 12:30 PM" or "Jun 20 at 12:30 PM"), which would
+	// make server-rendered text differ from the browser's.
+	const time = new Intl.DateTimeFormat(locale, {
+		timeZone,
+		hour: "numeric",
+		minute: "2-digit",
+	}).format(date);
 	if (difference === 0 || difference === -1)
-		return `${relativeFormat.format(difference, "day")}, ${new Intl.DateTimeFormat(locale, { timeZone, hour: "numeric", minute: "2-digit" }).format(date)}`;
-	return new Intl.DateTimeFormat(locale, {
+		return `${relativeFormat.format(difference, "day")}, ${time}`;
+	const dayText = new Intl.DateTimeFormat(locale, {
 		timeZone,
 		month: "short",
 		day: "numeric",
 		year: day.year === today.year ? undefined : "numeric",
-		hour: "numeric",
-		minute: "2-digit",
 	}).format(date);
+	return `${dayText}, ${time}`;
 }
 
 export function formatExactTime(

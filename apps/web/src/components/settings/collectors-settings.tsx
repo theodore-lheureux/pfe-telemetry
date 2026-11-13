@@ -57,17 +57,17 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "../ui/dialog";
-import {
-	Empty,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from "../ui/empty";
+import { Empty, EmptyDescription } from "../ui/empty";
 import { Input } from "../ui/input";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "../ui/input-group";
 import { Label } from "../ui/label";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { useMutationOwner } from "../use-mutation-owner";
+import { IconEmptyState } from "../workspace";
 import { SettingsPageHeading } from "./settings-page-heading";
 import { SettingsSection } from "./settings-section";
 
@@ -243,21 +243,19 @@ export function CollectorsSettings({
 				description={m.nodes_description()}
 			>
 				<div className="flex flex-wrap items-center gap-3">
-					<div className="relative w-full sm:max-w-xs">
-						<SearchIcon
-							aria-hidden="true"
-							className="absolute top-2.5 left-3 size-4 text-muted-foreground"
-						/>
-						<Input
+					<InputGroup className="w-full sm:max-w-xs">
+						<InputGroupAddon>
+							<SearchIcon aria-hidden="true" />
+						</InputGroupAddon>
+						<InputGroupInput
 							type="search"
 							value={query}
 							disabled={!hydrated}
 							onChange={(event) => setQuery(event.target.value)}
-							className="pl-9"
 							aria-label={m.nodes_search()}
 							placeholder={m.nodes_search()}
 						/>
-					</div>
+					</InputGroup>
 					<Label htmlFor="node-status" className="sr-only">
 						{m.node_status_filter()}
 					</Label>
@@ -314,17 +312,13 @@ export function CollectorsSettings({
 					)}
 				</div>
 				{nodes.total === 0 && !filtered ? (
-					<Empty className="border border-dashed bg-card">
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<ServerIcon aria-hidden="true" />
-							</EmptyMedia>
-							<EmptyTitle>
-								<h3>{m.nodes_empty_title()}</h3>
-							</EmptyTitle>
-							<EmptyDescription>{m.nodes_empty_description()}</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
+					<IconEmptyState
+						icon={<ServerIcon aria-hidden="true" />}
+						title={m.nodes_empty_title()}
+						description={m.nodes_empty_description()}
+						heading="h3"
+						className="bg-card"
+					/>
 				) : (
 					<NodesTable
 						nodes={nodes.nodes}

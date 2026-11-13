@@ -1,11 +1,10 @@
 import { m } from "@recount/i18n/messages";
-import { ChartNoAxesColumnIcon, RefreshCwIcon } from "lucide-react";
-import { TimeDisplay } from "../../components/time-display";
-import { Button } from "../../components/ui/button";
+import { ChartNoAxesColumnIcon } from "lucide-react";
 import { Skeleton } from "../../components/ui/skeleton";
 import { IconEmptyState } from "../../components/workspace";
 import { type ChartSeries, TimeseriesChart } from "../charts";
 import type { QueryResult, SeriesResult } from "../contracts";
+import { ComputedAt, RefreshButton } from "../refresh-status";
 import { StatCard } from "../stat-card";
 import type { Display } from "./draft";
 import { bucketGrid, offlineBands, onGrid, online } from "./grid";
@@ -69,29 +68,13 @@ export function InsightChart({
 							{title}
 						</h2>
 					)}
-					<span className="flex items-center gap-1">
-						{fetching || !computedAt ? (
-							m.insight_updating()
-						) : (
-							<>
-								{m.insight_computed()}{" "}
-								<TimeDisplay value={computedAt} mode="relative" />
-							</>
-						)}
-					</span>
+					<ComputedAt computedAt={computedAt} fetching={fetching} />
 				</div>
-				<Button
-					variant="ghost"
-					size="sm"
-					disabled={!hydrated || fetching}
-					onClick={onRefresh}
-				>
-					<RefreshCwIcon
-						aria-hidden="true"
-						className={fetching ? "motion-safe:animate-spin" : ""}
-					/>
-					{m.overview_refresh()}
-				</Button>
+				<RefreshButton
+					fetching={fetching}
+					disabled={!hydrated}
+					onRefresh={onRefresh}
+				/>
 			</div>
 			<ChartBody
 				result={result}

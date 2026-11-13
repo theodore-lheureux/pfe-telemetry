@@ -3,6 +3,8 @@ import {
 	ClickHouseLogLevel,
 	createClient,
 } from "@clickhouse/client";
+import * as z from "zod";
+import { httpUrl } from "../lib/env.server";
 import { OperationError } from "../lib/operation-error";
 import type {
 	TelemetryPoint,
@@ -75,28 +77,22 @@ interface Row {
 	bucketNs: string;
 	sample: [string, string | null, number | null, number];
 }
+const settings = z.object({
+	RECOUNT_CLICKHOUSE_URL: httpUrl("RECOUNT_CLICKHOUSE_URL", { root: true }),
+	RECOUNT_CLICKHOUSE_READER_PASSWORD: z.string().min(1),
+});
+
 let client: ClickHouseClient | undefined;
-let active = 0;
 export function getTelemetryClient() {
 	if (client) return client;
-	const url = process.env.RECOUNT_CLICKHOUSE_URL,
-		password = process.env.RECOUNT_CLICKHOUSE_READER_PASSWORD;
-	if (!url || !password)
+	// Analytics is optional: without ClickHouse, its pages report it as unavailable.
+	const parsed = settings.safeParse(process.env);
+	if (!parsed.success)
 		throw new OperationError("UNAVAILABLE", "Analytics is not configured");
-	const parsed = new URL(url);
-	if (
-		!["http:", "https:"].includes(parsed.protocol) ||
-		parsed.username ||
-		parsed.password ||
-		parsed.search ||
-		parsed.hash ||
-		parsed.pathname !== "/"
-	)
-		throw new OperationError("UNAVAILABLE", "Invalid analytics configuration");
 	client = createClient({
-		url,
+		url: parsed.data.RECOUNT_CLICKHOUSE_URL,
 		username: "telemetry_reader",
-		password,
+		password: parsed.data.RECOUNT_CLICKHOUSE_READER_PASSWORD,
 		database: "telemetry",
 		request_timeout: 10000,
 		max_open_connections: 2,
@@ -189,9 +185,7 @@ export async function readTelemetry(
 	const duration = validDuration(scope);
 	if (signal?.aborted)
 		throw new OperationError("CANCELLED", "Analytics request cancelled");
-	if (active >= 2) throw new OperationError("CAPACITY", "Analytics is busy");
 	const bucketMs = Math.max(1, Math.ceil(duration / scope.buckets));
-	active++;
 	try {
 		const result = await (connection ?? getTelemetryClient()).query({
 			query: telemetryQuery,
@@ -250,7 +244,5 @@ export async function readTelemetry(
 		if (["158", "202", "241", "252", "307", "396"].includes(code))
 			throw new OperationError("CAPACITY", "Analytics capacity exceeded");
 		throw new OperationError("UNAVAILABLE", "Analytics is unavailable");
-	} finally {
-		active--;
 	}
 }

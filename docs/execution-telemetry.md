@@ -33,20 +33,22 @@ Nanoseconds use UInt64 and scalar integers use Nullable(Int64) in ClickHouse. Re
 
 Buckets use source timestamps, including late arrivals, without clock correction. Nanosecond encoding does not establish measurement resolution or cross-node synchronization. The charts do not manufacture clock-quality or live-health indicators.
 
-| Boundary                                             | Limit                                |
-| ---------------------------------------------------- | ------------------------------------ |
-| Per web process / reader-user concurrent queries     | 2, no application waiting queue      |
-| Physical point rows / bytes read                     | 100,000 / 256 MiB                    |
-| Query memory / threads / execution / client deadline | 256 MiB / 1 / 6 seconds / 10 seconds |
-| Grouping / spill                                     | 200,000 groups / disabled            |
-| Result rows / result bytes                           | 50,000 / 8 MiB                       |
-| Logical charts / segments / buckets                  | 24 / 256 / 600                       |
+| Boundary                                               | Limit                                |
+| ------------------------------------------------------ | ------------------------------------ |
+| Concurrent reads, all web instances / per organization | 2 / 1, waiting up to 5 seconds       |
+| Physical point rows / bytes read                       | 100,000 / 256 MiB                    |
+| Query memory / threads / execution / client deadline   | 256 MiB / 1 / 6 seconds / 10 seconds |
+| Grouping / spill                                       | 200,000 groups / disabled            |
+| Result rows / result bytes                             | 50,000 / 8 MiB                       |
+| Logical charts / segments / buckets                    | 24 / 256 / 600                       |
 
 These are bounded-query safety controls, not a fleet-capacity promise. Queries project only the supported scalar fields and grouping dimensions, not distribution arrays, lineage or complete payloads. A narrow selector can still exceed a physical read bound; shorten the interval rather than silently dropping points. Eventual visibility does not guarantee complete retained history or recovery from broker expiry or disk loss.
 
 ## Reader configuration and checks
 
 Set `RECOUNT_CLICKHOUSE_URL` to the ClickHouse HTTP origin (for example, `http://clickhouse:8123`) and `RECOUNT_CLICKHOUSE_READER_PASSWORD` to the `telemetry_reader` password. The client selects database `telemetry`. The URL must not contain credentials, a query, a fragment or a non-root path. The web application needs SELECT only and never a PostgreSQL storage role or ClickHouse writer password.
+
+Every ClickHouse read by the web application, from execution charts to Activity, Explore and the Overview, first reserves a slot in the PostgreSQL table `app.analytics_slot`, so the limits hold across web instances. `RECOUNT_ANALYTICS_CONCURRENCY` sets the reads running at once across all instances (default 2) and must not exceed the `telemetry_reader` profile's `max_concurrent_queries_for_user`. `RECOUNT_ANALYTICS_ORGANIZATION_CONCURRENCY` sets the reads one organization may run at once (default 1, at most the total). A read that finds no free slot retries for up to five seconds and then fails with `CAPACITY`; a cancelled request stops waiting. Reservations expire after 60 seconds, which releases those of a stopped instance. The table is `UNLOGGED`: it skips the write-ahead log and replication, and PostgreSQL empties it after a crash.
 
 The disposable reader fixtures use the shared host-built `contract_fixture` executable. Set `RECOUNT_CONTRACT_FIXTURE` to its executable path from Cargo's compiler-artifact JSON. The native Bun suite invokes it with `--ordinary` and `--columns`, loads length-delimited `AnalyticalPoint` Protobuf through the real ClickHouse HTTP client, and keeps replacing merges stopped while checking duplicates:
 
