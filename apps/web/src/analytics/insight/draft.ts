@@ -16,6 +16,7 @@ import {
 	type Interval,
 	MAX_MEASURES,
 	MAX_RANGE_SECONDS,
+	type Spread,
 } from "../contracts";
 import { effectiveInterval } from "../intervals";
 
@@ -56,13 +57,34 @@ export type DisplayType =
 	| "table";
 export type DisplayUnit = "auto" | "percent" | "ratio" | "bytes" | "seconds";
 
+export type LegendPosition = "bottom" | "right";
+export type LineStyle = "straight" | "smooth";
+
 export interface Display {
 	type: DisplayType;
 	unit: DisplayUnit;
 	logScale: boolean;
 	beginAtZero: boolean;
 	goal?: number;
+	/** Labels each point with its value. */
+	showValues?: boolean;
+	/** Lists the series beside the chart, where no table already names them. */
+	legend?: LegendPosition;
+	xLabel?: string;
+	yLabel?: string;
+	/** The Y axis' upper bound; automatic when absent. */
+	yMax?: number;
+	lineStyle?: LineStyle;
+	/** A least-squares line through each series. */
+	trend?: boolean;
+	/** The mean of this many buckets, ending at each one, drawn over each series. */
+	movingAverage?: number;
+	/** A band around each line across the sources it combines. */
+	spread?: Spread;
 }
+
+export const MAX_AXIS_LABEL = 60;
+export const MAX_MOVING_AVERAGE = 100;
 
 export interface InsightDraft {
 	series: DraftSeries[];
@@ -177,6 +199,7 @@ export function toQuery(
 		other: draft.other,
 		...(draft.groupBy && draft.aggregate ? { aggregate: draft.aggregate } : {}),
 		...(draft.compare ? { compare: draft.compare } : {}),
+		...(draft.display.spread && !table ? { spread: draft.display.spread } : {}),
 	};
 }
 

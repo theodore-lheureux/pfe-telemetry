@@ -18,11 +18,15 @@ export function bucketGrid(from: Date, to: Date, seconds: number) {
 
 /** Points on every grid bucket; buckets without a value are null, which charts draw as gaps. */
 export function onGrid(points: ChartPoint[], grid: number[]): ChartPoint[] {
-	const values = new Map(points.map((point) => [point.bucketMs, point.value]));
-	return grid.map((bucketMs) => ({
-		bucketMs,
-		value: values.get(bucketMs) ?? null,
-	}));
+	const byBucket = new Map(points.map((point) => [point.bucketMs, point]));
+	return grid.map((bucketMs) => {
+		const point = byBucket.get(bucketMs);
+		return {
+			bucketMs,
+			value: point?.value ?? null,
+			...(point?.low === undefined ? {} : { low: point.low, high: point.high }),
+		};
+	});
 }
 
 export type Coverage = Record<string, number[]> | null;

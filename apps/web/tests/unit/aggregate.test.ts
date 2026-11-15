@@ -44,6 +44,23 @@ test("groups collapse per measure, window and bucket", () => {
 	]);
 });
 
+test("combined groups band across the groups' values in each bucket", () => {
+	const groups = [10, 20, 30, 40].map((value, index) => ({
+		measure: "F",
+		group: [String(index)],
+		points: [{ bucketMs: 0, value }],
+	}));
+	expect(aggregateGroups(groups, "avg", "range")[0].points).toEqual([
+		{ bucketMs: 0, value: 25, low: 10, high: 40 },
+	]);
+	expect(aggregateGroups(groups, "avg", "middle")[0].points).toEqual([
+		{ bucketMs: 0, value: 25, low: 20, high: 40 },
+	]);
+	expect(aggregateGroups(groups, "avg")[0].points).toEqual([
+		{ bucketMs: 0, value: 25 },
+	]);
+});
+
 test("aggregating groups needs a breakdown and a known operation", () => {
 	const base = {
 		shape: "timeseries",

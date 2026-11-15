@@ -2,7 +2,7 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { InputError } from "../lib/input-error";
 import { OperationError } from "../lib/operation-error";
-import { aggregateGroups } from "./aggregate";
+import { aggregateGroups, PERCENTILE_LEVELS } from "./aggregate";
 import { compileMeasure, type MeasureScope } from "./compile.server";
 import {
 	type AnalyticsQuery,
@@ -66,6 +66,40 @@ interface Window {
 	shiftMs: number;
 }
 
+type Row = Record<string, string | number | null>;
+
+const number = (value: string | number | null | undefined) =>
+	value === null || value === undefined ? null : Number(value);
+
+/** One bucket's value, with its band across sources when the query asks for one. */
+function pointOf(row: Row, query: AnalyticsQuery, window: Window) {
+	return {
+		bucketMs:
+			query.shape === "timeseries"
+				? Number(BigInt(String(row.bucket_ns)) / 1_000_000n) + window.shiftMs
+				: null,
+		value: number(row.series_value),
+		...(query.spread
+			? { low: number(row.series_low), high: number(row.series_high) }
+			: {}),
+	};
+}
+
+/** A percentile across too few sources is just their largest value; count them. */
+function countPercentile(
+	entry: SeriesResult,
+	measure: AnalyticsQuery["measures"][number],
+	row: Row,
+	other: boolean,
+) {
+	const level = PERCENTILE_LEVELS[measure.combine];
+	if (level === undefined || other || row.series_sources === null) return;
+	entry.percentile = {
+		level,
+		values: Math.max(entry.percentile?.values ?? 0, Number(row.series_sources)),
+	};
+}
+
 /** Every measure's series for one window. */
 async function readWindow(
 	query: AnalyticsQuery,
@@ -126,13 +160,8 @@ async function readWindow(
 			};
 			groups.set(key, entry);
 		}
-		entry.points.push({
-			bucketMs:
-				query.shape === "timeseries"
-					? Number(BigInt(String(row.bucket_ns)) / 1_000_000n) + window.shiftMs
-					: null,
-			value: row.series_value === null ? null : Number(row.series_value),
-		});
+		countPercentile(entry, measure, row, other);
+		entry.points.push(pointOf(row, query, window));
 	}
 	// Rows arrive unordered: series follow the query's measures, then rank.
 	const series = [...groups.values()]
@@ -365,7 +394,9 @@ export async function runQuery(
 			groupBy: query.groupBy ?? [],
 			measures,
 			formulas: query.formulas ?? [],
-			series: query.aggregate ? aggregateGroups(all, query.aggregate) : all,
+			series: query.aggregate
+				? aggregateGroups(all, query.aggregate, query.spread)
+				: all,
 			...(query.aggregate ? { aggregate: query.aggregate } : {}),
 			limited,
 			compared,

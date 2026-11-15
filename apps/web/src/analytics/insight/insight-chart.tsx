@@ -10,6 +10,7 @@ import { StatCard } from "../stat-card";
 import type { Display } from "./draft";
 import { bucketGrid, offlineBands, onGrid, online } from "./grid";
 import { type FormulaNames, plottedTitle } from "./labels";
+import { PercentileWarning } from "./percentile-warning";
 import {
 	CHART_SERIES,
 	identity,
@@ -86,6 +87,7 @@ export function InsightChart({
 				onZoom={onZoom}
 				highlight={highlight}
 			/>
+			<PercentileWarning result={result} />
 			{view.current.length > CHART_SERIES && display.type !== "table" && (
 				<p className="text-xs text-muted-foreground">
 					{m.insight_chart_limited()}
@@ -137,7 +139,14 @@ export function ChartBody({
 			series.points.flatMap((point) =>
 				point.bucketMs === null
 					? []
-					: [{ bucketMs: point.bucketMs, value: point.value }],
+					: [
+							{
+								bucketMs: point.bucketMs,
+								value: point.value,
+								low: point.low,
+								high: point.high,
+							},
+						],
 			),
 			grid,
 		);
@@ -194,8 +203,16 @@ export function ChartBody({
 			height={height}
 			className={height}
 			onZoom={onZoom && ((from, to) => onZoom(new Date(from), new Date(to)))}
-			// The results table names every line, and the tooltip names them on hover.
-			legend={false}
+			// Off unless chosen: the results table and the tooltip already name the lines.
+			legend={display.legend !== undefined}
+			legendPosition={display.legend}
+			showValues={display.showValues}
+			xLabel={display.xLabel}
+			yLabel={display.yLabel}
+			yMax={display.yMax}
+			smooth={display.lineStyle === "smooth"}
+			trend={display.trend}
+			movingAverage={display.movingAverage}
 			highlight={
 				chartSeries.find((_, index) => lineId(charting[index]) === highlight)
 					?.key ?? null

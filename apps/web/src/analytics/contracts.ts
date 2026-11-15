@@ -4,6 +4,7 @@ import type { ProjectReference } from "../organizations/contracts";
 // saved analyses and execution pages produce it; only the server compiles it to SQL.
 
 export const INTERVALS = {
+	"2s": 2,
 	"10s": 10,
 	"1m": 60,
 	"5m": 300,
@@ -37,6 +38,12 @@ export const MAX_RESULT_POINTS = 200_000;
 /** The overview's independently loaded parts, each one runner query. */
 export const OVERVIEW_SECTIONS = ["cpu", "memory", "processes"] as const;
 export type OverviewSection = (typeof OVERVIEW_SECTIONS)[number];
+/**
+ * A band around each line from the sources it combines: their full range, or the
+ * middle half (25th to 75th percentile), which ignores single outliers.
+ */
+export const SPREADS = ["range", "middle"] as const;
+export type Spread = (typeof SPREADS)[number];
 export const COMPARE_UNITS = ["hours", "days", "weeks", "months"] as const;
 export type CompareUnit = (typeof COMPARE_UNITS)[number];
 
@@ -118,6 +125,8 @@ export interface AnalyticsQuery {
 	 * run, such as the 99th percentile of CPU usage across nodes. Requires `groupBy`.
 	 */
 	aggregate?: Combine;
+	/** Returns each bucket's band across the sources a measure combines. */
+	spread?: Spread;
 }
 
 export type RunQueryInput = ProjectReference & { query: AnalyticsQuery };
@@ -156,8 +165,19 @@ export interface SeriesResult {
 	other?: boolean;
 	/** The comparison window, with buckets shifted to line up with the current ones. */
 	comparison?: boolean;
+	/**
+	 * For a percentile across sources or groups: its level, and the most values any
+	 * bucket's percentile was taken over, which tells whether it can differ from the max.
+	 */
+	percentile?: { level: number; values: number };
 	/** Bucket start in milliseconds since the epoch, or null for table results. */
-	points: { bucketMs: number | null; value: number | null }[];
+	/** `low` and `high` bound the sources' values when the query asks for a spread. */
+	points: {
+		bucketMs: number | null;
+		value: number | null;
+		low?: number | null;
+		high?: number | null;
+	}[];
 }
 
 export interface QueryResult {

@@ -169,6 +169,9 @@ export function parseSerializedRange(value: unknown): DateRange | null {
 
 /** Relative choices listed above the calendar presets, in menu order. */
 export const LAST_PRESETS: { count: number; unit: RangeUnit }[] = [
+	{ count: 5, unit: "minutes" },
+	{ count: 15, unit: "minutes" },
+	{ count: 30, unit: "minutes" },
 	{ count: 1, unit: "hours" },
 	{ count: 24, unit: "hours" },
 	{ count: 7, unit: "days" },

@@ -31,6 +31,8 @@ import {
 	RELATIVE_RANGES,
 	type RelativeRange,
 	type RunQueryInput,
+	SPREADS,
+	type Spread,
 } from "./contracts";
 import { parseAttributeField } from "./fields";
 import { FormulaError, parseFormula } from "./formula";
@@ -284,12 +286,22 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		groupBy: groupBy as string[],
 		...(input.limit === undefined ? {} : { limit: input.limit as number }),
 		...(input.other ? { other: true } : {}),
+		...comparisonOptions(input),
+	};
+}
+
+/** The comparison window, collapsed groups and band a query asks for, if any. */
+function comparisonOptions(input: Record<string, unknown>) {
+	if (input.spread !== undefined && !SPREADS.includes(input.spread as Spread))
+		throw new InputError("INVALID_QUERY", "Invalid spread");
+	return {
 		...(input.compare === undefined
 			? {}
 			: { compare: parseComparison(input.compare) }),
 		...(input.aggregate === undefined
 			? {}
 			: { aggregate: input.aggregate as Combine }),
+		...(input.spread === undefined ? {} : { spread: input.spread as Spread }),
 	};
 }
 

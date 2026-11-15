@@ -165,8 +165,57 @@ test("sources combine by count and by exact percentiles", async () => {
 	expect(count.measures[0].unit).toBe("1");
 	// Percentiles are exact values from the sources, not interpolated.
 	expect((await total("p50")).series[0].points[0].value).toBe(30);
-	expect((await total("p95")).series[0].points[0].value).toBe(100);
+	const p95 = await total("p95");
+	expect(p95.series[0].points[0].value).toBe(100);
+	// It reports how few sources it was taken over, so the page can warn about it.
+	expect(p95.series[0].percentile).toEqual({ level: 0.95, values: 4 });
+	expect((await total("avg")).series[0].percentile).toBeUndefined();
 	expect((await total("min")).series[0].points[0].value).toBe(10);
+});
+
+test("a spread bounds each value by the sources it combines", async () => {
+	const project = randomUUID();
+	for (const [node, value] of [
+		["node-a", 10],
+		["node-b", 20],
+		["node-c", 30],
+		["node-d", 100],
+	] as const)
+		await gauge(project, node, 0n, value);
+	const band = async (spread: "range" | "middle") =>
+		(
+			await run(project, {
+				shape: "table",
+				range,
+				measures: [
+					{
+						name: "memory",
+						metric: "recount.node.memory.total",
+						calculation: "avg",
+						combine: "avg",
+					},
+				],
+				spread,
+			})
+		).series[0].points[0];
+	expect(await band("range")).toMatchObject({ value: 40, low: 10, high: 100 });
+	// The middle half uses exact percentiles of the sources, like the combines do.
+	expect(await band("middle")).toMatchObject({ low: 20, high: 100 });
+	// A sum is larger than each source, so no band is drawn around it.
+	const summed = await run(project, {
+		shape: "table",
+		range,
+		measures: [
+			{
+				name: "memory",
+				metric: "recount.node.memory.total",
+				calculation: "avg",
+				combine: "sum",
+			},
+		],
+		spread: "range",
+	});
+	expect(summed.series[0].points[0]).toMatchObject({ low: null, high: null });
 });
 
 test("a breakdown collapses into one line after formulas run", async () => {
@@ -195,11 +244,33 @@ test("a breakdown collapses into one line after formulas run", async () => {
 	});
 	expect(result.aggregate).toBe("p50");
 	// The formula runs per node (20, 40, 60, 200), then the median is taken across nodes.
+	// It also reports that the median was taken over the four nodes.
 	expect(result.series.find((series) => series.measure === "F1")).toEqual({
 		measure: "F1",
 		group: [],
+		percentile: { level: 0.5, values: 4 },
 		points: [{ bucketMs: null, value: 60 }],
 	});
+	// A range then spans the nodes' formula values, even though A adds its sources up.
+	const banded = await run(project, {
+		shape: "table",
+		range,
+		measures: [
+			{
+				name: "A",
+				metric: "recount.node.memory.total",
+				calculation: "avg",
+				combine: "sum",
+			},
+		],
+		formulas: [{ name: "F1", expression: "A * 2" }],
+		groupBy: ["node"],
+		aggregate: "avg",
+		spread: "range",
+	});
+	expect(
+		banded.series.find((series) => series.measure === "F1")?.points,
+	).toEqual([{ bucketMs: null, value: 80, low: 20, high: 200 }]);
 });
 
 test("counters use positive differences within continuity segments", async () => {

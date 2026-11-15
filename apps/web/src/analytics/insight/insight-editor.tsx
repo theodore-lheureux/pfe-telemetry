@@ -1,9 +1,10 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
+import { useDebouncedValue } from "@tanstack/react-pacer";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useHydrated } from "@tanstack/react-router";
 import { LineChartIcon, TriangleAlertIcon } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { LoadingBar } from "../../components/loading-bar";
 import { useDisplayTimeZone } from "../../components/time-display";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -57,17 +58,14 @@ export function InsightEditor({
 		[nodes],
 	);
 	const [hovered, setHovered] = useState<string | null>(null);
-	const [applied, setApplied] = useState(draft),
-		// Relative ranges resolve when a query is applied or refreshed, not on every render.
-		[now, setNow] = useState(() => new Date());
-	useEffect(() => {
-		if (draft === applied) return;
-		const timer = setTimeout(() => {
-			setApplied(draft);
-			setNow(new Date());
-		}, APPLY_DELAY_MS);
-		return () => clearTimeout(timer);
-	}, [draft, applied]);
+	const [applied] = useDebouncedValue(draft, { wait: APPLY_DELAY_MS });
+	// Relative ranges resolve when a query is applied or refreshed, not on every render.
+	const [now, setNow] = useState(() => new Date());
+	const [resolved, setResolved] = useState(applied);
+	if (resolved !== applied) {
+		setResolved(applied);
+		setNow(new Date());
+	}
 	const query = useMemo(
 		() => toQuery(applied, now, zone, locale),
 		[applied, now, zone, locale],

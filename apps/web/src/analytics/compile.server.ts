@@ -21,6 +21,16 @@ const COMBINE_SQL: Record<Combine, string> = {
 	p95: "quantileExact(0.95)(value)",
 	p99: "quantileExact(0.99)(value)",
 };
+// A bucket's band across the sources it combines, when the query asks for one. The
+// column is qualified, since `value` alone names the combined value in that SELECT.
+const SPREAD_SQL = {
+	range: ["min(per_series.value)", "max(per_series.value)"],
+	middle: [
+		"quantileExact(0.25)(per_series.value)",
+		"quantileExact(0.75)(per_series.value)",
+	],
+};
+
 // "Other" folds groups that were each combined already, so their source counts add up.
 const OTHER_SQL: Record<Combine, string> = {
 	...COMBINE_SQL,
@@ -183,14 +193,22 @@ function measureSelect(
 			? "intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64}"
 			: "toUInt64(0)";
 	const groups = groupColumns.join(", ");
+	// A sum or count is larger than each source, so their band would not surround it.
+	const banded =
+		query.spread && measure.combine !== "sum" && measure.combine !== "count";
+	const [low, high] =
+		banded && query.spread ? SPREAD_SQL[query.spread] : ["NULL", "NULL"];
 	const partition = groups ? `PARTITION BY ${groups}` : "";
 	// Groups past the limit fold into one "Other" row per bucket, combined the same way.
 	const selection =
 		groups && query.other
 			? `SELECT ${groupColumns.map((column) => `if(rank <= {seriesLimit:UInt32}, ${column}, NULL) AS k_${column}`).join(", ")},
-  rank > {seriesLimit:UInt32} AS other, toString(bucket) AS bucket_ns, ${OTHER_SQL[measure.combine]} AS series_value, min(rank) AS series_rank
+  rank > {seriesLimit:UInt32} AS other, toString(bucket) AS bucket_ns, ${OTHER_SQL[measure.combine]} AS series_value, min(rank) AS series_rank,
+  if(other, NULL, any(low)) AS series_low, if(other, NULL, any(high)) AS series_high,
+  if(other, NULL, any(sources)) AS series_sources
 FROM ranked GROUP BY ${groupColumns.map((column) => `k_${column}`).join(", ")}, other, bucket_ns`
-			: `SELECT ${groupColumns.map((column) => `${column} AS k_${column}`).join(", ")}${groups ? ", " : ""}0 AS other, toString(bucket) AS bucket_ns, value AS series_value, rank AS series_rank
+			: `SELECT ${groupColumns.map((column) => `${column} AS k_${column}`).join(", ")}${groups ? ", " : ""}0 AS other, toString(bucket) AS bucket_ns, value AS series_value, rank AS series_rank,
+  low AS series_low, high AS series_high, sources AS series_sources
 FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
 	return `WITH base AS (
   SELECT series_id AS series, stream_id AS stream,
@@ -204,7 +222,8 @@ FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
 ),
 ${perSeries(measure, scope.behavior, groups, query.shape === "timeseries")},
 combined AS (
-  SELECT ${groups ? `${groups}, ` : ""}bucket, ${COMBINE_SQL[measure.combine]} AS value
+  SELECT ${groups ? `${groups}, ` : ""}bucket, ${COMBINE_SQL[measure.combine]} AS value,
+    ${low} AS low, ${high} AS high, count(per_series.value) AS sources
   FROM per_series GROUP BY ${groups ? `${groups}, ` : ""}bucket
 ),
 ranked AS (

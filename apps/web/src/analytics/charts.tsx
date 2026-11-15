@@ -1,3 +1,4 @@
+import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useId, useMemo, useState } from "react";
 import {
@@ -5,6 +6,7 @@ import {
 	Bar,
 	CartesianGrid,
 	ComposedChart,
+	LabelList,
 	Line,
 	ReferenceArea,
 	ReferenceLine,
@@ -15,10 +17,14 @@ import {
 import { useDisplayTimeZone } from "../components/time-display";
 import { type ChartConfig, ChartContainer } from "../components/ui/chart";
 import { cn } from "../lib/utils";
+import { movingAveragePoints, trendPoints } from "./chart-overlays";
 
 export interface ChartPoint {
 	bucketMs: number;
 	value: number | null;
+	/** The band around the value across the sources it combines. */
+	low?: number | null;
+	high?: number | null;
 }
 
 export interface ChartSeries {
@@ -29,9 +35,12 @@ export interface ChartSeries {
 	points: ChartPoint[];
 	/** A comparison line, such as the previous period: lighter and dashed. */
 	comparison?: boolean;
+	/** A trend or moving average drawn over another series: thin, dotted, unlisted. */
+	overlay?: boolean;
 }
 
 const TAIL = "~tail";
+const BAND = "~band";
 
 /**
  * Splits each current series into a solid part and a dashed tail for a bucket that is
@@ -43,11 +52,24 @@ function chartRows(series: ChartSeries[], bucketMs: number, now: number) {
 		const points = entry.points.filter((point) => point.value !== null);
 		const last = points.at(-1);
 		const partial =
-			!entry.comparison && last !== undefined && last.bucketMs + bucketMs > now;
+			!entry.comparison &&
+			!entry.overlay &&
+			last !== undefined &&
+			last.bucketMs + bucketMs > now;
 		for (const point of entry.points) {
-			const row = rows.get(point.bucketMs) ?? { bucketMs: point.bucketMs };
+			const row: Record<string, unknown> = rows.get(point.bucketMs) ?? {
+				bucketMs: point.bucketMs,
+			};
 			row[entry.key] = partial && point === last ? null : (point.value ?? null);
-			rows.set(point.bucketMs, row);
+			// A range area reads its lower and upper bound from one pair.
+			if (
+				point.low !== undefined &&
+				point.low !== null &&
+				point.high !== null &&
+				point.high !== undefined
+			)
+				row[`${entry.key}${BAND}`] = [point.low, point.high];
+			rows.set(point.bucketMs, row as Record<string, number | null>);
 		}
 		if (partial && last) {
 			const previous = points.at(-2);
@@ -94,6 +116,9 @@ function TooltipCard({
 			</p>
 			{series.map((entry) => {
 				const value = row[entry.key] ?? row[`${entry.key}${TAIL}`] ?? null;
+				const band = (row as Record<string, unknown>)[`${entry.key}${BAND}`] as
+					| [number, number]
+					| undefined;
 				return (
 					<div
 						key={entry.key}
@@ -115,7 +140,14 @@ function TooltipCard({
 								{gapLabel?.(entry.key, label) ?? "—"}
 							</span>
 						) : (
-							<span className="font-mono tabular-nums">{format(value)}</span>
+							<span className="font-mono tabular-nums">
+								{format(value)}
+								{band && (
+									<span className="ml-1.5 text-muted-foreground">
+										{format(band[0])}–{format(band[1])}
+									</span>
+								)}
+							</span>
 						)}
 					</div>
 				);
@@ -142,6 +174,14 @@ export function TimeseriesChart({
 	gapLabel,
 	onZoom,
 	legend = true,
+	legendPosition = "bottom",
+	showValues = false,
+	xLabel,
+	yLabel,
+	yMax,
+	smooth = false,
+	trend = false,
+	movingAverage,
 	highlight = null,
 	height = "h-72",
 }: {
@@ -165,8 +205,21 @@ export function TimeseriesChart({
 	gapLabel?: (key: string, bucketMs: number) => string | null;
 	/** Dragging across the chart selects a span, from the first bucket's start to the last one's end. */
 	onZoom?: (from: number, to: number) => void;
-	/** Lists the series under the chart; off when a table beside it already names them. */
+	/** Lists the series beside the chart; off when a table already names them. */
 	legend?: boolean;
+	legendPosition?: "bottom" | "right";
+	/** Labels each point with its value. */
+	showValues?: boolean;
+	xLabel?: string;
+	yLabel?: string;
+	/** The Y axis' upper bound; automatic when absent. */
+	yMax?: number;
+	/** Curves between points instead of straight segments. */
+	smooth?: boolean;
+	/** Draws a least-squares line over each series. */
+	trend?: boolean;
+	/** Draws the mean of this many trailing buckets over each series. */
+	movingAverage?: number;
 	/** A series key to emphasize; the others fade. */
 	highlight?: string | null;
 	/** The plot's height class; `h-full` fills a sized parent. */
@@ -195,11 +248,54 @@ export function TimeseriesChart({
 	};
 	const locale = getLocale();
 	const now = Date.now();
-	const rows = useMemo(
-		() => chartRows(series, bucketSeconds * 1000, now),
-		[series, bucketSeconds, now],
-	);
 	const current = series.filter((entry) => !entry.comparison);
+	// Overlays leave out a bucket still filling, whose partial value would skew them.
+	const overlays = useMemo(() => {
+		const settled = (points: ChartPoint[]) => {
+			const last = points.at(-1);
+			return last && last.bucketMs + bucketSeconds * 1000 > now
+				? points.slice(0, -1)
+				: points;
+		};
+		return series
+			.filter((entry) => !entry.comparison)
+			.flatMap((entry): ChartSeries[] => [
+				...(trend
+					? [
+							{
+								key: `${entry.key}~trend`,
+								label: m.chart_trend({ series: entry.label }),
+								color: entry.color,
+								points: trendPoints(settled(entry.points)),
+								overlay: true,
+							},
+						]
+					: []),
+				...(movingAverage && movingAverage > 1
+					? [
+							{
+								key: `${entry.key}~average`,
+								label: m.chart_moving_average({
+									series: entry.label,
+									count: movingAverage,
+								}),
+								color: entry.color,
+								points: movingAveragePoints(
+									settled(entry.points),
+									movingAverage,
+								),
+								overlay: true,
+							},
+						]
+					: []),
+			]);
+	}, [series, trend, movingAverage, bucketSeconds, now]);
+	const drawn = useMemo(() => [...series, ...overlays], [series, overlays]);
+	const rows = useMemo(
+		() => chartRows(drawn, bucketSeconds * 1000, now),
+		[drawn, bucketSeconds, now],
+	);
+	const curve = smooth ? "monotone" : "linear";
 	// A single current series gets a soft area; several stay lines so fills never overlap.
 	const filled = type === "area" || (type === "auto" && current.length === 1);
 	const bars = type === "bar" || type === "stacked";
@@ -214,19 +310,47 @@ export function TimeseriesChart({
 			: { hour: "2-digit", minute: "2-digit" }),
 	});
 	const config = Object.fromEntries(
-		series.map((entry) => [
+		drawn.map((entry) => [
 			entry.key,
 			{ label: entry.label, color: entry.color },
 		]),
 	) satisfies ChartConfig;
 	// One mark per series: comparisons are dashed lines, the rest follow the chart type.
+	const values = (entry: ChartSeries) =>
+		showValues && (
+			<LabelList
+				dataKey={entry.key}
+				position="top"
+				fontSize={10}
+				fill="var(--muted-foreground)"
+				formatter={(value: unknown) =>
+					typeof value === "number" ? format(value) : ""
+				}
+			/>
+		);
 	const mark = (entry: ChartSeries) => {
+		if (entry.overlay)
+			return (
+				<Line
+					key={entry.key}
+					dataKey={entry.key}
+					type={curve}
+					stroke={entry.color}
+					strokeOpacity={0.8 * emphasis(entry.key.split("~")[0] ?? "")}
+					strokeWidth={1.5}
+					strokeDasharray="2 3"
+					dot={false}
+					activeDot={false}
+					legendType="none"
+					isAnimationActive={false}
+				/>
+			);
 		if (entry.comparison)
 			return (
 				<Line
 					key={entry.key}
 					dataKey={entry.key}
-					type="linear"
+					type={curve}
 					stroke={entry.color}
 					strokeOpacity={0.45 * emphasis(entry.key)}
 					strokeWidth={2}
@@ -245,14 +369,16 @@ export function TimeseriesChart({
 					stackId={type === "stacked" ? "stack" : undefined}
 					radius={type === "stacked" ? 0 : [3, 3, 0, 0]}
 					isAnimationActive={false}
-				/>
+				>
+					{values(entry)}
+				</Bar>
 			);
 		if (filled)
 			return (
 				<Area
 					key={entry.key}
 					dataKey={entry.key}
-					type="linear"
+					type={curve}
 					stroke={entry.color}
 					strokeOpacity={emphasis(entry.key)}
 					strokeWidth={2}
@@ -261,28 +387,40 @@ export function TimeseriesChart({
 					dot={false}
 					activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
 					isAnimationActive={false}
-				/>
+				>
+					{values(entry)}
+				</Area>
 			);
 		return (
 			<Line
 				key={entry.key}
 				dataKey={entry.key}
-				type="linear"
+				type={curve}
 				stroke={entry.color}
 				strokeOpacity={emphasis(entry.key)}
 				strokeWidth={2}
 				dot={false}
 				activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
 				isAnimationActive={false}
-			/>
+			>
+				{values(entry)}
+			</Line>
 		);
 	};
 	return (
-		<div className={cn("flex flex-col gap-3", className)}>
+		<div
+			className={cn(
+				"flex gap-3",
+				legend && legendPosition === "right" ? "flex-row" : "flex-col",
+				className,
+			)}
+		>
 			<ChartContainer
 				config={config}
 				className={cn(
-					"aspect-auto w-full",
+					"aspect-auto w-full min-w-0",
+					// Beside a legend on the right it shares the row; stacked, it keeps its height.
+					legend && legendPosition === "right" && "flex-1",
 					height,
 					onZoom && "cursor-crosshair select-none",
 				)}
@@ -291,7 +429,12 @@ export function TimeseriesChart({
 			>
 				<ComposedChart
 					data={rows}
-					margin={{ left: 4, right: 12, top: 8, bottom: 0 }}
+					margin={{
+						left: yLabel ? 16 : 4,
+						right: 12,
+						top: showValues ? 18 : 8,
+						bottom: xLabel ? 16 : 0,
+					}}
 					onMouseDown={(state) => {
 						const at = bucketAt(state);
 						if (onZoom && at !== null) setSelection({ start: at, end: at });
@@ -361,6 +504,17 @@ export function TimeseriesChart({
 						tickMargin={8}
 						minTickGap={56}
 						tickFormatter={(value: number) => time.format(value)}
+						label={
+							xLabel
+								? {
+										value: xLabel,
+										position: "insideBottom",
+										offset: -12,
+										fontSize: 11,
+										fill: "var(--muted-foreground)",
+									}
+								: undefined
+						}
 					/>
 					<YAxis
 						tickLine={false}
@@ -370,9 +524,25 @@ export function TimeseriesChart({
 						width="auto"
 						// A log axis cannot start at zero; non-positive values fall outside it.
 						scale={logScale ? "log" : "auto"}
-						domain={logScale || !beginAtZero ? ["auto", "auto"] : [0, "auto"]}
-						allowDataOverflow={logScale}
+						domain={[
+							logScale || !beginAtZero ? "auto" : 0,
+							yMax !== undefined && Number.isFinite(yMax) ? yMax : "auto",
+						]}
+						allowDataOverflow={logScale || yMax !== undefined}
 						tickFormatter={(value: number) => format(value)}
+						label={
+							yLabel
+								? {
+										value: yLabel,
+										angle: -90,
+										position: "insideLeft",
+										offset: -8,
+										fontSize: 11,
+										fill: "var(--muted-foreground)",
+										style: { textAnchor: "middle" },
+									}
+								: undefined
+						}
 					/>
 					{goal !== undefined && Number.isFinite(goal) && (
 						<ReferenceLine
@@ -387,19 +557,37 @@ export function TimeseriesChart({
 						content={(props) => (
 							<TooltipCard
 								{...props}
-								series={series}
+								series={drawn}
 								format={format}
 								gapLabel={gapLabel}
 								timeZone={timeZone}
 							/>
 						)}
 					/>
-					{series.map(mark)}
+					{current
+						.filter((entry) =>
+							entry.points.some((point) => point.low !== undefined),
+						)
+						.map((entry) => (
+							<Area
+								key={`${entry.key}${BAND}`}
+								dataKey={`${entry.key}${BAND}`}
+								type={curve}
+								stroke="none"
+								fill={entry.color}
+								fillOpacity={0.15 * emphasis(entry.key)}
+								dot={false}
+								activeDot={false}
+								legendType="none"
+								isAnimationActive={false}
+							/>
+						))}
+					{drawn.map(mark)}
 					{(bars ? [] : current).map((entry) => (
 						<Line
 							key={`${entry.key}${TAIL}`}
 							dataKey={`${entry.key}${TAIL}`}
-							type="linear"
+							type={curve}
 							stroke={entry.color}
 							strokeOpacity={emphasis(entry.key)}
 							strokeWidth={2}
@@ -413,7 +601,14 @@ export function TimeseriesChart({
 				</ComposedChart>
 			</ChartContainer>
 			{legend && (series.length > 1 || current.length > 1) && (
-				<ul className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+				<ul
+					className={cn(
+						"flex gap-x-4 gap-y-1 text-xs text-muted-foreground",
+						legendPosition === "right"
+							? "w-40 shrink-0 flex-col justify-center overflow-y-auto"
+							: "flex-wrap justify-center",
+					)}
+				>
 					{series.map((entry) => (
 						<li key={entry.key} className="flex items-center gap-1.5">
 							<svg

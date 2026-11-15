@@ -1,5 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
+import { useDebouncer } from "@tanstack/react-pacer";
 import { MinusIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "../ui/button";
@@ -52,7 +53,13 @@ function presetText(range: DateRange, locale: string) {
 	return range.kind === "preset" ? presetLabel(range.preset) : "";
 }
 
-/** "In the last N units", applied as it changes. */
+/** Typing or stepping waits this long after the last change before applying it. */
+const APPLY_DELAY_MS = 400;
+
+/**
+ * "In the last N units". A changed count applies once typing pauses, so each digit does
+ * not reload the charts; a change still waiting when the menu closes applies then.
+ */
 function LastRange({
 	value,
 	onChange,
@@ -65,11 +72,17 @@ function LastRange({
 		[unit, setUnit] = useState<RangeUnit>(
 			value.kind === "last" ? value.unit : "hours",
 		);
-	const set = (nextCount: number, nextUnit: RangeUnit) => {
+	// A pending change still applies when the menu closes.
+	const apply = useDebouncer(onChange, {
+		wait: APPLY_DELAY_MS,
+		onUnmount: (debouncer) => debouncer.flush(),
+	});
+	const set = (nextCount: number, nextUnit: RangeUnit, now = false) => {
 		const bounded = Math.min(Math.max(Math.round(nextCount) || 1, 1), 999);
 		setCount(bounded);
 		setUnit(nextUnit);
-		onChange({ kind: "last", count: bounded, unit: nextUnit });
+		apply.maybeExecute({ kind: "last", count: bounded, unit: nextUnit });
+		if (now) apply.flush();
 	};
 	return (
 		<div className="flex items-center gap-2 px-3 py-1.5 text-sm">
@@ -113,7 +126,7 @@ function LastRange({
 			<NativeSelect
 				id={`${id}-unit`}
 				value={unit}
-				onChange={(event) => set(count, event.target.value as RangeUnit)}
+				onChange={(event) => set(count, event.target.value as RangeUnit, true)}
 				className="min-w-0 flex-1"
 			>
 				{RANGE_UNITS.map((option) => (

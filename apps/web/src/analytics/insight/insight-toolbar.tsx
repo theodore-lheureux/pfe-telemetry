@@ -6,8 +6,6 @@ import { resolveRange } from "../../components/date-range/date-range";
 import { DateRangePicker } from "../../components/date-range/date-range-picker";
 import { useDisplayTimeZone } from "../../components/time-display";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
 import {
 	Popover,
 	PopoverContent,
@@ -20,20 +18,15 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../../components/ui/select";
-import { Switch } from "../../components/ui/switch";
 import { type Comparison, INTERVALS, type Interval } from "../contracts";
 import { autoInterval, effectiveInterval, intervalFits } from "../intervals";
-import {
-	type DisplayType,
-	type DisplayUnit,
-	type InsightDraft,
-	MAX_RANGE_DAYS,
-} from "./draft";
+import { DisplayOptions, spreadUnavailable } from "./display-options";
+import { type DisplayType, type InsightDraft, MAX_RANGE_DAYS } from "./draft";
 import {
 	DISPLAY_ICON,
 	DISPLAY_LABEL,
 	INTERVAL_LABEL,
-	UNIT_LABEL,
+	PER_INTERVAL_LABEL,
 } from "./labels";
 
 export const COMPARISONS: {
@@ -82,12 +75,20 @@ export function InsightToolbar({
 	disabled: boolean;
 	onChange: (draft: InsightDraft) => void;
 }) {
-	const id = useId();
+	const _id = useId();
 	const zone = useDisplayTimeZone();
 	const now = new Date();
 	const resolved = resolveRange(draft.range, now, zone, getLocale());
 	const from = resolved.from,
 		to = resolved.to ?? now;
+	const interval = effectiveInterval(draft.interval, from, to);
+	// A chosen interval too fine for the range runs, and shows, as automatic.
+	const perLabel =
+		interval === draft.interval
+			? PER_INTERVAL_LABEL[interval]()
+			: m.insight_per_auto({
+					interval: PER_INTERVAL_LABEL[autoInterval(from, to)](),
+				});
 	const display = draft.display;
 	const setDisplay = (next: Partial<InsightDraft["display"]>) =>
 		onChange({ ...draft, display: { ...display, ...next } });
@@ -102,22 +103,18 @@ export function InsightToolbar({
 			{display.type !== "table" && (
 				<div className="flex items-center gap-1.5">
 					<span className="text-sm text-muted-foreground">
-						{m.insight_grouped_by()}
+						{m.insight_interval_per()}
 					</span>
 					<Select
-						// A chosen interval too fine for the range runs, and shows, as automatic.
-						value={
-							effectiveInterval(draft.interval, from, to) === draft.interval
-								? draft.interval
-								: "auto"
-						}
+						value={interval === draft.interval ? draft.interval : "auto"}
 						disabled={disabled}
 						onValueChange={(interval) =>
 							onChange({ ...draft, interval: interval as Interval | "auto" })
 						}
 					>
 						<SelectTrigger aria-label={m.insight_interval()}>
-							<SelectValue />
+							{/* Lowercase on the trigger, where it continues "per". */}
+							<SelectValue>{perLabel}</SelectValue>
 						</SelectTrigger>
 						<SelectContent position="popper" align="start">
 							<SelectItem value="auto">
@@ -169,65 +166,14 @@ export function InsightToolbar({
 							<SlidersHorizontalIcon aria-hidden="true" />
 						</Button>
 					</PopoverTrigger>
-					<PopoverContent align="end" className="flex w-72 flex-col gap-3">
-						<p className="text-sm font-medium">{m.insight_options()}</p>
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor={`${id}-unit`}>{m.insight_unit()}</Label>
-							<Select
-								value={display.unit}
-								onValueChange={(unit) =>
-									setDisplay({ unit: unit as DisplayUnit })
-								}
-							>
-								<SelectTrigger id={`${id}-unit`} className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent position="popper" align="start">
-									{(Object.keys(UNIT_LABEL) as DisplayUnit[]).map((unit) => (
-										<SelectItem key={unit} value={unit}>
-											{UNIT_LABEL[unit]()}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-						<div className="flex flex-col gap-1.5">
-							<Label htmlFor={`${id}-goal`}>{m.insight_goal()}</Label>
-							<Input
-								id={`${id}-goal`}
-								type="number"
-								value={display.goal ?? ""}
-								placeholder={m.insight_goal_none()}
-								onChange={(event) => {
-									const value = event.target.value;
-									const { goal: _, ...rest } = display;
-									onChange({
-										...draft,
-										display:
-											value === "" || !Number.isFinite(Number(value))
-												? rest
-												: { ...display, goal: Number(value) },
-									});
-								}}
-							/>
-						</div>
-						<div className="flex items-center justify-between gap-2">
-							<Label htmlFor={`${id}-log`}>{m.insight_log_scale()}</Label>
-							<Switch
-								id={`${id}-log`}
-								checked={display.logScale}
-								onCheckedChange={(logScale) => setDisplay({ logScale })}
-							/>
-						</div>
-						<div className="flex items-center justify-between gap-2">
-							<Label htmlFor={`${id}-zero`}>{m.insight_begin_at_zero()}</Label>
-							<Switch
-								id={`${id}-zero`}
-								checked={display.beginAtZero}
-								disabled={display.logScale}
-								onCheckedChange={(beginAtZero) => setDisplay({ beginAtZero })}
-							/>
-						</div>
+					<PopoverContent align="end" className="w-auto">
+						<DisplayOptions
+							display={display}
+							disabled={disabled}
+							showType={false}
+							spreadBlocked={spreadUnavailable(draft)}
+							onChange={(next) => onChange({ ...draft, display: next })}
+						/>
 					</PopoverContent>
 				</Popover>
 				<Select

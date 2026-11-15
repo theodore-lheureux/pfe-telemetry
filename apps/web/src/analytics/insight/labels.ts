@@ -63,12 +63,23 @@ export const COMBINE_GROUPS: { label: () => string; values: Combine[] }[] = [
 	},
 ];
 export const INTERVAL_LABEL: Record<Interval, () => string> = {
+	"2s": m.insight_interval_2s,
 	"10s": m.insight_interval_10s,
 	"1m": m.insight_interval_1m,
 	"5m": m.insight_interval_5m,
 	"15m": m.insight_interval_15m,
 	"1h": m.insight_interval_1h,
 	"1d": m.insight_interval_1d,
+};
+/** Interval wording after "per", as the interval selects' triggers show it. */
+export const PER_INTERVAL_LABEL: Record<Interval, () => string> = {
+	"2s": m.insight_per_2s,
+	"10s": m.insight_per_10s,
+	"1m": m.insight_per_1m,
+	"5m": m.insight_per_5m,
+	"15m": m.insight_per_15m,
+	"1h": m.insight_per_1h,
+	"1d": m.insight_per_1d,
 };
 export const DISPLAY_ICON: Record<DisplayType, LucideIcon> = {
 	line: LineChartIcon,
