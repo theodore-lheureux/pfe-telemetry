@@ -27,6 +27,7 @@ export function useTileQuery({
 	draft,
 	now,
 	queue,
+	active,
 }: {
 	userId: string;
 	reference: ProjectReference;
@@ -34,6 +35,8 @@ export function useTileQuery({
 	/** What relative ranges resolve against; a newer time refreshes the tile. */
 	now: Date;
 	queue: ReturnType<typeof taskQueue>;
+	/** False while the tile is far off screen: it keeps its last result until it is back. */
+	active: boolean;
 }) {
 	const hydrated = useHydrated();
 	const locale = getLocale(),
@@ -55,7 +58,7 @@ export function useTileQuery({
 					),
 				signal,
 			),
-		enabled: hydrated && query !== null,
+		enabled: hydrated && query !== null && active,
 		placeholderData: keepPreviousData,
 		retry: (failures, error) => failures < BUSY_ATTEMPTS - 1 && busy(error),
 		retryDelay: (attempt) =>

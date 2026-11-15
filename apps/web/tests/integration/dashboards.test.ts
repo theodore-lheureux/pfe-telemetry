@@ -3,16 +3,23 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
 	addTiles,
+	copyTile,
 	deleteDashboard,
+	duplicateTile,
 	getDashboard,
+	getProjectHome,
+	getProjectHomeChoice,
 	listDashboards,
 	removeTile,
 	saveDashboard,
+	setProjectHome,
 	updateLayout,
+	updateTile,
 } from "../../src/analytics/dashboards.server";
 import {
 	parseLayout,
 	parseSaveDashboard,
+	parseUpdateTile,
 } from "../../src/analytics/dashboards-validation";
 import {
 	DEFAULT_DRAFT,
@@ -236,6 +243,94 @@ test("members arrange dashboards of their project's insights; viewers only open 
 		).filters,
 	).toBe("{}");
 
+	// A tile keeps its own overrides and options; invalid ones are refused.
+	const tuned = await updateTile(
+		db,
+		{ id: writer.id },
+		parseUpdateTile({
+			...target,
+			tileId: first.id,
+			overrides: JSON.stringify({ interval: "1h", ignoreDashboard: true }),
+			options: { color: "green", hideDescription: true },
+		}),
+	);
+	const tunedTile = tuned.tiles.find((tile) => tile.id === first.id);
+	expect(JSON.parse(tunedTile?.overrides ?? "{}")).toEqual({
+		ignoreDashboard: true,
+		interval: "1h",
+	});
+	expect(tunedTile?.options).toEqual({ hideDescription: true, color: "green" });
+	for (const invalid of [
+		{ overrides: '{"interval":"2m"}' },
+		{ overrides: '{"ignoreDashboard":"yes"}' },
+		{ options: { color: "teal" } },
+	])
+		expect(() =>
+			parseUpdateTile({ ...target, tileId: first.id, ...invalid }),
+		).toThrow();
+	await expect(
+		updateTile(
+			db,
+			{ id: viewer.id },
+			{ ...target, tileId: first.id, options: {} },
+		),
+	).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+	// Duplicating saves a copy of the insight and adds it with the tile's settings.
+	const duplicated = await duplicateTile(
+		db,
+		{ id: writer.id },
+		{ ...target, tileId: first.id, name: "CPU (copy)" },
+	);
+	const copy = duplicated.tiles.at(-1);
+	if (!copy) throw new Error("The copy is missing");
+	expect(copy.insight.name).toBe("CPU (copy)");
+	expect(copy.insight.id).not.toBe(cpu.id);
+	expect(copy.options).toEqual({ hideDescription: true, color: "green" });
+
+	// Tiles copy or move only to another dashboard of the same project.
+	const archive = { ...reference, dashboardId: randomUUID() };
+	await saveDashboard(db, { id: writer.id }, { ...archive, name: "Archive" });
+	await copyTile(
+		db,
+		{ id: writer.id },
+		{
+			...target,
+			tileId: second.id,
+			targetDashboardId: archive.dashboardId,
+			move: false,
+		},
+	);
+	const moved = await copyTile(
+		db,
+		{ id: writer.id },
+		{
+			...target,
+			tileId: copy.id,
+			targetDashboardId: archive.dashboardId,
+			move: true,
+		},
+	);
+	expect(moved.tiles.map((tile) => tile.id)).not.toContain(copy.id);
+	expect(
+		(await getDashboard(db, { id: writer.id }, archive)).tiles.map(
+			(tile) => tile.insight.name,
+		),
+	).toEqual(["Memory", "CPU (copy)"]);
+	await expect(
+		copyTile(
+			db,
+			{ id: writer.id },
+			{
+				...target,
+				tileId: second.id,
+				targetDashboardId: randomUUID(),
+				move: false,
+			},
+		),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await deleteDashboard(db, { id: writer.id }, archive);
+
 	// Deleting an insight removes its tile; removing a tile keeps the insight.
 	await deleteInsights(
 		db,
@@ -266,6 +361,38 @@ test("members arrange dashboards of their project's insights; viewers only open 
 	await expect(
 		deleteDashboard(db, { id: viewer.id }, target),
 	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	// Admins choose the dashboard the project opens on; members only read it.
+	expect(await getProjectHome(db, { id: writer.id }, reference)).toBeNull();
+	await expect(
+		setProjectHome(db, { id: writer.id }, { ...reference, dashboardId }),
+	).rejects.toMatchObject({ code: "FORBIDDEN" });
+	const elsewhere = randomUUID();
+	await saveDashboard(
+		db,
+		{ id: owner.id },
+		{
+			...reference,
+			projectId: other.id,
+			dashboardId: elsewhere,
+			name: "Other",
+		},
+	);
+	await expect(
+		setProjectHome(
+			db,
+			{ id: owner.id },
+			{ ...reference, dashboardId: elsewhere },
+		),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await setProjectHome(db, { id: owner.id }, { ...reference, dashboardId });
+	expect((await getProjectHome(db, { id: writer.id }, reference))?.id).toBe(
+		dashboardId,
+	);
+
 	await deleteDashboard(db, { id: writer.id }, target);
 	expect(await listDashboards(db, { id: writer.id }, reference)).toEqual([]);
+	// Deleting the home dashboard returns the project to the fleet overview.
+	expect(
+		await getProjectHomeChoice(db, { id: writer.id }, reference),
+	).toBeNull();
 });

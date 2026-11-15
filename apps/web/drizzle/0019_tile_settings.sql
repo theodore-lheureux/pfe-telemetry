@@ -1,0 +1,3 @@
+ALTER TABLE "app"."dashboard_tile" ADD COLUMN "overrides" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "app"."dashboard_tile" ADD COLUMN "options" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "app"."dashboard_tile" ADD CONSTRAINT "dashboard_tile_settings_bounded" CHECK (jsonb_typeof("app"."dashboard_tile"."overrides") = 'object' AND octet_length("app"."dashboard_tile"."overrides"::text) <= 8192 AND jsonb_typeof("app"."dashboard_tile"."options") = 'object' AND octet_length("app"."dashboard_tile"."options"::text) <= 1024);

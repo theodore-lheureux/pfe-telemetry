@@ -7,6 +7,8 @@ import {
 	type ReactNode,
 	useEffect,
 	useId,
+	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { LoadingBar } from "../../components/loading-bar";
@@ -17,6 +19,7 @@ import {
 	TooltipContent,
 	TooltipTrigger,
 } from "../../components/ui/tooltip";
+import { useNearView } from "../../components/use-near-view";
 import { IconEmptyState } from "../../components/workspace";
 import { operationMessage } from "../../lib/operation-message";
 import { MutationFailure } from "../../lib/operation-result";
@@ -25,13 +28,14 @@ import { formatCompactTime } from "../../lib/time-display";
 import { cn } from "../../lib/utils";
 import type { ProjectReference } from "../../organizations/contracts";
 import type { QueryResult } from "../contracts";
-import type { DashboardFilters } from "../dashboard-filters";
+import type { DashboardFilters, TileOverrides } from "../dashboard-filters";
 import type { DashboardTile, TileHeight, TileWidth } from "../dashboards";
 import { formulaNames, type InsightDraft } from "../insight/draft";
 import { ChartBody } from "../insight/insight-chart";
 import { InsightTable } from "../insight/insight-table";
-import { seriesView } from "../insight/series-view";
+import { type SeriesView, seriesView } from "../insight/series-view";
 import { TileInfo } from "./tile-info";
+import { TILE_COLOR_VAR, type TileTools } from "./tile-menu";
 import { useTileQuery } from "./use-tile-query";
 
 // Written out in full so Tailwind generates each class.
@@ -81,20 +85,24 @@ export function DashboardTileCard({
 	queue,
 	nodeNames,
 	filters,
+	overrides,
 	onFetching,
+	onZoom,
 	header,
 	menu,
 	resizer,
 	className,
 	style,
-	ref,
 }: {
 	tile: DashboardTile;
-	/** The insight's draft with the dashboard's overrides applied. */
+	/** The insight's draft with the dashboard's and the tile's overrides applied. */
 	draft: InsightDraft;
 	filters: DashboardFilters;
+	overrides: TileOverrides;
 	/** Told when this tile starts and stops loading. */
 	onFetching: (tileId: string, fetching: boolean) => void;
+	/** A span dragged across the chart, which narrows the dashboard's range. */
+	onZoom: (from: Date, to: Date) => void;
 	userId: string;
 	reference: ProjectReference;
 	now: Date;
@@ -102,14 +110,16 @@ export function DashboardTileCard({
 	nodeNames: Map<string, string>;
 	/** Makes the header the place a member picks the tile up. */
 	header?: HTMLAttributes<HTMLElement>;
-	menu: ReactNode;
+	menu: (tools: TileTools) => ReactNode;
 	/** The corner resize handle, for members who may rearrange the dashboard. */
 	resizer?: ReactNode;
 	className?: string;
 	style?: React.CSSProperties;
-	ref?: React.Ref<HTMLElement>;
 }) {
 	const id = useId();
+	const element = useRef<HTMLElement>(null);
+	// Far off screen, a tile neither queries nor draws its chart; it keeps its place.
+	const near = useNearView(element);
 	const hydrated = useHydrated();
 	// A tile refreshed on its own resolves relative ranges against its own time.
 	const [refreshed, setRefreshed] = useState<Date | null>(null);
@@ -120,6 +130,8 @@ export function DashboardTileCard({
 		draft,
 		now: at,
 		queue,
+		// Waits for the first measurement, so tiles below the fold never start loading.
+		active: near === true,
 	});
 	const fetching = result.isFetching;
 	useEffect(() => {
@@ -130,14 +142,35 @@ export function DashboardTileCard({
 		result.data && !result.isPlaceholderData
 			? new Date(result.dataUpdatedAt)
 			: null;
+	const view = useMemo(() => {
+		if (!result.data) return undefined;
+		const groupLabel = (value: string | null) => {
+			if (value === null) return "—";
+			if (draft.groupBy !== "node") return value;
+			return nodeNames.get(value) ?? value;
+		};
+		return seriesView(
+			result.data,
+			draft.display,
+			groupLabel,
+			formulaNames(draft),
+			getLocale(),
+		);
+	}, [result.data, draft, nodeNames]);
+	const refresh = () => setRefreshed(new Date());
+	const color = tile.options.color;
 	return (
 		<article
-			ref={ref}
-			style={style}
+			ref={element}
+			style={{
+				...style,
+				...(color ? { borderTopColor: TILE_COLOR_VAR[color] } : {}),
+			}}
 			aria-labelledby={`${id}-title`}
 			aria-busy={fetching}
 			className={cn(
 				"relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-card",
+				color && "border-t-4",
 				className,
 			)}
 		>
@@ -165,11 +198,13 @@ export function DashboardTileCard({
 							tile={tile}
 							draft={draft}
 							filters={filters}
+							overrides={overrides}
 							computedAt={computedAt}
+							result={result.data}
 							userId={userId}
 						/>
 					</div>
-					{tile.insight.description && (
+					{tile.insight.description && !tile.options.hideDescription && (
 						<p
 							className="truncate text-xs text-muted-foreground"
 							title={tile.insight.description}
@@ -183,6 +218,7 @@ export function DashboardTileCard({
 						<Button
 							variant="ghost"
 							size="icon"
+							data-export-hidden="true"
 							disabled={!hydrated || fetching}
 							aria-label={m.dashboard_refresh_tile({ name: tile.insight.name })}
 							// Shown on hovering the header, on focus or while reloading; touch screens
@@ -191,7 +227,7 @@ export function DashboardTileCard({
 								"transition-opacity focus-visible:opacity-100 group-hover/header:opacity-100",
 								!fetching && "pointer-fine:opacity-0",
 							)}
-							onClick={() => setRefreshed(new Date())}
+							onClick={refresh}
 						>
 							<RefreshCwIcon
 								aria-hidden="true"
@@ -208,17 +244,26 @@ export function DashboardTileCard({
 							: m.insight_updating()}
 					</TooltipContent>
 				</Tooltip>
-				{menu}
+				{menu({
+					data: result.data,
+					view,
+					computedAt,
+					fetching,
+					refresh,
+					node: () => element.current,
+				})}
 			</header>
-			<div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
+			<div className="flex min-h-0 flex-1 flex-col gap-1 px-3 pb-3">
 				<TileBody
 					draft={draft}
 					ready={query !== null}
 					error={result.error}
 					data={result.data}
+					view={view}
 					fetching={fetching}
 					hydrated={hydrated}
-					nodeNames={nodeNames}
+					near={near !== false}
+					onZoom={onZoom}
 				/>
 			</div>
 			{resizer}
@@ -231,17 +276,21 @@ function TileBody({
 	ready,
 	error,
 	data,
+	view,
 	fetching,
 	hydrated,
-	nodeNames,
+	near,
+	onZoom,
 }: {
 	draft: InsightDraft;
 	ready: boolean;
 	error: Error | null;
 	data: QueryResult | undefined;
+	view: SeriesView | undefined;
 	fetching: boolean;
 	hydrated: boolean;
-	nodeNames: Map<string, string>;
+	near: boolean;
+	onZoom: (from: Date, to: Date) => void;
 }) {
 	if (!ready)
 		return (
@@ -267,19 +316,9 @@ function TileBody({
 				className="h-full"
 			/>
 		);
-	if (!data) return <Skeleton className="h-full w-full" />;
-	const groupLabel = (value: string | null) => {
-		if (value === null) return "—";
-		if (draft.groupBy !== "node") return value;
-		return nodeNames.get(value) ?? value;
-	};
-	const view = seriesView(
-		data,
-		draft.display,
-		groupLabel,
-		formulaNames(draft),
-		getLocale(),
-	);
+	if (!data || !view) return <Skeleton className="h-full w-full" />;
+	// Drawn again on returning near the screen, from the result it kept.
+	if (!near) return <div className="h-full w-full" aria-hidden="true" />;
 	if (draft.display.type === "table" && !view.empty)
 		return (
 			<div className="min-h-0 flex-1 overflow-auto">
@@ -300,6 +339,7 @@ function TileBody({
 				hydrated={hydrated}
 				fetching={fetching}
 				highlight={null}
+				onZoom={onZoom}
 				height="h-full"
 				fill
 			/>

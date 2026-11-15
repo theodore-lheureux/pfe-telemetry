@@ -30,7 +30,7 @@ import { FilterChips, withFilter } from "../filter-chips";
 import { GroupByPicker } from "../group-by-picker";
 import { MAX_RANGE_DAYS } from "../insight/draft";
 import { COMPARISONS, comparisonKey } from "../insight/insight-toolbar";
-import { INTERVAL_LABEL } from "../insight/labels";
+import { INTERVAL_LABEL, PER_INTERVAL_LABEL } from "../insight/labels";
 
 // Radix Select cannot use an empty value, so "each insight's" and "none" have sentinels.
 const EACH = "-each";
@@ -95,7 +95,7 @@ export function DashboardToolbar({
 			/>
 			<div className="flex items-center gap-1.5">
 				<span className="text-sm text-muted-foreground">
-					{m.insight_grouped_by()}
+					{m.insight_interval_per()}
 				</span>
 				<Select
 					value={filters.interval ?? EACH}
@@ -105,10 +105,10 @@ export function DashboardToolbar({
 					}
 				>
 					<SelectTrigger aria-label={m.insight_interval()}>
-						{/* Lowercase on the trigger, where it continues "grouped by". */}
+						{/* Lowercase on the trigger, where it continues "per". */}
 						<SelectValue>
 							{filters.interval
-								? INTERVAL_LABEL[filters.interval]()
+								? PER_INTERVAL_LABEL[filters.interval]()
 								: m.dashboard_each_interval()}
 						</SelectValue>
 					</SelectTrigger>

@@ -1,23 +1,34 @@
 import { and, asc, count, desc, eq, inArray, max } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { getDatabase } from "../db/client.server";
-import { dashboard, dashboardTile, savedInsight, user } from "../db/schema";
+import {
+	dashboard,
+	dashboardTile,
+	projectHome,
+	savedInsight,
+	user,
+} from "../db/schema";
 import { OperationError } from "../lib/operation-error";
 import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
 import { nodeNames } from "./analytics.server";
 import {
 	type AddTilesInput,
+	type CopyTileInput,
 	type Dashboard,
 	type DashboardReference,
 	type DashboardSummary,
 	DEFAULT_TILE,
+	type DuplicateTileInput,
 	type LayoutInput,
 	MAX_DASHBOARD_TILES,
 	type RemoveTileInput,
 	type SaveDashboardInput,
 	type TileHeight,
+	type TileOptions,
+	type TileReference,
 	type TileWidth,
+	type UpdateTileInput,
 } from "./dashboards";
 import { person } from "./saved-insights.server";
 
@@ -103,6 +114,8 @@ async function readDashboard(
 			width: dashboardTile.width,
 			height: dashboardTile.height,
 			column: dashboardTile.column,
+			overrides: dashboardTile.overrides,
+			options: dashboardTile.options,
 			insightId: savedInsight.id,
 			name: savedInsight.name,
 			description: savedInsight.description,
@@ -140,6 +153,8 @@ async function readDashboard(
 			width: tile.width as TileWidth,
 			height: tile.height as TileHeight,
 			column: tile.column,
+			overrides: JSON.stringify(tile.overrides),
+			options: tile.options as TileOptions,
 			insight: {
 				id: tile.insightId,
 				name: tile.name,
@@ -380,4 +395,234 @@ export async function removeTile(
 		await touch(transaction, actor, input);
 	});
 	return readDashboard(database, input);
+}
+
+function thisTile(input: TileReference) {
+	return and(
+		eq(dashboardTile.dashboardId, input.dashboardId),
+		eq(dashboardTile.projectId, input.projectId),
+		eq(dashboardTile.id, input.tileId),
+	);
+}
+
+async function nextPosition(transaction: Transaction, dashboardId: string) {
+	const [current] = await transaction
+		.select({ tiles: count(), last: max(dashboardTile.position) })
+		.from(dashboardTile)
+		.where(eq(dashboardTile.dashboardId, dashboardId));
+	if (current.tiles >= MAX_DASHBOARD_TILES)
+		throw new OperationError(
+			"CONFLICT",
+			`A dashboard cannot have more than ${MAX_DASHBOARD_TILES} tiles`,
+		);
+	return (current.last ?? -1) + 1;
+}
+
+/** Changes one tile's overrides or options. */
+export async function updateTile(
+	database: Database,
+	actor: Actor,
+	input: UpdateTileInput,
+) {
+	await requireProject(database, actor, input, "write");
+	await database.transaction(async (transaction) => {
+		await lockDashboard(transaction, input);
+		const updated = await transaction
+			.update(dashboardTile)
+			.set({
+				...(input.overrides === undefined
+					? {}
+					: { overrides: JSON.parse(input.overrides) }),
+				...(input.options === undefined
+					? {}
+					: { options: { ...input.options } }),
+			})
+			.where(thisTile(input))
+			.returning({ id: dashboardTile.id });
+		if (!updated.length)
+			throw new OperationError("NOT_FOUND", "Tile not found");
+		await touch(transaction, actor, input);
+	});
+	return readDashboard(database, input);
+}
+
+/**
+ * Adds a tile to another dashboard of the same project, with its size, overrides and
+ * options, and removes it from this one when moving.
+ */
+export async function copyTile(
+	database: Database,
+	actor: Actor,
+	input: CopyTileInput,
+) {
+	await requireProject(database, actor, input, "write");
+	const target = { ...input, dashboardId: input.targetDashboardId };
+	await database.transaction(async (transaction) => {
+		// Locked in ID order, so two opposite moves cannot wait on each other.
+		for (const locked of [input, target].sort((a, b) =>
+			a.dashboardId < b.dashboardId ? -1 : 1,
+		))
+			await lockDashboard(transaction, locked);
+		const [tile] = await transaction
+			.select()
+			.from(dashboardTile)
+			.where(thisTile(input));
+		if (!tile) throw new OperationError("NOT_FOUND", "Tile not found");
+		const position = await nextPosition(transaction, target.dashboardId);
+		await transaction.insert(dashboardTile).values({
+			dashboardId: target.dashboardId,
+			projectId: input.projectId,
+			insightId: tile.insightId,
+			position,
+			width: tile.width,
+			height: tile.height,
+			overrides: tile.overrides,
+			options: tile.options,
+		});
+		await touch(transaction, actor, target);
+		if (input.move) {
+			await transaction.delete(dashboardTile).where(thisTile(input));
+			await touch(transaction, actor, input);
+		}
+	});
+	return readDashboard(database, input);
+}
+
+/** Saves a copy of a tile's insight under a new name and adds it as a tile here. */
+export async function duplicateTile(
+	database: Database,
+	actor: Actor,
+	input: DuplicateTileInput,
+) {
+	await requireProject(database, actor, input, "write");
+	await database.transaction(async (transaction) => {
+		await lockDashboard(transaction, input);
+		const [tile] = await transaction
+			.select({
+				width: dashboardTile.width,
+				height: dashboardTile.height,
+				overrides: dashboardTile.overrides,
+				options: dashboardTile.options,
+				description: savedInsight.description,
+				tags: savedInsight.tags,
+				draft: savedInsight.draft,
+			})
+			.from(dashboardTile)
+			.innerJoin(
+				savedInsight,
+				and(
+					eq(savedInsight.id, dashboardTile.insightId),
+					eq(savedInsight.projectId, dashboardTile.projectId),
+				),
+			)
+			.where(thisTile(input));
+		if (!tile) throw new OperationError("NOT_FOUND", "Tile not found");
+		const position = await nextPosition(transaction, input.dashboardId);
+		const [copy] = await transaction
+			.insert(savedInsight)
+			.values({
+				projectId: input.projectId,
+				organizationId: input.organizationId,
+				name: input.name,
+				description: tile.description,
+				tags: tile.tags,
+				draft: tile.draft,
+				createdBy: actor.id,
+				updatedBy: actor.id,
+			})
+			.returning({ id: savedInsight.id });
+		await transaction.insert(dashboardTile).values({
+			dashboardId: input.dashboardId,
+			projectId: input.projectId,
+			insightId: copy.id,
+			position,
+			width: tile.width,
+			height: tile.height,
+			overrides: tile.overrides,
+			options: tile.options,
+		});
+		await touch(transaction, actor, input);
+	});
+	return readDashboard(database, input);
+}
+
+/** The project's chosen home dashboard, if any, without loading it. */
+export async function getProjectHomeChoice(
+	database: Database,
+	actor: Actor,
+	input: ProjectReference,
+) {
+	await requireProject(database, actor, input);
+	const [row] = await database
+		.select({ dashboardId: dashboard.id, name: dashboard.name })
+		.from(projectHome)
+		.innerJoin(
+			dashboard,
+			and(
+				eq(dashboard.id, projectHome.dashboardId),
+				eq(dashboard.projectId, projectHome.projectId),
+			),
+		)
+		.where(
+			and(
+				eq(projectHome.organizationId, input.organizationId),
+				eq(projectHome.projectId, input.projectId),
+			),
+		)
+		.limit(1);
+	return row ?? null;
+}
+
+/** The dashboard the project opens on, loaded, or null for the fleet overview. */
+export async function getProjectHome(
+	database: Database,
+	actor: Actor,
+	input: ProjectReference,
+) {
+	const choice = await getProjectHomeChoice(database, actor, input);
+	if (!choice) return null;
+	return getDashboard(database, actor, {
+		...input,
+		dashboardId: choice.dashboardId,
+	});
+}
+
+/** Opens the project on a dashboard of its own, or on the fleet overview with null. */
+export async function setProjectHome(
+	database: Database,
+	actor: Actor,
+	input: ProjectReference & { dashboardId: string | null },
+) {
+	await requireProject(database, actor, input, "admin");
+	const project = and(
+		eq(projectHome.organizationId, input.organizationId),
+		eq(projectHome.projectId, input.projectId),
+	);
+	if (input.dashboardId === null) {
+		await database.delete(projectHome).where(project);
+		return { dashboardId: null };
+	}
+	const [found] = await database
+		.select({ id: dashboard.id })
+		.from(dashboard)
+		.where(thisDashboard({ ...input, dashboardId: input.dashboardId }))
+		.limit(1);
+	if (!found) throw new OperationError("NOT_FOUND", "Dashboard not found");
+	await database
+		.insert(projectHome)
+		.values({
+			projectId: input.projectId,
+			organizationId: input.organizationId,
+			dashboardId: found.id,
+			updatedBy: actor.id,
+		})
+		.onConflictDoUpdate({
+			target: projectHome.projectId,
+			set: {
+				dashboardId: found.id,
+				updatedBy: actor.id,
+				updatedAt: new Date(),
+			},
+		});
+	return { dashboardId: found.id };
 }

@@ -29,12 +29,31 @@ export interface DashboardSummary {
 	updatedAt: Date;
 }
 
+/** Accent colors a tile can take; the tile shows it along its top edge. */
+export const TILE_COLORS = [
+	"blue",
+	"green",
+	"orange",
+	"purple",
+	"red",
+] as const;
+export type TileColor = (typeof TILE_COLORS)[number];
+
+/** How one tile shows on its dashboard. */
+export interface TileOptions {
+	hideDescription?: boolean;
+	color?: TileColor;
+}
+
 export interface DashboardTile {
 	id: string;
 	width: TileWidth;
 	height: TileHeight;
 	/** The first grid column, 1–12; null places the tile after the one before it. */
 	column: number | null;
+	/** This tile's own overrides, as `TileOverrides` JSON. */
+	overrides: string;
+	options: TileOptions;
 	insight: {
 		id: string;
 		name: string;
@@ -73,3 +92,21 @@ export type LayoutInput = DashboardReference & {
 };
 
 export type RemoveTileInput = DashboardReference & { tileId: string };
+
+export type TileReference = DashboardReference & { tileId: string };
+
+export type UpdateTileInput = TileReference & {
+	/** `TileOverrides` JSON; omitted to keep the stored overrides. */
+	overrides?: string;
+	/** Replaces the stored options; omitted to keep them. */
+	options?: TileOptions;
+};
+
+/** Puts a copy of a tile on another dashboard of the project, or moves it there. */
+export type CopyTileInput = TileReference & {
+	targetDashboardId: string;
+	move: boolean;
+};
+
+/** Copies a tile's insight under a new name and adds it to the same dashboard. */
+export type DuplicateTileInput = TileReference & { name: string };

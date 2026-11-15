@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ClickHouseLogLevel, createClient } from "@clickhouse/client";
+import { addTiles, saveDashboard } from "../../src/analytics/dashboards.server";
 import {
 	DEFAULT_DRAFT,
 	encodeDraft,
@@ -8,6 +9,7 @@ import {
 import { saveInsight } from "../../src/analytics/saved-insights.server";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
+import { settingsPath } from "../settings-path";
 import { data, expect, test } from "./fixtures";
 
 const allowed = process.env.RECOUNT_ACTIVITY_TEST_ALLOW_PUBLISH === "1";
@@ -83,7 +85,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			query_params: { project: project.id },
 		});
 		await page.goto(
-			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/insights/dashboards`,
+			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/dashboards`,
 		);
 		await expect(
 			page.getByRole("heading", { name: "No dashboards yet" }),
@@ -223,6 +225,13 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await page
 			.getByRole("button", { name: "Time range: No date range override" })
 			.click();
+		for (const minutes of [5, 15, 30])
+			await expect(
+				page.getByRole("option", {
+					name: `Last ${minutes} minutes`,
+					exact: true,
+				}),
+			).toBeVisible();
 		await page
 			.getByRole("option", { name: "Last 24 hours", exact: true })
 			.click();
@@ -274,11 +283,57 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await page.keyboard.press("Escape");
 		await expect(
 			page.getByRole("button", { name: /^Refresh all/ }),
-		).toContainText("30m");
+		).toContainText("1m");
+		// Dragging across a chart narrows the dashboard's range to that span.
+		const chart = await tiles
+			.nth(1)
+			.getByRole("img", { name: "Insight chart" })
+			.boundingBox();
+		if (!chart) throw new Error("The chart has no box");
+		await page.mouse.move(
+			chart.x + chart.width * 0.85,
+			chart.y + chart.height / 2,
+		);
+		await page.mouse.down();
+		await page.mouse.move(
+			chart.x + chart.width * 0.97,
+			chart.y + chart.height / 2,
+			{
+				steps: 5,
+			},
+		);
+		await page.mouse.up();
+		await expect(page.getByText("Unsaved filters: 1")).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Time range: Last 24 hours" }),
+		).toBeHidden();
+		await page.getByRole("button", { name: "Discard", exact: true }).click();
+		await expect(
+			page.getByRole("button", { name: "Time range: Last 24 hours" }),
+		).toBeVisible();
 		await page.screenshot({
 			path: testInfo.outputPath("dashboard.png"),
 			fullPage: true,
 		});
+
+		// A tile far below the screen neither loads nor draws until it comes near.
+		await page.setViewportSize({ width: 1440, height: 400 });
+		await page.reload();
+		const lower = tiles.nth(1);
+		await expect(
+			tiles
+				.first()
+				.getByText(/recount-compute/)
+				.first(),
+		).toBeVisible();
+		await expect(lower.getByRole("img", { name: "Insight chart" })).toHaveCount(
+			0,
+		);
+		await lower.scrollIntoViewIfNeeded();
+		await expect(
+			lower.getByRole("img", { name: "Insight chart" }),
+		).toBeVisible();
+		await page.setViewportSize({ width: 1440, height: 1600 });
 
 		// Removing a tile keeps the insight; the list counts what remains.
 		await page.getByRole("button", { name: "Actions for CPU now" }).click();
@@ -309,4 +364,175 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		});
 		await clickhouse.close();
 	}
+});
+
+test("a tile's menu changes how it shows, overrides it and copies it", async ({
+	page,
+	workspace,
+}) => {
+	const actor = await workspace.signIn(
+		page,
+		`tile-menu-${randomUUID()}@example.invalid`,
+	);
+	const organization = data(
+		await workspace.operations(actor.headers, () =>
+			createOrganization(workspace.auth, actor.headers, {
+				name: "Tiles",
+				slug: `tiles-${randomUUID()}`,
+			}),
+		),
+	);
+	const project = data(
+		await workspace.operations(actor.headers, (actor) =>
+			createProject(workspace.database.db, actor, {
+				requestId: randomUUID(),
+				organizationId: organization.id,
+				name: "Fleet",
+			}),
+		),
+	);
+	const reference = { organizationId: organization.id, projectId: project.id };
+	const insight = data(
+		await workspace.operations(actor.headers, (actor) =>
+			saveInsight(workspace.database.db, actor, {
+				...reference,
+				insightId: randomUUID(),
+				name: "CPU over time",
+				draft: encodeDraft({
+					...DEFAULT_DRAFT,
+					series: [
+						{
+							...newSeries("A"),
+							metric: "recount.node.cpu.time",
+							calculation: "rate",
+							combine: "sum",
+						},
+					],
+				}),
+			}),
+		),
+	);
+	const fleet = { ...reference, dashboardId: randomUUID() };
+	const archive = { ...reference, dashboardId: randomUUID() };
+	await workspace.operations(actor.headers, async (actor) => {
+		await saveDashboard(workspace.database.db, actor, {
+			...fleet,
+			name: "Fleet",
+		});
+		await saveDashboard(workspace.database.db, actor, {
+			...archive,
+			name: "Archive",
+		});
+		return addTiles(workspace.database.db, actor, {
+			...fleet,
+			insightIds: [insight.id],
+		});
+	});
+	await page.goto(
+		`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/dashboards/${fleet.dashboardId}`,
+	);
+	const menu = page.getByRole("button", { name: "Actions for CPU over time" });
+	await expect(menu).toBeEnabled();
+
+	// Display options save to the insight itself.
+	await menu.click();
+	await page.getByRole("menuitem", { name: "Display options" }).click();
+	await page.getByRole("tab", { name: "Lines" }).click();
+	await page.getByRole("switch", { name: "Show trend lines" }).click();
+	await expect(
+		page.getByRole("status").filter({ hasText: "Saving" }),
+	).toBeHidden();
+	await page.keyboard.press("Escape");
+	await page.reload();
+	await menu.click();
+	await page.getByRole("menuitem", { name: "Display options" }).click();
+	await page.getByRole("tab", { name: "Lines" }).click();
+	await expect(
+		page.getByRole("switch", { name: "Show trend lines" }),
+	).toBeChecked();
+	await page.keyboard.press("Escape");
+	await page.keyboard.press("Escape");
+
+	// A tile's own overrides show in its info, marked as the tile's.
+	await menu.click();
+	await page.getByRole("menuitem", { name: "Set overrides" }).click();
+	const dialog = page.getByRole("dialog");
+	await dialog.getByRole("combobox", { name: "Interval" }).click();
+	await page.getByRole("option", { name: "1 hour" }).click();
+	await dialog.getByRole("button", { name: "Save" }).click();
+	await expect(dialog).toBeHidden();
+	await page.getByRole("button", { name: "About CPU over time" }).hover();
+	await expect(
+		page.locator('[data-slot="hover-card-content"]').getByText("Tile", {
+			exact: true,
+		}),
+	).toBeVisible();
+	await page.mouse.move(0, 0);
+
+	// Copying to another dashboard offers a link to it.
+	await menu.click();
+	await page.getByRole("menuitem", { name: "Copy to" }).click();
+	await page.getByRole("option", { name: "Archive" }).click();
+	const toast = page.getByText("Insight copied to");
+	await expect(toast).toBeVisible();
+	await page.getByRole("link", { name: "Archive" }).click();
+	await expect(
+		page.getByRole("heading", { name: "Archive", level: 1 }),
+	).toBeVisible();
+	await expect(page.getByRole("article")).toHaveCount(1);
+});
+
+test("a project opens on the dashboard chosen in its settings", async ({
+	page,
+	workspace,
+}) => {
+	const actor = await workspace.signIn(
+		page,
+		`home-${randomUUID()}@example.invalid`,
+	);
+	const organization = data(
+		await workspace.operations(actor.headers, () =>
+			createOrganization(workspace.auth, actor.headers, {
+				name: "Home",
+				slug: `home-${randomUUID()}`,
+			}),
+		),
+	);
+	const project = data(
+		await workspace.operations(actor.headers, (actor) =>
+			createProject(workspace.database.db, actor, {
+				requestId: randomUUID(),
+				organizationId: organization.id,
+				name: "Fleet",
+			}),
+		),
+	);
+	const reference = { organizationId: organization.id, projectId: project.id };
+	await workspace.operations(actor.headers, (actor) =>
+		saveDashboard(workspace.database.db, actor, {
+			...reference,
+			dashboardId: randomUUID(),
+			name: "Operations",
+		}),
+	);
+	const home = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}`;
+	await page.goto(home);
+	await expect(
+		page.getByRole("heading", { name: "Overview", level: 1 }),
+	).toBeVisible();
+
+	await page.goto(
+		workspace.origin + settingsPath("project-customization", reference),
+	);
+	const choice = page.getByRole("combobox", { name: "Opens on" });
+	await expect(choice).toHaveText("Overview");
+	await choice.click();
+	await page.getByRole("option", { name: "Operations" }).click();
+	await expect(choice).toHaveText("Operations");
+
+	await page.getByRole("link", { name: "Overview", exact: true }).click();
+	await expect(page).toHaveURL(home);
+	await expect(
+		page.getByRole("heading", { name: "Operations", level: 1 }),
+	).toBeVisible();
 });

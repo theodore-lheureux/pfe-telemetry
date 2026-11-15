@@ -134,3 +134,42 @@ export function changedFilterCount(
 		[...before].filter((filter) => !now.has(filter)).length;
 	return changed + filters;
 }
+
+/** A tile's own overrides: they apply over the dashboard's, or alone when it ignores them. */
+export type TileOverrides = DashboardFilters & { ignoreDashboard?: true };
+
+export function parseTileOverrides(value: unknown): TileOverrides {
+	if (!value || typeof value !== "object" || Array.isArray(value)) invalid();
+	const { ignoreDashboard, ...rest } = value as Record<string, unknown>;
+	if (ignoreDashboard !== undefined && typeof ignoreDashboard !== "boolean")
+		invalid();
+	return {
+		...(ignoreDashboard ? { ignoreDashboard: true as const } : {}),
+		...parseDashboardFilters(rest),
+	};
+}
+
+export function decodeTileOverrides(text: string): TileOverrides {
+	try {
+		return parseTileOverrides(JSON.parse(text));
+	} catch {
+		return {};
+	}
+}
+
+export function encodeTileOverrides(overrides: TileOverrides) {
+	return JSON.stringify(parseTileOverrides(overrides));
+}
+
+/** A tile's draft as its dashboard shows it: the dashboard's overrides, then its own. */
+export function tileDraft(
+	draft: InsightDraft,
+	dashboard: DashboardFilters,
+	tile: TileOverrides,
+): InsightDraft {
+	const { ignoreDashboard, ...own } = tile;
+	const base = ignoreDashboard
+		? draft
+		: applyDashboardFilters(draft, dashboard);
+	return applyDashboardFilters(base, own);
+}

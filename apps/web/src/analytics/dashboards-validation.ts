@@ -3,21 +3,29 @@ import { InputError } from "../lib/input-error";
 import { parseProjectReference } from "../organizations/validation";
 import {
 	encodeDashboardFilters,
+	encodeTileOverrides,
 	MAX_DASHBOARD_FILTERS_LENGTH,
 } from "./dashboard-filters";
 import {
 	type AddTilesInput,
+	type CopyTileInput,
 	type DashboardReference,
+	type DuplicateTileInput,
 	GRID_COLUMNS,
 	type LayoutInput,
 	MAX_DASHBOARD_DESCRIPTION,
 	MAX_DASHBOARD_TILES,
 	type RemoveTileInput,
 	type SaveDashboardInput,
+	TILE_COLORS,
 	TILE_HEIGHTS,
 	TILE_WIDTHS,
+	type TileColor,
 	type TileHeight,
+	type TileOptions,
+	type TileReference,
 	type TileWidth,
+	type UpdateTileInput,
 } from "./dashboards";
 
 function record(value: unknown) {
@@ -30,6 +38,18 @@ export function parseDashboardReference(value: unknown): DashboardReference {
 	return {
 		...parseProjectReference(value),
 		dashboardId: parseUuid(record(value).dashboardId, "dashboard identifier"),
+	};
+}
+
+/** A project and the dashboard it opens on, or null for the fleet overview. */
+export function parseProjectHome(value: unknown) {
+	const input = record(value);
+	return {
+		...parseProjectReference(value),
+		dashboardId:
+			input.dashboardId === null
+				? null
+				: parseUuid(input.dashboardId, "dashboard identifier"),
 	};
 }
 
@@ -108,5 +128,76 @@ export function parseRemoveTile(value: unknown): RemoveTileInput {
 	return {
 		...parseDashboardReference(value),
 		tileId: parseUuid(record(value).tileId, "tile identifier"),
+	};
+}
+
+export function parseTileReference(value: unknown): TileReference {
+	return {
+		...parseDashboardReference(value),
+		tileId: parseUuid(record(value).tileId, "tile identifier"),
+	};
+}
+
+function parseTileOptions(value: unknown): TileOptions {
+	const input = record(value);
+	if (
+		Object.keys(input).some(
+			(key) => key !== "hideDescription" && key !== "color",
+		) ||
+		(input.hideDescription !== undefined &&
+			typeof input.hideDescription !== "boolean") ||
+		(input.color !== undefined &&
+			!TILE_COLORS.includes(input.color as TileColor))
+	)
+		throw new InputError("INVALID_QUERY", "Invalid tile options");
+	return {
+		...(input.hideDescription ? { hideDescription: true } : {}),
+		...(input.color ? { color: input.color as TileColor } : {}),
+	};
+}
+
+export function parseUpdateTile(value: unknown): UpdateTileInput {
+	const input = record(value);
+	let overrides: string | undefined;
+	if (input.overrides !== undefined) {
+		if (
+			typeof input.overrides !== "string" ||
+			input.overrides.length > MAX_DASHBOARD_FILTERS_LENGTH
+		)
+			throw new InputError("INVALID_QUERY", "Invalid tile overrides");
+		try {
+			overrides = encodeTileOverrides(JSON.parse(input.overrides));
+		} catch (error) {
+			if (error instanceof InputError) throw error;
+			throw new InputError("INVALID_QUERY", "Invalid tile overrides");
+		}
+	}
+	return {
+		...parseTileReference(value),
+		...(overrides === undefined ? {} : { overrides }),
+		...(input.options === undefined
+			? {}
+			: { options: parseTileOptions(input.options) }),
+	};
+}
+
+export function parseCopyTile(value: unknown): CopyTileInput {
+	const input = record(value);
+	if (typeof input.move !== "boolean")
+		throw new InputError("INVALID_QUERY", "Invalid request");
+	const reference = parseTileReference(value);
+	const targetDashboardId = parseUuid(
+		input.targetDashboardId,
+		"dashboard identifier",
+	);
+	if (targetDashboardId === reference.dashboardId)
+		throw new InputError("INVALID_QUERY", "Choose another dashboard");
+	return { ...reference, targetDashboardId, move: input.move };
+}
+
+export function parseDuplicateTile(value: unknown): DuplicateTileInput {
+	return {
+		...parseTileReference(value),
+		name: parseName(record(value).name),
 	};
 }

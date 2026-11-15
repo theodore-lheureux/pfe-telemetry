@@ -3,6 +3,8 @@ import {
 	applyDashboardFilters,
 	decodeDashboardFilters,
 	encodeDashboardFilters,
+	parseTileOverrides,
+	tileDraft,
 } from "../../src/analytics/dashboard-filters";
 import {
 	DEFAULT_DRAFT,
@@ -53,4 +55,15 @@ test("overrides from a URL are validated and written in one order", () => {
 			breakdown: "node",
 		}),
 	).toBe('{"interval":"5m","breakdown":"node","compare":null}');
+});
+
+test("a tile's overrides apply over the dashboard's, or alone when it ignores them", () => {
+	const dashboard = { interval: "5m" as const, breakdown: "host" };
+	const shown = tileDraft(insight, dashboard, { interval: "1h" });
+	expect(shown.interval).toBe("1h");
+	expect(shown.groupBy).toBe("host");
+	const alone = tileDraft(insight, dashboard, { ignoreDashboard: true });
+	expect(alone.interval).toBe(insight.interval);
+	expect(alone.groupBy).toBe("node");
+	expect(() => parseTileOverrides({ ignoreDashboard: 1 })).toThrow();
 });

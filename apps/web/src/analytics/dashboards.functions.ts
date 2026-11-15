@@ -5,10 +5,14 @@ import { parseProjectReference } from "../organizations/validation";
 import * as dashboards from "./dashboards.server";
 import {
 	parseAddTiles,
+	parseCopyTile,
 	parseDashboardReference,
+	parseDuplicateTile,
 	parseLayout,
+	parseProjectHome,
 	parseRemoveTile,
 	parseSaveDashboard,
+	parseUpdateTile,
 } from "./dashboards-validation";
 
 export const listDashboards = createServerFn({ method: "GET" })
@@ -69,5 +73,57 @@ export const removeDashboardTile = createServerFn({ method: "POST" })
 	.handler(({ data, context: { identity, database } }) =>
 		withActor(identity, (actor) =>
 			dashboards.removeTile(database, actor, data),
+		),
+	);
+
+export const updateDashboardTile = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
+	.validator(parseUpdateTile)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			dashboards.updateTile(database, actor, data),
+		),
+	);
+
+export const copyDashboardTile = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
+	.validator(parseCopyTile)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) => dashboards.copyTile(database, actor, data)),
+	);
+
+export const duplicateDashboardTile = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
+	.validator(parseDuplicateTile)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			dashboards.duplicateTile(database, actor, data),
+		),
+	);
+
+export const getProjectHome = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
+	.validator(parseProjectReference)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			dashboards.getProjectHome(database, actor, data),
+		),
+	);
+
+export const getProjectHomeChoice = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
+	.validator(parseProjectReference)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			dashboards.getProjectHomeChoice(database, actor, data),
+		),
+	);
+
+export const setProjectHome = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
+	.validator(parseProjectHome)
+	.handler(({ data, context: { identity, database } }) =>
+		withActor(identity, (actor) =>
+			dashboards.setProjectHome(database, actor, data),
 		),
 	);

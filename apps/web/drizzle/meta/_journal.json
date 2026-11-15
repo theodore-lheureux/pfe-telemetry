@@ -134,6 +134,20 @@
       "when": 1794538795109,
       "tag": "0018_dashboards",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794561642370,
+      "tag": "0019_tile_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1794585748707,
+      "tag": "0020_project_home",
+      "breakpoints": true
     }
   ]
 }

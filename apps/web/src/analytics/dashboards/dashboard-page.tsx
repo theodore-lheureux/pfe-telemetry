@@ -1,7 +1,9 @@
 import { m } from "@recount/i18n/messages";
 import { Link, useHydrated } from "@tanstack/react-router";
 import { ArrowLeftIcon, PanelsTopLeftIcon, PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { serializeRange } from "../../components/date-range/date-range";
 import { FormFeedback } from "../../components/form-feedback";
 import { Button } from "../../components/ui/button";
 import { useAppMutation } from "../../components/use-app-mutation";
@@ -9,31 +11,43 @@ import { IconEmptyState } from "../../components/workspace";
 import { taskQueue } from "../../lib/task-queue";
 import { cn } from "../../lib/utils";
 import type { ProjectReference } from "../../organizations/contracts";
+import { saveInsight } from "../analytics.functions";
 import {
-	applyDashboardFilters,
 	changedFilterCount,
 	type DashboardFilters,
 	decodeDashboardFilters,
+	decodeTileOverrides,
 	encodeDashboardFilters,
+	encodeTileOverrides,
+	hasDashboardFilters,
+	type TileOverrides,
+	tileDraft,
 } from "../dashboard-filters";
 import {
 	type Dashboard,
+	type DashboardSummary,
 	type DashboardTile,
 	MAX_DASHBOARD_TILES,
+	type TileOptions,
 } from "../dashboards";
 import {
 	addDashboardTiles,
+	copyDashboardTile,
+	duplicateDashboardTile,
 	removeDashboardTile,
 	saveDashboard,
 	updateDashboardLayout,
+	updateDashboardTile,
 } from "../dashboards.functions";
-import { decodeDraft } from "../insight/draft";
+import { type Display, decodeDraft, encodeDraft } from "../insight/draft";
 import { InsightsHeader } from "../insights-header";
+import { InsightNameDialog } from "../saved/name-dialog";
 import { AddTilesDialog } from "./add-tiles-dialog";
 import { useDashboardActions } from "./dashboard-actions";
-import { DashboardGrid } from "./dashboard-grid";
+import { DashboardGrid, type PageTileActions } from "./dashboard-grid";
 import { DashboardToolbar } from "./dashboard-toolbar";
 import { RefreshControl } from "./refresh-control";
+import { TileOverridesDialog } from "./tile-overrides-dialog";
 import { UnsavedFilters } from "./unsaved-filters";
 import { useLayoutHistory } from "./use-layout-history";
 import { useLoadProgress } from "./use-load-progress";
@@ -47,7 +61,25 @@ type Change =
 	| { kind: "layout"; tiles: DashboardTile[] }
 	| { kind: "remove"; tile: DashboardTile }
 	| { kind: "add"; insightIds: string[] }
-	| { kind: "filters"; filters: string };
+	| { kind: "filters"; filters: string }
+	| {
+			kind: "tile";
+			tile: DashboardTile;
+			overrides?: string;
+			options?: TileOptions;
+	  }
+	| {
+			kind: "copy";
+			tile: DashboardTile;
+			target: DashboardSummary;
+			move: boolean;
+	  }
+	| { kind: "duplicate"; tile: DashboardTile; name: string }
+	| { kind: "insight"; tile: DashboardTile; name?: string; draft?: string };
+
+const EMPTY_OVERRIDES: TileOverrides = {};
+const DASHBOARD =
+	"/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId" as const;
 
 /** The overrides in effect: the URL's, when readable, or else the dashboard's saved ones. */
 function activeFilters(url: string | undefined, saved: string) {
@@ -111,16 +143,36 @@ export function DashboardPage({
 		() => new Map(dashboard.nodes.map((node) => [node.id, node.hostname])),
 		[dashboard.nodes],
 	);
+	const overrides = useMemo(
+		() =>
+			new Map(
+				tiles.map((tile) => [tile.id, decodeTileOverrides(tile.overrides)]),
+			),
+		[tiles],
+	);
+	const overridesOf = (tile: DashboardTile) => overrides.get(tile.id) ?? {};
 	// Keyed by the overrides' text, so tiles keep their drafts until they really change.
 	const drafts = useMemo(() => {
-		const overrides = decodeDashboardFilters(filtersText) ?? {};
+		const dashboardOverrides = decodeDashboardFilters(filtersText) ?? {};
 		return new Map(
 			tiles.map((tile) => [
 				tile.id,
-				applyDashboardFilters(decodeDraft(tile.insight.draft), overrides),
+				tileDraft(
+					decodeDraft(tile.insight.draft),
+					dashboardOverrides,
+					overrides.get(tile.id) ?? {},
+				),
 			]),
 		);
-	}, [tiles, filtersText]);
+	}, [tiles, filtersText, overrides]);
+	/** Whether a tile shows something other than its insight as saved. */
+	const overridden = (tile: DashboardTile) => {
+		const { ignoreDashboard, ...own } = overridesOf(tile);
+		return (
+			hasDashboardFilters(own) ||
+			(!ignoreDashboard && hasDashboardFilters(filters))
+		);
+	};
 
 	const mutation = useAppMutation<Change, unknown>({
 		userId,
@@ -154,6 +206,45 @@ export function DashboardPage({
 				case "filters":
 					return saveDashboard({
 						data: { ...target, name: dashboard.name, filters: change.filters },
+						signal,
+					});
+				case "tile":
+					return updateDashboardTile({
+						data: {
+							...target,
+							tileId: change.tile.id,
+							...(change.overrides === undefined
+								? {}
+								: { overrides: change.overrides }),
+							...(change.options === undefined
+								? {}
+								: { options: change.options }),
+						},
+						signal,
+					});
+				case "copy":
+					return copyDashboardTile({
+						data: {
+							...target,
+							tileId: change.tile.id,
+							targetDashboardId: change.target.id,
+							move: change.move,
+						},
+						signal,
+					});
+				case "duplicate":
+					return duplicateDashboardTile({
+						data: { ...target, tileId: change.tile.id, name: change.name },
+						signal,
+					});
+				case "insight":
+					return saveInsight({
+						data: {
+							...reference,
+							insightId: change.tile.insight.id,
+							name: change.name ?? change.tile.insight.name,
+							...(change.draft === undefined ? {} : { draft: change.draft }),
+						},
 						signal,
 					});
 			}
@@ -205,6 +296,83 @@ export function DashboardPage({
 	};
 	const error = mutation.kind === "success" ? "" : mutation.message;
 
+	const [renaming, setRenaming] = useState<DashboardTile | null>(null);
+	const [overriding, setOverriding] = useState<DashboardTile | null>(null);
+	const replaceTile = (
+		id: string,
+		change: (tile: DashboardTile) => DashboardTile,
+	) =>
+		setTiles((current) =>
+			current.map((tile) => (tile.id === id ? change(tile) : tile)),
+		);
+	// Display changes save one after another; one made during a save goes next.
+	const [savingTile, setSavingTile] = useState<string | null>(null);
+	const nextDisplay = useRef(new Map<string, DashboardTile>());
+	const saveDisplays = async (tileId: string) => {
+		setSavingTile(tileId);
+		for (
+			let tile = nextDisplay.current.get(tileId);
+			tile;
+			tile = nextDisplay.current.get(tileId)
+		) {
+			nextDisplay.current.delete(tileId);
+			if (!(await apply({ kind: "insight", tile, draft: tile.insight.draft })))
+				break;
+		}
+		nextDisplay.current.delete(tileId);
+		setSavingTile(null);
+	};
+	const actionsFor = (tile: DashboardTile): PageTileActions => ({
+		onRename: () => {
+			mutation.clearMessage();
+			setRenaming(tile);
+		},
+		onOverrides: () => {
+			mutation.clearMessage();
+			setOverriding(tile);
+		},
+		onDuplicate: () =>
+			void apply({
+				kind: "duplicate",
+				tile,
+				name: m.tile_copy_name({ name: tile.insight.name }).slice(0, 120),
+			}),
+		onDisplay: (display: Display) => {
+			const draft = encodeDraft({
+				...decodeDraft(tile.insight.draft),
+				display,
+			});
+			const next = { ...tile, insight: { ...tile.insight, draft } };
+			replaceTile(tile.id, () => next);
+			const idle = !nextDisplay.current.size && savingTile === null;
+			nextDisplay.current.set(tile.id, next);
+			if (idle) void saveDisplays(tile.id);
+		},
+		onOptions: (options: TileOptions) => {
+			replaceTile(tile.id, (current) => ({ ...current, options }));
+			void apply({ kind: "tile", tile, options });
+		},
+		onCopy: async (target: DashboardSummary, move: boolean) => {
+			if (move)
+				setTiles((current) => current.filter((other) => other.id !== tile.id));
+			const done = await apply({ kind: "copy", tile, target, move });
+			if (done)
+				toast.success(
+					<span>
+						{move ? m.tile_moved_to() : m.tile_copied_to()}{" "}
+						<Link
+							to={DASHBOARD}
+							params={{ ...reference, dashboardId: target.id }}
+							className="font-medium text-primary hover:underline"
+						>
+							{target.name}
+						</Link>
+					</span>,
+				);
+			return done;
+		},
+	});
+
 	const heading = (
 		<div className="flex min-w-0 flex-1 items-center gap-2">
 			<Button asChild variant="ghost" size="icon-sm">
@@ -252,12 +420,13 @@ export function DashboardPage({
 					</>
 				}
 			/>
-			{/* Sticks below the page title; bleeds into the gutters to hide tiles beneath. */}
-			<div className="sticky top-(--sticky-header-height) z-10 -mx-4 -my-2 flex flex-col gap-2 bg-background px-4 py-2 md:-mx-6 md:px-6">
+			{/* Sticks below the page title; bleeds into the gutters to hide tiles beneath. Its
+			    own padding replaces the section gap above it. */}
+			<div className="sticky top-(--sticky-header-height) z-10 -mx-4 -mt-5 -mb-2 flex flex-col gap-2 bg-background px-4 py-2 md:-mx-6 md:px-6">
 				<div
 					className={cn(
 						// The outline's room is kept when hidden, so controls do not shift.
-						"-m-[7px] self-start rounded-lg border border-dashed border-transparent p-1.5",
+						"-mx-[7px] self-start rounded-lg border border-dashed border-transparent p-1.5",
 						unsaved && "border-amber-400/70",
 					)}
 				>
@@ -298,7 +467,18 @@ export function DashboardPage({
 					canWrite={canWrite}
 					disabled={busy}
 					filters={filters}
+					overridesOf={overridesOf}
+					dashboardId={dashboard.id}
+					savingTile={savingTile}
+					overridden={overridden}
+					actionsFor={actionsFor}
 					onFetching={load.report}
+					onZoom={(from, to) =>
+						changeFilters({
+							...filters,
+							range: serializeRange({ kind: "between", from, to }),
+						})
+					}
 					draftOf={(tile) =>
 						drafts.get(tile.id) ?? decodeDraft(tile.insight.draft)
 					}
@@ -338,6 +518,40 @@ export function DashboardPage({
 				onClose={() => setAdding(false)}
 				onAdd={async (insightIds) => {
 					if (await apply({ kind: "add", insightIds })) setAdding(false);
+				}}
+			/>
+			<InsightNameDialog
+				open={renaming !== null}
+				title={m.tile_rename_title()}
+				initialName={renaming?.insight.name ?? ""}
+				pending={mutation.pending}
+				error={renaming ? error : ""}
+				onClose={() => setRenaming(null)}
+				onSubmit={async (name) => {
+					if (!renaming) return;
+					replaceTile(renaming.id, (tile) => ({
+						...tile,
+						insight: { ...tile.insight, name },
+					}));
+					if (await apply({ kind: "insight", tile: renaming, name }))
+						setRenaming(null);
+				}}
+			/>
+			<TileOverridesDialog
+				open={overriding !== null}
+				name={overriding?.insight.name ?? ""}
+				initial={overriding ? overridesOf(overriding) : EMPTY_OVERRIDES}
+				userId={userId}
+				reference={reference}
+				pending={mutation.pending}
+				error={overriding ? error : ""}
+				onClose={() => setOverriding(null)}
+				onSave={async (next: TileOverrides) => {
+					if (!overriding) return;
+					const text = encodeTileOverrides(next);
+					replaceTile(overriding.id, (tile) => ({ ...tile, overrides: text }));
+					if (await apply({ kind: "tile", tile: overriding, overrides: text }))
+						setOverriding(null);
 				}}
 			/>
 			{actions.dialogs}

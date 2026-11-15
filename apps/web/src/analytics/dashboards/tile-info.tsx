@@ -4,6 +4,7 @@ import {
 	CalculatorIcon,
 	CalendarIcon,
 	CircleUserIcon,
+	ClockIcon,
 	FilterIcon,
 	GitCompareArrowsIcon,
 	InfoIcon,
@@ -11,6 +12,7 @@ import {
 	type LucideIcon,
 	PencilIcon,
 	RowsIcon,
+	TriangleAlertIcon,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { rangeLabel } from "../../components/date-range/date-range";
@@ -23,7 +25,9 @@ import {
 	HoverCardTrigger,
 } from "../../components/ui/hover-card";
 import { usePinnedOpen } from "../../components/use-pinned-open";
-import type { DashboardFilters } from "../dashboard-filters";
+import { cn } from "../../lib/utils";
+import type { QueryResult } from "../contracts";
+import type { DashboardFilters, TileOverrides } from "../dashboard-filters";
 import type { DashboardTile } from "../dashboards";
 import { filterKey, filterText } from "../filter-chips";
 import { groupFieldLabel } from "../group-by-picker";
@@ -33,7 +37,12 @@ import {
 	CALCULATION_LABEL,
 	COMBINE_OPTION_LABEL,
 	DISPLAY_LABEL,
+	INTERVAL_LABEL,
 } from "../insight/labels";
+import {
+	PercentileWarning,
+	thinPercentiles,
+} from "../insight/percentile-warning";
 import { metricLabel } from "../metric-names";
 import { CreatorCell } from "../saved/saved-columns";
 
@@ -60,10 +69,19 @@ function Row({
 	);
 }
 
-function FromDashboard() {
+type Source = "dashboard" | "tile" | null;
+
+const SOURCE_LABEL = {
+	dashboard: m.dashboard_info_dashboard,
+	tile: m.tile_overrides_badge,
+};
+
+/** Marks a setting that comes from an override rather than the insight. */
+function From({ source }: { source: Source }) {
+	if (!source) return null;
 	return (
 		<Badge variant="outline" className="border-primary/60 text-primary">
-			{m.dashboard_info_dashboard()}
+			{SOURCE_LABEL[source]()}
 		</Badge>
 	);
 }
@@ -97,26 +115,47 @@ function Person({
  * What a tile shows and where it comes from, on hover or focus of its info button:
  * its query, the range, filters and grouping in effect (marking the dashboard's
  * overrides), who made and changed the insight, and when the result was computed.
+ * A warning about the result replaces the info icon and leads the card.
  */
 export function TileInfo({
 	tile,
 	draft,
 	filters,
+	overrides,
 	computedAt,
+	result,
 	userId,
 }: {
 	tile: DashboardTile;
 	/** The draft as the dashboard runs it. */
 	draft: InsightDraft;
 	filters: DashboardFilters;
+	overrides: TileOverrides;
 	computedAt: Date | null;
+	result: QueryResult | undefined;
 	userId: string;
 }) {
 	const pin = usePinnedOpen();
 	const zone = useDisplayTimeZone();
 	const locale = getLocale();
 	const { insight } = tile;
-	const added = new Set((filters.filters ?? []).map(filterKey));
+	const warned = result ? thinPercentiles(result).length > 0 : false;
+	const Icon = warned ? TriangleAlertIcon : InfoIcon;
+	// A tile's own override wins; the dashboard's applies unless the tile ignores it.
+	const source = (key: keyof DashboardFilters): Source => {
+		if (overrides[key] !== undefined) return "tile";
+		if (!overrides.ignoreDashboard && filters[key] !== undefined)
+			return "dashboard";
+		return null;
+	};
+	const added = new Map<string, Source>([
+		...(overrides.ignoreDashboard ? [] : (filters.filters ?? [])).map(
+			(filter) => [filterKey(filter), "dashboard"] as const,
+		),
+		...(overrides.filters ?? []).map(
+			(filter) => [filterKey(filter), "tile"] as const,
+		),
+	]);
 	const range = rangeLabel(draft.range, locale, zone);
 	const comparison = draft.compare
 		? COMPARISONS.find((option) => option.key === comparisonKey(draft.compare))
@@ -127,11 +166,18 @@ export function TileInfo({
 				<Button
 					variant="ghost"
 					size="icon-xs"
-					className="text-muted-foreground [&_svg]:size-3.5"
+					className={cn(
+						"text-muted-foreground [&_svg]:size-3.5",
+						warned && "text-amber-700 dark:text-amber-400",
+					)}
 					{...pin.trigger}
-					aria-label={m.dashboard_tile_info({ name: insight.name })}
+					aria-label={
+						warned
+							? m.dashboard_tile_info_warning({ name: insight.name })
+							: m.dashboard_tile_info({ name: insight.name })
+					}
 				>
-					<InfoIcon aria-hidden="true" />
+					<Icon aria-hidden="true" />
 				</Button>
 			</HoverCardTrigger>
 			<HoverCardContent
@@ -139,6 +185,7 @@ export function TileInfo({
 				className="flex w-96 flex-col gap-3"
 				{...pin.content}
 			>
+				{result && warned && <PercentileWarning result={result} />}
 				<div className="flex flex-col gap-1">
 					<p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
 						{DISPLAY_LABEL[draft.display.type]()} • {range}
@@ -176,7 +223,13 @@ export function TileInfo({
 					</Row>
 					<Row icon={CalendarIcon} label={m.dashboard_info_range()}>
 						{range}
-						{filters.range && <FromDashboard />}
+						<From source={source("range")} />
+					</Row>
+					<Row icon={ClockIcon} label={m.insight_interval()}>
+						{draft.interval === "auto"
+							? m.display_auto()
+							: INTERVAL_LABEL[draft.interval]()}
+						<From source={source("interval")} />
 					</Row>
 					<Row icon={FilterIcon} label={m.dashboard_info_filters()}>
 						{draft.filters.length ? (
@@ -187,9 +240,9 @@ export function TileInfo({
 									className="font-normal"
 								>
 									{filterText(filter)}
-									{added.has(filterKey(filter)) && (
+									{added.get(filterKey(filter)) && (
 										<span className="text-primary">
-											{` · ${m.dashboard_info_dashboard()}`}
+											{` · ${SOURCE_LABEL[added.get(filterKey(filter)) ?? "dashboard"]()}`}
 										</span>
 									)}
 								</Badge>
@@ -200,15 +253,15 @@ export function TileInfo({
 					</Row>
 					<Row icon={RowsIcon} label={m.dashboard_info_breakdown()}>
 						{draft.groupBy ? groupFieldLabel(draft.groupBy) : <None />}
-						{filters.breakdown !== undefined && <FromDashboard />}
+						<From source={source("breakdown")} />
 					</Row>
-					{(comparison || filters.compare !== undefined) && (
+					{(comparison || source("compare")) && (
 						<Row
 							icon={GitCompareArrowsIcon}
 							label={m.dashboard_info_comparison()}
 						>
 							{comparison ? comparison.label() : <None />}
-							{filters.compare !== undefined && <FromDashboard />}
+							<From source={source("compare")} />
 						</Row>
 					)}
 					<Row icon={CircleUserIcon} label={m.dashboard_info_created()}>

@@ -1,7 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { ChevronDownIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TimeDisplay } from "../../components/time-display";
 import { Button } from "../../components/ui/button";
 import { ButtonGroup } from "../../components/ui/button-group";
@@ -17,14 +17,16 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { Switch } from "../../components/ui/switch";
 
-const INTERVAL_MINUTES = [5, 15, 30, 60] as const;
-type IntervalMinutes = (typeof INTERVAL_MINUTES)[number];
+// Points arrive every second: 2 seconds keeps stat tiles and the open bucket live, and
+// slower than 15 minutes is better done by hand.
+const INTERVAL_SECONDS = [2, 10, 30, 60, 300, 900] as const;
+type IntervalSeconds = (typeof INTERVAL_SECONDS)[number];
 
 interface AutoRefresh {
 	on: boolean;
-	minutes: IntervalMinutes;
+	seconds: IntervalSeconds;
 }
-const DEFAULT_AUTO: AutoRefresh = { on: false, minutes: 30 };
+const DEFAULT_AUTO: AutoRefresh = { on: false, seconds: 60 };
 
 function storageKey(dashboardId: string) {
 	return `recount.dashboard-refresh.${dashboardId}`;
@@ -40,11 +42,11 @@ function useAutoRefresh(dashboardId: string) {
 			) as Partial<AutoRefresh> | null;
 			if (
 				stored &&
-				INTERVAL_MINUTES.includes(stored.minutes as IntervalMinutes)
+				INTERVAL_SECONDS.includes(stored.seconds as IntervalSeconds)
 			)
 				setAuto({
 					on: stored.on === true,
-					minutes: stored.minutes as IntervalMinutes,
+					seconds: stored.seconds as IntervalSeconds,
 				});
 		} catch {
 			// Unavailable storage leaves auto refresh off.
@@ -61,13 +63,13 @@ function useAutoRefresh(dashboardId: string) {
 	return [auto, change] as const;
 }
 
-function intervalText(minutes: IntervalMinutes) {
-	const hours = minutes >= 60;
+function intervalText(seconds: IntervalSeconds) {
+	const minutes = seconds >= 60;
 	return new Intl.NumberFormat(getLocale(), {
 		style: "unit",
-		unit: hours ? "hour" : "minute",
+		unit: minutes ? "minute" : "second",
 		unitDisplay: "narrow",
-	}).format(hours ? minutes / 60 : minutes);
+	}).format(minutes ? seconds / 60 : seconds);
 }
 
 /**
@@ -89,11 +91,15 @@ export function RefreshControl({
 	onRefresh: () => void;
 }) {
 	const [auto, setAuto] = useAutoRefresh(dashboardId);
+	// A tick while tiles still load is skipped, so slow queries aren't restarted.
+	const loading = useRef(false);
+	loading.current = progress !== null;
 	useEffect(() => {
 		if (!auto.on || disabled) return;
 		const timer = setInterval(() => {
-			if (document.visibilityState === "visible") onRefresh();
-		}, auto.minutes * 60_000);
+			if (document.visibilityState === "visible" && !loading.current)
+				onRefresh();
+		}, auto.seconds * 1000);
 		return () => clearInterval(timer);
 	}, [auto, disabled, onRefresh]);
 	return (
@@ -125,10 +131,10 @@ export function RefreshControl({
 						<span
 							className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground"
 							title={m.dashboard_auto_refresh_every({
-								interval: intervalText(auto.minutes),
+								interval: intervalText(auto.seconds),
 							})}
 						>
-							{intervalText(auto.minutes)}
+							{intervalText(auto.seconds)}
 						</span>
 					)}
 				</Button>
@@ -167,19 +173,19 @@ export function RefreshControl({
 							{m.dashboard_refresh_interval()}
 						</DropdownMenuLabel>
 						<DropdownMenuRadioGroup
-							value={String(auto.minutes)}
+							value={String(auto.seconds)}
 							onValueChange={(value) =>
-								setAuto({ ...auto, minutes: Number(value) as IntervalMinutes })
+								setAuto({ ...auto, seconds: Number(value) as IntervalSeconds })
 							}
 						>
-							{INTERVAL_MINUTES.map((minutes) => (
+							{INTERVAL_SECONDS.map((seconds) => (
 								<DropdownMenuRadioItem
-									key={minutes}
-									value={String(minutes)}
+									key={seconds}
+									value={String(seconds)}
 									disabled={!auto.on}
 									onSelect={(event) => event.preventDefault()}
 								>
-									{intervalText(minutes)}
+									{intervalText(seconds)}
 								</DropdownMenuRadioItem>
 							))}
 						</DropdownMenuRadioGroup>

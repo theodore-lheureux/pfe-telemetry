@@ -14,9 +14,12 @@ export class ClickSensor implements SensorInstance {
 	static activators = [
 		{
 			eventName: "onPointerDown" as const,
-			handler: ({ nativeEvent: event }: ReactPointerEvent) =>
+			handler: ({ nativeEvent: event, currentTarget }: ReactPointerEvent) =>
 				event.isPrimary &&
 				event.button === 0 &&
+				// React bubbles events from portals, such as the tile's open menu, through
+				// the header; only presses on the header itself pick the tile up.
+				currentTarget.contains(event.target as Node) &&
 				!(event.target as Element).closest(INTERACTIVE),
 		},
 	];
