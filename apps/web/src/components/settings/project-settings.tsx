@@ -8,6 +8,7 @@ import { settingsSearch } from "../settings-links";
 import { Button } from "../ui/button";
 import { EntityIdentityRow } from "./entity-identity-row";
 import { IdentifierCard } from "./identifier-field";
+import { ProjectHomeSetting } from "./project-home-setting";
 import { ProjectMetadata } from "./project-metadata";
 import { SettingsPageHeading } from "./settings-page-heading";
 import { SettingsSection } from "./settings-section";
@@ -93,6 +94,7 @@ export function ProjectCustomization({ project }: { project: ProjectSummary }) {
 				</EntityIdentityRow>
 			</SettingsSection>
 			<ProjectMetadata project={project} />
+			<ProjectHomeSetting project={project} />
 		</div>
 	);
 }

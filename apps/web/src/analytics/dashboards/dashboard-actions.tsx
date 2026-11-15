@@ -24,7 +24,7 @@ import { deleteDashboard, saveDashboard } from "../dashboards.functions";
 import { DashboardDialog } from "./dashboard-dialog";
 
 const LIST =
-	"/organizations/$organizationId/projects/$projectId/insights/dashboards" as const;
+	"/organizations/$organizationId/projects/$projectId/dashboards" as const;
 
 /** What the actions need of a dashboard, from the list or the open dashboard. */
 interface Named {

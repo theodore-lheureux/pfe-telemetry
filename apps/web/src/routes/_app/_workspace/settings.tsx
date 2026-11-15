@@ -8,10 +8,7 @@ import {
 	useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import {
-	listEnrollmentKeys,
-	listNodes,
-} from "@/collectors/collector.functions";
+import { listEnrollmentKeys } from "@/collectors/collector.functions";
 import { AppearancePreferences } from "@/components/appearance-settings";
 import { OrganizationInvitations } from "@/components/organization-invitations";
 import { OrganizationMembers } from "@/components/organization-members";
@@ -99,14 +96,12 @@ export const Route = createFileRoute("/_app/_workspace/settings")({
 				organizationId: project.organizationId,
 				projectId: project.id,
 			};
-			const [keys, nodes] = await Promise.all([
-				listEnrollmentKeys({ data: reference }),
-				listNodes({ data: { ...reference, status: "active", page: 1 } }),
-			]);
 			return {
 				kind: "collectors" as const,
-				enrollmentKeys: routeData(keys, location.href),
-				nodes: routeData(nodes, location.href),
+				enrollmentKeys: routeData(
+					await listEnrollmentKeys({ data: reference }),
+					location.href,
+				),
 			};
 		}
 		if (deps.section === "project-members" && project) {
@@ -223,7 +218,6 @@ function Settings() {
 							project={project}
 							userId={user.id}
 							enrollmentKeys={loaded.enrollmentKeys}
-							initialNodes={loaded.nodes}
 						/>
 					)}
 				{search.section === "project-members" &&

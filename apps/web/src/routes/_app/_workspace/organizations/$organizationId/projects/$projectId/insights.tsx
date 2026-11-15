@@ -4,7 +4,7 @@ import { SavedInsights } from "@/analytics/saved/saved-list";
 import { projectParams, routeData } from "@/organizations/route-data";
 
 export const Route = createFileRoute(
-	"/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/saved",
+	"/_app/_workspace/organizations/$organizationId/projects/$projectId/insights",
 )({
 	loader: async ({ params, location }) =>
 		routeData(

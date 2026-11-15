@@ -1307,5 +1307,14 @@
   "display_spread_middle": "50 % centraux",
   "display_spread_formula": "Cette analyse est une formule, elle n'a donc pas d'étendue des sources. Ajoutez une ventilation et combinez ses groupes pour afficher leur étendue.",
   "display_spread_sum": "Cette analyse additionne ses sources, elle n'a donc pas d'étendue entre elles. Ajoutez une ventilation et combinez ses groupes pour afficher leur étendue.",
-  "insight_percentile_thin": "{percentile} porte sur au plus {values} valeurs par intervalle ; il en faut environ {needed} pour qu'il diffère de la plus grande valeur."
+  "insight_percentile_thin": "{percentile} porte sur au plus {values} valeurs par intervalle ; il en faut environ {needed} pour qu'il diffère de la plus grande valeur.",
+  "overview": "Vue d’ensemble",
+  "overview_description": "L’état du parc : processeur, mémoire et processus de ses nœuds.",
+  "dashboards_description": "Des analyses enregistrées réunies sur une page, sur une même période.",
+  "saved_insights_description": "Les analyses enregistrées dans ce projet, à rouvrir, partager ou ajouter aux tableaux de bord.",
+  "nav_data": "Données",
+  "nav_runs": "Exécutions",
+  "project_home": "Page d’accueil",
+  "project_home_description": "Ce qui s’ouvre en premier dans ce projet et sous Vue d’ensemble : la vue d’ensemble du parc ou l’un de ses tableaux de bord.",
+  "project_home_opens": "S’ouvre sur"
 }

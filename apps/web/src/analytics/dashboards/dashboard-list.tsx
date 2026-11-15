@@ -28,8 +28,8 @@ import {
 import { Label } from "../../components/ui/label";
 import { IconEmptyState } from "../../components/workspace";
 import type { ProjectReference } from "../../organizations/contracts";
+import { AnalyticsHeader } from "../analytics-header";
 import type { DashboardSummary } from "../dashboards";
-import { InsightsHeader } from "../insights-header";
 import { CreatorCell } from "../saved/saved-columns";
 import { useDashboardActions } from "./dashboard-actions";
 
@@ -162,7 +162,7 @@ export function DashboardList({
 			menu: actions.menu,
 			open: (dashboard) => (
 				<Link
-					to="/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId"
+					to="/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId"
 					params={{ ...reference, dashboardId: dashboard.id }}
 					// Covers the row, so clicking anywhere on it opens the dashboard.
 					className="font-medium after:absolute after:inset-0 hover:underline"
@@ -186,7 +186,7 @@ export function DashboardList({
 	);
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
-			<InsightsHeader tab="dashboards" reference={reference} />
+			<AnalyticsHeader section="dashboards" />
 			{dashboards.length === 0 ? (
 				<IconEmptyState
 					icon={<PanelsTopLeftIcon aria-hidden="true" />}

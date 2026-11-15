@@ -1307,5 +1307,14 @@
   "display_spread_middle": "Middle 50%",
   "display_spread_formula": "This insight is a formula, so it has no range across sources. Add a breakdown and combine its groups to show the range across them.",
   "display_spread_sum": "This insight adds its sources up, so it has no range across them. Add a breakdown and combine its groups to show the range across them.",
-  "insight_percentile_thin": "{percentile} is taken over at most {values} values per interval; it needs about {needed} to differ from the largest value."
+  "insight_percentile_thin": "{percentile} is taken over at most {values} values per interval; it needs about {needed} to differ from the largest value.",
+  "overview": "Overview",
+  "overview_description": "How the fleet is doing: CPU, memory and processes across its nodes.",
+  "dashboards_description": "Saved insights arranged on one page over a shared time range.",
+  "saved_insights_description": "Insights saved in this project, to reopen, share or add to dashboards.",
+  "nav_data": "Data",
+  "nav_runs": "Runs",
+  "project_home": "Home page",
+  "project_home_description": "What opens first in this project and under Overview: the fleet overview or one of its dashboards.",
+  "project_home_opens": "Opens on"
 }

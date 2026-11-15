@@ -1,16 +1,12 @@
 import { m } from "@recount/i18n/messages";
-import {
-	Link,
-	useHydrated,
-	useMatch,
-	useMatchRoute,
-} from "@tanstack/react-router";
-import { LineChartIcon, ListIcon, RadioIcon, SettingsIcon } from "lucide-react";
+import { Link, useHydrated, useMatch } from "@tanstack/react-router";
+import { SettingsIcon } from "lucide-react";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { rememberWorkspacePreference } from "../organizations/workspace-preference";
 import type { ApplicationUser } from "./identity-avatar";
 import { PasskeyEnrollmentPrompt } from "./passkey-enrollment-prompt";
+import { ProjectNavigation } from "./project-navigation";
 import { settingsSearch } from "./settings-links";
 import { ProjectTimeDisplayProvider } from "./time-display";
 import { Button } from "./ui/button";
@@ -24,7 +20,6 @@ import {
 	Sidebar,
 	SidebarContent,
 	SidebarFooter,
-	SidebarGroup,
 	SidebarHeader,
 	SidebarInset,
 	SidebarMenu,
@@ -35,6 +30,7 @@ import {
 	SidebarTrigger,
 	useSidebar,
 } from "./ui/sidebar";
+import { Toaster } from "./ui/sonner";
 import { TooltipProvider } from "./ui/tooltip";
 import { WorkspaceMenu } from "./workspace-menu";
 
@@ -61,6 +57,7 @@ export function AppShell({
 			>
 				<AppShellContent user={user}>{children}</AppShellContent>
 			</SidebarProvider>
+			<Toaster position="bottom-right" />
 		</TooltipProvider>
 	);
 }
@@ -82,7 +79,6 @@ function AppShellContent({
 		else if (!open && !panelRef.current?.isCollapsed())
 			panelRef.current?.collapse();
 	}, [open, isMobile, panelRef]);
-	const matchRoute = useMatchRoute();
 	const workspace = useMatch({ from: "/_app/_workspace", shouldThrow: false });
 	const organizationMatch = useMatch({
 		from: "/_app/_workspace/organizations/$organizationId",
@@ -178,101 +174,15 @@ function AppShellContent({
 							/>
 						</SidebarHeader>
 						<SidebarContent className="group-data-[collapsible=icon]:overflow-y-auto">
-							<SidebarGroup className="p-1.5 pt-1">
-								<nav aria-label={m.project_navigation()}>
-									<SidebarMenu>
-										{project && (
-											<>
-												<SidebarMenuItem>
-													<SidebarMenuButton
-														asChild
-														tooltip={m.activity_title()}
-														isActive={
-															!!matchRoute({
-																to: "/organizations/$organizationId/projects/$projectId/activity",
-																params: {
-																	organizationId: project.organizationId,
-																	projectId: project.id,
-																},
-																fuzzy: true,
-															})
-														}
-													>
-														<Link
-															to="/organizations/$organizationId/projects/$projectId/activity"
-															params={{
-																organizationId: project.organizationId,
-																projectId: project.id,
-															}}
-															onClick={() => setOpenMobile(false)}
-														>
-															<RadioIcon aria-hidden="true" />
-															<span>{m.activity_title()}</span>
-														</Link>
-													</SidebarMenuButton>
-												</SidebarMenuItem>
-												<SidebarMenuItem>
-													<SidebarMenuButton
-														asChild
-														tooltip={m.insights()}
-														isActive={
-															!!matchRoute({
-																to: "/organizations/$organizationId/projects/$projectId/insights",
-																params: {
-																	organizationId: project.organizationId,
-																	projectId: project.id,
-																},
-																fuzzy: true,
-															})
-														}
-													>
-														<Link
-															to="/organizations/$organizationId/projects/$projectId/insights"
-															params={{
-																organizationId: project.organizationId,
-																projectId: project.id,
-															}}
-															onClick={() => setOpenMobile(false)}
-														>
-															<LineChartIcon aria-hidden="true" />
-															<span>{m.insights()}</span>
-														</Link>
-													</SidebarMenuButton>
-												</SidebarMenuItem>
-												<SidebarMenuItem>
-													<SidebarMenuButton
-														asChild
-														tooltip={m.executions()}
-														isActive={
-															!!matchRoute({
-																to: "/organizations/$organizationId/projects/$projectId/executions",
-																params: {
-																	organizationId: project.organizationId,
-																	projectId: project.id,
-																},
-																fuzzy: true,
-															})
-														}
-													>
-														<Link
-															to="/organizations/$organizationId/projects/$projectId/executions"
-															params={{
-																organizationId: project.organizationId,
-																projectId: project.id,
-															}}
-															activeProps={{ className: "active" }}
-															onClick={() => setOpenMobile(false)}
-														>
-															<ListIcon aria-hidden="true" />
-															<span>{m.executions()}</span>
-														</Link>
-													</SidebarMenuButton>
-												</SidebarMenuItem>
-											</>
-										)}
-									</SidebarMenu>
-								</nav>
-							</SidebarGroup>
+							{project && (
+								<ProjectNavigation
+									reference={{
+										organizationId: project.organizationId,
+										projectId: project.id,
+									}}
+									onNavigate={() => setOpenMobile(false)}
+								/>
+							)}
 						</SidebarContent>
 						<SidebarSeparator className="mx-2" />
 						<SidebarFooter className="gap-1 p-1.5">

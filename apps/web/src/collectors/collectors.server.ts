@@ -204,7 +204,7 @@ export async function listNodes(
 	value: ListNodesInput,
 ): Promise<NodePage> {
 	const input = parseListNodesInput(value);
-	await requireProject(database, actor, input, "admin");
+	await requireProject(database, actor, input, "read");
 	const pattern = `%${input.query.replace(/[\\%_]/g, (match) => `\\${match}`)}%`;
 	const filter = and(
 		tenant(collectorNode, input),

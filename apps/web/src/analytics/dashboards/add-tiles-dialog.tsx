@@ -87,7 +87,7 @@ export function AddTilesDialog({
 				<p className="text-sm text-muted-foreground">
 					{m.dashboard_no_insights()}{" "}
 					<Link
-						to="/organizations/$organizationId/projects/$projectId/insights/explore"
+						to="/organizations/$organizationId/projects/$projectId/explore"
 						params={reference}
 						className="underline"
 					>

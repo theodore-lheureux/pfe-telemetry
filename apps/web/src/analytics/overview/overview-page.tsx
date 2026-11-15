@@ -21,8 +21,8 @@ import { IconEmptyState } from "../../components/workspace";
 import { operationMessage } from "../../lib/operation-message";
 import type { MutationFailure } from "../../lib/operation-result";
 import type { ProjectReference } from "../../organizations/contracts";
+import { AnalyticsHeader } from "../analytics-header";
 import { MAX_RANGE_DAYS } from "../insight/draft";
-import { InsightsHeader } from "../insights-header";
 import type { OverviewStat } from "../overview.server";
 import { ComputedAt, RefreshButton } from "../refresh-status";
 import { NodesTable } from "./nodes-table";
@@ -70,7 +70,7 @@ export function FleetOverview({
 		overview.tiles.find((tile) => tile.stat === stat) ?? overview.tiles[0];
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
-			<InsightsHeader tab="overview" reference={reference} />
+			<AnalyticsHeader section="overview" />
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				<DateRangePicker
 					value={range}

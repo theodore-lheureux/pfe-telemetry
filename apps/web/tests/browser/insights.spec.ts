@@ -66,10 +66,10 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 			query_params: { project: project.id },
 		});
 		await page.goto(
-			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/insights`,
+			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
 		);
 		await expect(
-			page.getByRole("heading", { name: "Insights", exact: true }),
+			page.getByRole("heading", { name: "Overview", exact: true }),
 		).toBeVisible();
 		// The overview: fixed stat tiles compared with the previous period.
 		for (const stat of [

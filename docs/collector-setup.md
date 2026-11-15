@@ -1,6 +1,6 @@
 # Set up project collectors
 
-Collectors enroll themselves into a project with an enrollment key; [collector enrollment](collector-enrollment.md) explains the mechanism. Effective project admins manage keys and nodes at **Project settings → Collectors**. Organization owners and admins have effective project admin access; project readers cannot see either list.
+Collectors enroll themselves into a project with an enrollment key; [collector enrollment](collector-enrollment.md) explains the mechanism. Effective project admins manage enrollment keys at **Project settings → Collectors**. Nodes are listed under **Data → Nodes** in the project navigation, where every project role can search them and effective project admins revoke or delete them. Organization owners and admins have effective project admin access; project readers cannot see the enrollment keys.
 
 ## Create an enrollment key
 

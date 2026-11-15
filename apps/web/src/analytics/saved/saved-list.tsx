@@ -25,9 +25,9 @@ import {
 import { Label } from "../../components/ui/label";
 import { IconEmptyState } from "../../components/workspace";
 import type { ProjectReference } from "../../organizations/contracts";
+import { AnalyticsHeader } from "../analytics-header";
 import { decodeDraft } from "../insight/draft";
 import { DISPLAY_ICON, DISPLAY_LABEL } from "../insight/labels";
-import { InsightsHeader } from "../insights-header";
 import type { InsightPerson, SavedInsight } from "../saved-insights";
 import { FacetFilter } from "./facet-filter";
 import { useInsightActions } from "./insight-actions";
@@ -40,7 +40,7 @@ import {
 import { TagUpdate } from "./tag-update";
 
 const EXPLORE =
-	"/organizations/$organizationId/projects/$projectId/insights/explore" as const;
+	"/organizations/$organizationId/projects/$projectId/explore" as const;
 
 /**
  * The project's saved insights: searchable, filterable by chart type and creator,
@@ -116,7 +116,7 @@ export function SavedInsights({
 	if (insights.length === 0)
 		return (
 			<section className="flex min-w-0 flex-col gap-5">
-				<InsightsHeader tab="saved" reference={reference} />
+				<AnalyticsHeader section="insights" />
 				<IconEmptyState
 					icon={<BookmarkIcon aria-hidden="true" />}
 					title={m.saved_empty()}
@@ -156,7 +156,7 @@ export function SavedInsights({
 
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
-			<InsightsHeader tab="saved" reference={reference} />
+			<AnalyticsHeader section="insights" />
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				<div className="w-full max-w-sm">
 					<Label htmlFor={`${id}-search`} className="sr-only">

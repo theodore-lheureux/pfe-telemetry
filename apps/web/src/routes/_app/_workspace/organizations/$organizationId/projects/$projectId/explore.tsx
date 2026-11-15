@@ -10,7 +10,7 @@ import { useInsightTitle } from "@/analytics/saved/insight-title";
 import { projectParams, routeData } from "@/organizations/route-data";
 
 export const Route = createFileRoute(
-	"/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/explore",
+	"/_app/_workspace/organizations/$organizationId/projects/$projectId/explore",
 )({
 	// The insight being edited lives in the URL, so it can be shared and reloaded. A saved
 	// insight's ID names what it was opened from; `q` holds edits made since.

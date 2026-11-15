@@ -186,7 +186,7 @@ export function DashboardTileCard({
 					<div className="flex min-w-0 items-center gap-1">
 						<h3 id={`${id}-title`} className="truncate text-sm font-medium">
 							<Link
-								to="/organizations/$organizationId/projects/$projectId/insights/explore"
+								to="/organizations/$organizationId/projects/$projectId/explore"
 								params={reference}
 								search={{ insight: tile.insight.id }}
 								className="hover:underline"

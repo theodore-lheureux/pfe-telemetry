@@ -138,7 +138,7 @@ export function TileMenu({
 	const hydrated = useHydrated();
 	const name = tile.insight.name;
 	const explore =
-		"/organizations/$organizationId/projects/$projectId/insights/explore" as const;
+		"/organizations/$organizationId/projects/$projectId/explore" as const;
 	const draft = decodeDraft(tile.insight.draft);
 	const display = draft.display;
 	const exported = async (task: () => Promise<void>, done?: string) => {

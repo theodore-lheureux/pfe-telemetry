@@ -13,7 +13,7 @@ export function pageTabClass(active: boolean) {
 	);
 }
 
-/** A page title that stays pinned, with a description and a tab bar of typed links. */
+/** A page title that stays pinned, with a description and an optional tab bar of typed links. */
 export function PageHeader({
 	icon: Icon,
 	title,
@@ -27,7 +27,7 @@ export function PageHeader({
 	title: string;
 	description: ReactNode;
 	/** Tab links styled with `pageTabClass`. */
-	tabs: ReactNode;
+	tabs?: ReactNode;
 	/** Replaces the pinned title, such as an editable name; it provides its own `h1`. */
 	heading?: ReactNode;
 	/** Controls pinned at the right of the title. */
@@ -58,9 +58,11 @@ export function PageHeader({
 				) : (
 					description
 				)}
-				<nav aria-label={title} className="flex gap-6 border-b">
-					{tabs}
-				</nav>
+				{tabs && (
+					<nav aria-label={title} className="flex gap-6 border-b">
+						{tabs}
+					</nav>
+				)}
 			</div>
 		</>
 	);

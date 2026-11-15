@@ -38,10 +38,6 @@ test("admins create enrollment keys and manage the nodes that enroll with them",
 				projectId: project.id,
 			}),
 	);
-	await expect(
-		page.getByRole("heading", { name: "No nodes yet", exact: true }),
-	).toBeVisible();
-
 	await page
 		.getByRole("button", { name: "Create enrollment key", exact: true })
 		.click();
@@ -98,7 +94,11 @@ test("admins create enrollment keys and manage the nodes that enroll with them",
 		alg: "EdDSA",
 	});
 
-	await page.reload();
+	// Nodes have their own page in the project's Data section.
+	await page.getByRole("link", { name: "Nodes", exact: true }).click();
+	await expect(page).toHaveURL(
+		`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/nodes`,
+	);
 	const table = page.getByRole("table", { name: "Nodes", exact: true });
 	await expect(table.getByText("web-01", { exact: true })).toBeVisible();
 	await expect(table.getByText("db-01", { exact: true })).toBeVisible();

@@ -15,7 +15,7 @@ import {
 	publicKeySet,
 	tokenRequestMessage,
 } from "../../src/collectors/tokens.server";
-import { collectorNode, member } from "../../src/db/schema";
+import { collectorNode, member, projectMember } from "../../src/db/schema";
 import { OperationError } from "../../src/lib/operation-error";
 import type { OperationResult } from "../../src/lib/operation-result";
 import * as organizationDomain from "../../src/organizations/organizations.server";
@@ -151,7 +151,7 @@ async function scenario() {
 }
 
 test("only project administrators manage enrollment keys and nodes", async () => {
-	const { organization, reference } = await scenario();
+	const { organization, project, reference } = await scenario();
 	const outsider = await actor();
 	await database.db.insert(member).values({
 		id: randomUUID(),
@@ -160,6 +160,39 @@ test("only project administrators manage enrollment keys and nodes", async () =>
 		role: "member",
 		createdAt: new Date(),
 	});
+	// A project viewer lists the nodes but cannot revoke or delete them.
+	const viewer = await actor();
+	const viewerMembership = randomUUID();
+	await database.db.insert(member).values({
+		id: viewerMembership,
+		organizationId: organization.id,
+		userId: viewer.id,
+		role: "member",
+		createdAt: new Date(),
+	});
+	await database.db.insert(projectMember).values({
+		projectId: project.id,
+		organizationId: organization.id,
+		memberId: viewerMembership,
+		role: "viewer",
+	});
+	expect(
+		data(
+			await requests(viewer.headers, (actor) =>
+				collectors.listNodes(database.db, actor, reference),
+			),
+		).total,
+	).toBe(0);
+	expect(
+		(
+			await requests(viewer.headers, (actor) =>
+				collectors.revokeNodes(database.db, actor, {
+					...reference,
+					nodeIds: [randomUUID()],
+				}),
+			)
+		).error?.code,
+	).toMatch(/FORBIDDEN|NOT_FOUND/);
 	expect(
 		(
 			await requests(outsider.headers, (actor) =>

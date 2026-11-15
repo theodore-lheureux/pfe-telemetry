@@ -39,10 +39,9 @@ import {
 } from "../saved-insights";
 import { InsightNameDialog } from "./name-dialog";
 
-const SAVED =
-	"/organizations/$organizationId/projects/$projectId/insights/saved";
+const SAVED = "/organizations/$organizationId/projects/$projectId/insights";
 const EXPLORE =
-	"/organizations/$organizationId/projects/$projectId/insights/explore" as const;
+	"/organizations/$organizationId/projects/$projectId/explore" as const;
 
 /**
  * The open insight's editable name and description with its save actions, laid out

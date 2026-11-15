@@ -52,7 +52,7 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 			query_params: { project: project.id },
 		});
 		const insights = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/insights`;
-		await page.goto(`${insights}/saved`);
+		await page.goto(insights);
 		await expect(
 			page.getByRole("heading", { name: "No saved insights yet" }),
 		).toBeVisible();
@@ -98,7 +98,7 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 		});
 
 		// The list opens, renames, duplicates and deletes saved insights.
-		await page.getByRole("link", { name: "Saved", exact: true }).click();
+		await page.getByRole("link", { name: "Insights", exact: true }).click();
 		const list = page.getByRole("table", { name: "Saved" });
 		await expect(list.getByRole("link", { name: "Fleet CPU" })).toBeVisible();
 		await expect(

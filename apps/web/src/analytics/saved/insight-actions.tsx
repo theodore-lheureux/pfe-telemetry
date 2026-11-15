@@ -137,7 +137,7 @@ export function useInsightActions(
 				<DropdownMenuContent align="end">
 					<DropdownMenuItem asChild>
 						<Link
-							to="/organizations/$organizationId/projects/$projectId/insights/explore"
+							to="/organizations/$organizationId/projects/$projectId/explore"
 							params={reference}
 							search={{ insight: insight.id }}
 						>

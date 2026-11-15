@@ -12,6 +12,7 @@ import { taskQueue } from "../../lib/task-queue";
 import { cn } from "../../lib/utils";
 import type { ProjectReference } from "../../organizations/contracts";
 import { saveInsight } from "../analytics.functions";
+import { AnalyticsHeader } from "../analytics-header";
 import {
 	changedFilterCount,
 	type DashboardFilters,
@@ -40,7 +41,6 @@ import {
 	updateDashboardTile,
 } from "../dashboards.functions";
 import { type Display, decodeDraft, encodeDraft } from "../insight/draft";
-import { InsightsHeader } from "../insights-header";
 import { InsightNameDialog } from "../saved/name-dialog";
 import { AddTilesDialog } from "./add-tiles-dialog";
 import { useDashboardActions } from "./dashboard-actions";
@@ -53,7 +53,7 @@ import { useLayoutHistory } from "./use-layout-history";
 import { useLoadProgress } from "./use-load-progress";
 
 const LIST =
-	"/organizations/$organizationId/projects/$projectId/insights/dashboards" as const;
+	"/organizations/$organizationId/projects/$projectId/dashboards" as const;
 /** Tiles that read at once, as PostHog's dashboards do. */
 const TILE_CONCURRENCY = 4;
 
@@ -79,7 +79,7 @@ type Change =
 
 const EMPTY_OVERRIDES: TileOverrides = {};
 const DASHBOARD =
-	"/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId" as const;
+	"/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId" as const;
 
 /** The overrides in effect: the URL's, when readable, or else the dashboard's saved ones. */
 function activeFilters(url: string | undefined, saved: string) {
@@ -391,9 +391,8 @@ export function DashboardPage({
 
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
-			<InsightsHeader
-				tab="dashboards"
-				reference={reference}
+			<AnalyticsHeader
+				section="dashboards"
 				heading={heading}
 				description={dashboard.description || m.dashboard_page_description()}
 				actions={

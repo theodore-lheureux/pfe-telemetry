@@ -373,31 +373,20 @@ for (const locale of ["en", "fr"] as const) {
 			);
 		}
 		async function expectProjectLinks(root: ReturnType<typeof page.locator>) {
-			await expect(root.getByRole("link")).toHaveCount(4);
-			await expect(
-				root.getByRole("link", {
-					name: m.activity_title({}, options),
-					exact: true,
-				}),
-			).toHaveAttribute(
-				"href",
-				`/organizations/${organization.id}/projects/${project.id}/activity`,
-			);
-			await expect(
-				root.getByRole("link", { name: m.insights({}, options), exact: true }),
-			).toHaveAttribute(
-				"href",
-				`/organizations/${organization.id}/projects/${project.id}/insights`,
-			);
-			await expect(
-				root.getByRole("link", {
-					name: m.executions({}, options),
-					exact: true,
-				}),
-			).toHaveAttribute(
-				"href",
-				`/organizations/${organization.id}/projects/${project.id}/executions`,
-			);
+			await expect(root.getByRole("link")).toHaveCount(8);
+			const projectPath = `/organizations/${organization.id}/projects/${project.id}`;
+			for (const [name, path] of [
+				[m.overview({}, options), ""],
+				[m.dashboards({}, options), "/dashboards"],
+				[m.insight_tab_explore({}, options), "/explore"],
+				[m.insights({}, options), "/insights"],
+				[m.activity_title({}, options), "/activity"],
+				[m.nodes({}, options), "/nodes"],
+				[m.executions({}, options), "/executions"],
+			])
+				await expect(
+					root.getByRole("link", { name, exact: true }),
+				).toHaveAttribute("href", `${projectPath}${path}`);
 			await expect(
 				root.getByRole("link", { name: m.settings({}, options), exact: true }),
 			).toHaveAttribute(

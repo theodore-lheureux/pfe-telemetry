@@ -20,7 +20,7 @@ function dashboardParams(params: {
 }
 
 export const Route = createFileRoute(
-	"/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/$dashboardId",
+	"/_app/_workspace/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId",
 )({
 	// Overrides chosen on the page live in the URL until they are saved to the dashboard.
 	validateSearch: (search: Record<string, unknown>): { filters?: string } =>

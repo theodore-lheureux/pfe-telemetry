@@ -4,7 +4,7 @@ import { listDashboards } from "@/analytics/dashboards.functions";
 import { projectParams, routeData } from "@/organizations/route-data";
 
 export const Route = createFileRoute(
-	"/_app/_workspace/organizations/$organizationId/projects/$projectId/insights/dashboards/",
+	"/_app/_workspace/organizations/$organizationId/projects/$projectId/dashboards/",
 )({
 	loader: async ({ params, location }) =>
 		routeData(

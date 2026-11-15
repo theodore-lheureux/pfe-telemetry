@@ -13,8 +13,8 @@ import { operationMessage } from "../../lib/operation-message";
 import { MutationFailure, unwrapOperation } from "../../lib/operation-result";
 import type { ProjectReference } from "../../organizations/contracts";
 import { runAnalyticsQuery } from "../analytics.functions";
+import { AnalyticsHeader } from "../analytics-header";
 import type { MetricDefinition, QueryResult } from "../contracts";
-import { InsightsHeader } from "../insights-header";
 import { formulaNames, type InsightDraft, toQuery } from "./draft";
 import { InsightChart } from "./insight-chart";
 import { InsightTable } from "./insight-table";
@@ -97,9 +97,8 @@ export function InsightEditor({
 		seriesView(result.data, applied.display, groupLabel, names, locale);
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
-			<InsightsHeader
-				tab="explore"
-				reference={reference}
+			<AnalyticsHeader
+				section="explore"
 				heading={heading}
 				description={description}
 			/>
