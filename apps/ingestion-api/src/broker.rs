@@ -50,6 +50,8 @@ impl KafkaSink {
             .set("bootstrap.servers", bootstrap)
             .set("enable.idempotence", "true")
             .set("acks", "all")
+            // Matches the raw topic's codec, so the broker stores batches unchanged.
+            .set("compression.type", "zstd")
             .set("allow.auto.create.topics", "false")
             .set("message.max.bytes", broker_max_bytes.to_string())
             .set("message.timeout.ms", "5000")

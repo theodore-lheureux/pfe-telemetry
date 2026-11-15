@@ -9,6 +9,7 @@ if [[ "$mode" == create-live ]]; then live_only=true; mode=create; fi
 bootstrap=${RECOUNT_KAFKA_BOOTSTRAP:?}
 raw=${RECOUNT_RAW_TOPIC:?}
 normalized=${RECOUNT_NORMALIZED_TOPIC:?}
+late=${RECOUNT_LATE_TOPIC:?}
 live=${RECOUNT_LIVE_TOPIC:-recount.metrics.live}
 export RECOUNT_LIVE_PARTITIONS=${RECOUNT_LIVE_PARTITIONS:-8}
 export RECOUNT_LIVE_RETENTION_MS=${RECOUNT_LIVE_RETENTION_MS:-300000}
@@ -18,11 +19,11 @@ export RECOUNT_LIVE_SEGMENT_MS=${RECOUNT_LIVE_SEGMENT_MS:-60000}
 export RECOUNT_LIVE_BROKER_MAX_BYTES=${RECOUNT_LIVE_BROKER_MAX_BYTES:-65536}
 tool=/opt/kafka/bin
 
-for value in "$raw" "$normalized" "$live"; do
+for value in "$raw" "$normalized" "$late" "$live"; do
     [[ "$value" =~ ^[a-zA-Z0-9._-]+$ ]] || { echo 'Invalid topic name' >&2; exit 1; }
 done
-[[ "$raw" != "$normalized" ]] || { echo 'Topics must differ' >&2; exit 1; }
-[[ "$live" != "$raw" && "$live" != "$normalized" ]] || { echo 'Live topic must be separate' >&2; exit 1; }
+[[ "$raw" != "$normalized" && "$late" != "$raw" && "$late" != "$normalized" ]] || { echo 'Topics must differ' >&2; exit 1; }
+[[ "$live" != "$raw" && "$live" != "$normalized" && "$live" != "$late" ]] || { echo 'Live topic must be separate' >&2; exit 1; }
 for name in RECOUNT_LIVE_PARTITIONS RECOUNT_LIVE_RETENTION_MS RECOUNT_LIVE_RETENTION_BYTES RECOUNT_LIVE_SEGMENT_BYTES RECOUNT_LIVE_SEGMENT_MS RECOUNT_LIVE_BROKER_MAX_BYTES; do
     [[ "${!name}" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid positive bound: $name" >&2; exit 1; }
 done
@@ -33,13 +34,15 @@ done
 (( RECOUNT_BROKER_MESSAGE_BYTES >= RECOUNT_RAW_BROKER_MAX_BYTES && RECOUNT_BROKER_MESSAGE_BYTES >= RECOUNT_NORMALIZED_BROKER_MAX_BYTES && RECOUNT_BROKER_FETCH_BYTES >= RECOUNT_BROKER_MESSAGE_BYTES )) || { echo 'Incoherent broker/record/fetch bounds' >&2; exit 1; }
 
 ensure_topic() {
-    local topic=$1 count=$2 prefix=$3 name description actual settings
+    local topic=$1 count=$2 prefix=$3 compression=${4:-} name description actual settings
     local -a config=()
     for setting in retention.ms:RETENTION_MS retention.bytes:RETENTION_BYTES segment.bytes:SEGMENT_BYTES segment.ms:SEGMENT_MS max.message.bytes:BROKER_MAX_BYTES; do
         name="${prefix}_${setting#*:}"
         config+=(--config "${setting%%:*}=${!name}")
     done
     config+=(--config cleanup.policy=delete --config min.insync.replicas=1 --config unclean.leader.election.enable=false)
+    # Producers send this codec, so matching batches are stored without recompression.
+    [[ -z "$compression" ]] || config+=(--config "compression.type=$compression")
     if [[ "$mode" == create ]]; then
         "$tool/kafka-topics.sh" --bootstrap-server "$bootstrap" --create --topic "$topic" --partitions "$count" --replication-factor 1 "${config[@]}"
     fi
@@ -54,7 +57,9 @@ ensure_topic() {
 }
 
 if [[ "$live_only" == false ]]; then
-    ensure_topic "$raw" "$RECOUNT_RAW_PARTITIONS" RECOUNT_RAW
-    ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED
+    ensure_topic "$raw" "$RECOUNT_RAW_PARTITIONS" RECOUNT_RAW zstd
+    ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED zstd
+    # The normalizer routes a point to the same partition index on either topic.
+    ensure_topic "$late" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED zstd
 fi
 ensure_topic "$live" "$RECOUNT_LIVE_PARTITIONS" RECOUNT_LIVE

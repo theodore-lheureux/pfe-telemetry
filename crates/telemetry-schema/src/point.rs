@@ -400,6 +400,7 @@ pub fn normalized_routing_key(point: &AnalyticalPoint) -> Result<[u8; 32], &'sta
 pub struct RoutedRecord {
     pub partition: u32,
     pub payload: Vec<u8>,
+    pub time_unix_nano: u64,
 }
 
 pub fn kafka_records(
@@ -421,6 +422,7 @@ pub fn kafka_records(
         records.push(RoutedRecord {
             partition,
             payload: row,
+            time_unix_nano: point.time_unix_nano,
         });
     }
     Ok(records)

@@ -108,6 +108,8 @@ impl Ingestion {
         let (raw, body, count, permit, source, requested) =
             tokio::task::spawn_blocking(move || {
                 let count = validate::request(&body, limits).map_err(status)?;
+                validate::point_times(&body, received, source.maximum_age_ns, source.skew_ns)
+                    .map_err(status)?;
                 let bindings = resources::resolve(&body, &source, profile, limits)?;
                 let raw = RawRecord {
                     security: Some(source.security.clone()),

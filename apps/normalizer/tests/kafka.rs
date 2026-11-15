@@ -47,6 +47,7 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
         broker: setting("RECOUNT_NORMALIZER_TEST_BROKER"),
         raw: format!("{prefix}.raw"),
         normalized: format!("{prefix}.normalized"),
+        late: format!("{prefix}.late"),
         group: format!("{prefix}.group"),
     };
     eprintln!(
@@ -64,6 +65,8 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
                     .set("max.message.bytes", "6291456"),
                 NewTopic::new(&env.normalized, 3, TopicReplication::Fixed(1))
                     .set("max.message.bytes", "2097152"),
+                NewTopic::new(&env.late, 3, TopicReplication::Fixed(1))
+                    .set("max.message.bytes", "2097152"),
             ],
             &AdminOptions::new().request_timeout(Some(Duration::from_secs(5))),
         )
@@ -76,7 +79,7 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
     let observer = consumer(&env.broker, &env.group);
     let ready_deadline = Instant::now() + Duration::from_secs(10);
     loop {
-        let ready = [&env.raw, &env.normalized].iter().all(|topic| {
+        let ready = [&env.raw, &env.normalized, &env.late].iter().all(|topic| {
             (0..3).all(|p| {
                 observer
                     .fetch_watermarks(topic, p, Duration::from_secs(1))
@@ -102,7 +105,7 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
     let mut assignment = TopicPartitionList::new();
     for p in 0..3 {
         assignment
-            .add_partition_offset(&env.normalized, p, Offset::Offset(0))
+            .add_partition_offset(&env.late, p, Offset::Offset(0))
             .unwrap();
     }
     reader.assign(&assignment).unwrap();
@@ -179,6 +182,15 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
         collect(&reader, expected.len(), "continuous backlog").await == expected,
         "normalized sample identities/projections differ"
     );
+    for p in 0..3 {
+        assert_eq!(
+            observer
+                .fetch_watermarks(&env.normalized, p, Duration::from_secs(3))
+                .unwrap(),
+            (0, 0),
+            "points outside the recent window reached the recent topic"
+        );
+    }
     eprintln!(
         "progress_complete inputs={} logical_samples={}",
         PER_PARTITION * 3,
@@ -196,6 +208,8 @@ struct Environment {
     broker: String,
     raw: String,
     normalized: String,
+    /// Receives the fixtures' points, which are older than the recent window.
+    late: String,
     group: String,
 }
 impl Environment {
@@ -206,6 +220,7 @@ impl Environment {
             .env("RECOUNT_KAFKA_BOOTSTRAP", &self.broker)
             .env("RECOUNT_RAW_TOPIC", &self.raw)
             .env("RECOUNT_NORMALIZED_TOPIC", &self.normalized)
+            .env("RECOUNT_LATE_TOPIC", &self.late)
             .env("RECOUNT_NORMALIZER_GROUP", &self.group)
             .env("RECOUNT_RAW_PARTITIONS", "3")
             .env("RECOUNT_NORMALIZED_PARTITIONS", "3")
@@ -291,17 +306,18 @@ async fn real_kafka_bootstrap_replay_rebalance_and_global_handler_poison() {
         broker: setting("RECOUNT_NORMALIZER_TEST_BROKER"),
         raw: setting("RECOUNT_NORMALIZER_TEST_RAW_TOPIC"),
         normalized: setting("RECOUNT_NORMALIZER_TEST_NORMALIZED_TOPIC"),
+        late: setting("RECOUNT_NORMALIZER_TEST_LATE_TOPIC"),
         group: setting("RECOUNT_NORMALIZER_TEST_GROUP"),
     };
     let namespace = setting("RECOUNT_NORMALIZER_TEST_NAMESPACE");
     assert!(namespace.starts_with("recount."));
-    for name in [&env.raw, &env.normalized, &env.group] {
+    for name in [&env.raw, &env.normalized, &env.late, &env.group] {
         assert!(name.starts_with(&format!("{namespace}.normalizer.")));
     }
     let observer = consumer(&env.broker, &env.group);
     let mut assignment = TopicPartitionList::new();
     for partition in 0..3 {
-        for topic in [&env.raw, &env.normalized] {
+        for topic in [&env.raw, &env.normalized, &env.late] {
             assert_eq!(
                 observer
                     .fetch_watermarks(topic, partition, Duration::from_secs(3))
@@ -311,7 +327,7 @@ async fn real_kafka_bootstrap_replay_rebalance_and_global_handler_poison() {
             );
         }
         assignment
-            .add_partition_offset(&env.normalized, partition, Offset::Offset(0))
+            .add_partition_offset(&env.late, partition, Offset::Offset(0))
             .unwrap();
     }
     let reader = consumer(&env.broker, &format!("{}.observer", env.group));
@@ -435,7 +451,7 @@ async fn real_kafka_bootstrap_replay_rebalance_and_global_handler_poison() {
     let output_before: i64 = (0..3)
         .map(|p| {
             observer
-                .fetch_watermarks(&env.normalized, p, Duration::from_secs(3))
+                .fetch_watermarks(&env.late, p, Duration::from_secs(3))
                 .unwrap()
                 .1
         })
@@ -467,7 +483,7 @@ async fn real_kafka_bootstrap_replay_rebalance_and_global_handler_poison() {
     let output_after: i64 = (0..3)
         .map(|p| {
             observer
-                .fetch_watermarks(&env.normalized, p, Duration::from_secs(3))
+                .fetch_watermarks(&env.late, p, Duration::from_secs(3))
                 .unwrap()
                 .1
         })

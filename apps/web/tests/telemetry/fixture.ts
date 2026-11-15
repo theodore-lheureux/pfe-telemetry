@@ -138,7 +138,7 @@ export async function createPointFixture() {
 			// Mirror the telemetry_read profile's constraints so tests reject settings
 			// that the deployed reader account would refuse.
 			query: `CREATE USER ${readerName} IDENTIFIED WITH sha256_password BY '${readerPassword}'
-        SETTINGS max_execution_time = 6 MIN 1 MAX 6, max_threads = 1 MIN 1 MAX 1,
+        SETTINGS max_execution_time = 6 MIN 1 MAX 6, max_threads = 1 MIN 1 MAX 4,
           max_memory_usage = 268435456 MIN 1 MAX 268435456`,
 		});
 		readerCreated = true;

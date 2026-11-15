@@ -29,6 +29,7 @@ jobs:
       RECOUNT_NORMALIZER_TEST_NAMESPACE: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}
       RECOUNT_NORMALIZER_TEST_RAW_TOPIC: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.normalizer.raw
       RECOUNT_NORMALIZER_TEST_NORMALIZED_TOPIC: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.normalizer.normalized
+      RECOUNT_NORMALIZER_TEST_LATE_TOPIC: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.normalizer.late
       RECOUNT_NORMALIZER_TEST_GROUP: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.normalizer.group
     services:
       postgres:
@@ -86,6 +87,7 @@ jobs:
         run: |
           docker exec '${{ job.services.kafka.id }}' /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic "$RECOUNT_NORMALIZER_TEST_RAW_TOPIC" --partitions 3 --replication-factor 1 --config max.message.bytes=6291456
           docker exec '${{ job.services.kafka.id }}' /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic "$RECOUNT_NORMALIZER_TEST_NORMALIZED_TOPIC" --partitions 3 --replication-factor 1 --config max.message.bytes=2097152
+          docker exec '${{ job.services.kafka.id }}' /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --create --topic "$RECOUNT_NORMALIZER_TEST_LATE_TOPIC" --partitions 3 --replication-factor 1 --config max.message.bytes=2097152
       - name: Real normalizer progress, bootstrap, replay, rebalance and poison
         run: cargo test --locked -p recount-normalizer --test kafka -- --ignored --test-threads=1 --nocapture
       - name: Live notification references and raw acceptance during notification failure
@@ -172,6 +174,7 @@ jobs:
       RECOUNT_CLICKHOUSE_READER_PASSWORD: recount-ci-reader-only
       RECOUNT_RAW_TOPIC: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.pipeline.raw
       RECOUNT_NORMALIZED_TOPIC: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.pipeline.normalized
+      RECOUNT_LATE_TOPIC: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.pipeline.late
       RECOUNT_NORMALIZER_GROUP: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.pipeline.normalizer
       RECOUNT_STORAGE_TEST_ALLOW_CREATE: "1"
       RECOUNT_STORAGE_TEST_NAMESPACE: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}

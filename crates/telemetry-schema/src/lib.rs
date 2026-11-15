@@ -16,3 +16,31 @@ pub const RAW_TOPIC: &str = "recount.metrics.raw";
 pub const NORMALIZED_TOPIC: &str = "recount.metrics.normalized";
 pub const NORMALIZER_GROUP: &str = "recount-normalizer";
 pub const CLICKHOUSE_GROUP: &str = "recount-clickhouse";
+/// Points outside the recent window, kept apart so they cannot spread one ClickHouse insert
+/// across many day partitions.
+pub const LATE_TOPIC: &str = "recount.metrics.late";
+pub const CLICKHOUSE_LATE_GROUP: &str = "recount-clickhouse-late";
+/// How far a point's time may be from the normalizer's clock, either way, and still take
+/// the recent topic. A recent insert block then spans at most three day partitions.
+pub const RECENT_WINDOW_NS: u64 = 24 * 60 * 60 * 1_000_000_000;
+
+/// Whether a point at `time` belongs on the recent topic when normalized at `now`.
+pub fn recent(time: u64, now: u64) -> bool {
+    time.abs_diff(now) <= RECENT_WINDOW_NS
+}
+
+#[cfg(test)]
+mod recent_tests {
+    use super::*;
+
+    #[test]
+    fn the_recent_window_reaches_one_day_either_way() {
+        let now = 1_800_000_000_000_000_000;
+        assert!(recent(now, now));
+        assert!(recent(now - RECENT_WINDOW_NS, now));
+        assert!(recent(now + RECENT_WINDOW_NS, now));
+        assert!(!recent(now - RECENT_WINDOW_NS - 1, now));
+        assert!(!recent(now + RECENT_WINDOW_NS + 1, now));
+        assert!(!recent(1, now));
+    }
+}

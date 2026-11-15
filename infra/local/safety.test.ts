@@ -364,7 +364,7 @@ test("topic verification never creates or repairs topics; creation is explicit",
 	const tool = join(path, "tool.sh");
 	writeFileSync(
 		tool,
-		`#!/bin/bash\nprintf '%s\\n' "$*" >> "$MOCK_LOG"\ncase "$*" in\n*--describe*--topic*) [ "\${MOCK_MISSING:-}" != 1 ] || exit 1; echo 'PartitionCount: 3 ReplicationFactor: 1' ;;\n*--entity-type*) echo 'retention.ms=65536 retention.bytes=65536 segment.bytes=65536 segment.ms=65536 max.message.bytes=65536 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false ' ;;\nesac\n`,
+		`#!/bin/bash\nprintf '%s\\n' "$*" >> "$MOCK_LOG"\ncase "$*" in\n*--describe*--topic*) [ "\${MOCK_MISSING:-}" != 1 ] || exit 1; echo 'PartitionCount: 3 ReplicationFactor: 1' ;;\n*--entity-type*) echo 'retention.ms=65536 retention.bytes=65536 segment.bytes=65536 segment.ms=65536 max.message.bytes=65536 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false compression.type=zstd ' ;;\nesac\n`,
 	);
 	chmodSync(tool, 0o755);
 	symlinkSync(tool, join(path, "kafka-topics.sh"));
@@ -381,6 +381,7 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		RECOUNT_KAFKA_BOOTSTRAP: "synthetic:9092",
 		RECOUNT_RAW_TOPIC: "raw",
 		RECOUNT_NORMALIZED_TOPIC: "normalized",
+		RECOUNT_LATE_TOPIC: "late",
 		RECOUNT_LIVE_TOPIC: "live",
 		RECOUNT_LIVE_PARTITIONS: "3",
 		RECOUNT_RAW_PARTITIONS: "3",
@@ -412,9 +413,15 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		expect(await child.exited).toBe(missing ? 1 : 0);
 		const calls = readFileSync(log, "utf8");
 		expect(calls.includes("--create")).toBe(mode.startsWith("create"));
+		// Raw, normalized and late topics store the zstd batches their producers send.
+		if (mode === "create") {
+			expect(calls.match(/compression\.type=zstd/g)).toHaveLength(3);
+			expect(calls).toContain("--create --topic late --partitions 3");
+		}
 		if (mode === "create-live") {
 			expect(calls).not.toContain("--topic raw");
 			expect(calls).not.toContain("--topic normalized");
+			expect(calls).not.toContain("--topic late");
 			expect(calls.match(/--create/g)).toHaveLength(1);
 		}
 		expect(calls.includes("--alter") || calls.includes("--reset-offsets")).toBe(

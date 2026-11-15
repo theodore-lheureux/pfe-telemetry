@@ -75,18 +75,23 @@ if (
 	throw new Error(
 		"Selected schema differs from the running image's pinned schema",
 	);
-function schemaSetting(name: string) {
+/** A setting's values in schema order: the recent Kafka table's first, the late one's second. */
+function schemaSettings(name: string) {
 	const matches = [
 		...schema.matchAll(
 			new RegExp(`^\\s*${name} = '([A-Za-z0-9_.-]+)',?$`, "gm"),
 		),
 	];
-	if (matches.length !== 1)
-		throw new Error(`Expected one pinned schema setting: ${name}`);
-	return matches[0][1];
+	if (matches.length !== 2)
+		throw new Error(`Expected two pinned schema settings: ${name}`);
+	return matches.map((match) => match[1]);
 }
-const nativeGroup = schemaSetting("kafka_group_name");
-if (schemaSetting("kafka_topic_list") !== topics.RECOUNT_NORMALIZED_TOPIC)
+const [nativeGroup] = schemaSettings("kafka_group_name");
+const [recentTopic, lateTopic] = schemaSettings("kafka_topic_list");
+if (
+	recentTopic !== topics.RECOUNT_NORMALIZED_TOPIC ||
+	lateTopic !== topics.RECOUNT_LATE_TOPIC
+)
 	throw new Error("Schema bundle disagrees with the selected topic allocation");
 for (const key of ["RECOUNT_RAW_PARTITIONS", "RECOUNT_NORMALIZED_PARTITIONS"])
 	if (!/^[1-9][0-9]*$/.test(String(topics[key])))
@@ -113,6 +118,7 @@ const settings: Record<string, string | undefined> = {
 	RECOUNT_PIPELINE_BOOTSTRAP: "kafka:9092",
 	RECOUNT_PIPELINE_RAW_TOPIC: topics.RECOUNT_RAW_TOPIC,
 	RECOUNT_PIPELINE_NORMALIZED_TOPIC: topics.RECOUNT_NORMALIZED_TOPIC,
+	RECOUNT_PIPELINE_LATE_TOPIC: topics.RECOUNT_LATE_TOPIC,
 	RECOUNT_PIPELINE_NORMALIZER_GROUP: process.env.RECOUNT_NORMALIZER_GROUP,
 	RECOUNT_PIPELINE_KAFKA_CONTAINER_ID: brokerId,
 	RECOUNT_PIPELINE_NATIVE_GROUP: nativeGroup,

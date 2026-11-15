@@ -1,5 +1,5 @@
 use clap::Parser;
-use recount_telemetry_schema::ddl::{Batching, FLUSH_MS, Schema};
+use recount_telemetry_schema::ddl::{Batching, FLUSH_MS, RECENT_BLOCK_ROWS, Schema};
 use recount_telemetry_validation::transport::{
     ConsumerBudget, MAX_BROKER_BYTES, MAX_OUTPUT_ROWS, NORMALIZED_BROKER_BYTES, OUTPUT_ROWS,
 };
@@ -36,6 +36,10 @@ struct Options {
     topic: String,
     #[arg(long = "consumer-group", default_value = recount_telemetry_schema::CLICKHOUSE_GROUP)]
     group: String,
+    #[arg(long = "late-topic", env = "RECOUNT_LATE_TOPIC", default_value = recount_telemetry_schema::LATE_TOPIC)]
+    late_topic: String,
+    #[arg(long = "late-consumer-group", default_value = recount_telemetry_schema::CLICKHOUSE_LATE_GROUP)]
+    late_group: String,
     /// Native insert partition ceiling; Kafka records always carry exactly one point.
     #[arg(long = "output-rows", env = "RECOUNT_NORMALIZER_OUTPUT_ROWS", default_value_t = OUTPUT_ROWS, value_parser = clap::value_parser!(u32).range(1..=MAX_OUTPUT_ROWS as i64))]
     rows: u32,
@@ -92,6 +96,8 @@ fn prepare(options: &Options) -> Result<()> {
         bootstrap: &options.bootstrap,
         topic: &options.topic,
         group: &options.group,
+        late_topic: &options.late_topic,
+        late_group: &options.late_group,
         partition_limit: options.rows,
         poll_ms: options.poll,
         flush_ms: options.flush,
@@ -179,6 +185,8 @@ fn prepare(options: &Options) -> Result<()> {
         "poll_messages": batching.poll_messages, "maximum_block_rows": batching.maximum_rows(),
         "output_rows": options.rows,
         "database": "telemetry", "consumer_group": options.group,
+        "late_topic": options.late_topic, "late_consumer_group": options.late_group,
+        "recent_block_rows": RECENT_BLOCK_ROWS,
         "kafka_format": "ProtobufSingle", "point_rows": 1,
         "normalized_broker_max_bytes": options.normalized_broker_max_bytes,
         "kafka_receive_bytes": budget.receive_bytes,
@@ -255,6 +263,8 @@ mod tests {
             bootstrap: "kafka:9092".into(),
             topic: "recount.test.normalized".into(),
             group: recount_telemetry_schema::CLICKHOUSE_GROUP.into(),
+            late_topic: "recount.test.late".into(),
+            late_group: recount_telemetry_schema::CLICKHOUSE_LATE_GROUP.into(),
             rows: OUTPUT_ROWS,
             normalized_broker_max_bytes: 65_537,
             kafka_receive_bytes: Some(12_582_912),
@@ -284,6 +294,8 @@ mod tests {
             bootstrap: "kafka:9092".into(),
             topic: "recount.test.normalized".into(),
             group: "recount.test.consumer".into(),
+            late_topic: "recount.test.late".into(),
+            late_group: recount_telemetry_schema::CLICKHOUSE_LATE_GROUP.into(),
             rows: 64,
             normalized_broker_max_bytes: 3_000_000,
             kafka_receive_bytes: None,
@@ -354,6 +366,8 @@ mod tests {
             bootstrap: "kafka:9092".into(),
             topic: "recount.test.normalized".into(),
             group: recount_telemetry_schema::CLICKHOUSE_GROUP.into(),
+            late_topic: "recount.test.late".into(),
+            late_group: recount_telemetry_schema::CLICKHOUSE_LATE_GROUP.into(),
             rows: 128,
             normalized_broker_max_bytes: NORMALIZED_BROKER_BYTES,
             kafka_receive_bytes: None,
@@ -413,6 +427,8 @@ mod tests {
                 bootstrap: "kafka:9092".into(),
                 topic: "recount.test.normalized".into(),
                 group: recount_telemetry_schema::CLICKHOUSE_GROUP.into(),
+                late_topic: "recount.test.late".into(),
+                late_group: recount_telemetry_schema::CLICKHOUSE_LATE_GROUP.into(),
                 rows,
                 normalized_broker_max_bytes: topic_bytes,
                 kafka_receive_bytes: receive_override,

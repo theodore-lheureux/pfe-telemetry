@@ -12,7 +12,7 @@ deadpool-postgres = "0.14.2"
 ed25519-dalek = "3.0.0"
 opentelemetry-proto = { version = "0.33.1", default-features = false, features = ["gen-tonic", "metrics"] }
 prost = "0.14.4"
-rdkafka = { version = "0.39.0", default-features = false, features = ["tokio"] }
+rdkafka = { version = "0.39.0", default-features = false, features = ["tokio", "zstd"] }
 recount-telemetry-schema = { version = "0.1.0", path = "../../crates/telemetry-schema" }
 recount-telemetry-validation = { version = "0.1.0", path = "../../crates/telemetry-validation" }
 serde = { version = "1.0.229", features = ["derive"] }

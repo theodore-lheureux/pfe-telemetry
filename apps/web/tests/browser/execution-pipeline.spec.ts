@@ -70,12 +70,13 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 	const bootstrapAddress = required("RECOUNT_PIPELINE_BOOTSTRAP");
 	const rawTopic = required("RECOUNT_PIPELINE_RAW_TOPIC");
 	const normalizedTopic = required("RECOUNT_PIPELINE_NORMALIZED_TOPIC");
+	const lateTopic = required("RECOUNT_PIPELINE_LATE_TOPIC");
 	const group = required("RECOUNT_PIPELINE_NORMALIZER_GROUP");
 	const nativeGroup = required("RECOUNT_PIPELINE_NATIVE_GROUP");
 	const brokerId = required("RECOUNT_PIPELINE_KAFKA_CONTAINER_ID");
 	if (
-		rawTopic === normalizedTopic ||
-		[rawTopic, normalizedTopic].some(
+		new Set([rawTopic, normalizedTopic, lateTopic]).size !== 3 ||
+		[rawTopic, normalizedTopic, lateTopic].some(
 			(topic) =>
 				!/^[A-Za-z0-9_.-]{1,249}$/.test(topic) ||
 				[
@@ -83,6 +84,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 					"..",
 					"recount.metrics.raw",
 					"recount.metrics.normalized",
+					"recount.metrics.late",
 				].includes(topic),
 		) ||
 		group === "recount-normalizer" ||
@@ -114,6 +116,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 		RECOUNT_KAFKA_BOOTSTRAP: bootstrapAddress,
 		RECOUNT_RAW_TOPIC: rawTopic,
 		RECOUNT_NORMALIZED_TOPIC: normalizedTopic,
+		RECOUNT_LATE_TOPIC: lateTopic,
 		RECOUNT_RAW_PARTITIONS: positive("RECOUNT_PIPELINE_RAW_PARTITIONS"),
 		RECOUNT_NORMALIZED_PARTITIONS: positive(
 			"RECOUNT_PIPELINE_NORMALIZED_PARTITIONS",

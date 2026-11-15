@@ -113,6 +113,40 @@ fn temporality(v: i32) -> Result<(), Issue> {
     }
 }
 
+/// Rejects points dated after the allowed clock skew or before the source's maximum
+/// submission age, measured from receipt, so no accepted point lies far from now.
+/// Run at admission only: replays revalidate without the source's age policy.
+pub fn point_times(
+    request: &ExportMetricsServiceRequest,
+    received: u64,
+    maximum_age_ns: u64,
+    skew_ns: u64,
+) -> Result<(), Issue> {
+    let oldest = received.saturating_sub(maximum_age_ns.saturating_add(skew_ns));
+    let newest = received.saturating_add(skew_ns);
+    let metrics = request
+        .resource_metrics
+        .iter()
+        .flat_map(|resource| &resource.scope_metrics)
+        .flat_map(|scope| &scope.metrics);
+    for metric in metrics {
+        for observation in point::observations(metric) {
+            let time = observation.time();
+            if time > newest {
+                return Err(invalid("time", "point time exceeds allowed future skew"));
+            }
+            if time < oldest {
+                return Err(Issue::new(
+                    Category::Expired,
+                    "time",
+                    "point older than the maximum submission age",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn request(request: &ExportMetricsServiceRequest, limits: Limits) -> Result<usize, Issue> {
     let limits = limits.validate()?;
     if request.encoded_len() > limits.decoded_bytes {

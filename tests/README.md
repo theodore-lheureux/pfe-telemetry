@@ -45,8 +45,8 @@ Normalizers use these explicit test settings:
 
 - `RECOUNT_NORMALIZER_TEST_ALLOW_PUBLISH=1`
 - `RECOUNT_NORMALIZER_TEST_BROKER` and `RECOUNT_NORMALIZER_TEST_NAMESPACE`
-- `RECOUNT_NORMALIZER_TEST_RAW_TOPIC`, `RECOUNT_NORMALIZER_TEST_NORMALIZED_TOPIC`
-  and `RECOUNT_NORMALIZER_TEST_GROUP`
+- `RECOUNT_NORMALIZER_TEST_RAW_TOPIC`, `RECOUNT_NORMALIZER_TEST_NORMALIZED_TOPIC`,
+  `RECOUNT_NORMALIZER_TEST_LATE_TOPIC` and `RECOUNT_NORMALIZER_TEST_GROUP`
 
 The supplied topics must be empty, have three partitions, and use distinct names
 under `<namespace>.normalizer.`. The progress case creates its own fresh topics.

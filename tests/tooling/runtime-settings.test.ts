@@ -29,7 +29,7 @@ const args = process.argv.slice(2);
 const project = "${project}";
 if (args[0] === "compose" && args.includes("ps")) console.log((args.at(-1) === "kafka" ? "b" : "a").repeat(64));
 else if (args[0] === "compose" && args.includes("config")) console.log(JSON.stringify({ services: {
-  "kafka-topics": { environment: { RECOUNT_RAW_TOPIC: "allocated.raw", RECOUNT_NORMALIZED_TOPIC: "allocated.normalized", RECOUNT_RAW_PARTITIONS: "7", RECOUNT_NORMALIZED_PARTITIONS: "11" } },
+  "kafka-topics": { environment: { RECOUNT_RAW_TOPIC: "allocated.raw", RECOUNT_NORMALIZED_TOPIC: "allocated.normalized", RECOUNT_LATE_TOPIC: "allocated.late", RECOUNT_RAW_PARTITIONS: "7", RECOUNT_NORMALIZED_PARTITIONS: "11" } },
   clickhouse: { volumes: [{ type: "bind", source: process.env.MOCK_SCHEMA, target: "/etc/recount-schema" }] }
 }}));
 else if (args[0] === "inspect") {
@@ -48,13 +48,16 @@ else throw new Error("Unexpected Docker operation: " + args.join(" "));
 			"selected",
 			"foreign",
 			"mismatch",
+			"late-mismatch",
 			"group-tampered",
 			"manifest-group-tampered",
 		]) {
 			writeFileSync(output, "");
 			const topic =
 				scenario === "mismatch" ? "foreign.normalized" : "allocated.normalized";
-			const pinnedSchema = `    kafka_topic_list = '${topic}',\n    kafka_group_name = 'allocated.native',\n`;
+			const lateTopic =
+				scenario === "late-mismatch" ? "foreign.late" : "allocated.late";
+			const pinnedSchema = `    kafka_topic_list = '${topic}',\n    kafka_group_name = 'allocated.native',\n    kafka_topic_list = '${lateTopic}',\n    kafka_group_name = 'allocated.late-native',\n`;
 			const mountedSchema =
 				scenario === "group-tampered"
 					? pinnedSchema.replace("allocated.native", "foreign.native")
@@ -123,6 +126,7 @@ else throw new Error("Unexpected Docker operation: " + args.join(" "));
 				RECOUNT_PIPELINE_NORMALIZED_PARTITIONS: "11",
 				RECOUNT_PIPELINE_RAW_TOPIC: "allocated.raw",
 				RECOUNT_PIPELINE_NORMALIZED_TOPIC: "allocated.normalized",
+				RECOUNT_PIPELINE_LATE_TOPIC: "allocated.late",
 				RECOUNT_STORAGE_TEST_CONTAINER_ID: "a".repeat(64),
 			});
 		}

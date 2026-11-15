@@ -41,6 +41,8 @@ fn escaped(value: &str) -> String {
 struct Storage {
     database: String,
     topic: String,
+    /// The late topic the schema also reads; these cases publish only to `topic`.
+    late: String,
     group: String,
     broker: String,
     observer: BaseConsumer,
@@ -68,6 +70,7 @@ impl Storage {
         let database = format!("recount_tooling_{unique}");
         let topic = format!("{namespace}.storage.{unique}");
         let group = format!("{topic}.consumer");
+        let late = format!("{topic}.late");
         let broker = setting("RECOUNT_STORAGE_TEST_BROKER");
         let admin: AdminClient<_> = ClientConfig::new()
             .set("bootstrap.servers", &broker)
@@ -78,9 +81,12 @@ impl Storage {
             .set("retention.bytes", "134217728")
             .set("retention.ms", if retention { "1000" } else { "21600000" })
             .set("segment.ms", if retention { "1000" } else { "3600000" });
+        let late_config = NewTopic::new(&late, 1, TopicReplication::Fixed(1))
+            .set("max.message.bytes", "2097152")
+            .set("retention.bytes", "134217728");
         let results = admin
             .create_topics(
-                &[topic_config],
+                &[topic_config, late_config],
                 &AdminOptions::new().request_timeout(Some(Duration::from_secs(5))),
             )
             .await
@@ -100,6 +106,7 @@ impl Storage {
         let storage = Self {
             database,
             topic,
+            late,
             group,
             broker,
             observer,
@@ -194,12 +201,25 @@ impl Storage {
     }
 
     fn start(&self) {
+        self.start_as(false);
+    }
+
+    /// With `late`, the late table reads this test's topic and group instead of the recent one.
+    fn start_as(&self, late: bool) {
         let internal = setting("RECOUNT_STORAGE_TEST_INTERNAL_BROKER");
+        let other_group = format!("{}.other", self.group);
+        let (topic, group, late_topic, late_group) = if late {
+            (&self.late, &other_group, &self.topic, &self.group)
+        } else {
+            (&self.topic, &self.group, &self.late, &other_group)
+        };
         let ddl = Schema {
             database: &self.database,
             bootstrap: &internal,
-            topic: &self.topic,
-            group: &self.group,
+            topic,
+            group,
+            late_topic,
+            late_group,
             partition_limit: setting("RECOUNT_STORAGE_TEST_OUTPUT_ROWS").parse().unwrap(),
             poll_ms: 100,
             flush_ms: recount_telemetry_schema::ddl::FLUSH_MS,
@@ -289,7 +309,7 @@ impl Storage {
             .unwrap();
         let result = admin
             .delete_topics(
-                &[&self.topic],
+                &[&self.topic, &self.late],
                 &AdminOptions::new().request_timeout(Some(Duration::from_secs(5))),
             )
             .await
@@ -470,19 +490,11 @@ async fn native_batching_preserves_rows_and_reduces_initial_part_creation() {
         .split_whitespace()
         .map(|value| value.parse::<usize>().unwrap())
         .collect::<Vec<_>>();
-    let partitions = setting("RECOUNT_STORAGE_TEST_OUTPUT_ROWS").parse().unwrap();
-    if recount_telemetry_schema::ddl::Batching::for_partition_limit(partitions)
-        .unwrap()
-        .block_rows
-        > 1
-    {
-        assert!(
-            parts[0] < 128 && parts[1] > 1,
-            "no insert batching: {parts:?}"
-        );
-    } else {
-        assert_eq!(parts, [128, 1]);
-    }
+    // The recent table batches whatever the partition guard, since its points are recent.
+    assert!(
+        parts[0] < 128 && parts[1] > 1,
+        "no insert batching: {parts:?}"
+    );
     storage.close().await;
 }
 
@@ -549,7 +561,8 @@ async fn complete_records_have_finite_fanout_and_oversized_records_do_not_commit
             .unwrap();
         assert_eq!(guard.trim(), bound.to_string());
         assert_eq!(String::from_utf8(storage.sql("SELECT value FROM system.settings WHERE name='throw_on_max_partitions_per_insert_block'")).unwrap().trim(), "1");
-        storage.start();
+        // Points on many days are late, and the late table keeps each insert within the guard.
+        storage.start_as(true);
         let count = bound + 1;
         for index in 0..count {
             let mut row = seed.clone();

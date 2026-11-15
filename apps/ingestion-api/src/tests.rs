@@ -165,6 +165,9 @@ async fn server(
 }
 
 fn body() -> ExportMetricsServiceRequest {
+    body_at(unix_nanos().unwrap())
+}
+fn body_at(time_unix_nano: u64) -> ExportMetricsServiceRequest {
     ExportMetricsServiceRequest {
         resource_metrics: vec![ResourceMetrics {
             scope_metrics: vec![ScopeMetrics {
@@ -172,7 +175,7 @@ fn body() -> ExportMetricsServiceRequest {
                     name: "custom.value".into(),
                     data: Some(metric::Data::Gauge(Gauge {
                         data_points: vec![NumberDataPoint {
-                            time_unix_nano: 1,
+                            time_unix_nano,
                             value: Some(number_data_point::Value::AsInt(i64::MAX)),
                             ..Default::default()
                         }],
@@ -382,6 +385,21 @@ async fn authentication_empty_requests_metadata_and_expiry_remain_fail_closed() 
     );
     assert_eq!(
         client.export(future).await.unwrap_err().code(),
+        Code::InvalidArgument
+    );
+    // Points are dated against receipt too, whatever their batch says.
+    let day = 86_400 * 1_000_000_000;
+    assert_eq!(
+        client.export(request(body_at(1))).await.unwrap_err().code(),
+        Code::FailedPrecondition
+    );
+    let ahead = unix_nanos().unwrap() + day;
+    assert_eq!(
+        client
+            .export(request(body_at(ahead)))
+            .await
+            .unwrap_err()
+            .code(),
         Code::InvalidArgument
     );
     assert!(sink.records.lock().unwrap().is_empty());

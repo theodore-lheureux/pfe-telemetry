@@ -1,5 +1,5 @@
 use clap::{CommandFactory, Parser, Subcommand, error::ErrorKind};
-use recount_telemetry_schema::{NORMALIZED_TOPIC, NORMALIZER_GROUP, RAW_TOPIC};
+use recount_telemetry_schema::{LATE_TOPIC, NORMALIZED_TOPIC, NORMALIZER_GROUP, RAW_TOPIC};
 use recount_telemetry_validation::{
     cli::{LimitArgs, nonblank},
     transport::{self, MAX_BROKER_BYTES, NORMALIZED_BROKER_BYTES, RAW_BROKER_BYTES},
@@ -22,6 +22,9 @@ pub struct Cli {
     raw_topic: String,
     #[arg(long, env = "RECOUNT_NORMALIZED_TOPIC", default_value = NORMALIZED_TOPIC, value_parser = nonblank)]
     normalized_topic: String,
+    /// Receives points outside the recent window, with the normalized topic's partition count.
+    #[arg(long, env = "RECOUNT_LATE_TOPIC", default_value = LATE_TOPIC, value_parser = nonblank)]
+    late_topic: String,
     #[arg(long, env = "RECOUNT_NORMALIZER_GROUP", default_value = NORMALIZER_GROUP, value_parser = nonblank)]
     group: String,
     #[arg(long, env = "RECOUNT_RAW_PARTITIONS", default_value_t = 3, value_parser = clap::value_parser!(u32).range(1..=4096))]
@@ -71,6 +74,7 @@ impl Cli {
             bootstrap: self.kafka_bootstrap,
             raw_topic: self.raw_topic,
             normalized_topic: self.normalized_topic,
+            late_topic: self.late_topic,
             group: self.group,
             raw_partitions: self.raw_partitions,
             normalized_partitions: self.normalized_partitions,
@@ -79,8 +83,11 @@ impl Cli {
             delivery: Duration::from_millis(self.delivery_ms.into()),
             shutdown: Duration::from_millis(self.shutdown_ms.into()),
         };
-        if config.raw_topic == config.normalized_topic {
-            return Err(invalid("raw and normalized topics must differ"));
+        if config.raw_topic == config.normalized_topic
+            || config.late_topic == config.raw_topic
+            || config.late_topic == config.normalized_topic
+        {
+            return Err(invalid("raw, normalized and late topics must differ"));
         }
         config.validate_transport().map_err(invalid)?;
         Ok(config)
@@ -95,6 +102,7 @@ pub struct Config {
     pub bootstrap: String,
     pub raw_topic: String,
     pub normalized_topic: String,
+    pub late_topic: String,
     pub group: String,
     pub raw_partitions: u32,
     pub normalized_partitions: u32,
@@ -142,7 +150,12 @@ mod tests {
         assert_eq!(config.bootstrap, "kafka:9092");
         assert_eq!(config.raw_topic, RAW_TOPIC);
         assert_eq!(config.normalized_topic, NORMALIZED_TOPIC);
+        assert_eq!(config.late_topic, LATE_TOPIC);
         assert_eq!(config.group, NORMALIZER_GROUP);
+        for topic in [RAW_TOPIC, NORMALIZED_TOPIC] {
+            let cli = parse(&["normalizer", "--late-topic", topic]).unwrap();
+            assert!(cli.into_config().is_err());
+        }
         assert_eq!(
             (config.raw_partitions, config.normalized_partitions),
             (3, 3)
