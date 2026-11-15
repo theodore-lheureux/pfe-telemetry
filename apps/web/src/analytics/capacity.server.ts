@@ -24,12 +24,12 @@ const settings = z.object({
 		"RECOUNT_ANALYTICS_CONCURRENCY",
 		1,
 		1000,
-	).default(2),
+	).default(8),
 	RECOUNT_ANALYTICS_ORGANIZATION_CONCURRENCY: integer(
 		"RECOUNT_ANALYTICS_ORGANIZATION_CONCURRENCY",
 		1,
 		1000,
-	).default(1),
+	).default(4),
 });
 
 export function readSlotLimits(env: Env = process.env): SlotLimits {

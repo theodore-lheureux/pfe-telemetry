@@ -130,7 +130,7 @@ test("a cancelled request stops waiting for a slot", async () => {
 });
 
 test("slot limits are validated", () => {
-	expect(readSlotLimits({})).toMatchObject({ total: 2, organization: 1 });
+	expect(readSlotLimits({})).toMatchObject({ total: 8, organization: 4 });
 	expect(
 		readSlotLimits({
 			RECOUNT_ANALYTICS_CONCURRENCY: "8",
@@ -138,7 +138,7 @@ test("slot limits are validated", () => {
 		}),
 	).toMatchObject({ total: 8, organization: 4 });
 	expect(() =>
-		readSlotLimits({ RECOUNT_ANALYTICS_ORGANIZATION_CONCURRENCY: "3" }),
+		readSlotLimits({ RECOUNT_ANALYTICS_ORGANIZATION_CONCURRENCY: "9" }),
 	).toThrow();
 	expect(() =>
 		readSlotLimits({ RECOUNT_ANALYTICS_CONCURRENCY: "0" }),

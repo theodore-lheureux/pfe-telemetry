@@ -13,18 +13,11 @@ import { routeTree } from "./routeTree.gen";
 export function getRouter() {
 	const queryClient = new QueryClient();
 	const authentication = createAuthenticationController({
-		readState: async (signal) => {
-			const controller = new AbortController();
-			const abort = () => controller.abort();
-			if (signal?.aborted) abort();
-			signal?.addEventListener("abort", abort, { once: true });
-			const timeout = setTimeout(abort, 10_000);
-			try {
-				return await getAuthenticationState({ signal: controller.signal });
-			} finally {
-				clearTimeout(timeout);
-				signal?.removeEventListener("abort", abort);
-			}
+		readState: (signal) => {
+			const timeout = AbortSignal.timeout(10_000);
+			return getAuthenticationState({
+				signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+			});
 		},
 		clearPrivateIdentity: () => {
 			queryClient.clear();

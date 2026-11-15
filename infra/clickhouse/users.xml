@@ -2,15 +2,18 @@
   <profiles>
     <telemetry_read>
       <readonly>2</readonly>
-      <max_concurrent_queries_for_user>2</max_concurrent_queries_for_user>
+      <max_concurrent_queries_for_user>8</max_concurrent_queries_for_user>
       <max_execution_time>6</max_execution_time>
       <max_memory_usage>268435456</max_memory_usage>
       <max_threads>1</max_threads>
+      <!-- A reader that disconnects, such as a cancelled page request, stops its query. -->
+      <cancel_http_readonly_queries_on_client_close>1</cancel_http_readonly_queries_on_client_close>
       <constraints>
         <max_execution_time><min>1</min><max>6</max></max_execution_time>
         <max_memory_usage><min>1</min><max>268435456</max></max_memory_usage>
-        <max_threads><min>1</min><max>1</max></max_threads>
-        <max_concurrent_queries_for_user><min>1</min><max>2</max></max_concurrent_queries_for_user>
+        <max_threads><min>1</min><max>4</max></max_threads>
+        <max_concurrent_queries_for_user><min>1</min><max>8</max></max_concurrent_queries_for_user>
+        <cancel_http_readonly_queries_on_client_close><readonly/></cancel_http_readonly_queries_on_client_close>
       </constraints>
     </telemetry_read>
   </profiles>

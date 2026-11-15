@@ -19,7 +19,12 @@ afterAll(async () => {
 
 const MINUTE = 60_000_000_000n;
 
-async function cpu(project: string, at: bigint, mode: string) {
+async function cpu(
+	project: string,
+	at: bigint,
+	mode: string,
+	sample: string = randomUUID(),
+) {
 	await fixture.client.command({
 		query: insertPoints({
 			metric_name: "'recount.node.cpu.time'",
@@ -35,7 +40,7 @@ async function cpu(project: string, at: bigint, mode: string) {
 			time: (ns + at * MINUTE).toString(),
 			integer: null as unknown as string,
 			mode,
-			sample: randomUUID(),
+			sample,
 			stream: `node-a/cpu/${mode}`,
 			epoch: "epoch",
 		},
@@ -73,7 +78,10 @@ test("Explorer filters by metric and attributes and searches past empty windows"
 	// Points only in the first minutes, so the newest windows of the hour are empty.
 	await cpu(project, 1n, "user");
 	await cpu(project, 2n, "system");
-	await cpu(project, 3n, "idle");
+	const resent = randomUUID();
+	await cpu(project, 3n, "idle", resent);
+	// Merges are stopped, so the resent copy stays until the page removes it.
+	await cpu(project, 3n, "idle", resent);
 	const all = await page(project);
 	expect(all.points.map((point) => point.metricName)).toEqual([
 		"recount.node.cpu.time",

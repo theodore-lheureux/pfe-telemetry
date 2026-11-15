@@ -24,7 +24,7 @@ import {
 // within the telemetry_read profile's constraints, which ClickHouse enforces anyway.
 const SETTINGS = {
 	max_execution_time: 6,
-	max_threads: 1,
+	max_threads: 4,
 	max_memory_usage: "268435456",
 	max_rows_to_read: "20000000",
 	max_bytes_to_read: "2147483648",
@@ -37,6 +37,9 @@ const SETTINGS = {
 	max_bytes_before_external_group_by: "0",
 	max_bytes_before_external_sort: "0",
 	output_format_json_quote_64bit_integers: 1,
+	// Duplicates share a timestamp, so a day partition holds all copies of a point and
+	// FINAL can merge each partition alone: about twice as fast on one thread.
+	do_not_merge_across_partitions_select_final: 1,
 } as const;
 /** Maps ClickHouse failures to operation errors; limits never yield partial results. */
 function analyticsError(error: unknown, signal?: AbortSignal): never {

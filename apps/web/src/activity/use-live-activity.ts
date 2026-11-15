@@ -1,3 +1,4 @@
+import { Throttler } from "@tanstack/pacer/throttler";
 import { useEffect, useState } from "react";
 import { MutationFailure } from "../lib/operation-result";
 import type { ProjectReference } from "../organizations/contracts";
@@ -28,8 +29,6 @@ export function useLiveActivity(
 			arrivals: number[] = [];
 		let connected = false,
 			disposed = false;
-		let rendered = 0,
-			timer: ReturnType<typeof setTimeout> | undefined;
 		const source = new EventSource(
 			`/api/activity/live?${new URLSearchParams({
 				organizationId: reference.organizationId,
@@ -39,9 +38,7 @@ export function useLiveActivity(
 		);
 		setState({ data: emptyLive(startedAt), error: null });
 		const render = () => {
-			timer = undefined;
 			if (disposed || !connected) return;
-			rendered = Date.now();
 			events = events.filter(
 				(e) => e.summary.receivedAt.getTime() >= Date.now() - 300000,
 			);
@@ -52,10 +49,8 @@ export function useLiveActivity(
 			});
 		};
 		// Busy fleets can send hundreds of packets per second; render at most once a second.
-		const update = () => {
-			if (timer) return;
-			timer = setTimeout(render, Math.max(0, rendered + 1000 - Date.now()));
-		};
+		const throttler = new Throttler(render, { wait: 1000 });
+		const update = () => throttler.maybeExecute();
 		source.addEventListener("connected", () => {
 			if (disposed) return;
 			events = [];
@@ -117,7 +112,7 @@ export function useLiveActivity(
 		};
 		return () => {
 			disposed = true;
-			clearTimeout(timer);
+			throttler.cancel();
 			source.close();
 			events = [];
 		};

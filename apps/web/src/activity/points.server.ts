@@ -1,4 +1,8 @@
-import type { ClickHouseClient } from "@clickhouse/client";
+import {
+	type ClickHouseClient,
+	ClickHouseError,
+	TupleParam,
+} from "@clickhouse/client";
 import { compileFields, compileFilters } from "../analytics/compile.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
@@ -26,10 +30,15 @@ const settings = {
 	output_format_json_quote_64bit_integers: 1,
 	output_format_json_named_tuples_as_objects: 1,
 } as const;
+// TOO_MANY_ROWS and TOO_MANY_BYTES: ClickHouse rejects a read whose granules exceed the
+// caps before reading them, so a search can retry a narrower window at little cost.
+const READ_LIMIT_CODES = new Set(["158", "307"]);
+class ReadLimitError extends Error {}
 let active = 0;
+type Params = Record<string, string | number | string[] | unknown[]>;
 async function query<T>(
 	sql: string,
-	params: Record<string, string | number | string[]>,
+	params: Params,
 	signal?: AbortSignal,
 	connection: ClickHouseClient = getTelemetryClient(),
 ): Promise<T[]> {
@@ -47,9 +56,11 @@ async function query<T>(
 			clickhouse_settings: settings,
 		});
 		return await response.json<T>();
-	} catch {
+	} catch (error) {
 		if (signal?.aborted)
 			throw new OperationError("CANCELLED", "Activity query cancelled");
+		if (error instanceof ClickHouseError && READ_LIMIT_CODES.has(error.code))
+			throw new ReadLimitError();
 		throw new OperationError(
 			"UNAVAILABLE",
 			"Telemetry activity is unavailable",
@@ -77,23 +88,48 @@ interface Row {
 	scopeVersion: string;
 	fields?: (string | null)[];
 }
-function pointListQuery(conditions: string[], fields: string[]) {
+interface Key {
+	timeNs: string;
+	sampleId: string;
+	sourceId: string;
+	resourceId: string;
+	metricName: string;
+	day: number;
+}
+
+// Points are sorted by series, so the newest points of a window are found by sorting
+// only their narrow key columns. Without FINAL, a resent point can appear more than once
+// until merges remove its copies.
+function keyQuery(conditions: string[]) {
+	return `SELECT toString(time_unix_nano) AS timeNs,hex(sample_id) AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,event_day AS day
+FROM metric_points WHERE project_id={project:String} AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
+AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String}))${conditions.map((condition) => `\nAND ${condition}`).join("")}
+ORDER BY time_unix_nano DESC,sample_id DESC LIMIT {limit:UInt32}`;
+}
+
+// Resent copies of a point are identical, so the fetch keeps one per key rather than
+// paying for FINAL, which merges every part overlapping the fetched keys.
+function pointListQuery(fields: string[]) {
 	const projected = fields.length ? `[${fields.join(",")}] AS fields,` : "";
 	return `SELECT ${projected}hex(sample_id) AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
 host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
 resource_kind AS resourceKind,metric_kind AS kind,toString(int_value) AS integer,double_value AS double,toString(count) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
-FROM metric_points FINAL WHERE project_id={project:String} AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
-AND time_unix_nano>={from:UInt64} AND time_unix_nano<={to:UInt64}
-AND tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String}))${conditions.map((condition) => `\nAND ${condition}`).join("")}
-ORDER BY time_unix_nano DESC,sample_id DESC LIMIT 101`;
+FROM metric_points WHERE project_id={project:String} AND event_day IN {days:Array(UInt32)}
+AND (source_id,resource_id,metric_name,time_unix_nano) IN {series:Array(Tuple(String,String,String,UInt64))}
+AND hex(sample_id) IN {samples:Array(String)}
+ORDER BY time_unix_nano DESC,sample_id DESC LIMIT 1 BY time_unix_nano,sample_id`;
 }
 
-// Newest-first reads cannot use the table's sort order, so a page searches backwards in
-// windows that stay within the row limits and stops once it has a full page.
-const WINDOWS_MS = [900_000, 3_600_000, 21_600_000];
-const MAX_WINDOWS = 6;
-const WINDOW_BUDGET_MS = 4000;
+// A page searches backwards from its cursor. Windows grow while they come back short and
+// shrink when ClickHouse rejects them for the read caps, so their cost follows the
+// project's data rate rather than the length of the range.
+const PAGE_SIZE = 100;
+const FIRST_WINDOW_NS = 300_000_000_000n;
+const MIN_WINDOW_NS = 1_000_000_000n;
+const MAX_SEARCHES = 12;
+const SEARCH_BUDGET_MS = 4000;
 const NS_PER_MS = 1000000n;
+const NS_PER_DAY = 86400000000000n;
 const AFTER_ALL = "FF".repeat(32),
 	BEFORE_ALL = "00".repeat(32);
 
@@ -120,6 +156,76 @@ function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 	};
 }
 
+interface Search {
+	keys: Key[];
+	cursorNs: bigint;
+	cursorSample: string;
+	exhausted: boolean;
+}
+
+/** Finds the keys of the newest points before the cursor, one more than a page. */
+async function searchKeys(
+	sql: string,
+	params: Params,
+	fromNs: bigint,
+	cursorNs: bigint,
+	cursorSample: string,
+	signal?: AbortSignal,
+	connection?: ClickHouseClient,
+): Promise<Search> {
+	const keys: Key[] = [],
+		started = Date.now();
+	let span = FIRST_WINDOW_NS;
+	for (let search = 0; search < MAX_SEARCHES; search++) {
+		const lower = cursorNs - span > fromNs ? cursorNs - span : fromNs;
+		const limit = PAGE_SIZE + 1 - keys.length;
+		let batch: Key[];
+		try {
+			batch = await query<Key>(
+				sql,
+				{
+					...params,
+					firstDay: Number(lower / NS_PER_DAY),
+					lastDay: Number(cursorNs / NS_PER_DAY),
+					lower: lower.toString(),
+					cursorTime: cursorNs.toString(),
+					cursorSample,
+					limit,
+				},
+				signal,
+				connection,
+			);
+		} catch (error) {
+			if (!(error instanceof ReadLimitError)) throw error;
+			if (span <= MIN_WINDOW_NS)
+				throw new OperationError("CAPACITY", "Activity range is too dense");
+			span /= 4n;
+			continue;
+		}
+		for (const key of batch) {
+			const previous = keys.at(-1);
+			if (previous?.timeNs !== key.timeNs || previous.sampleId !== key.sampleId)
+				keys.push(key);
+		}
+		if (batch.length === limit) {
+			// The window holds more points: continue below the last key in it.
+			const last = batch.at(-1) as Key;
+			cursorNs = BigInt(last.timeNs);
+			cursorSample = last.sampleId;
+		} else {
+			// Points at the window's lower bound were included, so the next window excludes them.
+			cursorNs = lower;
+			cursorSample = BEFORE_ALL;
+			if (lower <= fromNs)
+				return { keys, cursorNs, cursorSample, exhausted: true };
+			span *= 4n;
+		}
+		if (keys.length > PAGE_SIZE || Date.now() - started > SEARCH_BUDGET_MS)
+			break;
+	}
+	return { keys, cursorNs, cursorSample, exhausted: false };
+}
+
 export async function readPoints(
 	input: ExplorerInput,
 	signal?: AbortSignal,
@@ -133,66 +239,65 @@ export async function readPoints(
 		conditions.push("metric_name={metric:String}");
 	const fields = input.fields ?? [];
 	const projections = compileFields(fields);
-	const sql = pointListQuery(conditions, projections.expressions);
+	const params = {
+		...filters.params,
+		...(input.metric === undefined ? {} : { metric: input.metric }),
+		project: input.projectId,
+	};
 	const fromNs = BigInt(from.getTime()) * NS_PER_MS;
-	let upperNs = input.cursor
+	const search = await searchKeys(
+		keyQuery(conditions),
+		params,
+		fromNs,
+		input.cursor
 			? BigInt(input.cursor.timeNs)
 			: BigInt(to.getTime()) * NS_PER_MS,
-		upperSample = input.cursor?.sampleId ?? AFTER_ALL,
-		lowerNs = upperNs;
-	const rows: Row[] = [],
-		started = Date.now();
-	for (let window = 0; window < MAX_WINDOWS && rows.length <= 100; window++) {
-		const span =
-			BigInt(WINDOWS_MS[Math.min(window, WINDOWS_MS.length - 1)] ?? 0) *
-			NS_PER_MS;
-		lowerNs = upperNs - span > fromNs ? upperNs - span : fromNs;
-		rows.push(
-			...(await query<Row>(
-				sql,
+		input.cursor?.sampleId ?? AFTER_ALL,
+		signal,
+		connection,
+	);
+	const keys = search.keys.slice(0, PAGE_SIZE);
+	const rows = keys.length
+		? await query<Row>(
+				pointListQuery(projections.expressions),
 				{
-					...filters.params,
 					...projections.params,
-					...(input.metric === undefined ? {} : { metric: input.metric }),
 					project: input.projectId,
-					firstDay: Number(lowerNs / 86400000000000n),
-					lastDay: Number(upperNs / 86400000000000n),
-					from: lowerNs.toString(),
-					to: upperNs.toString(),
-					cursorTime: upperNs.toString(),
-					cursorSample: upperSample,
+					days: [...new Set(keys.map((key) => key.day))],
+					series: keys.map(
+						(key) =>
+							new TupleParam([
+								key.sourceId,
+								key.resourceId,
+								key.metricName,
+								BigInt(key.timeNs),
+							]),
+					),
+					samples: keys.map((key) => key.sampleId),
 				},
 				signal,
 				connection,
-			)),
-		);
-		if (lowerNs <= fromNs || Date.now() - started > WINDOW_BUDGET_MS) break;
-		// Rows at the window's lower bound were included, so the next window excludes them.
-		upperNs = lowerNs;
-		upperSample = BEFORE_ALL;
-	}
-	const points = rows
-		.slice(0, 100)
-		.map((row) => summary(input.projectId, row, fields));
-	const last = points.at(-1);
-	const exhausted = rows.length <= 100 && lowerNs <= fromNs;
-	// A full page resumes after its last point; otherwise the search resumes below the
-	// searched window, until the range is exhausted.
-	let nextCursor: {
-		from: Date;
-		to: Date;
-		timeNs: string;
-		sampleId: string;
-	} | null = exhausted
+			)
+		: [];
+	const points = rows.map((row) => summary(input.projectId, row, fields));
+	// A full page resumes after its last key; otherwise the search resumes where it
+	// stopped, until the range is exhausted.
+	let nextCursor: PointPage["nextCursor"] = search.exhausted
 		? null
-		: { from, to, timeNs: lowerNs.toString(), sampleId: BEFORE_ALL };
-	if (rows.length > 100 && last)
+		: {
+				from,
+				to,
+				timeNs: search.cursorNs.toString(),
+				sampleId: search.cursorSample,
+			};
+	const last = keys.at(-1);
+	if (search.keys.length > PAGE_SIZE && last)
 		nextCursor = { from, to, timeNs: last.timeNs, sampleId: last.sampleId };
 	return {
 		points,
 		from,
 		to,
-		searchedTo: nanosecondsDate(lowerNs.toString()),
+		searchedTo: nanosecondsDate(nextCursor?.timeNs ?? fromNs.toString()),
 		nextCursor,
 	};
 }
