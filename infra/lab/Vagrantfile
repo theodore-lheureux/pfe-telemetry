@@ -15,6 +15,9 @@ cpus = environment_integer("RECOUNT_LAB_NODE_CPUS", 1, 1, 4)
 memory = environment_integer("RECOUNT_LAB_NODE_MEMORY_MB", 1024, 512, 4096)
 prefix = ENV.fetch("RECOUNT_LAB_VM_PREFIX", "recount-lab")
 raise "Invalid lab VM prefix" unless prefix.match?(/\A[A-Za-z0-9][A-Za-z0-9_.-]*\z/)
+# Guests are named <prefix>-1 and <prefix>-2; another set of nodes needs its own prefix.
+hostname_prefix = ENV.fetch("RECOUNT_LAB_HOSTNAME_PREFIX", "recount-compute")
+raise "Invalid lab hostname prefix" unless hostname_prefix.match?(/\A[a-z0-9][a-z0-9-]{0,50}\z/)
 
 def private_address(name)
   value = ENV.fetch(name) { raise "Set #{name} in the selected ignored lab configuration" }
@@ -24,8 +27,8 @@ def private_address(name)
 end
 
 nodes = {
-  "node1" => { "recount_hostname" => "recount-compute-1", "recount_private_ip" => private_address("RECOUNT_LAB_NODE1_ADDRESS") },
-  "node2" => { "recount_hostname" => "recount-compute-2", "recount_private_ip" => private_address("RECOUNT_LAB_NODE2_ADDRESS") }
+  "node1" => { "recount_hostname" => "#{hostname_prefix}-1", "recount_private_ip" => private_address("RECOUNT_LAB_NODE1_ADDRESS") },
+  "node2" => { "recount_hostname" => "#{hostname_prefix}-2", "recount_private_ip" => private_address("RECOUNT_LAB_NODE2_ADDRESS") }
 }
 raise "Lab node addresses must differ" if nodes["node1"]["recount_private_ip"] == nodes["node2"]["recount_private_ip"]
 

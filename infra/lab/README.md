@@ -72,7 +72,7 @@ Vagrant generates the local inventory at `.vagrant/provisioners/ansible/inventor
 
 The site playbook statically imports the connectivity tasks with `never` and `verify` tags. Default provisioning skips them so the first VM can provision before its peers start. `just lab verify` selects them explicitly; `just lab check` uses `--check --diff --tags all,verify` to simulate provisioning and run the read-only probes. Check mode requires already-provisioned VMs because it does not install missing tools. A successful check-mode run can report configuration changes that would still need to be applied.
 
-Portable CI runs `just --no-dotenv lab syntax`, which uses a synthetic inventory and the committed Compose example without connecting to guests. Live commands still require readable generated inventory. Collectors default `recount_collector_endpoint` to `http://{{ recount_ingestion_address }}`, matching the generated address checked by verification, and `recount_collector_enrollment_url` to the web application at `http://{{ recount_web_address }}`. Every VM enrolls itself with the one demo enrollment key. An explicit Ansible override, such as `-e recount_collector_endpoint=http://host:port`, takes precedence.
+Portable CI runs `just --no-dotenv lab syntax`, which uses a synthetic inventory and the committed Compose example without connecting to guests. Live commands still require readable generated inventory. Collectors default `recount_collector_endpoint` to `http://{{ recount_ingestion_address }}`, matching the generated address checked by verification, and `recount_collector_enrollment_url` to the web application at `http://{{ recount_web_address }}`. Every VM enrolls itself with the one demo enrollment key, in the owner's `recount_demo_organization_slug` organization and `recount_demo_project_name` project (`recount-demo` and `Local VMs` by default), which are created when missing. To join an existing project, select it with those variables and the directory holding its saved key in `recount_collector_enrollment_directory`. An explicit Ansible override, such as `-e recount_collector_endpoint=http://host:port`, takes precedence.
 
 ## Storage and local settings
 
@@ -82,17 +82,17 @@ Changing the default folder affects new VMs. Move existing powered-off VMs with 
 
 Keep Vagrant metadata and VM files while the VMs exist. `.state` stores workload results. Stop the VMs before ejecting a drive that holds their disks or box cache. Commands can run through `just lab vagrant` or directly with `uv run --project ../.. --locked vagrant` from this directory.
 
-The local `.env` also controls `RECOUNT_INGESTION_PORT`, `RECOUNT_LAB_PROMETHEUS_PORT`, `RECOUNT_LAB_GRAFANA_PORT`, `RECOUNT_LAB_NODE_CPUS`, and `RECOUNT_LAB_NODE_MEMORY_MB`. Select distinct `RECOUNT_LAB_NODE1_ADDRESS` and `RECOUNT_LAB_NODE2_ADDRESS` within a locally reserved /24 private network; the example addresses are not an allocation. Set the ingestion port to match the separate stack. Stop the environment before changing these values. Exported environment variables override `.env`. CPU and memory settings should be recorded with later performance experiments. Existing local settings are not rewritten automatically, and previous control names are not aliases.
+The local `.env` also controls `RECOUNT_INGESTION_PORT`, `RECOUNT_LAB_PROMETHEUS_PORT`, `RECOUNT_LAB_GRAFANA_PORT`, `RECOUNT_LAB_NODE_CPUS`, `RECOUNT_LAB_NODE_MEMORY_MB` and `RECOUNT_LAB_HOSTNAME_PREFIX`. The hostname prefix names the guests `<prefix>-1` and `<prefix>-2`, which name the nodes in Recount; give another set of nodes on the same project its own prefix. Select distinct `RECOUNT_LAB_NODE1_ADDRESS` and `RECOUNT_LAB_NODE2_ADDRESS` within a locally reserved /24 private network; the example addresses are not an allocation. Set the ingestion port to match the separate stack. Stop the environment before changing these values. Exported environment variables override `.env`. CPU and memory settings should be recorded with later performance experiments. Existing local settings are not rewritten automatically, and previous control names are not aliases.
 
 ## Networking
 
-| Component     | Identity                                      | Address                                         |
-| ------------- | --------------------------------------------- | ----------------------------------------------- |
-| VM 1          | Vagrant `node1`, hostname `recount-compute-1` | `RECOUNT_LAB_NODE1_ADDRESS`                     |
-| VM 2          | Vagrant `node2`, hostname `recount-compute-2` | `RECOUNT_LAB_NODE2_ADDRESS`                     |
-| Ingestion API | Separate stack service `ingestion-api`        | Host `127.0.0.1:14317`, guests `10.0.2.2:14317` |
-| Prometheus    | Compose service `prometheus`                  | Host `127.0.0.1:9090`, guests `10.0.2.2:9090`   |
-| Grafana       | Compose service `grafana`                     | Host `127.0.0.1:3003`                           |
+| Component     | Identity                               | Address                                         |
+| ------------- | -------------------------------------- | ----------------------------------------------- |
+| VM 1          | Vagrant `node1`, hostname `<prefix>-1` | `RECOUNT_LAB_NODE1_ADDRESS`                     |
+| VM 2          | Vagrant `node2`, hostname `<prefix>-2` | `RECOUNT_LAB_NODE2_ADDRESS`                     |
+| Ingestion API | Separate stack service `ingestion-api` | Host `127.0.0.1:14317`, guests `10.0.2.2:14317` |
+| Prometheus    | Compose service `prometheus`           | Host `127.0.0.1:9090`, guests `10.0.2.2:9090`   |
+| Grafana       | Compose service `grafana`              | Host `127.0.0.1:3003`                           |
 
 The two private addresses use an internal VirtualBox network, with no bridge to the LAN. The host reaches the guests through Vagrant SSH. Each guest also has a NAT interface; `nat-localhostreachable` lets `10.0.2.2` reach host loopback services. The repository and host home are not mounted in the guests.
 

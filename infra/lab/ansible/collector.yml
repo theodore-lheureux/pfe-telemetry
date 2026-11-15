@@ -16,6 +16,10 @@
     recount_collector_binary: "{{ recount_collector_artifacts }}/bin/recount-collector"
     recount_collector_enrollment_directory: "{{ playbook_dir }}/../.state/enrollment"
     recount_demo_owner_email: "{{ lookup('ansible.builtin.env', 'RECOUNT_DEMO_OWNER_EMAIL') }}"
+    # The owner's organization and project the VMs enroll into, created when missing.
+    recount_demo_organization_name: Recount demo
+    recount_demo_organization_slug: recount-demo
+    recount_demo_project_name: Local VMs
     recount_demo_env_file: "{{ playbook_dir }}/../../../apps/web/.env"
   pre_tasks:
     - name: Validate the prebuilt collector architecture
@@ -78,6 +82,12 @@
           - "{{ recount_demo_nodes | to_json }}"
           - --state-directory
           - "{{ recount_collector_enrollment_directory }}"
+          - --organization-name
+          - "{{ recount_demo_organization_name }}"
+          - --organization-slug
+          - "{{ recount_demo_organization_slug }}"
+          - --project-name
+          - "{{ recount_demo_project_name }}"
         chdir: "{{ playbook_dir }}/../../.."
       delegate_to: localhost
       become: false
