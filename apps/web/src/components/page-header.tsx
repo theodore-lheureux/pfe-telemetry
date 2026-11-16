@@ -50,8 +50,8 @@ export function PageHeader({
 					)}
 				</div>
 			</StickyHeader>
-			{/* Only the title stays pinned. The header's bottom padding covers 12px below the
-			    title, so the description can move up at most 8px without being hidden. */}
+			{/* Only the title stays pinned. The header's bottom padding covers 8px below the
+			    title; the description starts 12px below, leaving room for focus rings. */}
 			<div className="-mt-2 flex flex-col gap-5">
 				{typeof description === "string" ? (
 					<p className="text-sm text-muted-foreground">{description}</p>

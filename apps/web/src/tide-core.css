@@ -194,6 +194,15 @@ html[data-variant="core"]
 	) {
 	border-width: var(--rule-width);
 }
+/* A select inside an input group addon shares the group's frame. */
+html[data-variant="core"]
+	[data-slot="input-group-addon"]
+	> [data-slot="select-trigger"] {
+	min-height: 0;
+	height: 100%;
+	border-width: 0;
+	border-radius: 0;
+}
 html[data-variant="core"]
 	:is(
 		[data-slot="card"],

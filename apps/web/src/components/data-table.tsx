@@ -5,8 +5,8 @@ import type {
 	TableFeatures,
 } from "@tanstack/react-table";
 import { cn } from "cn";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon } from "lucide-react";
+import { Fragment, type ReactNode } from "react";
 import { Button } from "./ui/button";
 import {
 	Table,
@@ -52,24 +52,36 @@ export function DataTable<
 	table,
 	label,
 	empty,
+	expanded,
 	className,
+	embedded = false,
+	onRowHover,
 }: {
 	table: ReactTable<TFeatures, TData>;
 	label: string;
 	/** Shown across the table when it has no rows. */
 	empty?: ReactNode;
+	/** Content shown under a row across every column, or nothing while it is collapsed. */
+	expanded?: (row: TData) => ReactNode;
 	className?: string;
+	/** Use the parent card's frame and scroll within its available height. */
+	embedded?: boolean;
+	onRowHover?: (row: TData | null) => void;
 }) {
 	const rows = table.getRowModel().rows;
+	const columnCount = table.getHeaderGroups()[0]?.headers.length ?? 1;
 	return (
 		<div
 			className={cn(
-				"rounded-md border bg-card text-card-foreground",
+				"bg-card text-card-foreground",
+				embedded
+					? "min-h-0 flex-1 overflow-hidden [&>[data-slot=table-container]]:h-full [&>[data-slot=table-container]]:overflow-auto [&_td]:px-3 [&_th]:px-3"
+					: "rounded-md border",
 				className,
 			)}
 		>
 			<Table aria-label={label}>
-				<TableHeader>
+				<TableHeader className={cn(embedded && "sticky top-0 z-10 bg-card")}>
 					{table.getHeaderGroups().map((group) => (
 						<TableRow key={group.id}>
 							{group.headers.map((header) => (
@@ -85,29 +97,46 @@ export function DataTable<
 					))}
 				</TableHeader>
 				<TableBody>
-					{rows.map((row) => (
-						<TableRow
-							key={row.id}
-							// Lets a cell's link stretch over the whole row.
-							className="relative"
-							data-state={
-								(row as Selectable).getIsSelected?.() ? "selected" : undefined
-							}
-						>
-							{(
-								(row as Visible<TFeatures, TData>).getVisibleCells?.() ??
-								row.getAllCells()
-							).map((cell) => (
-								<TableCell key={cell.id} className={cellClass(cell.column)}>
-									<table.FlexRender cell={cell} />
-								</TableCell>
-							))}
-						</TableRow>
-					))}
+					{rows.map((row) => {
+						const detail = expanded?.(row.original);
+						return (
+							<Fragment key={row.id}>
+								<TableRow
+									// Lets a cell's link stretch over the whole row.
+									className="relative"
+									onMouseEnter={
+										onRowHover ? () => onRowHover(row.original) : undefined
+									}
+									onMouseLeave={onRowHover ? () => onRowHover(null) : undefined}
+									data-state={
+										(row as Selectable).getIsSelected?.()
+											? "selected"
+											: undefined
+									}
+								>
+									{(
+										(row as Visible<TFeatures, TData>).getVisibleCells?.() ??
+										row.getAllCells()
+									).map((cell) => (
+										<TableCell key={cell.id} className={cellClass(cell.column)}>
+											<table.FlexRender cell={cell} />
+										</TableCell>
+									))}
+								</TableRow>
+								{detail && (
+									<TableRow className="hover:bg-transparent">
+										<TableCell colSpan={columnCount} className="p-4">
+											{detail}
+										</TableCell>
+									</TableRow>
+								)}
+							</Fragment>
+						);
+					})}
 					{rows.length === 0 && empty && (
 						<TableRow>
 							<TableCell
-								colSpan={table.getHeaderGroups()[0]?.headers.length ?? 1}
+								colSpan={columnCount}
 								className="py-8 text-center text-muted-foreground"
 							>
 								{empty}
@@ -120,14 +149,21 @@ export function DataTable<
 	);
 }
 
+// Headers sit flush with the table's scroll edge, so the focus ring is drawn inside.
 const HEADER_CLASS =
-	"-ml-2 h-7 px-2 text-xs font-semibold tracking-wide uppercase";
+	"-ml-2 h-7 px-2 text-xs font-semibold tracking-wide uppercase focus-visible:ring-inset";
+const SORT_ICON = {
+	asc: ArrowUpIcon,
+	desc: ArrowDownIcon,
+	none: ArrowUpDownIcon,
+};
 
 /** A column header that sorts its column, showing the direction when sorted. */
 export function SortableHeader({
 	label,
 	column,
 	className,
+	showUnsorted = false,
 }: {
 	label: string;
 	column: {
@@ -135,9 +171,10 @@ export function SortableHeader({
 		getToggleSortingHandler: () => undefined | ((event: unknown) => void);
 	};
 	className?: string;
+	showUnsorted?: boolean;
 }) {
 	const sorted = column.getIsSorted();
-	const Icon = sorted === "asc" ? ArrowUpIcon : ArrowDownIcon;
+	const Icon = SORT_ICON[sorted || "none"];
 	return (
 		<Button
 			variant="ghost"
@@ -148,7 +185,7 @@ export function SortableHeader({
 			{label}
 			<Icon
 				aria-hidden="true"
-				className={cn("size-3.5", !sorted && "opacity-0")}
+				className={cn("size-3.5", !sorted && !showUnsorted && "opacity-0")}
 			/>
 		</Button>
 	);

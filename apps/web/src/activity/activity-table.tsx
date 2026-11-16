@@ -128,8 +128,8 @@ export function ActivityTable({
 										"h-8 cursor-pointer",
 										isNew(row.id) &&
 											"motion-safe:animate-[row-arrival_2s_ease-out]",
-										(expanded.has(row.id) || selectedId === row.id) &&
-											"bg-muted/40",
+										// Open inline rows keep their colour; only the arrow marks them.
+										selectedId === row.id && "bg-muted/40",
 									)}
 									style={{ "--control-height": "24px" } as CSSProperties}
 									onClick={() => hydrated && onInspect(row.original)}
@@ -154,7 +154,7 @@ export function ActivityTable({
 									>
 										<TableCell
 											colSpan={columnCount}
-											className="whitespace-normal bg-muted/20 p-0"
+											className="whitespace-normal p-0"
 										>
 											{inspector(row.original)}
 										</TableCell>

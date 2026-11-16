@@ -3,7 +3,10 @@ import { Root } from "protobufjs/light";
 import { displayedActivity } from "../../src/activity/activity-state";
 import { activityNode, decodePacket } from "../../src/activity/codec.server";
 import { parseColumns } from "../../src/activity/columns";
-import { activityNumberFormat } from "../../src/activity/format";
+import {
+	activityNumberFormat,
+	formatMeasurement,
+} from "../../src/activity/format";
 import generated from "../../src/activity/generated/descriptors.json";
 import {
 	emptyLive,
@@ -306,4 +309,10 @@ test("Explorer column sets are bounded, unique and use attribute fields", () => 
 	expect(
 		parseExplorer({ ...reference, fields: ['attributes["cpu.mode"]'] }).fields,
 	).toEqual(['attributes["cpu.mode"]']);
+});
+
+test("count annotations format as plain numbers", () => {
+	expect(formatMeasurement(16, "{process}", "en").text).toBe("16");
+	expect(formatMeasurement("0", "{point}", "fr").exact).toBe("0");
+	expect(formatMeasurement(2048, "By", "en").text).toBe("2 KiB");
 });

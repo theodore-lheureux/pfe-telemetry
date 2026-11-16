@@ -83,6 +83,7 @@ export function useActivityColumns({
 					<Button
 						variant="ghost"
 						size="icon-xs"
+						className="aria-expanded:bg-muted"
 						aria-label={m.activity_expand({
 							name:
 								row.original.point?.metricName ?? row.original.packet?.id ?? "",

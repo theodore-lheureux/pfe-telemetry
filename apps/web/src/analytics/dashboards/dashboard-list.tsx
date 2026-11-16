@@ -14,18 +14,13 @@ import {
 	tableFeatures,
 	useTable,
 } from "@tanstack/react-table";
-import { PanelsTopLeftIcon, PlusIcon, SearchIcon } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import { PanelsTopLeftIcon, PlusIcon } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { DataTable, SortableHeader } from "../../components/data-table";
 import { FormFeedback } from "../../components/form-feedback";
+import { SearchField } from "../../components/search-field";
 import { TimeDisplay } from "../../components/time-display";
 import { Button } from "../../components/ui/button";
-import {
-	InputGroup,
-	InputGroupAddon,
-	InputGroupInput,
-} from "../../components/ui/input-group";
-import { Label } from "../../components/ui/label";
 import { IconEmptyState } from "../../components/workspace";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AnalyticsHeader } from "../analytics-header";
@@ -146,7 +141,6 @@ export function DashboardList({
 	canWrite: boolean;
 	dashboards: DashboardSummary[];
 }) {
-	const id = useId();
 	const hydrated = useHydrated();
 	const [sorting, setSorting] = useState<SortingState>([
 		{ id: "updatedAt", desc: true },
@@ -199,29 +193,13 @@ export function DashboardList({
 			) : (
 				<>
 					<div className="flex flex-wrap items-center justify-between gap-3">
-						<div className="w-full max-w-sm">
-							<Label htmlFor={`${id}-search`} className="sr-only">
-								{m.dashboard_search()}
-							</Label>
-							<InputGroup>
-								<InputGroupAddon>
-									<SearchIcon aria-hidden="true" />
-								</InputGroupAddon>
-								<InputGroupInput
-									id={`${id}-search`}
-									type="search"
-									value={search}
-									placeholder={m.dashboard_search()}
-									onChange={(event) =>
-										setFilters(
-											event.target.value
-												? [{ id: "name", value: event.target.value }]
-												: [],
-										)
-									}
-								/>
-							</InputGroup>
-						</div>
+						<SearchField
+							label={m.dashboard_search()}
+							value={search}
+							onChange={(value) =>
+								setFilters(value ? [{ id: "name", value }] : [])
+							}
+						/>
 						{create}
 					</div>
 					<FormFeedback

@@ -50,7 +50,8 @@ type Column = ColumnDef<typeof savedFeatures, SavedRow>;
 // Rows show the first few tags; the rest are counted.
 const SHOWN_TAGS = 3;
 
-function TagSummary({ tags }: { tags: string[] }) {
+/** A row's first few tags as badges, with the rest counted. */
+export function TagSummary({ tags }: { tags: string[] }) {
 	if (!tags.length) return <span className="text-muted-foreground">—</span>;
 	return (
 		<span className="flex flex-wrap gap-1">

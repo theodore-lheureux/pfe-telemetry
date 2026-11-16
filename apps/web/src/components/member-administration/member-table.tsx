@@ -60,7 +60,7 @@ export function MemberTableHeader<T extends RowData>({
 									<button
 										type="button"
 										disabled={!hydrated}
-										className="-ml-2 inline-flex h-7 items-center gap-1 rounded-md px-2 font-semibold uppercase tracking-wide hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
+										className="-ml-2 inline-flex h-7 items-center gap-1 rounded-md px-2 font-semibold uppercase tracking-wide hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
 										aria-label={m.settings_sort_by({ column: label })}
 										onClick={header.column.getToggleSortingHandler()}
 									>

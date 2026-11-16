@@ -54,8 +54,9 @@ export function StickyHeader({
 				data-stuck={stuck}
 				className={cn(
 					// Bleed into the page gutters so content scrolling underneath stays hidden;
-					// negative block margins keep the resting layout unchanged.
-					"sticky top-0 z-20 -mx-4 -mt-3 -mb-3 border-b border-transparent bg-background px-4 pt-3 pb-3 transition-[border-color] duration-200 data-[stuck=true]:border-border motion-reduce:transition-none md:-mx-6 md:px-6",
+					// negative block margins keep the resting layout unchanged. The bottom
+					// padding stops short of the content below so its focus rings stay visible.
+					"sticky top-0 z-20 -mx-4 -mt-3 -mb-2 border-b border-transparent bg-background px-4 pt-3 pb-2 transition-[border-color] duration-200 data-[stuck=true]:border-border motion-reduce:transition-none md:-mx-6 md:px-6",
 					// The mobile navigation button is fixed in the top-left corner.
 					"max-md:data-[stuck=true]:pl-14",
 					className,

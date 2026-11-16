@@ -1,3 +1,5 @@
+import { type FormattedNumber, formatNumeric } from "../lib/number-format";
+
 export function activityNumberFormat(locale: string) {
 	const integers = new Intl.NumberFormat(locale);
 	const scalars = new Intl.NumberFormat(locale, {
@@ -9,26 +11,47 @@ export function activityNumberFormat(locale: string) {
 			: scalars.format(value);
 }
 
+/** UCUM annotations such as `{process}` only name what a count counts. */
+const suffix = (unit: string) =>
+	!unit || unit === "1" || /^\{[^}]*\}$/.test(unit) ? "" : ` ${unit}`;
+
 const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
 
-/** Readable measurement text; `exact` keeps the stored value and unit for tooltips. */
 /** Seconds in the largest unit that keeps the number readable. */
-function duration(seconds: number, format: Intl.NumberFormat) {
+function duration(seconds: number, format: (value: number) => FormattedNumber) {
 	const absolute = Math.abs(seconds);
-	if (absolute < 1) return `${format.format(seconds * 1000)} ms`;
-	if (absolute < 120) return `${format.format(seconds)} s`;
-	if (absolute < 7200) return `${format.format(seconds / 60)} min`;
-	return `${format.format(seconds / 3600)} h`;
+	let value = seconds / 3600,
+		unit = "h";
+	if (absolute < 1) {
+		value = seconds * 1000;
+		unit = "ms";
+	} else if (absolute < 120) {
+		value = seconds;
+		unit = "s";
+	} else if (absolute < 7200) {
+		value = seconds / 60;
+		unit = "min";
+	}
+	const formatted = format(value);
+	return { ...formatted, text: `${formatted.text} ${unit}` };
 }
 
+/** Readable measurement text; `exact` keeps the stored value and unit for tooltips. */
 export function formatMeasurement(
 	value: string | number,
 	unit: string,
 	locale: string,
+	minimumFractionDigits = 0,
 ) {
-	const exact = `${activityNumberFormat(locale)(value)}${unit && unit !== "1" ? ` ${unit}` : ""}`;
+	const exact = `${activityNumberFormat(locale)(value)}${suffix(unit)}`;
 	const number = typeof value === "string" ? Number(BigInt(value)) : value;
-	const short = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
+	const short = (value: number) =>
+		formatNumeric(
+			value,
+			locale,
+			{ maximumFractionDigits: 1 },
+			minimumFractionDigits,
+		);
 	if (unit === "By") {
 		let scaled = number,
 			index = 0;
@@ -36,10 +59,25 @@ export function formatMeasurement(
 			scaled /= 1024;
 			index++;
 		}
-		return { text: `${short.format(scaled)} ${BYTE_UNITS[index]}`, exact };
+		const formatted = short(scaled);
+		return {
+			...formatted,
+			text: `${formatted.text} ${BYTE_UNITS[index]}`,
+			exact,
+		};
 	}
 	if (unit === "s") {
-		return { text: duration(number, short), exact };
+		return { ...duration(number, short), exact };
 	}
-	return { text: exact, exact };
+	const formatted = formatNumeric(
+		typeof value === "string" ? BigInt(value) : value,
+		locale,
+		typeof value === "string" ? {} : { maximumSignificantDigits: 17 },
+		minimumFractionDigits,
+	);
+	return {
+		...formatted,
+		text: `${formatted.text}${suffix(unit)}`,
+		exact,
+	};
 }

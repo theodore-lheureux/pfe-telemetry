@@ -6,23 +6,13 @@ import {
 	type SortingState,
 	useTable,
 } from "@tanstack/react-table";
-import {
-	BookmarkIcon,
-	LayoutGridIcon,
-	SearchIcon,
-	Trash2Icon,
-} from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { BookmarkIcon, LayoutGridIcon, Trash2Icon } from "lucide-react";
+import { useMemo, useState } from "react";
 import { DataTable } from "../../components/data-table";
 import { FormFeedback } from "../../components/form-feedback";
 import { UserAvatar } from "../../components/identity-avatar";
+import { SearchField } from "../../components/search-field";
 import { Button } from "../../components/ui/button";
-import {
-	InputGroup,
-	InputGroupAddon,
-	InputGroupInput,
-} from "../../components/ui/input-group";
-import { Label } from "../../components/ui/label";
 import { IconEmptyState } from "../../components/workspace";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AnalyticsHeader } from "../analytics-header";
@@ -57,7 +47,6 @@ export function SavedInsights({
 	canWrite: boolean;
 	insights: SavedInsight[];
 }) {
-	const id = useId();
 	const [sorting, setSorting] = useState<SortingState>([
 		{ id: "updatedAt", desc: true },
 	]);
@@ -158,23 +147,11 @@ export function SavedInsights({
 		<section className="flex min-w-0 flex-col gap-5">
 			<AnalyticsHeader section="insights" />
 			<div className="flex flex-wrap items-center justify-between gap-3">
-				<div className="w-full max-w-sm">
-					<Label htmlFor={`${id}-search`} className="sr-only">
-						{m.saved_search()}
-					</Label>
-					<InputGroup>
-						<InputGroupAddon>
-							<SearchIcon aria-hidden="true" />
-						</InputGroupAddon>
-						<InputGroupInput
-							id={`${id}-search`}
-							type="search"
-							value={filterValue("name", "")}
-							placeholder={m.saved_search()}
-							onChange={(event) => setFilter("name", event.target.value)}
-						/>
-					</InputGroup>
-				</div>
+				<SearchField
+					label={m.saved_search()}
+					value={filterValue("name", "")}
+					onChange={(value) => setFilter("name", value)}
+				/>
 				<div className="flex flex-wrap items-center gap-2">
 					<FacetFilter
 						label={m.saved_all_types()}
