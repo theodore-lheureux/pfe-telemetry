@@ -60,6 +60,8 @@ jobs:
           KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
           KAFKA_MESSAGE_MAX_BYTES: 6291456
           KAFKA_REPLICA_FETCH_MAX_BYTES: 6291456
+          # Exercise natural expiry within the integration test's retention deadline.
+          KAFKA_LOG_RETENTION_CHECK_INTERVAL_MS: 1000
           KAFKA_HEAP_OPTS: -Xms128m -Xmx256m
         options: >-
           --memory=768m

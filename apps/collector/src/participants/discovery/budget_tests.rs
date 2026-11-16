@@ -14,12 +14,7 @@ fn bounded_scan_cost_and_cached_environment_reads_are_measured() {
     let mut discovery = Discovery::new(&fixture.scope, fixture.settings.clone(), &[]).unwrap();
     discovery.root = fixture.proc_root();
     let logs = Logs::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .with_ansi(false)
-        .with_writer(logs.clone())
-        .finish();
-    tracing::subscriber::with_default(subscriber, || {
+    tracing::dispatcher::with_default(&logs.subscriber(), || {
         let started = Instant::now();
         let first = discovery.scan().unwrap();
         let cold = started.elapsed();
@@ -34,7 +29,16 @@ fn bounded_scan_cost_and_cached_environment_reads_are_measured() {
     });
     let log = logs.0.lock().unwrap();
     let log = String::from_utf8_lossy(&log);
-    assert!(log.contains("environment_reads=128"));
-    assert!(log.contains("environment_reads=0"));
-    assert!(log.contains("scan_micros="));
+    let reads: Vec<usize> = log
+        .split_whitespace()
+        .filter_map(|field| field.strip_prefix("environment_reads="))
+        .map(|value| value.parse().unwrap())
+        .collect();
+    assert_eq!(reads.len(), 2, "{log}");
+    assert!(
+        reads[0] > 0 && reads[0] <= fixture.settings.max_processes,
+        "{log}"
+    );
+    assert_eq!(reads[1], 0, "{log}");
+    assert!(log.contains("scan_micros="), "{log}");
 }

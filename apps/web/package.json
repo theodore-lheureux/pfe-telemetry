@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "bun --bun vite",
     "start": "bun .output/server/index.mjs",
-    "preview": "vite preview --host 127.0.0.1 --strictPort",
-    "build": "vite build && bun build scripts/live-gateway.ts --target=bun --outfile=.output/live/index.mjs",
+    "preview": "bun --bun vite preview --host 127.0.0.1 --strictPort",
+    "build": "bun --bun vite build && bun build scripts/live-gateway.ts --target=bun --outfile=.output/live/index.mjs",
     "live": "bun scripts/live-gateway.ts",
     "typecheck": "bun scripts/compile-telemetry.ts && bun run --filter @recount/i18n compile && tsc --noEmit",
     "test": "bun scripts/compile-telemetry.ts && bun run --filter @recount/i18n compile && bun test tests/unit",

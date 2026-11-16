@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use super::{
@@ -115,6 +115,22 @@ pub(super) async fn acknowledge(store: &mut Store) {
 
 #[derive(Clone, Default)]
 pub(super) struct Logs(pub Arc<Mutex<Vec<u8>>>);
+
+impl Logs {
+    pub fn subscriber(&self) -> tracing::Dispatch {
+        // Keep tracing out of its single-dispatch fast path: another test thread
+        // can first register a shared callsite without a thread-local subscriber.
+        static REGISTRY: OnceLock<tracing::Dispatch> = OnceLock::new();
+        REGISTRY.get_or_init(|| tracing::Dispatch::new(tracing_subscriber::registry()));
+        tracing::Dispatch::new(
+            tracing_subscriber::fmt()
+                .with_max_level(tracing::Level::TRACE)
+                .with_ansi(false)
+                .with_writer(self.clone())
+                .finish(),
+        )
+    }
+}
 
 impl std::io::Write for Logs {
     fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {

@@ -1,7 +1,7 @@
 import * as z from "zod";
-import { httpUrl, secret } from "../lib/env.server";
-import { OperationError } from "../lib/operation-error";
-import type { PacketDetail, PacketInput } from "./contracts";
+import { httpUrl, secret } from "../lib/env.server.ts";
+import { OperationError } from "../lib/operation-error.ts";
+import type { PacketDetail, PacketInput } from "./contracts.ts";
 
 const processState = globalThis as typeof globalThis & {
 	__recountLiveStreams?: Set<AbortController>;

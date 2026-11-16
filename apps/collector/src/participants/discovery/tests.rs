@@ -203,11 +203,7 @@ async fn secrets_and_discarded_names_never_reach_logs_or_durable_state() {
         b"RECOUNT_EXECUTION=run:3\0RECOUNT_EXECUTION_PARAMETERS={private-sentinel-value}\0",
     );
     let logs = Logs::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::TRACE)
-        .with_ansi(false)
-        .with_writer(logs.clone())
-        .finish();
+    let subscriber = logs.subscriber();
     async {
         let mut discovery = discovery(&fixture);
         let scan = discovery.scan().unwrap();
@@ -225,7 +221,11 @@ async fn secrets_and_discarded_names_never_reach_logs_or_durable_state() {
     .with_subscriber(subscriber)
     .await;
     let log = logs.0.lock().unwrap().clone();
-    assert!(String::from_utf8_lossy(&log).contains("Global fact cap"));
+    assert!(
+        String::from_utf8_lossy(&log).contains("Global fact cap"),
+        "{}",
+        String::from_utf8_lossy(&log)
+    );
     let database = fs::read(fixture.path.join("queue/queue.sqlite3")).unwrap();
     for secret in ["PRIVATE_SECRET", "private-sentinel-value"] {
         assert!(!String::from_utf8_lossy(&log).contains(secret));

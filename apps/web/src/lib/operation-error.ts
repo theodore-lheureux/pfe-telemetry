@@ -1,4 +1,4 @@
-import type { FailureReason, OperationResult } from "./operation-result";
+import type { FailureReason, OperationResult } from "./operation-result.ts";
 
 export type OperationErrorCode = NonNullable<
 	OperationResult<never>["error"]
