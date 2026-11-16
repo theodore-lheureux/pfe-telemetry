@@ -1,0 +1,11 @@
+tenancy_id       = "ocid1.tenancy.oc1.REPLACE"
+compartment_id   = "ocid1.compartment.oc1.REPLACE"
+home_region      = "ca-montreal-1"
+cd_email         = "REPLACE_WITH_OWNER_APPROVED_SERVICE_ACCOUNT_EMAIL"
+instance_id      = "ocid1.instance.oc1.ca-montreal-1.REPLACE"
+security_list_id = "ocid1.securitylist.oc1.ca-montreal-1.REPLACE"
+public_key       = <<-PEM
+-----BEGIN PUBLIC KEY-----
+REPLACE_WITH_DEDICATED_DEPLOYMENT_PUBLIC_KEY
+-----END PUBLIC KEY-----
+PEM
