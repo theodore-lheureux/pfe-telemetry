@@ -162,7 +162,7 @@ test("members arrange dashboards of their project's insights; viewers only open 
 		{
 			...target,
 			tiles: [
-				{ id: second.id, width: 12, height: 1, column: null },
+				{ id: second.id, width: 2, height: 0, column: 11 },
 				{ id: first.id, width: 5, height: 6, column: 8 },
 			],
 		},
@@ -175,13 +175,14 @@ test("members arrange dashboards of their project's insights; viewers only open 
 			column,
 		]),
 	).toEqual([
-		["Memory", 12, 1, null],
+		["Memory", 2, 0, 11],
 		["CPU", 5, 6, 8],
 	]);
 	// A tile must fit the grid from its start column.
 	for (const tile of [
 		{ id: first.id, width: 5, height: 2, column: 9 },
-		{ id: first.id, width: 2, height: 2, column: null },
+		{ id: first.id, width: 1, height: 2, column: null },
+		{ id: first.id, width: 2, height: -1, column: null },
 		{ id: first.id, width: 6, height: 7, column: null },
 	])
 		expect(() => parseLayout({ ...target, tiles: [{ ...tile }] })).toThrow();

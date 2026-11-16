@@ -40,6 +40,7 @@ import { useTileQuery } from "./use-tile-query";
 
 // Written out in full so Tailwind generates each class.
 export const TILE_WIDTH_CLASS: Record<TileWidth, string> = {
+	2: "lg:col-span-2",
 	3: "lg:col-span-3",
 	4: "lg:col-span-4",
 	5: "lg:col-span-5",
@@ -52,6 +53,7 @@ export const TILE_WIDTH_CLASS: Record<TileWidth, string> = {
 	12: "lg:col-span-12",
 };
 export const TILE_HEIGHT_CLASS: Record<TileHeight, string> = {
+	0: "row-span-1",
 	1: "row-span-2",
 	2: "row-span-3",
 	3: "row-span-4",
@@ -70,6 +72,7 @@ export const TILE_COLUMN_CLASS: Record<number, string> = {
 	8: "lg:col-start-8",
 	9: "lg:col-start-9",
 	10: "lg:col-start-10",
+	11: "lg:col-start-11",
 };
 
 /**

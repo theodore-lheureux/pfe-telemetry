@@ -180,11 +180,27 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			target.y + target.height / 2,
 			{ steps: 10 },
 		);
+		const placeholder = page.locator("[data-drop-placeholder]");
+		await expect(placeholder).toBeVisible();
+		const predicted = await placeholder.boundingBox();
+		if (!predicted) throw new Error("The drop placeholder has no box");
 		await page.mouse.click(
 			target.x + target.width / 4,
 			target.y + target.height / 2,
 		);
 		await expect(tiles.first()).toContainText("CPU now");
+		await expect(placeholder).toHaveCount(0);
+		await expect
+			.poll(async () => {
+				const actual = await cells.first().boundingBox();
+				if (!actual) return Number.POSITIVE_INFINITY;
+				return Math.max(
+					...(["x", "y", "width", "height"] as const).map((key) =>
+						Math.abs(actual[key] - predicted[key]),
+					),
+				);
+			})
+			.toBeLessThan(1);
 		// It goes where it was dropped, leaving the start column it had behind.
 		await expect(cells.first()).not.toHaveClass(/col-start/);
 		// ⌘Z undoes a layout change and ⇧⌘Z redoes it, each saved in turn.
@@ -237,7 +253,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			.click();
 		await expect(page).toHaveURL(/filters=/);
 		await page.getByRole("button", { name: /^Breakdown:/ }).click();
-		await page.getByRole("option", { name: "Host", exact: true }).click();
+		await page.getByRole("option", { name: /^Host name/ }).click();
 		// Unsaved overrides are counted and outlined until saved or discarded.
 		await expect(page.getByText("Unsaved filters: 2")).toBeVisible();
 		// Its info lists each unsaved change, from the saved value to the current one.
@@ -245,7 +261,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		const changes = page.locator('[data-slot="hover-card-content"]');
 		await expect(changes.getByText("No date range override")).toBeVisible();
 		await expect(changes.getByText("Last 24 hours")).toBeVisible();
-		await expect(changes.getByText("Host", { exact: true })).toBeVisible();
+		await expect(changes.getByText("Host name", { exact: true })).toBeVisible();
 		await page.keyboard.press("Escape");
 		await page.getByRole("button", { name: "Save filters" }).click();
 		await expect(page).not.toHaveURL(/filters=/);
@@ -264,7 +280,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await page.getByRole("button", { name: "About CPU over time" }).hover();
 		const info = page.locator('[data-slot="hover-card-content"]');
 		await expect(info.getByText("Node CPU time")).toBeVisible();
-		await expect(info.getByText("Host")).toBeVisible();
+		await expect(info.getByText("Host name", { exact: true })).toBeVisible();
 		await expect(info.getByText("Dashboard")).toHaveCount(2);
 		// A click pins it open after the pointer leaves; another click closes it.
 		const about = page.getByRole("button", { name: "About CPU over time" });

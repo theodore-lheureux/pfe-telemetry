@@ -278,7 +278,7 @@ export function TileResizeHandle({
 				title={m.dashboard_resize_tile({ name: tile.insight.name })}
 				// Shown while the tile is hovered or the handle is focused or dragged.
 				className={cn(
-					"absolute right-0.5 bottom-0.5 z-10 hidden size-5 cursor-nwse-resize touch-none items-end justify-end rounded-sm p-1 text-muted-foreground opacity-0 outline-none transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 group-hover/tile:opacity-100 aria-disabled:cursor-default aria-disabled:group-hover/tile:opacity-40 lg:flex",
+					"absolute right-0.5 bottom-0.5 z-10 hidden size-5 cursor-nwse-resize touch-none items-end justify-end rounded-sm p-1 text-muted-foreground opacity-0 outline-none transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:ring-inset group-hover/tile:opacity-100 aria-disabled:cursor-default aria-disabled:group-hover/tile:opacity-40 lg:flex",
 					dragging && "text-foreground opacity-100",
 				)}
 				{...dragFrom({ x: 1, y: 1 })}

@@ -7,12 +7,7 @@ import {
 	useSensor,
 	useSensors,
 } from "@dnd-kit/core";
-import {
-	arrayMove,
-	rectSortingStrategy,
-	SortableContext,
-	useSortable,
-} from "@dnd-kit/sortable";
+import { SortableContext, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useRef, useState } from "react";
 import type { taskQueue } from "../../lib/task-queue";
@@ -28,6 +23,11 @@ import {
 	TILE_HEIGHT_CLASS,
 	TILE_WIDTH_CLASS,
 } from "./dashboard-tile";
+import {
+	GridPlacement,
+	moveDashboardTile,
+	useGridPlacement,
+} from "./grid-placement";
 import { type TileActions, TileMenu, type TileTools } from "./tile-menu";
 import {
 	type TilePreview,
@@ -95,6 +95,7 @@ export function DashboardGrid({
 }) {
 	const sensors = useSensors(useSensor(ClickSensor));
 	const grid = useRef<HTMLDivElement>(null);
+	const placement = useGridPlacement(tiles, grid);
 	// Rows of guide cells, while a tile moves or resizes; enough to grow into.
 	const [guides, setGuides] = useState(0);
 	const showGuides = (show: boolean) => {
@@ -107,13 +108,8 @@ export function DashboardGrid({
 	};
 	const index = (id: unknown) => tiles.findIndex((tile) => tile.id === id);
 	const move = (from: number, to: number) => {
-		if (from === to || to < 0 || to >= tiles.length) return;
-		// A moved tile goes where it was dropped, not back to a start column it had.
-		onLayout(
-			arrayMove(tiles, from, to).map((tile, index) =>
-				index === to ? { ...tile, column: null } : tile,
-			),
-		);
+		const next = moveDashboardTile(tiles, from, to);
+		if (next !== tiles) onLayout(next);
 	};
 	const resize = (tile: DashboardTile, size: Partial<DashboardTile>) =>
 		onLayout(
@@ -123,17 +119,25 @@ export function DashboardGrid({
 		);
 	const dragged = ({ active, over }: DragEndEvent) => {
 		showGuides(false);
+		placement.clear();
 		if (over) move(index(active.id), index(over.id));
 	};
 	return (
 		<DndContext
 			sensors={sensors}
 			collisionDetection={underPointer}
-			onDragStart={() => showGuides(true)}
+			onDragStart={(event) => {
+				showGuides(true);
+				placement.start(event);
+			}}
+			onDragOver={placement.over}
 			onDragEnd={dragged}
-			onDragCancel={() => showGuides(false)}
+			onDragCancel={() => {
+				showGuides(false);
+				placement.clear();
+			}}
 		>
-			<SortableContext items={tiles} strategy={rectSortingStrategy}>
+			<SortableContext items={tiles} strategy={placement.strategy}>
 				<div ref={grid} data-dashboard-grid className={cn("relative", GRID)}>
 					{guides > 0 && (
 						<div
@@ -148,6 +152,14 @@ export function DashboardGrid({
 								/>
 							))}
 						</div>
+					)}
+					{placement.order && (
+						<GridPlacement
+							tiles={placement.order}
+							active={placement.active}
+							mirror={placement.mirror}
+							className={GRID}
+						/>
 					)}
 					{tiles.map((tile, position) => (
 						<SortableTile
@@ -215,6 +227,7 @@ function SortableTile({
 	return (
 		<div
 			ref={sortable.setNodeRef}
+			data-dashboard-tile={tile.id}
 			style={{
 				transform: CSS.Translate.toString(sortable.transform),
 				transition: sortable.transition,

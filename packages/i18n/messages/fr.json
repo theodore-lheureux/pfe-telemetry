@@ -1316,5 +1316,7 @@
   "nav_runs": "Exécutions",
   "project_home": "Page d’accueil",
   "project_home_description": "Ce qui s’ouvre en premier dans ce projet et sous Vue d’ensemble : la vue d’ensemble du parc ou l’un de ses tableaux de bord.",
-  "project_home_opens": "S’ouvre sur"
+  "project_home_opens": "S’ouvre sur",
+  "dashboard_width_sixth": "Un sixième",
+  "dashboard_height_compact": "Compacte"
 }

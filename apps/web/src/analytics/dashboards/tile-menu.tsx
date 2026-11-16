@@ -49,12 +49,14 @@ import { download, fileName, resultCsv, tilePng } from "./tile-export";
 import { fittedColumn, type TileSize } from "./tile-resize";
 
 const WIDTH_LABEL: Record<(typeof WIDTH_PRESETS)[number], () => string> = {
+	2: m.dashboard_width_sixth,
 	4: m.dashboard_width_third,
 	6: m.dashboard_width_half,
 	8: m.dashboard_width_two_thirds,
 	12: m.dashboard_width_full,
 };
 const HEIGHT_LABEL: Record<(typeof HEIGHT_PRESETS)[number], () => string> = {
+	0: m.dashboard_height_compact,
 	1: m.dashboard_height_small,
 	2: m.dashboard_height_medium,
 	3: m.dashboard_height_large,

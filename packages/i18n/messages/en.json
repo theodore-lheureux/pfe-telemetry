@@ -1316,5 +1316,7 @@
   "nav_runs": "Runs",
   "project_home": "Home page",
   "project_home_description": "What opens first in this project and under Overview: the fleet overview or one of its dashboards.",
-  "project_home_opens": "Opens on"
+  "project_home_opens": "Opens on",
+  "dashboard_width_sixth": "One sixth",
+  "dashboard_height_compact": "Compact"
 }

@@ -7,15 +7,15 @@ export const MAX_DASHBOARD_TILES = 24;
 
 export const GRID_COLUMNS = 12;
 /** Columns of the 12-column grid a tile spans. */
-export const TILE_WIDTHS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
+export const TILE_WIDTHS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 export type TileWidth = (typeof TILE_WIDTHS)[number];
-/** Widths offered by name in a tile's menu: a third, half, two thirds or all. */
-export const WIDTH_PRESETS = [4, 6, 8, 12] as const;
+/** Widths offered by name in a tile's menu. */
+export const WIDTH_PRESETS = [2, 4, 6, 8, 12] as const;
 /** Size steps of a tile's height; each spans one grid row more than the step. */
-export const TILE_HEIGHTS = [1, 2, 3, 4, 5, 6] as const;
+export const TILE_HEIGHTS = [0, 1, 2, 3, 4, 5, 6] as const;
 export type TileHeight = (typeof TILE_HEIGHTS)[number];
-/** Heights offered by name in a tile's menu: small, medium or large. */
-export const HEIGHT_PRESETS = [1, 2, 3] as const;
+/** Heights offered by name in a tile's menu. */
+export const HEIGHT_PRESETS = [0, 1, 2, 3] as const;
 export const DEFAULT_TILE = { width: 6, height: 2 } as const;
 
 export interface DashboardSummary {

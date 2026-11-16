@@ -108,8 +108,8 @@ export const dashboardTile = appSchema.table(
 		}).onDelete("cascade"),
 		index("dashboard_tile_dashboard_idx").on(table.dashboardId, table.position),
 		index("dashboard_tile_insight_idx").on(table.insightId),
-		check("dashboard_tile_width_valid", sql`${table.width} BETWEEN 3 AND 12`),
-		check("dashboard_tile_height_valid", sql`${table.height} BETWEEN 1 AND 6`),
+		check("dashboard_tile_width_valid", sql`${table.width} BETWEEN 2 AND 12`),
+		check("dashboard_tile_height_valid", sql`${table.height} BETWEEN 0 AND 6`),
 		check(
 			"dashboard_tile_settings_bounded",
 			sql`jsonb_typeof(${table.overrides}) = 'object' AND octet_length(${table.overrides}::text) <= 8192 AND jsonb_typeof(${table.options}) = 'object' AND octet_length(${table.options}::text) <= 1024`,
