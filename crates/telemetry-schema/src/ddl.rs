@@ -218,6 +218,11 @@ mod tests {
                 batching.poll_messages
             )));
             assert!(batching.maximum_rows() <= limit);
+            assert!(sql.contains("environment_variable String"));
+            assert!(sql.contains("process_resource_id Nullable(String)"));
+            assert!(!sql.contains("cgroup_"));
+            assert!(!sql.contains("launcher_claim_id"));
+            assert!(!sql.contains("exit_code"));
         }
     }
 

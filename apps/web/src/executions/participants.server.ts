@@ -9,6 +9,7 @@ interface Row {
 	parameters: [string, string][];
 	nodeCount: number;
 	participantCount: number;
+	environmentVariables: string[];
 	firstSeenNs: string;
 	lastSeenNs: string;
 }
@@ -24,11 +25,12 @@ export async function readExecutions(
 			query: `SELECT execution_key AS executionKey,
   ifNull(metadata.1, execution_key) AS name, metadata.2 AS workloadVersion,
   arrayMap(p -> tuple(p.key,p.value), metadata.3) AS parameters,
-  nodeCount,participantCount,firstSeenNs,lastSeenNs
+  nodeCount,participantCount,environmentVariables,firstSeenNs,lastSeenNs
 FROM (
   SELECT execution_key,
     toUInt32(uniqExact(node_id)) AS nodeCount,
     toUInt32(uniqExact(tuple(node_id,participant_id))) AS participantCount,
+    arraySort(groupUniqArray(environment_variable)) AS environmentVariables,
     toString(min(first_seen_unix_nano)) AS firstSeenNs,
     toString(max(last_seen_unix_nano)) AS lastSeenNs,
     argMinIf(tuple(execution_name,workload_version,parameters),
@@ -75,6 +77,7 @@ ORDER BY execution_key LIMIT 51`,
 			parameters: Object.fromEntries(row.parameters),
 			nodeCount: row.nodeCount,
 			participantCount: row.participantCount,
+			environmentVariables: row.environmentVariables,
 			firstSeen: new Date(Number(BigInt(row.firstSeenNs) / 1_000_000n)),
 			lastSeen: new Date(Number(BigInt(row.lastSeenNs) / 1_000_000n)),
 		}));

@@ -9,6 +9,7 @@ export interface ExecutionSummary extends ExecutionReference {
 	parameters: Record<string, string>;
 	nodeCount: number;
 	participantCount: number;
+	environmentVariables: string[];
 	firstSeen: Date;
 	lastSeen: Date;
 }

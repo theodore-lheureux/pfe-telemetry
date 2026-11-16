@@ -29,8 +29,6 @@ impl ExecutionParticipants for Ingestion {
             || source.root.kind != ResourceKind::Host as i32
             || source.adapter != "linux"
             || !source.local_kinds.contains(&ResourceKind::Process)
-            || (fact.subject.as_ref().is_some_and(|s| s.cgroup.is_some())
-                && !source.local_kinds.contains(&ResourceKind::Container))
         {
             return Err(Status::permission_denied(
                 "Participant is outside enrolled node scope",
@@ -48,13 +46,9 @@ impl ExecutionParticipants for Ingestion {
         .map_err(status)?;
         if fact
             .ended_unix_nano
-            .into_iter()
-            .chain(fact.exit.as_ref().map(|e| e.time_unix_nano))
-            .any(|time| time > now.saturating_add(source.skew_ns))
+            .is_some_and(|time| time > now.saturating_add(source.skew_ns))
         {
-            return Err(Status::invalid_argument(
-                "Participant end or exit is in the future",
-            ));
+            return Err(Status::invalid_argument("Participant end is in the future"));
         }
         let row = execution::project(&fact, &Uuid::now_v7().to_string(), now).map_err(status)?;
         self.sink.publish_participant(&row).await.map_err(|_| {

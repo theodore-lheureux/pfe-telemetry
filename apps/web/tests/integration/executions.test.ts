@@ -90,6 +90,7 @@ async function scenario() {
 		parameters: { size: "32" },
 		nodeCount: 2,
 		participantCount: 2,
+		environmentVariables: ["SLURM_JOB_ID"],
 		firstSeen: new Date("2026-11-03T10:00:00Z"),
 		lastSeen: new Date("2026-11-03T11:00:00Z"),
 	};

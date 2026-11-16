@@ -51,7 +51,7 @@ impl Authority for Nodes {
                 kind: ResourceKind::Host as i32,
             },
             adapter: "linux".into(),
-            local_kinds: [ResourceKind::Process, ResourceKind::Container].into(),
+            local_kinds: [ResourceKind::Process].into(),
             maximum_age_ns: 7 * 86400 * 1_000_000_000,
             skew_ns: 0,
         })
@@ -310,6 +310,9 @@ async fn participant_facts_replay_through_native_clickhouse() {
     let row = AnalyticalParticipant::decode(message.payload().unwrap()).unwrap();
     assert_eq!(row.execution_key, "slurm:48213");
     assert_eq!(row.execution_name.as_deref(), Some("Distributed job"));
+    assert!(row.process_resource_id.is_none());
+    assert_eq!(row.environment_variable, "SLURM_JOB_ID");
+    assert_eq!(sql(&format!("SELECT countIf(kind=1 AND isNull(process_resource_id)),countIf(environment_variable='SLURM_JOB_ID') FROM {database}.execution_participants FINAL")).trim(), "2\t3");
     drop(client);
     stop.send(()).unwrap();
     server.await.unwrap();

@@ -9,7 +9,7 @@ use recount_telemetry_schema::{
     identity::{TypedHash, local_resource_id},
     wire::{
         AnalyticalParticipant, ExecutionMetadata, ParticipantFact, ParticipantFactKind,
-        ParticipantOrigin, ProcessIncarnation, ResourceKind, process_exit::Outcome,
+        ParticipantOrigin, ProcessIncarnation, ResourceKind,
     },
 };
 use uuid::Uuid;
@@ -48,7 +48,7 @@ fn process(value: &ProcessIncarnation) -> Result<(), Issue> {
     }
     Ok(())
 }
-fn metadata(value: &ExecutionMetadata) -> Result<(), Issue> {
+pub fn metadata(value: &ExecutionMetadata) -> Result<(), Issue> {
     for (text, maximum) in [
         (value.name.as_deref(), MAX_NAME_BYTES),
         (
@@ -96,19 +96,7 @@ pub fn validate(fact: &ParticipantFact) -> Result<(), Issue> {
     {
         return Err(invalid("Invalid participant identity"));
     }
-    bounded(&fact.execution_key, MAX_EXECUTION_KEY_BYTES)?;
-    if !fact
-        .execution_key
-        .bytes()
-        .next()
-        .is_some_and(|c| c.is_ascii_alphanumeric())
-        || !fact
-            .execution_key
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b"._:/-".contains(&c))
-    {
-        return Err(invalid("Invalid execution key"));
-    }
+    execution_key(&fact.execution_key)?;
     let kind =
         ParticipantFactKind::try_from(fact.kind).map_err(|_| invalid("Unknown fact kind"))?;
     if kind == ParticipantFactKind::ParticipantFactUnknown
@@ -117,90 +105,30 @@ pub fn validate(fact: &ParticipantFact) -> Result<(), Issue> {
     {
         return Err(invalid("Invalid lifecycle identity"));
     }
-    let subject = fact
-        .subject
-        .as_ref()
-        .ok_or_else(|| invalid("Missing subject"))?;
-    if subject.process.is_none() && subject.cgroup.is_none() {
-        return Err(invalid("Empty subject"));
+    if kind == ParticipantFactKind::ParticipantLifecycle && fact.subject.is_some() {
+        return Err(invalid("Lifecycle must not have a process subject"));
     }
+    let member = fact.subject.as_ref().and_then(|s| s.process.as_ref());
     if kind == ParticipantFactKind::ProcessMembership
-        && (subject.process.is_none()
-            || fact.metadata.is_some()
-            || fact.fact_id == fact.participant_id)
+        && (member.is_none() || fact.metadata.is_some() || fact.fact_id == fact.participant_id)
     {
         return Err(invalid("Invalid process membership"));
     }
-    if let Some(value) = &subject.process {
+    if let Some(value) = member {
         process(value)?;
-    }
-    if let Some(group) = &subject.cgroup {
-        bounded(&group.namespace_id, MAX_NAMESPACE_BYTES)?;
-        bounded(&group.path, MAX_CGROUP_PATH_BYTES)?;
-        if !identifier(&group.namespace_id)
-            || group.inode == 0
-            || !uuid(&group.incarnation_id)
-            || !group.path.starts_with('/')
-            || group.path[1..]
-                .split('/')
-                .any(|c| c.is_empty() || c == "." || c == "..")
-        {
-            return Err(invalid("Invalid cgroup incarnation"));
-        }
     }
     let provenance = fact
         .provenance
         .as_ref()
         .ok_or_else(|| invalid("Missing provenance"))?;
-    if provenance
-        .launcher_claim_id
-        .as_deref()
-        .is_some_and(|id| !uuid(id))
+    bounded(
+        &provenance.environment_variable,
+        MAX_ENVIRONMENT_VARIABLE_BYTES,
+    )?;
+    if provenance.origin != ParticipantOrigin::Environment as i32
+        || !environment_variable(&provenance.environment_variable)
     {
-        return Err(invalid("Invalid launcher reference"));
-    }
-    match ParticipantOrigin::try_from(provenance.origin) {
-        Ok(ParticipantOrigin::Launcher)
-            if provenance.launcher_claim_id.is_some()
-                && fact.owner_uid.is_some()
-                && provenance.adapter.is_none()
-                && provenance.ancestry_root.is_none()
-                && provenance.parent.is_none() => {}
-        Ok(ParticipantOrigin::SchedulerAdapter)
-            if subject.cgroup.is_some()
-                && provenance.launcher_claim_id.is_none()
-                && provenance.ancestry_root.is_none()
-                && provenance.parent.is_none() =>
-        {
-            let adapter = provenance
-                .adapter
-                .as_deref()
-                .ok_or_else(|| invalid("Missing adapter"))?;
-            bounded(adapter, MAX_ADAPTER_BYTES)?;
-            if !parameter_key(adapter) {
-                return Err(invalid("Invalid adapter"));
-            }
-        }
-        Ok(ParticipantOrigin::Ancestry)
-            if subject.cgroup.is_none()
-                && kind == ParticipantFactKind::ProcessMembership
-                && provenance.launcher_claim_id.is_some()
-                && provenance.adapter.is_none() =>
-        {
-            process(
-                provenance
-                    .ancestry_root
-                    .as_ref()
-                    .ok_or_else(|| invalid("Missing ancestry root"))?,
-            )?;
-            process(
-                provenance
-                    .parent
-                    .as_ref()
-                    .ok_or_else(|| invalid("Missing parent"))?,
-            )?;
-        }
-        _ => return Err(invalid("Invalid participant provenance")),
+        return Err(invalid("Invalid environment provenance"));
     }
     if fact.first_seen_unix_nano == 0
         || fact.first_seen_unix_nano > fact.last_seen_unix_nano
@@ -210,20 +138,35 @@ pub fn validate(fact: &ParticipantFact) -> Result<(), Issue> {
     {
         return Err(invalid("Invalid participant interval"));
     }
-    if let Some(exit) = &fact.exit
-        && (subject.process.is_none()
-            || exit.time_unix_nano < fact.first_seen_unix_nano
-            || !matches!(
-                exit.outcome,
-                Some(Outcome::Code(0..=255) | Outcome::Signal(1..=64))
-            ))
-    {
-        return Err(invalid("Invalid process exit"));
-    }
     if let Some(value) = &fact.metadata {
         metadata(value)?;
     }
     Ok(())
+}
+
+pub fn execution_key(value: &str) -> Result<(), Issue> {
+    bounded(value, MAX_EXECUTION_KEY_BYTES)?;
+    if !value
+        .bytes()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric())
+        || !value
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || b"._:/-".contains(&c))
+    {
+        return Err(invalid("Invalid execution key"));
+    }
+    Ok(())
+}
+
+fn environment_variable(value: &str) -> bool {
+    value
+        .bytes()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == b'_')
+        && value
+            .bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'_')
 }
 
 pub fn routing_key(project_id: &str, execution_key: &str) -> [u8; 32] {
@@ -262,9 +205,7 @@ pub fn project(
     if !uuid(record_id) || received_unix_nano == 0 {
         return Err(invalid("Invalid admission context"));
     }
-    let subject = fact.subject.as_ref().unwrap();
-    let process = subject.process.as_ref();
-    let group = subject.cgroup.as_ref();
+    let process = fact.subject.as_ref().and_then(|s| s.process.as_ref());
     let provenance = fact.provenance.as_ref().unwrap();
     let process_id = |process| process_resource(fact, process);
     let row = AnalyticalParticipant {
@@ -281,32 +222,12 @@ pub fn project(
         process_namespace_id: process.map(|p| p.namespace_id.clone()),
         process_pid: process.map(|p| p.pid),
         process_start_time_ticks: process.map(|p| p.start_time_ticks),
-        cgroup_incarnation_id: group.map(|g| g.incarnation_id.clone()),
-        cgroup_namespace_id: group.map(|g| g.namespace_id.clone()),
-        cgroup_path: group.map(|g| g.path.clone()),
-        cgroup_inode: group.map(|g| g.inode),
         origin: provenance.origin,
-        launcher_claim_id: provenance.launcher_claim_id.clone(),
-        adapter: provenance.adapter.clone(),
-        ancestry_root_resource_id: provenance
-            .ancestry_root
-            .as_ref()
-            .map(process_id)
-            .transpose()?,
-        parent_resource_id: provenance.parent.as_ref().map(process_id).transpose()?,
+        environment_variable: provenance.environment_variable.clone(),
         owner_uid: fact.owner_uid,
         first_seen_unix_nano: fact.first_seen_unix_nano,
         last_seen_unix_nano: fact.last_seen_unix_nano,
         ended_unix_nano: fact.ended_unix_nano,
-        exit_unix_nano: fact.exit.as_ref().map(|e| e.time_unix_nano),
-        exit_code: fact.exit.as_ref().and_then(|e| match e.outcome {
-            Some(Outcome::Code(c)) => Some(c),
-            _ => None,
-        }),
-        exit_signal: fact.exit.as_ref().and_then(|e| match e.outcome {
-            Some(Outcome::Signal(s)) => Some(s),
-            _ => None,
-        }),
         retracted: fact.retracted,
         provenance: provenance.encode_to_vec(),
         execution_name: fact.metadata.as_ref().and_then(|m| m.name.clone()),

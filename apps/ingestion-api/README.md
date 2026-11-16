@@ -6,6 +6,8 @@ The [telemetry point contract](../../docs/telemetry-point-contract.md) defines c
 
 The separate `recount.telemetry.ExecutionParticipants/Claim` RPC accepts one participant fact, using the same node token and admission semaphore. It enforces exact project/node/root scope, Linux local-kind grants and the [participant contract](../../docs/execution-participants.md), then publishes the final `AnalyticalParticipant` directly to `RECOUNT_PARTICIPANT_TOPIC` for native ClickHouse consumption. It acknowledges only confirmed Kafka publication. There is no participant normalizer or PostgreSQL execution write, and no execution attributes are added to points. Claims are uncompressed and capped at 64 KiB.
 
+Participants use `ENVIRONMENT` provenance with the matched variable name. Lifecycle facts have no process subject; membership facts require a process incarnation and forbid metadata. Neither cgroup evidence nor exit status is accepted. A process grant is required for both kinds; no container grant is needed. Ingestion never receives or reads the process environment.
+
 ## Configuration
 
 `recount-ingestion-api --help` generates CLI flags, environment names and defaults from their owning types. Command-line values override environment settings and defaults. `RUST_LOG` uses the standard tracing filter. Service operation requires `RECOUNT_INGESTION_DATABASE_URL`; help hides its value.

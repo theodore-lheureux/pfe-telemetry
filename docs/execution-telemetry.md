@@ -24,6 +24,12 @@ node and fact ID. Missing names fall back to the key. Corrections and retraction
 may change the selected metadata. There is no separate metadata owner or
 distributed completion status.
 
+Lifecycle facts have no root process. Their metadata comes from the first
+labelled process on a node during that participant's nonempty period.
+Process memberships identify each labelled incarnation separately. Detail pages
+show matched environment variable names and participant counts, not raw
+environments, cgroup placement or inferred exit status.
+
 Pages contain up to 50 keys in ascending key order, with a project-qualified key
 cursor. A read returns at most 51 grouped rows and is bounded to 100,000 physical
 rows, 256 MiB read/memory, one thread, six seconds of server execution and an
@@ -43,8 +49,9 @@ Kafka acknowledgement means acceptance, not immediate queryability. Immutable
 retries keep fact and revision identity. `ReplacingMergeTree(revision)` and
 bounded `FINAL` reads make replay safe before background merges.
 
-The [participant contract](execution-participants.md) defines local launcher
-delivery, wire fields, membership intervals and provenance. Launcher delivery,
-cgroup discovery and workload query resolution remain separate integrations.
+The [participant contract](execution-participants.md) defines bounded environment
+reading, privacy, wire fields, membership intervals and provenance.
+The launcher only validates labels, sets the environment and executes the command.
+Collector discovery/export and workload query resolution remain separate integrations.
 The [test reference](../tests/README.md) covers allocated native Kafka/ClickHouse
 checks, authorized execution reads and the EN/FR metadata browser tests.

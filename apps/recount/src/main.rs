@@ -1,13 +1,13 @@
-#[cfg(target_os = "linux")]
-mod linux;
+#[cfg(unix)]
+mod launch;
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 fn main() {
-    linux::main();
+    launch::main();
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(unix))]
 fn main() {
-    eprintln!("recount run requires Linux procfs and cgroup v2");
+    eprintln!("recount run requires Unix exec");
     std::process::exit(1);
 }

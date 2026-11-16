@@ -1,7 +1,6 @@
 use recount_telemetry_schema::wire::{
-    AnalyticalParticipant, CgroupIncarnation, ExecutionMetadata, ParticipantFact,
-    ParticipantFactKind, ParticipantOrigin, ParticipantProvenance, ParticipantSubject,
-    ProcessIncarnation,
+    AnalyticalParticipant, ExecutionMetadata, ParticipantFact, ParticipantFactKind,
+    ParticipantOrigin, ParticipantProvenance, ParticipantSubject, ProcessIncarnation,
 };
 
 pub const PROJECT: &str = "019a4790-d1da-7000-8000-000000000002";
@@ -21,23 +20,9 @@ pub fn lifecycle() -> ParticipantFact {
         fact_id: PARTICIPANT.into(),
         revision: 1,
         kind: ParticipantFactKind::ParticipantLifecycle as i32,
-        subject: Some(ParticipantSubject {
-            process: Some(ProcessIncarnation {
-                namespace_id: "pidns:1".into(),
-                pid: 42,
-                start_time_ticks: 100,
-            }),
-            cgroup: Some(CgroupIncarnation {
-                namespace_id: "cgroupns:1".into(),
-                path: "/recount/job-a".into(),
-                inode: 1000,
-                incarnation_id: PARTICIPANT.into(),
-            }),
-        }),
         provenance: Some(ParticipantProvenance {
-            origin: ParticipantOrigin::Launcher as i32,
-            launcher_claim_id: Some(PARTICIPANT.into()),
-            ..Default::default()
+            origin: ParticipantOrigin::Environment as i32,
+            environment_variable: "SLURM_JOB_ID".into(),
         }),
         owner_uid: Some(1000),
         first_seen_unix_nano: NOW,
@@ -55,7 +40,13 @@ pub fn child() -> ParticipantFact {
     fact.fact_id = CHILD.into();
     fact.kind = ParticipantFactKind::ProcessMembership as i32;
     fact.metadata = None;
-    fact.subject.as_mut().unwrap().process.as_mut().unwrap().pid = 43;
+    fact.subject = Some(ParticipantSubject {
+        process: Some(ProcessIncarnation {
+            namespace_id: "pidns:1".into(),
+            pid: 43,
+            start_time_ticks: 100,
+        }),
+    });
     fact
 }
 

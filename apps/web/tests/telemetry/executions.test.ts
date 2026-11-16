@@ -38,6 +38,7 @@ test("execution reads join nodes, select latest revisions and apply tombstones b
 		name: "Distributed job",
 		nodeCount: 2,
 		participantCount: 2,
+		environmentVariables: ["SLURM_JOB_ID"],
 		parameters: { size: "32", label: "<node>" },
 	});
 	expect(entry.firstSeen).toBeInstanceOf(Date);
@@ -52,6 +53,45 @@ test("execution reads join nodes, select latest revisions and apply tombstones b
 	expect(await readExecutions(project, {}, undefined, fixture.reader)).toEqual(
 		[],
 	);
+});
+
+test("rootless lifecycles retain first-process metadata while memberships supply no root", async () => {
+	const project = randomUUID();
+	const lifecycle = executionParticipant(project, "run:inherited");
+	const membership = {
+		...lifecycle,
+		fact_id: randomUUID(),
+		kind: 2,
+		process_resource_id: "labelled-process",
+		process_namespace_id: "pidns:1",
+		process_pid: 42,
+		process_start_time_ticks: "100",
+		execution_name: null,
+		workload_version: null,
+		parameters: [],
+		environment_variable: "RECOUNT_EXECUTION",
+	};
+	await insert([lifecycle, membership]);
+	const [entry] = await readExecutions(project, {}, undefined, fixture.reader);
+	expect(entry).toMatchObject({
+		name: "Distributed job",
+		participantCount: 1,
+		nodeCount: 1,
+		environmentVariables: ["RECOUNT_EXECUTION", "SLURM_JOB_ID"],
+	});
+	await insert([{ ...lifecycle, revision: "2", retracted: true }]);
+	const [withoutLifecycle] = await readExecutions(
+		project,
+		{},
+		undefined,
+		fixture.reader,
+	);
+	expect(withoutLifecycle).toMatchObject({
+		name: "run:inherited",
+		workloadVersion: null,
+		parameters: {},
+		environmentVariables: ["RECOUNT_EXECUTION"],
+	});
 });
 
 test("execution pages use bounded project-qualified key cursors and never stamp points", async () => {

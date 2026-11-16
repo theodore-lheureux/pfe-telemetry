@@ -2,6 +2,8 @@
 
 Monorepo for the distributed execution telemetry project.
 
+Use [`recount run`](apps/recount/README.md) to label a command with an execution key through its environment. The [participant contract](docs/execution-participants.md) defines bounded collector discovery, privacy and project-scoped attribution without claim files or cgroup association.
+
 The [Final project plan](https://app.notion.com/p/3df859f630f78055b042e69a3ad6558b) defines the requirements.
 
 See [architecture](docs/architecture.md), the [telemetry point contract](docs/telemetry-point-contract.md), [ingestion API design](docs/ingestion-server.md), [broker options](docs/broker-options.md), [serialization](docs/serialization.md), and [ingestion and reliability](docs/ingestion-and-reliability.md) for the design and validation scenarios.

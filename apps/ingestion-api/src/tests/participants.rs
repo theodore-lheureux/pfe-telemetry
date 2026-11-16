@@ -31,7 +31,7 @@ impl Authority for ParticipantAuthority {
 async fn claims_require_own_project_node_root_and_grants_before_confirmed_publication() {
     let mut allowed = source();
     allowed.security.source_id = cases::NODE.into();
-    allowed.local_kinds.insert(ResourceKind::Container);
+    allowed.local_kinds.remove(&ResourceKind::Container);
     let sink = Arc::new(TestSink::default());
     let (_, endpoint, stop, task) = server(
         Arc::new(ParticipantAuthority { allowed }),
@@ -79,33 +79,49 @@ async fn claims_require_own_project_node_root_and_grants_before_confirmed_public
     client.claim(request(fact.clone())).await.unwrap();
     client.claim(request(fact.clone())).await.unwrap();
     assert_eq!(sink.participants.lock().unwrap().len(), 2);
+    let mut member = cases::child();
+    member.first_seen_unix_nano = fact.first_seen_unix_nano;
+    member.last_seen_unix_nano = fact.last_seen_unix_nano;
+    client.claim(request(member)).await.unwrap();
+    {
+        let rows = sink.participants.lock().unwrap();
+        assert!(rows[0].process_resource_id.is_none());
+        assert_eq!(rows[0].environment_variable, "SLURM_JOB_ID");
+        assert!(rows[2].process_resource_id.is_some());
+    }
     sink.fail.store(true, Ordering::SeqCst);
     assert_eq!(
         client.claim(request(fact)).await.unwrap_err().code(),
         Code::Unavailable
     );
-    assert_eq!(sink.participants.lock().unwrap().len(), 2);
+    assert_eq!(sink.participants.lock().unwrap().len(), 3);
     stop.send(()).unwrap();
     task.await.unwrap();
 }
 
 #[tokio::test]
 async fn missing_local_grants_and_expired_or_oversized_claims_never_publish() {
-    for policy in ["process", "container", "adapter", "expired", "oversized"] {
+    for policy in [
+        "process",
+        "adapter",
+        "expired",
+        "oversized",
+        "future_end",
+        "subject",
+        "variable",
+    ] {
         let mut allowed = source();
         allowed.security.source_id = cases::NODE.into();
-        allowed.local_kinds.insert(ResourceKind::Container);
+        allowed.local_kinds.remove(&ResourceKind::Container);
         match policy {
             "process" => {
                 allowed.local_kinds.remove(&ResourceKind::Process);
-            }
-            "container" => {
-                allowed.local_kinds.remove(&ResourceKind::Container);
             }
             "adapter" => allowed.adapter = "standard".into(),
             _ => {}
         }
         let maximum_age_ns = allowed.maximum_age_ns;
+        let skew_ns = allowed.skew_ns;
         let sink = Arc::new(TestSink::default());
         let (_, endpoint, stop, task) = server(
             Arc::new(ParticipantAuthority { allowed }),
@@ -129,6 +145,19 @@ async fn missing_local_grants_and_expired_or_oversized_claims_never_publish() {
             "oversized" => {
                 fact.metadata.as_mut().unwrap().name = Some("x".repeat(70000));
                 Code::ResourceExhausted
+            }
+            "future_end" => {
+                fact.ended_unix_nano = Some(now + skew_ns + 60_000_000_000);
+                Code::InvalidArgument
+            }
+            "subject" => {
+                fact.subject = cases::child().subject;
+                Code::InvalidArgument
+            }
+            "variable" => {
+                fact.provenance.as_mut().unwrap().environment_variable =
+                    "SLURM_JOB_ID=private".into();
+                Code::InvalidArgument
             }
             _ => Code::PermissionDenied,
         };

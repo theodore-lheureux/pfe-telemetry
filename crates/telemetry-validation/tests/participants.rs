@@ -1,6 +1,7 @@
 #[path = "../../../tests/fixtures/telemetry/participants.rs"]
 mod cases;
-use recount_telemetry_schema::wire::{ParticipantOrigin, ProcessExit, process_exit::Outcome};
+use prost::Message;
+use recount_telemetry_schema::wire::{ParticipantOrigin, ParticipantSubject};
 use recount_telemetry_validation::{Category, execution};
 
 #[test]
@@ -9,6 +10,8 @@ fn participant_projection_keeps_pid_incarnations_nodes_children_and_replay_separ
     let row = cases::analytical(child.clone());
     assert_eq!(row, cases::analytical(child.clone()));
     assert_eq!(row.execution_key, "slurm:48213");
+    assert_eq!(row.origin, ParticipantOrigin::Environment as i32);
+    assert_eq!(row.environment_variable, "SLURM_JOB_ID");
     let mut reused = child.clone();
     reused
         .subject
@@ -44,53 +47,39 @@ fn participant_projection_keeps_pid_incarnations_nodes_children_and_replay_separ
         row.process_resource_id.as_ref().unwrap(),
         &execution::process_resource(&child, &unassociated).unwrap()
     );
-    let mut ancestry = child;
-    let subject = ancestry.subject.as_mut().unwrap();
-    subject.cgroup = None;
-    let parent = cases::lifecycle().subject.unwrap().process;
-    let provenance = ancestry.provenance.as_mut().unwrap();
-    provenance.origin = ParticipantOrigin::Ancestry as i32;
-    provenance.ancestry_root = parent.clone();
-    provenance.parent = parent;
-    let ancestry = cases::analytical(ancestry);
-    assert_eq!(ancestry.process_resource_id, row.process_resource_id);
-    assert!(ancestry.parent_resource_id.is_some());
-    let mut missing_reference = cases::child();
-    missing_reference.subject.as_mut().unwrap().cgroup = None;
-    let provenance = missing_reference.provenance.as_mut().unwrap();
-    provenance.origin = ParticipantOrigin::Ancestry as i32;
-    provenance.launcher_claim_id = None;
-    provenance.ancestry_root = cases::lifecycle().subject.unwrap().process;
-    provenance.parent = provenance.ancestry_root.clone();
-    assert!(execution::validate(&missing_reference).is_err());
+    let lifecycle = cases::analytical(cases::lifecycle());
+    assert!(lifecycle.process_resource_id.is_none());
+    assert!(lifecycle.process_pid.is_none());
+    assert_eq!(lifecycle.execution_name.as_deref(), Some("Distributed job"));
 }
 
 #[test]
 fn malformed_facts_fail_closed() {
-    let fact = cases::lifecycle();
-    for field in ["key", "uuid", "time", "cgroup", "provenance", "exit"] {
-        let mut invalid = fact.clone();
+    for field in [
+        "key",
+        "uuid",
+        "time",
+        "subject",
+        "provenance",
+        "variable",
+        "empty_variable",
+    ] {
+        let mut invalid = cases::lifecycle();
         match field {
             "key" => invalid.execution_key = "foreign\nkey".into(),
             "uuid" => invalid.node_id = "00000000-0000-0000-0000-000000000000".into(),
             "time" => invalid.last_seen_unix_nano = 0,
-            "cgroup" => {
-                invalid
-                    .subject
-                    .as_mut()
-                    .unwrap()
-                    .cgroup
-                    .as_mut()
-                    .unwrap()
-                    .path = "/a/../b".into()
-            }
+            "subject" => invalid.subject = Some(ParticipantSubject::default()),
             "provenance" => invalid.provenance.as_mut().unwrap().origin = 99,
-            _ => {
-                invalid.exit = Some(ProcessExit {
-                    time_unix_nano: cases::NOW,
-                    outcome: Some(Outcome::Signal(0)),
-                })
+            "variable" => {
+                invalid.provenance.as_mut().unwrap().environment_variable = "BAD=VALUE".into()
             }
+            _ => invalid
+                .provenance
+                .as_mut()
+                .unwrap()
+                .environment_variable
+                .clear(),
         }
         assert_eq!(
             execution::validate(&invalid).unwrap_err().category,
@@ -98,10 +87,75 @@ fn malformed_facts_fail_closed() {
             "{field}"
         );
     }
-    let mut oversized = fact;
+    let mut oversized = cases::lifecycle();
     oversized.metadata.as_mut().unwrap().name = Some("x".repeat(129));
     assert_eq!(
         execution::validate(&oversized).unwrap_err().category,
+        Category::Limit
+    );
+}
+
+#[test]
+fn rootless_lifecycle_membership_and_retraction_have_distinct_subject_rules() {
+    let lifecycle = cases::lifecycle();
+    execution::validate(&lifecycle).unwrap();
+    for field in [
+        "missing_subject",
+        "empty_subject",
+        "metadata",
+        "identity",
+        "pid",
+        "end",
+    ] {
+        let mut fact = cases::child();
+        match field {
+            "missing_subject" => fact.subject = None,
+            "empty_subject" => fact.subject = Some(ParticipantSubject::default()),
+            "metadata" => fact.metadata = lifecycle.metadata.clone(),
+            "identity" => fact.fact_id = fact.participant_id.clone(),
+            "pid" => fact.subject.as_mut().unwrap().process.as_mut().unwrap().pid = 0,
+            _ => fact.ended_unix_nano = Some(fact.last_seen_unix_nano),
+        }
+        assert!(execution::validate(&fact).is_err(), "{field}");
+    }
+    let mut fact = cases::child();
+    fact.revision = 2;
+    fact.retracted = true;
+    fact.ended_unix_nano = Some(fact.last_seen_unix_nano + 1);
+    let row = cases::analytical(fact.clone());
+    assert!(row.retracted);
+    assert_eq!(row.revision, 2);
+    assert_eq!(row.ended_unix_nano, fact.ended_unix_nano);
+    let provenance =
+        recount_telemetry_schema::wire::ParticipantProvenance::decode(row.provenance.as_slice())
+            .unwrap();
+    assert_eq!(Some(provenance), fact.provenance);
+}
+
+#[test]
+fn environment_provenance_is_bounded_and_does_not_change_process_identity() {
+    let mut fact = cases::child();
+    let original = cases::analytical(fact.clone());
+    for variable in ["RECOUNT_EXECUTION", "PBS_JOBID", "LSB_JOBID", "_JOB"] {
+        fact.provenance.as_mut().unwrap().environment_variable = variable.into();
+        let row = cases::analytical(fact.clone());
+        assert_eq!(row.environment_variable, variable);
+        assert_eq!(row.process_resource_id, original.process_resource_id);
+    }
+    fact.owner_uid = Some(0);
+    execution::validate(&fact).unwrap();
+    fact.owner_uid = None;
+    execution::validate(&fact).unwrap();
+    for variable in ["9INVALID", "BAD.NAME", " SECRET", "SECRET\n", ""] {
+        fact.provenance.as_mut().unwrap().environment_variable = variable.into();
+        assert_eq!(
+            execution::validate(&fact).unwrap_err().category,
+            Category::Invalid
+        );
+    }
+    fact.provenance.as_mut().unwrap().environment_variable = "A".repeat(129);
+    assert_eq!(
+        execution::validate(&fact).unwrap_err().category,
         Category::Limit
     );
 }

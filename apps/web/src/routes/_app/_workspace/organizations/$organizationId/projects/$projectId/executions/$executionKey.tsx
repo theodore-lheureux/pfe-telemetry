@@ -57,6 +57,18 @@ function Execution() {
 				{new Intl.NumberFormat(getLocale()).format(entry.nodeCount)}
 			</p>
 			<p>
+				{m.execution_participant_count()}:{" "}
+				{new Intl.NumberFormat(getLocale()).format(entry.participantCount)}
+			</p>
+			<p>
+				{m.execution_environment_variables()}:{" "}
+				{entry.environmentVariables.map((name) => (
+					<code key={name} className="mr-2">
+						{name}
+					</code>
+				))}
+			</p>
+			<p>
 				{m.execution_first_seen()}: <TimeDisplay value={entry.firstSeen} />
 			</p>
 			<p>
