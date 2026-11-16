@@ -115,7 +115,7 @@ SIGINT/SIGTERM finishes acquisition, drains the scan buffer to disk, cancels net
 
 Loss feedback invalidates baseline counter continuity for subsequent scans. Current-epoch cumulative loss diagnostics can appear in later captures; SQLite's persisted-batch loss totals survive restarts, while exported current-epoch counters reset. Already enqueued observations retain their original segments and timestamps. The queue cannot recover measurements that were never committed, including an interrupted scan, or survive disk loss.
 
-Production OTLP TLS and application instrumentation in this collector remain unimplemented. Application instrumentation uses standard OpenTelemetry SDKs; this collector gathers external Linux measurements.
+OTLP export supports verified HTTPS endpoints and plaintext HTTP for local lab use; see [collector setup](../../docs/collector-setup.md#run-the-collector). Application instrumentation uses standard OpenTelemetry SDKs; this collector gathers external Linux measurements.
 
 Only allowlisted identity and metric dimensions are exported, alongside the connection diagnostics above. Parsing `/proc/PID/stat` reads a process-name field and discards it. The metric sampler does not read command arguments, environment, executable links, application files or process memory. Separate execution discovery reads only the bounded environment described below. Host identity is read from machine/boot metadata or supplied through configuration; namespace identity is supplied by deployment. Neither discarded process contents nor receiver-supplied free-form errors are logged.
 

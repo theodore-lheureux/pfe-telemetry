@@ -1,7 +1,7 @@
 use std::{io, path::PathBuf, time::Duration};
 
 use clap::{Parser, ValueEnum};
-use tonic::transport::Endpoint;
+use tonic::transport::{ClientTlsConfig, Endpoint};
 use uuid::Uuid;
 
 use crate::{CollectorConfig, enrollment::EnrollmentConfig, spool::Result};
@@ -121,9 +121,14 @@ impl Config {
 
     pub(crate) fn export(&self) -> Result<ExportConfig> {
         let endpoint = Endpoint::from_shared(self.endpoint.clone())?;
-        if endpoint.uri().scheme_str() != Some("http") {
-            return Err(io::Error::other("OTLP export currently requires an http endpoint").into());
-        }
+        let endpoint = match endpoint.uri().scheme_str() {
+            Some("https") => {
+                let _ = rustls::crypto::ring::default_provider().install_default();
+                endpoint.tls_config(ClientTlsConfig::new().with_enabled_roots())?
+            }
+            Some("http") => endpoint,
+            _ => return Err(io::Error::other("OTLP export requires http or https").into()),
+        };
         let enrollment = self
             .enrollment_url
             .as_deref()
@@ -244,6 +249,9 @@ mod tests {
         .unwrap();
         assert!(config.sampling().host_visibility);
         assert_eq!(config.sampling().host_id.as_deref(), Some("node1"));
-        assert!(config.export().is_err());
+        assert_eq!(
+            config.export().unwrap().endpoint.uri().scheme_str(),
+            Some("https")
+        );
     }
 }

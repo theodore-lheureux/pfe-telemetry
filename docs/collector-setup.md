@@ -27,7 +27,7 @@ The [Linux collector configuration](../apps/collector/README.md#configuration) i
 - `RECOUNT_COLLECTOR_ENROLLMENT_URL`: the web application URL, for example `https://recount.example`.
 - `RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE`: the path of the private key file, not the key itself.
 - `RECOUNT_COLLECTOR_STATE_DIRECTORY`: a persistent private directory for the node identity.
-- `OTEL_EXPORTER_OTLP_ENDPOINT`: the [ingestion API's](../apps/ingestion-api/README.md) OTLP/gRPC endpoint. The web application URL is not an ingestion endpoint.
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: the [ingestion API's](../apps/ingestion-api/README.md) OTLP/gRPC endpoint, for example `https://ingestion.example`. The web application URL is not an ingestion endpoint.
 - A verified process namespace ID and visibility, as described in the collector README.
 
 ```sh
@@ -35,12 +35,14 @@ RECOUNT_COLLECTOR_ENROLLMENT_URL=https://recount.example \
 RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=/etc/recount-collector/enrollment.key \
 RECOUNT_COLLECTOR_STATE_DIRECTORY=/var/lib/recount-collector/node \
 RECOUNT_COLLECTOR_QUEUE_DIRECTORY=/var/lib/recount-collector \
-OTEL_EXPORTER_OTLP_ENDPOINT=http://ingestion.internal:4317 \
+OTEL_EXPORTER_OTLP_ENDPOINT=https://ingestion.example \
 RECOUNT_COLLECTOR_VISIBILITY=host \
 recount-collector
 ```
 
-On first start the collector enrolls and appears in the **Nodes** table with its hostname and machine ID. Later starts reuse the stored identity, so the key file can be removed once the node is listed. The current collector supports plaintext OTLP endpoints only: use loopback or a trusted private network or tunnel. Follow the [stack guide](../infra/README.md) for initialization, schema artifacts and endpoint publication.
+On first start the collector enrolls and appears in the **Nodes** table with its hostname and machine ID. Later starts reuse the stored identity, so the key file can be removed once the node is listed.
+
+HTTPS OTLP endpoints use rustls with system and WebPKI trust roots to verify the server certificate and hostname. Verification cannot be disabled. A public endpoint can use Caddy with a Let's Encrypt certificate to terminate TLS and proxy gRPC over HTTP/2 to the ingestion API. Plaintext `http://` endpoints remain available for local lab use on loopback or trusted private networks. Follow the [stack guide](../infra/README.md) for initialization, schema artifacts and endpoint publication.
 
 ## Revoke and remove
 

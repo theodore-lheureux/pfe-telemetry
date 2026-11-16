@@ -88,6 +88,8 @@ async fn inventory(mut value: CollectorConnection) -> Result<CollectorConnection
 
 async fn connect(endpoint: Endpoint) -> Result<Connection, Status> {
     let mut connector = HttpConnector::new();
+    // This connector only opens TCP; tonic wraps the observed socket in TLS for HTTPS.
+    connector.enforce_http(false);
     connector.set_connect_timeout(Some(TIMEOUT));
     connector.set_nodelay(true);
     let socket = connector
@@ -142,3 +144,6 @@ async fn connect(endpoint: Endpoint) -> Result<Connection, Status> {
         inventory_at: Instant::now(),
     })
 }
+
+#[cfg(test)]
+mod tests;
