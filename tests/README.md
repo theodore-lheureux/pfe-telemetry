@@ -87,10 +87,15 @@ serialization and rollback.
 
 ## Browser ownership
 
-Use `just build` (or `bun run --filter @recount/web build`) for the canonical web
+Use `just build` (or `bun --bun run --filter @recount/web build`) for the canonical web
 build; the root package does not define a `build` script.
 
 Build once before selecting production hosting with `RECOUNT_BROWSER_BUILT=true`.
+Global setup validates and copies the complete production output into one
+run-owned temporary bundle before workers start. Every production server and RPC
+metadata lookup uses that bundle, which is removed after all workers finish.
+Missing, invalid or concurrently changing build inputs fail setup without retries.
+After staging, local web-watch rebuilds do not affect the running suite.
 Do not rebuild generated assets while a development browser run is active.
 `RECOUNT_BROWSER_PORT` selects the first worker port; workers remain serial by
 default.

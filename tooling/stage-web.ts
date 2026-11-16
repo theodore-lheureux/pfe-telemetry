@@ -1,10 +1,13 @@
 import { cp, mkdir } from "node:fs/promises";
 import { validateWebRuntime } from "./artifact-policy";
 
-export async function stageWeb(destination: string) {
+export async function stageWeb(
+	destination: string,
+	source = "apps/web/.output",
+) {
 	await mkdir(destination);
-	validateWebRuntime("apps/web/.output");
-	await cp("apps/web/.output", destination, {
+	validateWebRuntime(source);
+	await cp(source, destination, {
 		recursive: true,
 		verbatimSymlinks: true,
 	});

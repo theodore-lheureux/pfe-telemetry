@@ -45,6 +45,8 @@ export function serverFunctionPaths(
 			}
 		}
 	}
+	if (!manifest.size)
+		throw new Error("Expected a generated server-function manifest");
 	// Only immutable build metadata escapes parsing; no AST, requests or session data.
 	return (operation) => {
 		const paths = manifest.get(`${operation}_createServerFn_handler`) ?? [];

@@ -24,6 +24,10 @@ const manifest = {
 		expect(lookup("read")).toBe("/_serverFn/opaque%2Fid");
 		expect(() => lookup("missing")).toThrow("Expected one");
 		expect(() => lookup("duplicate")).toThrow("Expected one");
+		writeFileSync(path, "export default {};");
+		expect(() => serverFunctionPaths(pathToFileURL(path))).toThrow(
+			"Expected a generated server-function manifest",
+		);
 	} finally {
 		rmSync(directory, { recursive: true });
 	}

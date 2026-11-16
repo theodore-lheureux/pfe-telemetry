@@ -1,6 +1,5 @@
 import type { Page, Request } from "@playwright/test";
 import { eq } from "drizzle-orm";
-import { serverFunctionPaths } from "../../../../tooling/server-function-metadata";
 import { invitation, member } from "../../src/db/schema";
 import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
@@ -19,27 +18,6 @@ import {
 	settingsUrl,
 	test,
 } from "./fixtures";
-
-let builtServerFunctionPath: ReturnType<typeof serverFunctionPaths> | undefined;
-
-async function serverFunctionPath(
-	page: Page,
-	module: string,
-	operation: string,
-) {
-	if (process.env.RECOUNT_BROWSER_BUILT === "true") {
-		builtServerFunctionPath ??= serverFunctionPaths(
-			new URL("../../.output/server/_ssr/ssr.mjs", import.meta.url),
-		);
-		return builtServerFunctionPath(operation);
-	}
-	return page.evaluate(
-		async ({ module, operation }) =>
-			(await import(`/src/organizations/${module}.ts`))[operation]
-				.url as string,
-		{ module, operation },
-	);
-}
 
 async function holdSuccessfulWrite(page: Page) {
 	const { promise: ready, release: executed } = createGate();
@@ -167,7 +145,11 @@ for (const child of [
 				exact: true,
 			}),
 		).toBeEnabled({ timeout: 20_000 });
-		const rpc = await serverFunctionPath(page, child.module, child.operation);
+		const rpc = await workspace.serverFunctionPath(
+			page,
+			child.module,
+			child.operation,
+		);
 		const rpcMatcher = `${new URL(rpc, workspace.origin).href}*`;
 		let expired = false;
 		await page.route(rpcMatcher, async (route) => {
@@ -468,7 +450,7 @@ test("accepted invitation keeps its acknowledged-write notice when the destinati
 	});
 	await workspace.signIn(page, "recipient@example.invalid");
 	await page.goto(`${workspace.origin}/invitations/${invited.id}`);
-	const destinationRead = await serverFunctionPath(
+	const destinationRead = await workspace.serverFunctionPath(
 		page,
 		"organization.functions",
 		"getOrganization",
@@ -803,7 +785,7 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 				exact: true,
 			}),
 		).toBeEnabled();
-		const rpc = await serverFunctionPath(
+		const rpc = await workspace.serverFunctionPath(
 			page,
 			"member.functions",
 			"listOrganizationMembers",

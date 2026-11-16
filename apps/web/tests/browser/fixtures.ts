@@ -18,6 +18,10 @@ import type { OperationResult } from "../../src/lib/operation-result";
 import { trustedCodeSignIn } from "../auth-actors";
 import { createTestDatabase } from "../database";
 import { settingsPath } from "../settings-path";
+import {
+	type ProductionBundle,
+	productionBundleForWorker,
+} from "./production-bundle";
 
 function narrowestScope(projectId?: string, organizationId?: string) {
 	if (projectId) return "project";
@@ -335,7 +339,10 @@ export async function openSettingsSection(
 	}
 }
 
-async function createWorkspace(parallelIndex: number) {
+async function createWorkspace(
+	parallelIndex: number,
+	bundle: ProductionBundle | undefined,
+) {
 	const timings: Record<string, number> = {};
 	async function measure<T>(name: string, action: () => Promise<T>) {
 		const started = performance.now();
@@ -439,20 +446,19 @@ async function createWorkspace(parallelIndex: number) {
 			"bun",
 			[
 				"--no-env-file",
-				...(process.env.RECOUNT_BROWSER_BUILT === "true"
-					? [".output/server/index.mjs"]
+				...(bundle
+					? [bundle.entrypoint]
 					: ["--bun", "run", "dev", "--port", String(port)]),
 			],
 			{
-				cwd: fileURLToPath(new URL("../../", import.meta.url)),
+				cwd:
+					bundle?.directory ??
+					fileURLToPath(new URL("../../", import.meta.url)),
 				stdio: ["ignore", "pipe", "pipe"],
 				detached: true,
 				env: {
 					...serverEnvironment,
-					NODE_ENV:
-						process.env.RECOUNT_BROWSER_BUILT === "true"
-							? "production"
-							: "development",
+					NODE_ENV: bundle ? "production" : "development",
 					DATABASE_URL: url.toString(),
 					NITRO_HOST: "127.0.0.1",
 					NITRO_PORT: String(port),
@@ -517,6 +523,15 @@ async function createWorkspace(parallelIndex: number) {
 		auth,
 		operations,
 		close,
+		async serverFunctionPath(page: Page, module: string, operation: string) {
+			if (bundle) return bundle.serverFunctionPath(operation);
+			return page.evaluate(
+				async ({ module, operation }) =>
+					(await import(`/src/organizations/${module}.ts`))[operation]
+						.url as string,
+				{ module, operation },
+			);
+		},
 		async enableCodeDelivery(page: Page) {
 			await page.route(
 				"**/api/auth/email-otp/send-verification-otp",
@@ -598,12 +613,22 @@ async function createWorkspace(parallelIndex: number) {
 	};
 }
 
-export const test = base.extend<{
-	workspace: Awaited<ReturnType<typeof createWorkspace>>;
-}>({
-	// biome-ignore lint/correctness/noEmptyPattern: Playwright requires destructured fixture arguments.
-	workspace: async ({}, use, testInfo) => {
-		const workspace = await createWorkspace(testInfo.parallelIndex);
+export const test = base.extend<
+	{ workspace: Awaited<ReturnType<typeof createWorkspace>> },
+	{ productionBundle: ProductionBundle | undefined }
+>({
+	productionBundle: [
+		// biome-ignore lint/correctness/noEmptyPattern: Playwright requires destructured fixture arguments.
+		async ({}, use) => {
+			await use(productionBundleForWorker());
+		},
+		{ scope: "worker" },
+	],
+	workspace: async ({ productionBundle }, use, testInfo) => {
+		const workspace = await createWorkspace(
+			testInfo.parallelIndex,
+			productionBundle,
+		);
 		try {
 			await use(workspace);
 		} finally {
