@@ -3,7 +3,14 @@ import { randomUUID } from "node:crypto";
 export function executionParticipant(
 	projectId: string,
 	executionKey: string,
-	options: { nodeId?: string; name?: string; firstSeen?: bigint } = {},
+	options: {
+		nodeId?: string;
+		name?: string | null;
+		firstSeen?: bigint;
+		lastSeen?: bigint;
+		ended?: bigint;
+		ownerUid?: number;
+	} = {},
 ) {
 	const id = randomUUID();
 	const firstSeen = options.firstSeen ?? 1793700000000000000n;
@@ -20,9 +27,14 @@ export function executionParticipant(
 		origin: 1,
 		environment_variable: "SLURM_JOB_ID",
 		first_seen_unix_nano: firstSeen.toString(),
-		last_seen_unix_nano: (firstSeen + 1000000000n).toString(),
+		last_seen_unix_nano: (
+			options.lastSeen ?? firstSeen + 1000000000n
+		).toString(),
+		ended_unix_nano: options.ended?.toString() ?? null,
+		owner_uid: options.ownerUid ?? null,
 		retracted: false,
-		execution_name: options.name ?? "Distributed job",
+		execution_name:
+			options.name === undefined ? "Distributed job" : options.name,
 		workload_version: "build-a",
 		parameters: [
 			{ key: "label", value: "<node>" },

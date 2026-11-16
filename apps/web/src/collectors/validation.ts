@@ -1,4 +1,4 @@
-import { parseName } from "../lib/input";
+import { parseName, parseUuid } from "../lib/input";
 import { InputError } from "../lib/input-error";
 import { parseProjectReference } from "../organizations/validation";
 import {
@@ -15,7 +15,6 @@ import {
 	type NodeTokenInput,
 } from "./contracts";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const ENROLLMENT_KEY =
 	/^recount_enroll_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})_[A-Za-z0-9_-]{43}$/;
 
@@ -23,12 +22,6 @@ function record(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		throw new Error("Invalid request");
 	return value as Record<string, unknown>;
-}
-
-function uuid(value: unknown) {
-	if (typeof value !== "string" || !UUID.test(value))
-		throw new Error("Invalid identifier");
-	return value.toLowerCase();
 }
 
 export function parseMachineId(value: unknown) {
@@ -133,7 +126,7 @@ export function parseEnrollmentKeyReference(
 ): EnrollmentKeyReference {
 	return {
 		...parseProjectReference(value),
-		enrollmentKeyId: uuid(record(value).enrollmentKeyId),
+		enrollmentKeyId: parseUuid(record(value).enrollmentKeyId),
 	};
 }
 
@@ -162,7 +155,7 @@ export function parseNodesReference(value: unknown): NodesReference {
 		throw new Error(`Select 1–${MAX_NODES_PER_REQUEST} nodes`);
 	return {
 		...parseProjectReference(value),
-		nodeIds: [...new Set(ids.map(uuid))],
+		nodeIds: [...new Set(ids.map((id) => parseUuid(id)))],
 	};
 }
 
@@ -212,7 +205,7 @@ export function parseNodeTokenInput(value: unknown): NodeTokenInput {
 	)
 		throw new Error("Invalid signature");
 	return {
-		nodeId: uuid(input.nodeId),
+		nodeId: parseUuid(input.nodeId),
 		timestamp: input.timestamp,
 		signature: input.signature,
 	};

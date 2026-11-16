@@ -14,10 +14,14 @@ export function parseName(value: unknown) {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Whether `value` is a UUID in any letter case. */
+export function isUuid(value: unknown): value is string {
+	return typeof value === "string" && UUID.test(value);
+}
+
 /** A UUID in lowercase; `what` names it in the error. */
 export function parseUuid(value: unknown, what = "identifier") {
-	if (typeof value !== "string" || !UUID.test(value))
-		throw new Error(`Invalid ${what}`);
+	if (!isUuid(value)) throw new Error(`Invalid ${what}`);
 	return value.toLowerCase();
 }
 
