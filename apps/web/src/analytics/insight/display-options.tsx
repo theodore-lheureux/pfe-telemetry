@@ -15,6 +15,7 @@ import {
 	TabsTrigger,
 } from "../../components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
+import { isCalculatedMetric } from "../calculated-metrics";
 import type { Spread } from "../contracts";
 import {
 	type Display,
@@ -105,6 +106,12 @@ function CommitInput({
  * Formulas combine finished values, and a sum or count is larger than each source.
  */
 export function spreadUnavailable(draft: InsightDraft): string | null {
+	if (
+		draft.series.some(
+			(series) => series.metric && isCalculatedMetric(series.metric),
+		)
+	)
+		return m.display_spread_formula();
 	// A collapsed breakdown bands across its groups, which formulas and sums have too.
 	if (draft.groupBy && draft.aggregate) return null;
 	if (draft.formulas.some((formula) => formula.expression.trim()))

@@ -1,26 +1,27 @@
 import { m } from "@recount/i18n/messages";
-import { PlusIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
+import { AttributeList } from "../analytics/attribute-list";
+import type { AttributeDefinition } from "../analytics/contracts";
+import { attributeField, isFieldKey } from "../analytics/fields";
 import {
-	Command,
-	CommandEmpty,
-	CommandGroup,
-	CommandInput,
-	CommandItem,
-	CommandList,
-} from "../components/ui/command";
-import { Label } from "../components/ui/label";
-import {
-	NativeSelect,
-	NativeSelectOption,
-} from "../components/ui/native-select";
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "../components/ui/select";
 import {
 	type ColumnCategory,
 	columnCategory,
-	columnKey,
 	columnName,
 } from "./column-names";
-import { isBuiltIn, MAX_ATTRIBUTE_COLUMNS, MAX_COLUMNS } from "./columns";
+import {
+	BUILT_IN_COLUMNS,
+	isBuiltIn,
+	MAX_ATTRIBUTE_COLUMNS,
+	MAX_COLUMNS,
+} from "./columns";
 
 type Category = "all" | ColumnCategory;
 const CATEGORY_LABEL: Record<Category, () => string> = {
@@ -29,24 +30,35 @@ const CATEGORY_LABEL: Record<Category, () => string> = {
 	point: m.activity_attribute_point,
 	resource: m.activity_attribute_resource,
 };
-const CATEGORIES: ColumnCategory[] = ["fields", "point", "resource"];
 
 /** Fields not shown yet, searchable and grouped by category; choosing one adds it. */
 export function AvailableColumns({
-	fields,
+	attributes,
 	visible,
 	loading,
 	onAdd,
 }: {
-	/** Every field that can be a column, in display order. */
-	fields: string[];
+	attributes: AttributeDefinition[] | undefined;
 	visible: string[];
 	loading: boolean;
 	onAdd: (field: string) => void;
 }) {
-	const id = useId();
 	const [category, setCategory] = useState<Category>("all");
 	const shown = new Set(visible);
+	const availableAttributes = (attributes ?? []).filter(
+		(attribute) =>
+			isFieldKey(attribute.key) &&
+			attribute.status !== "hidden" &&
+			!shown.has(attributeField(attribute.scope, attribute.key)),
+	);
+	const fields = [
+		...BUILT_IN_COLUMNS,
+		...new Set(
+			availableAttributes.map((attribute) =>
+				attributeField(attribute.scope, attribute.key),
+			),
+		),
+	];
 	const available = fields.filter((field) => !shown.has(field));
 	const attributeCount = visible.filter((field) => !isBuiltIn(field)).length;
 	const full = visible.length >= MAX_COLUMNS;
@@ -55,75 +67,64 @@ export function AvailableColumns({
 			? available.length
 			: available.filter((field) => columnCategory(field) === option).length;
 	return (
-		<Command className="bg-transparent p-0">
-			<div className="flex items-center gap-2 [&>[data-slot=command-input-wrapper]]:flex-1 [&>[data-slot=command-input-wrapper]]:p-0">
-				<CommandInput placeholder={m.columns_search()} />
-				<Label htmlFor={`${id}-category`} className="sr-only">
-					{m.columns_category()}
-				</Label>
-				<NativeSelect
-					id={`${id}-category`}
-					value={category}
-					onChange={(event) => setCategory(event.target.value as Category)}
-				>
-					{(Object.keys(CATEGORY_LABEL) as Category[]).map((option) => (
-						<NativeSelectOption key={option} value={option}>
-							{m.columns_category_count({
-								category: CATEGORY_LABEL[option](),
-								count: count(option),
-							})}
-						</NativeSelectOption>
-					))}
-				</NativeSelect>
-			</div>
+		<div className="space-y-2">
 			{attributeCount >= MAX_ATTRIBUTE_COLUMNS && (
 				<p className="pt-2 text-xs text-muted-foreground">
 					{m.columns_attribute_limit({ count: MAX_ATTRIBUTE_COLUMNS })}
 				</p>
 			)}
-			{/* The dialog body scrolls, so the list grows instead of scrolling itself. */}
-			<CommandList className="max-h-none overflow-visible">
-				<CommandEmpty>
-					{loading ? m.activity_attribute_loading() : m.columns_none()}
-				</CommandEmpty>
-				{CATEGORIES.filter(
-					(option) => category === "all" || category === option,
-				).map((option) => {
-					const items = available.filter(
-						(field) => columnCategory(field) === option,
-					);
-					return items.length ? (
-						<CommandGroup key={option} heading={CATEGORY_LABEL[option]()}>
-							{items.map((field) => (
-								<CommandItem
-									key={field}
-									value={field}
-									keywords={[columnName(field), columnKey(field)]}
-									disabled={
-										full ||
-										(!isBuiltIn(field) &&
-											attributeCount >= MAX_ATTRIBUTE_COLUMNS)
-									}
-									onSelect={() => onAdd(field)}
-								>
-									<PlusIcon
-										aria-hidden="true"
-										className="text-muted-foreground"
-									/>
-									<span className="flex min-w-0 flex-1 flex-col">
-										<span className="truncate">{columnName(field)}</span>
-										{columnName(field) !== columnKey(field) && (
-											<span className="truncate font-mono text-[11px] text-muted-foreground">
-												{columnKey(field)}
-											</span>
-										)}
-									</span>
-								</CommandItem>
-							))}
-						</CommandGroup>
-					) : null;
-				})}
-			</CommandList>
-		</Command>
+			<AttributeList
+				searchAction={
+					<Select
+						value={category}
+						onValueChange={(value) => setCategory(value as Category)}
+					>
+						<SelectTrigger
+							aria-label={m.columns_category()}
+							className="h-full rounded-none border-0 bg-transparent pr-2.5 pl-1 text-foreground focus-visible:ring-inset dark:bg-transparent dark:hover:bg-transparent"
+							// Keep category selection separate from cmdk's list navigation.
+							onKeyDown={(event) => event.stopPropagation()}
+						>
+							<SelectValue>{CATEGORY_LABEL[category]()}</SelectValue>
+						</SelectTrigger>
+						<SelectContent
+							position="popper"
+							align="end"
+							onKeyDown={(event) => event.stopPropagation()}
+						>
+							<SelectGroup>
+								{(Object.keys(CATEGORY_LABEL) as Category[]).map((option) => (
+									<SelectItem key={option} value={option}>
+										{m.columns_category_count({
+											category: CATEGORY_LABEL[option](),
+											count: count(option),
+										})}
+									</SelectItem>
+								))}
+							</SelectGroup>
+						</SelectContent>
+					</Select>
+				}
+				outlined
+				showPreview={false}
+				searchPlaceholder={m.columns_search()}
+				emptyMessage={m.columns_none()}
+				attributes={availableAttributes.filter(
+					(attribute) => category === "all" || category === attribute.scope,
+				)}
+				options={available
+					.filter(
+						(field) =>
+							isBuiltIn(field) && (category === "all" || category === "fields"),
+					)
+					.map((field) => ({ value: field, label: columnName(field) }))}
+				optionsHeading={m.columns_category_fields()}
+				loading={loading}
+				isDisabled={(field) =>
+					full || (!isBuiltIn(field) && attributeCount >= MAX_ATTRIBUTE_COLUMNS)
+				}
+				onSelect={onAdd}
+			/>
+		</div>
 	);
 }

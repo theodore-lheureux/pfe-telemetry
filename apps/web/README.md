@@ -178,6 +178,30 @@ The JSON inspector uses `react-json-view-lite` with Tide/shadcn theme tokens and
 
 Vite and web checks generate server-side codecs from the current shared Rust descriptors and the pinned OpenTelemetry descriptor set. Generation requires the host Rust toolchain, uses the invoking Cargo build configuration and caches only immutable descriptor inputs. Generated files are ignored; no Rust compiler runs in the web image. The build also bundles the standalone gateway into `.output/live/index.mjs`; both processes use the same runtime image. Active streams and Kafka clients close with their owning process.
 
+## Definitions
+
+Definitions lists a project's collected metrics and attributes, plus reusable calculated metrics. ClickHouse's `telemetry.metric_definitions` and `telemetry.attribute_definitions` catalogs supply collected names, kinds, units, value types and first- and last-seen times; they fill as points arrive. A metric sent with several kinds or units appears once, as its most recently seen variant. All metrics share one searchable, filterable table. Known catalog metrics and attributes have the Recount symbol, custom collected definitions have a code icon, and calculated metrics have a calculator icon. Lists and pickers show friendly names and descriptions without repeating technical identifiers; search still matches those identifiers. Attributes show whether they apply to each measurement or to the source that sent it.
+
+Metric and attribute pages open read-only; Edit switches to a form. Members add a description, up to 20 tags and a status (Verified, Visible or Hidden) to both, and an owner and a default breakdown to metrics. These live in PostgreSQL's `app.metric_annotation` and `app.attribute_annotation`, keyed by project and metric name or by project, scope and attribute key; a row exists only while something is set, and clearing every field removes it. Any project reader can open the pages, and only members and admins can edit them. An owner must be able to open the project, and a default breakdown must be one of the metric's attributes. A metric without a members' description shows the one its instrumentation sent, then Recount's built-in wording for known metrics.
+
+A metric page also lists the saved insights whose series chart it, with the dashboards that show them. Collected metrics embed the Activity explorer locked to that metric; calculated metrics show their expression and input definitions instead. Expanding a row in the metric list shows its attributes. Example values on collected metric pages and in expanded rows, and recent values on attribute pages, come from at most 2,000 points from the last hour, so an attribute the metric has not carried recently shows none.
+
+Hidden metrics are left out of the Explore metric picker, and hidden attributes out of the breakdown and filter pickers. Both stay in the analytics catalog, so saved insights and dashboard tiles that use them keep their calculations and keep running. Opening a metric in Explore, or picking it for a non-Number insight that has one series and no breakdown, applies the metric's default breakdown.
+
+### Calculated metrics
+
+In Explore, build a formula over collected metrics and use the save icon beside the formula name, labelled **Save as calculated metric**. Name it, add a description and choose its output unit: dimensionless, percent, bytes or seconds. Saving opens its definition page. **Open in Explore** selects it as one ordinary series, without exposing or duplicating its inputs in the insight.
+
+PostgreSQL's `app.calculated_metric` stores custom project-scoped definitions under stable UUIDs. Saved insights reference `recount.calculated.<id>`, so renaming a definition does not break its users. A definition contains at most eight collected input measures, their calculations, combinations and per-input filters, and one arithmetic expression of at most 200 characters. Its serialized definition is limited to 16 KiB. Insight-wide filters, range, interval, breakdown, comparison and chart settings are not captured. Calculated metrics cannot depend on other calculated metrics.
+
+The server resolves definitions after project authorization, then evaluates the expression after combining its inputs for each bucket and group. CPU usage therefore divides summed busy CPU rates by summed total CPU rates, rather than averaging percentages. Comparisons keep their own inputs; missing inputs and division by zero produce gaps. Expansion remains subject to the existing 26-measure and result-size limits. No calculated points are written to ClickHouse, so calculated metrics are absent from raw Activity filters.
+
+Attribute filters and breakdowns must be shared by all inputs, with matching scope, key and value type. Fields fixed by an input filter are not offered as dimensions and cannot be overridden by an insight. Node, host and resource core fields retain their ordinary query semantics.
+
+CPU usage, memory usage and process CPU usage use the same mechanism as read-only built-in definitions. **Use as template** creates an editable copy. Project members and admins may create, edit or delete unused custom definitions; viewers may inspect and select them. Editing warns that every referencing insight will use the new definition on its next query, and invalidates the current client's analytics and catalog caches.
+
+Custom definition pages offer **Delete** with confirmation. Saved insights block deletion, including insights used by dashboard tiles. Saving or duplicating an insight holds shared locks on its calculated metric references until commit; deletion takes an exclusive lock and checks references before removing the definition and its annotations. Collected inputs and telemetry are kept. A stale edit cannot recreate a deleted definition, and built-in definitions cannot be deleted.
+
 ## UI components
 
 Add components from this directory:

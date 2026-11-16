@@ -10,10 +10,10 @@ import {
 import { cn } from "../lib/utils";
 import { AttributeList, type ListOption } from "./attribute-list";
 import type { AttributeDefinition } from "./contracts";
+import { DefinitionSourceIcon } from "./definition-source-icon";
 import { parseAttributeField } from "./fields";
 import { attributeLabel } from "./metric-names";
-
-const CORE_GROUPS = ["node", "host", "resource.id"];
+import { PICKER_CONTENT_CLASS } from "./picker-command";
 
 const CORE_GROUP_LABEL: Record<string, () => string> = {
 	node: m.insight_group_node,
@@ -29,8 +29,7 @@ export function groupFieldLabel(field: string) {
 }
 
 /**
- * Picks what series are grouped by from a searchable list: the caller's choices, such
- * as no grouping, then core fields, then discovered attributes.
+ * Picks a breakdown from discovered attributes and the caller's reset/inherit choices.
  */
 export function GroupByPicker({
 	value,
@@ -39,6 +38,7 @@ export function GroupByPicker({
 	loading,
 	disabled,
 	className,
+	label,
 	onOpen,
 	onChange,
 }: {
@@ -49,20 +49,16 @@ export function GroupByPicker({
 	loading: boolean;
 	disabled: boolean;
 	className?: string;
+	/** The visible label of a field holding the picker, which then drops its own prefix. */
+	label?: string;
 	/** Attributes load the first time the list opens. */
 	onOpen: () => void;
 	onChange: (value: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const options = [
-		...choices,
-		...CORE_GROUPS.map((field) => ({
-			value: field,
-			label: groupFieldLabel(field),
-		})),
-	];
+	const attribute = parseAttributeField(value);
 	const current =
-		options.find((option) => option.value === value)?.label ??
+		choices.find((option) => option.value === value)?.label ??
 		groupFieldLabel(value);
 	return (
 		<Popover
@@ -76,19 +72,26 @@ export function GroupByPicker({
 				<Button
 					variant="outline"
 					disabled={disabled}
-					aria-label={`${m.insight_group_by()}: ${current}`}
+					aria-label={`${label ?? m.insight_group_by()}: ${current}`}
 					className={cn("max-w-80 justify-start", className)}
 				>
-					<span className="text-muted-foreground">{m.insight_group_by()}</span>
+					{attribute && (
+						<DefinitionSourceIcon kind="attribute" name={attribute.key} />
+					)}
+					{!label && (
+						<span className="text-muted-foreground">
+							{m.insight_group_by()}
+						</span>
+					)}
 					<span className="truncate">{current}</span>
 					<ChevronDownIcon aria-hidden="true" className="ml-auto opacity-60" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent className="w-80 p-0" align="start">
+			<PopoverContent className={PICKER_CONTENT_CLASS} align="start">
 				<AttributeList
 					attributes={attributes}
 					loading={loading}
-					options={options}
+					options={choices}
 					selected={value}
 					onSelect={(next) => {
 						onChange(next);

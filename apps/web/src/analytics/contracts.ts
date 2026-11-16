@@ -1,4 +1,5 @@
 import type { ProjectReference } from "../organizations/contracts";
+import type { CalculatedMetric } from "./calculated-metrics";
 
 // The typed analytical query contract from docs/telemetry-semantic-model.md. Builders,
 // saved analyses and execution pages produce it; only the server compiles it to SQL.
@@ -140,20 +141,36 @@ export type MetricBehavior = "gauge" | "counter" | "delta" | "unsupported";
 
 export interface MetricDefinition {
 	name: string;
+	label?: string;
+	calculated?: CalculatedMetric;
 	kind: number;
 	temporality: number;
 	monotonic: boolean | null;
 	unit: string;
 	description: string;
 	behavior: MetricBehavior;
+	firstSeen: Date;
 	lastSeen: Date;
+	/** Members' status; a hidden metric is left out of choices but still queryable. */
+	status?: DefinitionStatus;
+	/** The members' description, which comes before the instrumentation's. */
+	note?: string;
+	/** The attribute field members chose to break this metric down by. */
+	defaultBreakdown?: string;
 }
+
+/** What members marked a metric or attribute as; unmarked definitions are visible. */
+export type DefinitionStatus = "verified" | "hidden";
 
 export interface AttributeDefinition {
 	metric: string;
 	scope: "resource" | "point";
 	key: string;
 	kind: number;
+	/** Members' status; a hidden attribute is left out of breakdown and filter choices. */
+	status?: DefinitionStatus;
+	/** The members' description. */
+	note?: string;
 }
 
 export interface SeriesResult {
@@ -189,6 +206,7 @@ export interface QueryResult {
 	measures: {
 		name: string;
 		metric: string;
+		label?: string;
 		unit: string;
 		calculation: Calculation;
 	}[];

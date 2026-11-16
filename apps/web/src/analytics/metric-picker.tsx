@@ -3,12 +3,9 @@ import { ChevronsUpDownIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "../components/ui/button";
 import {
-	Command,
 	CommandEmpty,
 	CommandGroup,
-	CommandInput,
 	CommandItem,
-	CommandList,
 } from "../components/ui/command";
 import {
 	Popover,
@@ -17,7 +14,15 @@ import {
 } from "../components/ui/popover";
 import { cn } from "../lib/utils";
 import type { MetricDefinition } from "./contracts";
+import { DefinitionChoice } from "./definition-choice";
+import { DefinitionSourceIcon } from "./definition-source-icon";
 import { isNamedMetric, metricLabel, unitLabel } from "./metric-names";
+import {
+	metricPreview,
+	PICKER_CONTENT_CLASS,
+	PickerCommand,
+	type PickerPreview,
+} from "./picker-command";
 
 /**
  * A searchable metric combobox showing friendly names, technical names and units.
@@ -34,8 +39,6 @@ export function MetricPicker({
 	icon,
 	labelled,
 	className,
-	presets = [],
-	onPreset,
 }: {
 	id?: string;
 	metrics: MetricDefinition[] | undefined;
@@ -49,21 +52,28 @@ export function MetricPicker({
 	/** True when a `<Label htmlFor={id}>` names the trigger. */
 	labelled?: boolean;
 	className?: string;
-	/** Calculated entries listed first, such as CPU usage; choosing one calls `onPreset`. */
-	presets?: {
-		id: string;
-		label: string;
-		description: string;
-		/** Why it cannot be chosen now; shown in place of the description. */
-		unavailable?: string;
-	}[];
-	onPreset?: (id: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
-	const names = [...new Set(metrics?.map((metric) => metric.name))];
+	const names = [
+		...new Set(
+			metrics
+				?.filter(
+					(metric) => metric.status !== "hidden" || metric.name === value,
+				)
+				.map((metric) => metric.name),
+		),
+	];
 	const unit = (name: string) =>
 		unitLabel(metrics?.find((metric) => metric.name === name)?.unit ?? "");
-	const text = value ? metricLabel(value) : placeholder;
+	const previews = new Map<string, PickerPreview>();
+	for (const name of names) {
+		const metric = metrics?.find((item) => item.name === name);
+		if (metric) previews.set(name, metricPreview(metric));
+	}
+	const metricText = (name: string) =>
+		metricLabel(name, metrics?.find((metric) => metric.name === name)?.label);
+	const selected = metrics?.find((metric) => metric.name === value);
+	const text = value ? metricText(value) : placeholder;
 	const choose = (name: string | undefined) => {
 		onChange(name);
 		setOpen(false);
@@ -81,11 +91,11 @@ export function MetricPicker({
 					disabled={disabled}
 					className={cn("justify-between font-normal", className)}
 				>
-					{icon}
+					{value ? <DefinitionSourceIcon kind="metric" name={value} /> : icon}
 					<span
 						className={cn(
 							"min-w-0 flex-1 truncate text-left",
-							value && !isNamedMetric(value) && "font-mono",
+							value && !isNamedMetric(value) && !selected?.label && "font-mono",
 						)}
 					>
 						{text}
@@ -93,74 +103,43 @@ export function MetricPicker({
 					<ChevronsUpDownIcon aria-hidden="true" className="opacity-60" />
 				</Button>
 			</PopoverTrigger>
-			<PopoverContent
-				className="w-(--radix-popover-trigger-width) min-w-80 p-0"
-				align="start"
-			>
-				<Command>
-					<CommandInput placeholder={m.insight_metric_search()} />
-					<CommandList>
-						<CommandEmpty>{m.insight_no_metrics()}</CommandEmpty>
-						{presets.length > 0 && (
-							<CommandGroup heading={m.insight_metric_presets()}>
-								{presets.map((preset) => (
-									<CommandItem
-										key={preset.id}
-										value={`${preset.label} ${preset.description}`}
-										disabled={preset.unavailable !== undefined}
-										onSelect={() => {
-											onPreset?.(preset.id);
-											setOpen(false);
-										}}
-									>
-										<span className="flex min-w-0 flex-1 flex-col">
-											<span className="truncate">{preset.label}</span>
-											<span className="truncate text-[11px] text-muted-foreground">
-												{preset.unavailable ?? preset.description}
-											</span>
-										</span>
-									</CommandItem>
-								))}
-							</CommandGroup>
+			<PopoverContent className={PICKER_CONTENT_CLASS} align="start">
+				<PickerCommand search={m.insight_metric_search()} previews={previews}>
+					<CommandEmpty>{m.insight_no_metrics()}</CommandEmpty>
+					<CommandGroup>
+						{allLabel && (
+							<CommandItem
+								value={allLabel}
+								data-checked={value === undefined}
+								onSelect={() => choose(undefined)}
+							>
+								{allLabel}
+							</CommandItem>
 						)}
-						<CommandGroup
-							heading={presets.length > 0 ? m.insight_metric_raw() : undefined}
-						>
-							{allLabel && (
-								<CommandItem
-									value={allLabel}
-									data-checked={value === undefined}
-									onSelect={() => choose(undefined)}
-								>
-									{allLabel}
-								</CommandItem>
-							)}
-							{names.map((name) => (
-								<CommandItem
-									key={name}
-									// Search matches the friendly and the technical name.
-									value={`${metricLabel(name)} ${name}`}
-									data-checked={value === name}
-									onSelect={() => choose(name)}
-								>
-									<span className="flex min-w-0 flex-1 flex-col">
-										<span className="truncate">{metricLabel(name)}</span>
-										{isNamedMetric(name) && (
-											<span className="truncate font-mono text-[11px] text-muted-foreground">
-												{name}
-											</span>
-										)}
+						{names.map((name) => (
+							<CommandItem
+								key={name}
+								// Search matches the friendly and the technical name.
+								value={name}
+								keywords={[metricText(name)]}
+								data-checked={value === name}
+								onSelect={() => choose(name)}
+							>
+								<DefinitionChoice
+									kind="metric"
+									name={name}
+									label={metricText(name)}
+									description={previews.get(name)?.description}
+								/>
+								{unit(name) && (
+									<span className="text-xs text-muted-foreground">
+										{unit(name)}
 									</span>
-									{unit(name) && (
-										<span className="text-xs text-muted-foreground">
-											{unit(name)}
-										</span>
-									)}
-								</CommandItem>
-							))}
-						</CommandGroup>
-					</CommandList>
-				</Command>
+								)}
+							</CommandItem>
+						))}
+					</CommandGroup>
+				</PickerCommand>
 			</PopoverContent>
 		</Popover>
 	);

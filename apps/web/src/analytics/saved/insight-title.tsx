@@ -24,6 +24,7 @@ import { useAppMutation } from "../../components/use-app-mutation";
 import { addTag, withoutTags } from "../../lib/tags";
 import type { ProjectReference } from "../../organizations/contracts";
 import { saveInsight } from "../analytics.functions";
+import type { MetricDefinition } from "../contracts";
 import {
 	decodeDraft,
 	encodeDraft,
@@ -54,6 +55,7 @@ export function useInsightTitle({
 	saved,
 	draft,
 	tagSuggestions,
+	metrics,
 }: {
 	userId: string;
 	reference: ProjectReference;
@@ -63,6 +65,7 @@ export function useInsightTitle({
 	draft: InsightDraft;
 	/** Tags used by other insights of the project. */
 	tagSuggestions: string[];
+	metrics: MetricDefinition[];
 }) {
 	const mutation = useAppMutation({
 		userId,
@@ -83,10 +86,16 @@ export function useInsightTitle({
 		setTags(saved?.tags ?? []);
 	}, [saved?.name, saved?.description, saved?.tags]);
 	// An unnamed insight is named after what it plots, as its placeholder shows.
-	const suggested = (plottedNames(draft).join(", ") || m.saved_new()).slice(
-		0,
-		MAX_INSIGHT_NAME,
-	);
+	const suggested = (
+		plottedNames(
+			draft,
+			new Map(
+				metrics.flatMap((metric) =>
+					metric.label ? [[metric.name, metric.label] as const] : [],
+				),
+			),
+		).join(", ") || m.saved_new()
+	).slice(0, MAX_INSIGHT_NAME);
 	const finalName = name.trim() || suggested;
 	const changed =
 		saved !== null &&

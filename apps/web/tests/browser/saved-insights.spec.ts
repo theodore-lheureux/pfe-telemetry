@@ -87,7 +87,7 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 		const save = page.getByRole("button", { name: "Save", exact: true });
 		await expect(save).toBeDisabled();
 		await page.getByRole("button", { name: /^Breakdown:/ }).click();
-		await page.getByRole("option", { name: "Node", exact: true }).click();
+		await page.getByRole("option", { name: /^Host name/ }).click();
 		await expect(page.getByText("Unsaved changes")).toBeVisible();
 		await save.click();
 		await expect(page.getByText("Unsaved changes")).toBeHidden();
@@ -188,7 +188,7 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 		);
 		await expect(
 			page.getByRole("button", { name: /^Breakdown:/ }),
-		).toHaveAccessibleName("Breakdown: Node");
+		).toHaveAccessibleName("Breakdown: Host name");
 	} finally {
 		for (const table of [
 			"metric_points",

@@ -99,7 +99,7 @@ export function applyDashboardFilters(
 			MAX_FILTERS,
 		),
 	};
-	if (filters.breakdown !== undefined) {
+	if (filters.breakdown !== undefined && draft.display.type !== "stat") {
 		// A collapsed breakdown belongs to the insight's own grouping.
 		const { aggregate: _, ...rest } = next;
 		return applyCompare(

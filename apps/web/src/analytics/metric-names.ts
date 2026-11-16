@@ -79,10 +79,15 @@ const ATTRIBUTES: Record<string, () => string> = {
 	"recount.collection.source": m.attribute_collection_source,
 	"recount.collection.visibility": m.attribute_visibility,
 };
+const CALCULATED_NAMES: Record<string, () => string> = {
+	"recount.calculated.cpu-usage": m.calculated_cpu_usage,
+	"recount.calculated.memory-usage": m.calculated_memory_usage,
+	"recount.calculated.process-cpu": m.calculated_process_cpu,
+};
 
 /** A readable metric name; unknown metrics show their technical name. */
-export function metricLabel(name: string) {
-	return METRICS[name]?.name() ?? name;
+export function metricLabel(name: string, label?: string) {
+	return METRICS[name]?.name() ?? CALCULATED_NAMES[name]?.() ?? label ?? name;
 }
 
 export function metricDescription(name: string) {
@@ -96,6 +101,10 @@ export function isNamedMetric(name: string) {
 
 export function attributeLabel(key: string) {
 	return ATTRIBUTES[key]?.() ?? key;
+}
+
+export function isNamedAttribute(key: string) {
+	return key in ATTRIBUTES;
 }
 
 /** A readable unit: common UCUM codes named, `{annotation}` units shown without braces. */

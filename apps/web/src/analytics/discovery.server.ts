@@ -22,8 +22,12 @@ interface MetricRow {
 	monotonic: number;
 	unit: string;
 	description: string;
+	firstSeenNs: string;
 	lastSeenNs: string;
 }
+
+const nanosecondsDate = (value: string) =>
+	new Date(Number(BigInt(value) / 1_000_000n));
 
 function definition(row: MetricRow): MetricDefinition {
 	// 2 records an unknown monotonicity in the catalog's non-nullable key.
@@ -36,12 +40,14 @@ function definition(row: MetricRow): MetricDefinition {
 		unit: row.unit,
 		description: row.description,
 		behavior: metricBehavior(row.kind, row.temporality, monotonic),
-		lastSeen: new Date(Number(BigInt(row.lastSeenNs) / 1_000_000n)),
+		firstSeen: nanosecondsDate(row.firstSeenNs),
+		lastSeen: nanosecondsDate(row.lastSeenNs),
 	};
 }
 
 const METRICS = `SELECT metric_name AS name, metric_kind AS kind, temporality,
     monotonic_state AS monotonic, unit, anyLast(description) AS description,
+    toString(min(first_seen_unix_nano)) AS firstSeenNs,
     toString(max(last_seen_unix_nano)) AS lastSeenNs
   FROM metric_definitions
   WHERE project_id = {project:String}`;
@@ -113,6 +119,147 @@ export async function listAttributes(
 		clickhouse_settings: SETTINGS,
 	});
 	return result.json<AttributeDefinition>();
+}
+
+interface AttributeRow {
+	scope: "point" | "resource";
+	key: string;
+	kind: number;
+	lastSeenNs: string;
+	metrics: string[];
+}
+
+/** Metrics named for each attribute; the definitions pages show this many at most. */
+export const MAX_ATTRIBUTE_METRICS = 50;
+
+/**
+ * Each attribute key the project has sent, with when it was last seen and the metrics
+ * that carry it, optionally for one metric.
+ */
+export async function listAttributeCatalog(
+	connection: ClickHouseClient,
+	projectId: string,
+	metric?: string,
+	signal?: AbortSignal,
+) {
+	const result = await connection.query({
+		query: `SELECT scope, attribute_key AS key, value_kind AS kind,
+    toString(max(last_seen_unix_nano)) AS lastSeenNs,
+    arraySort(groupUniqArray(${MAX_ATTRIBUTE_METRICS})(metric_name)) AS metrics
+  FROM attribute_definitions
+  WHERE project_id = {project:String}${metric === undefined ? "" : " AND metric_name = {metric:String}"}
+  GROUP BY scope, key, kind
+  ORDER BY scope, key
+  LIMIT ${MAX_ATTRIBUTES}`,
+		format: "JSONEachRow",
+		query_params: {
+			project: projectId,
+			...(metric === undefined ? {} : { metric }),
+		},
+		abort_signal: signal,
+		clickhouse_settings: SETTINGS,
+	});
+	return (await result.json<AttributeRow>()).map(({ lastSeenNs, ...row }) => ({
+		...row,
+		lastSeen: nanosecondsDate(lastSeenNs),
+	}));
+}
+
+/** Examples come from a bounded sample of the metric's points in the last hour. */
+const EXAMPLE_WINDOW_MS = 3_600_000;
+const EXAMPLE_POINTS = 2000;
+
+/**
+ * One recent value for each attribute of a metric, as text, keyed by `scope/key`.
+ * The sample stops after a bounded number of points, so a busy metric still answers.
+ */
+export async function metricAttributeExamples(
+	connection: ClickHouseClient,
+	projectId: string,
+	metric: string,
+	signal?: AbortSignal,
+	now = Date.now(),
+): Promise<Map<string, string>> {
+	const from = now - EXAMPLE_WINDOW_MS;
+	const value = (scope: string) =>
+		`arrayMap(a -> tuple('${scope}', substring(a.path, 2), coalesce(a.string_value, toString(a.int_value), toString(a.double_value), if(a.bool_value = 1, 'true', 'false'))), arrayFilter(a -> a.kind BETWEEN 2 AND 5 AND position(substring(a.path, 2), '/') = 0, ${scope === "point" ? "point_attributes" : "resource_attributes"}))`;
+	const result = await connection.query({
+		query: `SELECT entry.1 AS scope, entry.2 AS key, any(entry.3) AS example
+  FROM (
+    SELECT point_attributes, resource_attributes
+    FROM metric_points
+    WHERE project_id = {project:String} AND metric_name = {metric:String}
+      AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}
+    LIMIT ${EXAMPLE_POINTS}
+  )
+  ARRAY JOIN arrayConcat(${value("point")}, ${value("resource")}) AS entry
+  GROUP BY scope, key
+  LIMIT ${MAX_ATTRIBUTES}`,
+		format: "JSONEachRow",
+		query_params: {
+			project: projectId,
+			metric,
+			firstDay: Math.floor(from / 86_400_000),
+			from: String(BigInt(from) * 1_000_000n),
+		},
+		abort_signal: signal,
+		clickhouse_settings: SETTINGS,
+	});
+	const rows = await result.json<{
+		scope: string;
+		key: string;
+		example: string | null;
+	}>();
+	return new Map(
+		rows.flatMap((row) =>
+			row.example === null ? [] : [[`${row.scope}/${row.key}`, row.example]],
+		),
+	);
+}
+
+/**
+ * The most frequent values of one attribute in a bounded sample of recent points from
+ * the metrics that carry it, as text.
+ */
+export async function attributeValueSample(
+	connection: ClickHouseClient,
+	projectId: string,
+	scope: "point" | "resource",
+	key: string,
+	metrics: string[],
+	signal?: AbortSignal,
+	now = Date.now(),
+): Promise<string[]> {
+	const from = now - EXAMPLE_WINDOW_MS;
+	const column = scope === "point" ? "point_attributes" : "resource_attributes";
+	const result = await connection.query({
+		query: `SELECT value FROM (
+    SELECT arrayJoin(arrayMap(a -> coalesce(a.string_value, toString(a.int_value), toString(a.double_value), if(a.bool_value = 1, 'true', 'false')),
+      arrayFilter(a -> a.path = {path:String} AND a.kind BETWEEN 2 AND 5, ${column}))) AS value
+    FROM (
+      SELECT ${column}
+      FROM metric_points
+      WHERE project_id = {project:String} AND metric_name IN {metrics:Array(String)}
+        AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}
+      LIMIT ${EXAMPLE_POINTS}
+    )
+  )
+  WHERE value IS NOT NULL AND value != ''
+  GROUP BY value
+  ORDER BY count() DESC, value
+  LIMIT ${MAX_VALUE_SUGGESTIONS}`,
+		format: "JSONEachRow",
+		query_params: {
+			project: projectId,
+			metrics,
+			path: `/${key}`,
+			firstDay: Math.floor(from / 86_400_000),
+			from: String(BigInt(from) * 1_000_000n),
+		},
+		abort_signal: signal,
+		clickhouse_settings: SETTINGS,
+	});
+	return (await result.json<{ value: string }>()).map((row) => row.value);
 }
 
 /** Suggested values come from the last day of points, most frequent first. */

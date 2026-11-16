@@ -9,6 +9,7 @@ import {
 	TableIcon,
 } from "lucide-react";
 import { formatMeasurement } from "../../activity/format";
+import { type FormattedNumber, formatNumeric } from "../../lib/number-format";
 import type {
 	Calculation,
 	Combine,
@@ -17,7 +18,7 @@ import type {
 	SeriesResult,
 } from "../contracts";
 import { metricLabel } from "../metric-names";
-import type { DisplayType, DisplayUnit, InsightDraft } from "./draft";
+import type { Display, DisplayType, DisplayUnit, InsightDraft } from "./draft";
 
 export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	last: m.insight_calc_last,
@@ -99,11 +100,32 @@ export const DISPLAY_LABEL: Record<DisplayType, () => string> = {
 };
 export const UNIT_LABEL: Record<DisplayUnit, () => string> = {
 	auto: m.insight_unit_auto,
+	none: m.insight_unit_none,
+	seconds: m.insight_unit_seconds,
+	milliseconds: m.insight_unit_milliseconds,
+	nanoseconds: m.insight_unit_nanoseconds,
 	percent: m.insight_unit_percent,
 	ratio: m.insight_unit_ratio,
 	bytes: m.insight_unit_bytes,
-	seconds: m.insight_unit_seconds,
+	currency: m.insight_unit_currency,
+	short: m.insight_unit_short,
+	prefix: m.insight_unit_prefix,
+	postfix: m.insight_unit_postfix,
 };
+/** Units that format values themselves, in menu order; custom text units follow them. */
+export const FORMAT_UNITS: DisplayUnit[] = [
+	"auto",
+	"none",
+	"seconds",
+	"milliseconds",
+	"nanoseconds",
+	"percent",
+	"ratio",
+	"bytes",
+	"currency",
+	"short",
+];
+export const CUSTOM_UNITS: DisplayUnit[] = ["prefix", "postfix"];
 
 /**
  * A readable value. With the automatic unit, measures keep their stored unit (rates per
@@ -111,40 +133,117 @@ export const UNIT_LABEL: Record<DisplayUnit, () => string> = {
  */
 export function formatValue(
 	value: number | null,
-	unit: DisplayUnit,
+	display: Pick<Display, "unit" | "unitAffix">,
 	stored: { unit: string; calculation: Calculation } | null,
 	locale: string,
 ) {
-	if (value === null) return "—";
+	return formatValueDetails(value, display, stored, locale).text;
+}
+
+function affixed(
+	number: FormattedNumber,
+	prefix: string,
+	suffix: string,
+): FormattedNumber {
+	return { ...number, text: `${prefix}${number.text}${suffix}` };
+}
+
+export function formatValueDetails(
+	value: number | null,
+	{ unit, unitAffix = "" }: Pick<Display, "unit" | "unitAffix">,
+	stored: { unit: string; calculation: Calculation } | null,
+	locale: string,
+	minimumFractionDigits = 0,
+): FormattedNumber {
+	if (value === null) return { text: "—", fractionDigits: 0 };
+	// Small values keep two significant digits, so 0.0015 does not read as 0.002.
 	const number = (digits = 3) =>
-		new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(
+		formatNumeric(
 			value,
+			locale,
+			{
+				maximumFractionDigits:
+					value !== 0 && Math.abs(value) < 1
+						? Math.min(
+								20,
+								Math.max(digits, Math.ceil(-Math.log10(Math.abs(value))) + 1),
+							)
+						: digits,
+			},
+			minimumFractionDigits,
 		);
 	switch (unit) {
+		case "none":
+			return number();
+		case "milliseconds":
+			return formatMeasurement(
+				value / 1000,
+				"s",
+				locale,
+				minimumFractionDigits,
+			);
+		case "nanoseconds":
+			return formatMeasurement(value / 1e9, "s", locale, minimumFractionDigits);
+		case "currency":
+			return formatNumeric(
+				value,
+				locale,
+				{
+					style: "currency",
+					currency: "USD",
+				},
+				minimumFractionDigits,
+			);
+		case "short":
+			return formatNumeric(
+				value,
+				locale,
+				{
+					notation: "compact",
+					maximumFractionDigits: 1,
+				},
+				minimumFractionDigits,
+			);
+		case "prefix":
+			return affixed(number(), unitAffix, "");
+		case "postfix":
+			return affixed(number(), "", unitAffix);
 		case "percent":
-			return `${number(1)} %`;
+			return affixed(number(1), "", " %");
 		case "ratio":
-			return new Intl.NumberFormat(locale, {
-				style: "percent",
-				maximumFractionDigits: 1,
-			}).format(value);
+			return formatNumeric(
+				value,
+				locale,
+				{
+					style: "percent",
+					maximumFractionDigits: 1,
+				},
+				minimumFractionDigits,
+			);
 		case "bytes":
-			return formatMeasurement(value, "By", locale).text;
+			return formatMeasurement(value, "By", locale, minimumFractionDigits);
 		case "seconds":
-			return formatMeasurement(value, "s", locale).text;
+			return formatMeasurement(value, "s", locale, minimumFractionDigits);
 		case "auto":
 			break;
 	}
 	if (!stored) return number();
+	const storedUnit = readableUnit(stored.unit);
 	if (stored.calculation === "rate") {
 		// Seconds per second (such as CPU time) is a plain ratio, roughly busy cores.
-		if (stored.unit === "s" || !stored.unit || stored.unit === "1")
-			return number();
-		return `${number()} ${stored.unit}/s`;
+		if (storedUnit === "s" || !storedUnit) return number();
+		return affixed(number(), "", ` ${storedUnit}/s`);
 	}
-	if (Number.isInteger(value) || stored.unit === "By" || stored.unit === "s")
-		return formatMeasurement(value, stored.unit, locale).text;
-	return `${number()}${stored.unit && stored.unit !== "1" ? ` ${stored.unit}` : ""}`;
+	if (storedUnit === "%") return affixed(number(1), "", " %");
+	if (Number.isInteger(value) || storedUnit === "By" || storedUnit === "s")
+		return formatMeasurement(value, storedUnit, locale, minimumFractionDigits);
+	return affixed(number(), "", storedUnit ? ` ${storedUnit}` : "");
+}
+
+/** A UCUM unit without its curly-brace annotations, such as `{process}`, which only name what is counted. */
+function readableUnit(unit: string) {
+	const readable = unit.replace(/\{[^}]*\}/g, "").trim();
+	return readable === "1" ? "" : readable;
 }
 
 /** The stored unit and calculation behind a series; null for formulas. */
@@ -170,7 +269,7 @@ function plotted(
 	)?.expression;
 	// A formula that is just one series, such as "A", reads as that series.
 	const alone = result.measures.find((entry) => entry.name === expression);
-	if (alone) return `${alone.name} · ${metricLabel(alone.metric)}`;
+	if (alone) return `${alone.name} · ${metricLabel(alone.metric, alone.label)}`;
 	return expression ?? series.measure;
 }
 
@@ -179,8 +278,8 @@ function measureText(
 	measure: QueryResult["measures"][number],
 ) {
 	if (result.measures.length > 1)
-		return `${measure.name} · ${metricLabel(measure.metric)}`;
-	return metricLabel(measure.metric);
+		return `${measure.name} · ${metricLabel(measure.metric, measure.label)}`;
+	return metricLabel(measure.metric, measure.label);
 }
 
 function groupText(
@@ -232,12 +331,17 @@ export function visibleSeries(result: QueryResult) {
 }
 
 /** What a draft charts: its formulas' names or expressions, otherwise its metrics. */
-export function plottedNames(draft: InsightDraft) {
+export function plottedNames(
+	draft: InsightDraft,
+	labels: ReadonlyMap<string, string> = new Map(),
+) {
 	if (draft.formulas.length)
 		return draft.formulas.map(
 			(formula) => formula.name?.trim() || formula.expression,
 		);
 	return draft.series.flatMap((series) =>
-		series.metric ? [metricLabel(series.metric)] : [],
+		series.metric
+			? [metricLabel(series.metric, labels.get(series.metric))]
+			: [],
 	);
 }

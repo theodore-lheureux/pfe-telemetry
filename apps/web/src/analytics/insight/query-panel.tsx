@@ -4,10 +4,13 @@ import { type ReactNode, useState } from "react";
 import { Button } from "../../components/ui/button";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AttributeFilter } from "../attribute-filter";
-import { useMetricAttributes } from "../catalog";
+import type { CalculatedMetric } from "../calculated-metrics";
+import { MAX_CALCULATED_INPUTS } from "../calculated-metrics";
+import { useQueryAttributes } from "../catalog";
 import type { MetricDefinition } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
 import {
+	draftMetricNames,
 	type InsightDraft,
 	newSeries,
 	nextSeriesName,
@@ -15,7 +18,6 @@ import {
 } from "./draft";
 import { FormulaFields } from "./formula-fields";
 import { GroupByFields } from "./group-by-fields";
-import { applyPreset, availablePresets } from "./presets";
 import { SeriesRow } from "./series-row";
 
 function Section({
@@ -48,6 +50,8 @@ export function QueryPanel({
 	metrics,
 	disabled,
 	onChange,
+	canWrite,
+	editingCalculation,
 }: {
 	userId: string;
 	reference: ProjectReference;
@@ -55,23 +59,27 @@ export function QueryPanel({
 	metrics: MetricDefinition[];
 	disabled: boolean;
 	onChange: (draft: InsightDraft) => void;
+	canWrite: boolean;
+	editingCalculation?: CalculatedMetric;
 }) {
 	const [wantsAttributes, setWantsAttributes] = useState(false);
 	// Query-wide filters and breakdowns can use any attribute in the project.
-	const attributes = useMetricAttributes(
+	const attributes = useQueryAttributes(
 		userId,
 		reference,
-		undefined,
+		draftMetricNames(draft),
 		wantsAttributes,
 	);
-	const next = nextSeriesName(draft.series);
-	const presets = availablePresets(metrics);
+	let next = nextSeriesName(draft.series);
+	if (editingCalculation && draft.series.length >= MAX_CALCULATED_INPUTS)
+		next = null;
 	return (
 		<div className="flex flex-col rounded-lg border bg-card">
 			<Section
 				title={m.insight_series()}
 				action={
-					next && (
+					next &&
+					(draft.display.type !== "stat" || draft.formulas.length > 0) && (
 						<Button
 							variant="ghost"
 							size="sm"
@@ -99,29 +107,50 @@ export function QueryPanel({
 						metrics={metrics}
 						disabled={disabled}
 						removable={draft.series.length > 1}
-						onChange={(updated) =>
+						onChange={(updated) => {
+							const selected = metrics.find(
+								(metric) => metric.name === updated.metric,
+							);
+							const changedCalculation =
+								updated.metric !== series.metric && selected?.calculated;
+							const base = { ...draft };
+							if (changedCalculation) {
+								delete base.groupBy;
+								delete base.aggregate;
+								const { spread: _spread, ...display } = base.display;
+								base.display = display;
+							}
+							// A newly picked metric brings its default breakdown to a chart
+							// that is not split yet.
+							const breakdown =
+								updated.metric !== series.metric &&
+								draft.display.type !== "stat" &&
+								!draft.groupBy &&
+								draft.series.length === 1
+									? metrics.find((metric) => metric.name === updated.metric)
+											?.defaultBreakdown
+									: undefined;
 							onChange({
-								...draft,
+								...base,
 								// An edited series no longer belongs to its calculated metric.
 								series: draft.series.map((entry) =>
-									entry.name === series.name
-										? { ...updated, source: undefined }
-										: entry,
+									entry.name === series.name ? updated : entry,
 								),
-							})
-						}
-						presets={presets.map((preset) => ({
-							preset,
-							fits: applyPreset(draft, preset, series.name) !== null,
-						}))}
-						onPreset={(preset) => {
-							const next = applyPreset(draft, preset, series.name);
-							if (next) onChange(next);
+								...(breakdown ? { groupBy: breakdown } : {}),
+							});
 						}}
 						onRemove={() => onChange(removeSeries(draft, series.name))}
 					/>
 				))}
-				<FormulaFields draft={draft} disabled={disabled} onChange={onChange} />
+				<FormulaFields
+					draft={draft}
+					disabled={disabled}
+					onChange={onChange}
+					userId={userId}
+					reference={reference}
+					canWrite={canWrite}
+					editingCalculation={editingCalculation}
+				/>
 			</Section>
 			<Section
 				title={m.insight_filters()}
@@ -153,15 +182,17 @@ export function QueryPanel({
 					</p>
 				)}
 			</Section>
-			<Section title={m.insight_group_by()}>
-				<GroupByFields
-					draft={draft}
-					attributes={attributes.data}
-					disabled={disabled}
-					onOpen={() => setWantsAttributes(true)}
-					onChange={onChange}
-				/>
-			</Section>
+			{draft.display.type !== "stat" && (
+				<Section title={m.insight_group_by()}>
+					<GroupByFields
+						draft={draft}
+						attributes={attributes.data}
+						disabled={disabled}
+						onOpen={() => setWantsAttributes(true)}
+						onChange={onChange}
+					/>
+				</Section>
+			)}
 		</div>
 	);
 }

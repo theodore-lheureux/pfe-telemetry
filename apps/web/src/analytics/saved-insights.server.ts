@@ -7,6 +7,8 @@ import { OperationError } from "../lib/operation-error";
 import { MAX_TAGS, withoutTags, withTags } from "../lib/tags";
 import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
+import { lockCalculationReferences } from "./calculated-references.server";
+import { decodeDraft } from "./insight/draft";
 import type {
 	DeleteInsightsInput,
 	InsightPerson,
@@ -88,7 +90,7 @@ function inProject(reference: ProjectReference) {
 	);
 }
 
-function selectInsights(database: Database) {
+function selectInsights(database: Pick<Database, "select">) {
 	return database
 		.select(columns)
 		.from(savedInsight)
@@ -148,39 +150,47 @@ export async function saveInsight(
 		updatedBy: actor.id,
 		updatedAt: new Date(),
 	};
-	const [updated] = await database
-		.update(savedInsight)
-		.set(changes)
-		.where(and(inProject(input), eq(savedInsight.id, input.insightId)))
-		.returning({ id: savedInsight.id });
-	if (!updated) {
-		// Renaming needs an existing insight; only a full save creates one.
-		if (input.draft === undefined)
-			throw new OperationError("NOT_FOUND", "Insight not found");
-		const [created] = await database
-			.insert(savedInsight)
-			.values({
-				id: input.insightId,
-				organizationId: input.organizationId,
-				projectId: input.projectId,
-				name: input.name,
-				description: input.description ?? "",
-				tags: input.tags ?? [],
-				draft: JSON.parse(input.draft),
-				createdBy: actor.id,
-				updatedBy: actor.id,
-			})
-			.onConflictDoNothing()
-			.returning({ id: savedInsight.id });
-		if (!created) {
-			// A concurrent create of the same ID in this project already stored it.
-			const existing = await selectInsights(database).where(
-				and(inProject(input), eq(savedInsight.id, input.insightId)),
+	await database.transaction(async (transaction) => {
+		if (input.draft !== undefined)
+			await lockCalculationReferences(
+				transaction,
+				input,
+				decodeDraft(input.draft),
 			);
-			if (!existing.length)
-				throw new OperationError("CONFLICT", "Insight ID already in use");
+		const [updated] = await transaction
+			.update(savedInsight)
+			.set(changes)
+			.where(and(inProject(input), eq(savedInsight.id, input.insightId)))
+			.returning({ id: savedInsight.id });
+		if (!updated) {
+			// Renaming needs an existing insight; only a full save creates one.
+			if (input.draft === undefined)
+				throw new OperationError("NOT_FOUND", "Insight not found");
+			const [created] = await transaction
+				.insert(savedInsight)
+				.values({
+					id: input.insightId,
+					organizationId: input.organizationId,
+					projectId: input.projectId,
+					name: input.name,
+					description: input.description ?? "",
+					tags: input.tags ?? [],
+					draft: JSON.parse(input.draft),
+					createdBy: actor.id,
+					updatedBy: actor.id,
+				})
+				.onConflictDoNothing()
+				.returning({ id: savedInsight.id });
+			if (!created) {
+				// A concurrent create of the same ID in this project already stored it.
+				const existing = await selectInsights(transaction).where(
+					and(inProject(input), eq(savedInsight.id, input.insightId)),
+				);
+				if (!existing.length)
+					throw new OperationError("CONFLICT", "Insight ID already in use");
+			}
 		}
-	}
+	});
 	return readInsight(database, input);
 }
 

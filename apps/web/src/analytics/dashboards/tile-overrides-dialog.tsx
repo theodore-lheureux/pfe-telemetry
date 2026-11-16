@@ -27,7 +27,7 @@ import {
 import { Switch } from "../../components/ui/switch";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AttributeFilter } from "../attribute-filter";
-import { useMetricAttributes } from "../catalog";
+import { useQueryAttributes } from "../catalog";
 import { INTERVALS, type Interval } from "../contracts";
 import type { TileOverrides } from "../dashboard-filters";
 import { FilterChips, withFilter } from "../filter-chips";
@@ -56,6 +56,8 @@ export function TileOverridesDialog({
 	open,
 	name,
 	initial,
+	supportsBreakdown,
+	metrics,
 	userId,
 	reference,
 	pending,
@@ -66,6 +68,8 @@ export function TileOverridesDialog({
 	open: boolean;
 	name: string;
 	initial: TileOverrides;
+	supportsBreakdown: boolean;
+	metrics: string[];
 	userId: string;
 	reference: ProjectReference;
 	pending: boolean;
@@ -79,10 +83,10 @@ export function TileOverridesDialog({
 		if (open) setOverrides(initial);
 	}, [open, initial]);
 	const [wantsAttributes, setWantsAttributes] = useState(false);
-	const attributes = useMetricAttributes(
+	const attributes = useQueryAttributes(
 		userId,
 		reference,
-		undefined,
+		metrics,
 		wantsAttributes,
 	);
 	const set = <K extends keyof TileOverrides>(
@@ -197,27 +201,29 @@ export function TileOverridesDialog({
 							}
 						/>
 					</div>
-					<Section title={m.tile_breakdown_section()} />
+					{supportsBreakdown && <Section title={m.tile_breakdown_section()} />}
 					<div className="flex flex-wrap items-end gap-4">
-						<GroupByPicker
-							value={
-								overrides.breakdown === ""
-									? NONE
-									: (overrides.breakdown ?? INHERIT)
-							}
-							choices={[
-								{ value: INHERIT, label: m.tile_inherit() },
-								{ value: NONE, label: m.dashboard_no_breakdown() },
-							]}
-							attributes={attributes.data}
-							loading={attributes.isFetching}
-							disabled={pending}
-							onOpen={() => setWantsAttributes(true)}
-							onChange={(value) => {
-								if (value === INHERIT) return set("breakdown", undefined);
-								set("breakdown", value === NONE ? "" : value);
-							}}
-						/>
+						{supportsBreakdown && (
+							<GroupByPicker
+								value={
+									overrides.breakdown === ""
+										? NONE
+										: (overrides.breakdown ?? INHERIT)
+								}
+								choices={[
+									{ value: INHERIT, label: m.tile_inherit() },
+									{ value: NONE, label: m.dashboard_no_breakdown() },
+								]}
+								attributes={attributes.data}
+								loading={attributes.isFetching}
+								disabled={pending}
+								onOpen={() => setWantsAttributes(true)}
+								onChange={(value) => {
+									if (value === INHERIT) return set("breakdown", undefined);
+									set("breakdown", value === NONE ? "" : value);
+								}}
+							/>
+						)}
 						<div className="flex flex-col gap-1.5">
 							<Label htmlFor={`${id}-compare`}>
 								{m.dashboard_comparison()}

@@ -22,8 +22,9 @@ import {
 import { AttributeList } from "./attribute-list";
 import { useAttributeValues, type ValueSource } from "./catalog";
 import type { AttributeDefinition, Filter, FilterOperator } from "./contracts";
+import { DefinitionChoice } from "./definition-choice";
 import { attributeField } from "./fields";
-import { attributeLabel } from "./metric-names";
+import { PICKER_CONTENT_CLASS } from "./picker-command";
 
 type Operator = Extract<FilterOperator, "eq" | "neq" | "exists" | "not_exists">;
 const OPERATORS: Operator[] = ["eq", "neq", "exists", "not_exists"];
@@ -123,7 +124,10 @@ export function AttributeFilter({
 					</Button>
 				)}
 			</PopoverTrigger>
-			<PopoverContent className="w-80 p-0" align="start">
+			<PopoverContent
+				className={field ? "w-80 p-0" : PICKER_CONTENT_CLASS}
+				align="start"
+			>
 				{field ? (
 					<form onSubmit={submit} className="flex flex-col gap-3 p-3">
 						<div className="flex items-center gap-1">
@@ -136,9 +140,9 @@ export function AttributeFilter({
 							>
 								<ArrowLeftIcon aria-hidden="true" />
 							</Button>
-							<span className="min-w-0 truncate text-sm font-medium">
-								{attributeLabel(field.key)}
-							</span>
+							<div className="flex min-w-0 flex-1 items-center gap-2">
+								<DefinitionChoice kind="attribute" name={field.key} />
+							</div>
 						</div>
 						<div className="flex flex-col gap-1.5">
 							<Label htmlFor={`${id}-operator`} className="sr-only">

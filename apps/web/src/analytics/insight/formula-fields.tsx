@@ -1,33 +1,56 @@
 import { m } from "@recount/i18n/messages";
-import { PlusIcon, Trash2Icon } from "lucide-react";
-import { useId } from "react";
+import { PlusIcon, SaveIcon, Trash2Icon } from "lucide-react";
+import { useId, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "../../components/ui/tooltip";
+import type { ProjectReference } from "../../organizations/contracts";
+import { calculationFromDraft } from "../calculated-draft";
+import type { CalculatedMetric } from "../calculated-metrics";
+import { isCalculatedMetric } from "../calculated-metrics";
 import { MAX_FORMULAS } from "../contracts";
-import type { DraftFormula, InsightDraft } from "./draft";
+import { type DraftFormula, type InsightDraft, withDisplay } from "./draft";
+import { SaveCalculatedDialog } from "./save-calculated-dialog";
 
 /** Formula mode: named expressions that combine the series by letter. */
 export function FormulaFields({
 	draft,
 	disabled,
 	onChange,
+	userId,
+	reference,
+	canWrite,
+	editingCalculation,
 }: {
 	draft: InsightDraft;
 	disabled: boolean;
 	onChange: (draft: InsightDraft) => void;
+	userId: string;
+	reference: ProjectReference;
+	canWrite: boolean;
+	editingCalculation?: CalculatedMetric;
 }) {
 	const id = useId();
+	const [saving, setSaving] = useState<number | null>(null);
+	const saveLabel =
+		editingCalculation && !editingCalculation.builtIn
+			? m.calculated_save()
+			: m.calculated_save_as();
+	const hasCalculatedInputs = draft.series.some(
+		(series) => series.metric && isCalculatedMetric(series.metric),
+	);
 	const setFormulas = (formulas: DraftFormula[]) =>
-		onChange({ ...draft, formulas });
+		onChange(withDisplay({ ...draft, formulas }, draft.display));
 	const update = (index: number, change: Partial<DraftFormula>) =>
 		setFormulas(
 			draft.formulas.map((formula, position) =>
-				// A hand-edited formula no longer belongs to its calculated metric.
-				position === index
-					? { ...formula, ...change, source: undefined }
-					: formula,
+				position === index ? { ...formula, ...change } : formula,
 			),
 		);
 	const sum = {
@@ -65,6 +88,26 @@ export function FormulaFields({
 							className="h-8"
 							onChange={(event) => update(index, { name: event.target.value })}
 						/>
+						{canWrite && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-xs"
+										aria-label={saveLabel}
+										className="text-muted-foreground"
+										disabled={
+											disabled || !calculationFromDraft(draft, index, "1")
+										}
+										onClick={() => setSaving(index)}
+									>
+										<SaveIcon aria-hidden="true" />
+									</Button>
+								</TooltipTrigger>
+								<TooltipContent>{saveLabel}</TooltipContent>
+							</Tooltip>
+						)}
 						<Button
 							variant="ghost"
 							size="icon-xs"
@@ -96,21 +139,40 @@ export function FormulaFields({
 							update(index, { expression: event.target.value })
 						}
 					/>
+					{canWrite && hasCalculatedInputs && (
+						<p className="text-xs text-muted-foreground">
+							{m.calculated_raw_only()}
+						</p>
+					)}
 				</div>
 			))}
+			{saving !== null && (
+				<SaveCalculatedDialog
+					userId={userId}
+					reference={reference}
+					draft={draft}
+					index={saving}
+					existing={
+						editingCalculation?.builtIn ? undefined : editingCalculation
+					}
+					onClose={() => setSaving(null)}
+				/>
+			)}
 			{draft.formulas.length > 0 && (
 				<div className="flex flex-col items-start gap-1.5">
-					{draft.formulas.length < MAX_FORMULAS && (
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={disabled}
-							onClick={() => setFormulas([...draft.formulas, sum])}
-						>
-							<PlusIcon aria-hidden="true" />
-							{m.insight_formula_add()}
-						</Button>
-					)}
+					{!editingCalculation &&
+						draft.display.type !== "stat" &&
+						draft.formulas.length < MAX_FORMULAS && (
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={disabled}
+								onClick={() => setFormulas([...draft.formulas, sum])}
+							>
+								<PlusIcon aria-hidden="true" />
+								{m.insight_formula_add()}
+							</Button>
+						)}
 					<p className="text-xs text-muted-foreground">
 						{m.insight_formula_help()}
 					</p>

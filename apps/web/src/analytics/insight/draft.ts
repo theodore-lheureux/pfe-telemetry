@@ -36,8 +36,6 @@ export interface DraftSeries {
 	calculation: Calculation;
 	combine: Combine;
 	filters: Filter[];
-	/** Set on series a calculated metric added, so choosing another replaces them together. */
-	source?: string;
 }
 
 export interface DraftFormula {
@@ -45,7 +43,6 @@ export interface DraftFormula {
 	expression: string;
 	/** Names the formula in legends, such as "Memory usage". */
 	name?: string;
-	source?: string;
 }
 
 export type DisplayType =
@@ -55,7 +52,19 @@ export type DisplayType =
 	| "stacked"
 	| "stat"
 	| "table";
-export type DisplayUnit = "auto" | "percent" | "ratio" | "bytes" | "seconds";
+export type DisplayUnit =
+	| "auto"
+	| "none"
+	| "seconds"
+	| "milliseconds"
+	| "nanoseconds"
+	| "percent"
+	| "ratio"
+	| "bytes"
+	| "currency"
+	| "short"
+	| "prefix"
+	| "postfix";
 
 export type LegendPosition = "bottom" | "right";
 export type LineStyle = "straight" | "smooth";
@@ -63,6 +72,8 @@ export type LineStyle = "straight" | "smooth";
 export interface Display {
 	type: DisplayType;
 	unit: DisplayUnit;
+	/** The text a custom prefix or postfix unit adds to each value. */
+	unitAffix?: string;
 	logScale: boolean;
 	beginAtZero: boolean;
 	goal?: number;
@@ -81,9 +92,12 @@ export interface Display {
 	movingAverage?: number;
 	/** A band around each line across the sources it combines. */
 	spread?: Spread;
+	/** The axis-free chart behind a Number insight. */
+	numberChart?: "none" | "line" | "area" | "bar";
 }
 
 export const MAX_AXIS_LABEL = 60;
+export const MAX_UNIT_AFFIX = 12;
 export const MAX_MOVING_AVERAGE = 100;
 
 export interface InsightDraft {
@@ -123,6 +137,28 @@ export const DEFAULT_DRAFT: InsightDraft = {
 	interval: "auto",
 	display: DEFAULT_DISPLAY,
 };
+export function draftMetricNames(draft: InsightDraft) {
+	return draft.series.flatMap((series) =>
+		series.metric ? [series.metric] : [],
+	);
+}
+
+/** A Number insight has one output: a measure or a formula over input measures. */
+export function withDisplay(
+	draft: InsightDraft,
+	display: Display,
+): InsightDraft {
+	if (display.type !== "stat") return { ...draft, display };
+	const { groupBy: _group, aggregate: _aggregate, ...rest } = draft;
+	const { spread: _spread, ...numberDisplay } = display;
+	const formulas = draft.formulas.slice(0, 1);
+	return {
+		...rest,
+		series: formulas.length ? draft.series : draft.series.slice(0, 1),
+		formulas,
+		display: numberDisplay,
+	};
+}
 
 /** The next unused series letter, or null when every one is taken. */
 export function nextSeriesName(series: DraftSeries[]) {
@@ -131,17 +167,16 @@ export function nextSeriesName(series: DraftSeries[]) {
 	return SERIES_NAMES.find((name) => !used.has(name)) ?? null;
 }
 
-/** Removes a series; one a calculated metric added goes with its siblings and formula. */
+/** Removes one input series. */
 export function removeSeries(draft: InsightDraft, name: string): InsightDraft {
-	const source = draft.series.find((entry) => entry.name === name)?.source;
-	const removed = (entry: { name?: string; source?: string }) =>
-		source ? entry.source === source : entry.name === name;
-	const series = draft.series.filter((entry) => !removed(entry));
-	return {
-		...draft,
-		series: series.length ? series : [newSeries("A")],
-		formulas: draft.formulas.filter((formula) => !removed(formula)),
-	};
+	const series = draft.series.filter((entry) => entry.name !== name);
+	return withDisplay(
+		{
+			...draft,
+			series: series.length ? series : [newSeries("A")],
+		},
+		draft.display,
+	);
 }
 
 /** The server name of each formula: F1, F2… by position in the draft. */
@@ -168,12 +203,19 @@ function formulas(draft: InsightDraft) {
 
 /** The query for a draft, or null until every series has a metric. */
 export function toQuery(
-	draft: InsightDraft,
+	input: InsightDraft,
 	now: Date,
 	zone: string,
 	locale: string,
 ): AnalyticsQuery | null {
+	const draft = withDisplay(input, input.display);
 	if (!draft.series.length || draft.series.some((entry) => !entry.metric))
+		return null;
+	if (
+		draft.display.type === "stat" &&
+		draft.formulas.length &&
+		!formulas(draft).length
+	)
 		return null;
 	const resolved = resolveRange(draft.range, now, zone, locale);
 	const from = resolved.from,
@@ -181,6 +223,7 @@ export function toQuery(
 	const interval = effectiveInterval(draft.interval, from, to);
 	// A table shows one value per series over the whole range; every other view is a timeseries.
 	const table = draft.display.type === "table";
+	const grouped = draft.display.type !== "stat" && !!draft.groupBy;
 	return {
 		shape: table ? "table" : "timeseries",
 		range: { from: from.toISOString(), to: to.toISOString() },
@@ -194,18 +237,23 @@ export function toQuery(
 		})),
 		...(formulas(draft).length ? { formulas: formulas(draft) } : {}),
 		filters: draft.filters,
-		groupBy: draft.groupBy ? [draft.groupBy] : [],
+		groupBy: grouped ? [draft.groupBy as string] : [],
 		limit: draft.limit,
 		other: draft.other,
-		...(draft.groupBy && draft.aggregate ? { aggregate: draft.aggregate } : {}),
+		...(grouped && draft.aggregate ? { aggregate: draft.aggregate } : {}),
 		...(draft.compare ? { compare: draft.compare } : {}),
-		...(draft.display.spread && !table ? { spread: draft.display.spread } : {}),
+		...(draft.display.spread && !table && draft.display.type !== "stat"
+			? { spread: draft.display.spread }
+			: {}),
 	};
 }
 
 /** The URL form of a draft. */
 export function encodeDraft(draft: InsightDraft): string {
-	return JSON.stringify({ ...draft, range: serializeRange(draft.range) });
+	return JSON.stringify({
+		...withDisplay(draft, draft.display),
+		range: serializeRange(draft.range),
+	});
 }
 
 function sortedKeys(value: unknown): unknown {
@@ -253,22 +301,25 @@ export function decodeDraft(text: unknown): InsightDraft {
 		];
 		if (dates.some((date) => date && !Number.isFinite(date.getTime())))
 			return DEFAULT_DRAFT;
-		return {
-			...DEFAULT_DRAFT,
-			...value,
-			formulas: Array.isArray(value.formulas)
-				? value.formulas.filter(
-						(formula) => typeof formula?.expression === "string",
-					)
-				: [],
-			series: value.series.map((entry) => ({
-				...newSeries(entry.name),
-				...entry,
-				filters: Array.isArray(entry.filters) ? entry.filters : [],
-			})),
-			range,
-			display: { ...DEFAULT_DISPLAY, ...value.display },
-		};
+		return withDisplay(
+			{
+				...DEFAULT_DRAFT,
+				...value,
+				formulas: Array.isArray(value.formulas)
+					? value.formulas.filter(
+							(formula) => typeof formula?.expression === "string",
+						)
+					: [],
+				series: value.series.map((entry) => ({
+					...newSeries(entry.name),
+					...entry,
+					filters: Array.isArray(entry.filters) ? entry.filters : [],
+				})),
+				range,
+				display: { ...DEFAULT_DISPLAY, ...value.display },
+			},
+			{ ...DEFAULT_DISPLAY, ...value.display },
+		);
 	} catch {
 		return DEFAULT_DRAFT;
 	}

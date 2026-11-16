@@ -24,16 +24,23 @@ export function ExplorerFilterBar({
 	reference,
 	value,
 	disabled,
+	lockMetric = false,
 	onChange,
 }: {
 	userId: string;
 	reference: ProjectReference;
 	value: ExplorerSelection;
 	disabled: boolean;
+	/** Keeps the selected metric, such as on that metric's own page. */
+	lockMetric?: boolean;
 	onChange: (value: ExplorerSelection) => void;
 }) {
 	const [wantsAttributes, setWantsAttributes] = useState(false);
-	const catalog = useAnalyticsCatalog(userId, reference, !disabled);
+	const catalog = useAnalyticsCatalog(
+		userId,
+		reference,
+		!disabled && !lockMetric,
+	);
 	const attributes = useMetricAttributes(
 		userId,
 		reference,
@@ -47,16 +54,18 @@ export function ExplorerFilterBar({
 				disabled={disabled}
 				onChange={(range) => onChange({ ...value, range })}
 			/>
-			<MetricPicker
-				metrics={catalog.data?.metrics}
-				value={value.metric}
-				disabled={disabled}
-				placeholder={m.activity_metric_filter()}
-				allLabel={m.activity_metric_all()}
-				icon={<ListFilterIcon aria-hidden="true" />}
-				className={cn("max-w-72", value.metric && "border-primary/60")}
-				onChange={(metric) => onChange({ ...value, metric })}
-			/>
+			{!lockMetric && (
+				<MetricPicker
+					metrics={catalog.data?.metrics.filter((metric) => !metric.calculated)}
+					value={value.metric}
+					disabled={disabled}
+					placeholder={m.activity_metric_filter()}
+					allLabel={m.activity_metric_all()}
+					icon={<ListFilterIcon aria-hidden="true" />}
+					className={cn("max-w-72", value.metric && "border-primary/60")}
+					onChange={(metric) => onChange({ ...value, metric })}
+				/>
+			)}
 			<AttributeFilter
 				attributes={attributes.data}
 				loading={attributes.isFetching}

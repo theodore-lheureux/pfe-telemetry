@@ -136,12 +136,22 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 		await page
 			.getByRole("combobox", { name: "Choose a metric", exact: true })
 			.click();
+		const metricPreview = page.getByRole("complementary");
+		await page.getByPlaceholder("Search metrics").fill("recount.node.cpu.time");
+		await expect(metricPreview).toContainText("Node CPU time");
+		await expect(metricPreview).toContainText("Counter");
+		await page.getByPlaceholder("Search metrics").fill("no-such-metric");
+		await expect(metricPreview).toHaveCount(0);
+		await page.getByPlaceholder("Search metrics").fill("");
+		await page.keyboard.press("Home");
+		await page.keyboard.press("ArrowDown");
+		await expect(metricPreview).toContainText("Memory usage");
+		await page.getByRole("option", { name: /^Node CPU time/ }).hover();
+		await expect(metricPreview).toContainText("Node CPU time");
 		await page.screenshot({
 			path: testInfo.outputPath("insights-metric-picker.png"),
 		});
-		await page
-			.getByRole("option", { name: /recount\.node\.cpu\.time/ })
-			.click();
+		await page.getByRole("option", { name: /^Node CPU time/ }).click();
 		// Known metrics show their friendly name and a description.
 		await expect(
 			page.getByRole("combobox", { name: "Node CPU time", exact: true }),
@@ -171,9 +181,7 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 		await page
 			.getByRole("combobox", { name: "Choose a metric", exact: true })
 			.click();
-		await page
-			.getByRole("option", { name: /recount\.node\.cpu\.time/ })
-			.click();
+		await page.getByRole("option", { name: /^Node CPU time/ }).click();
 		await page.getByLabel("Formula mode", { exact: true }).click();
 		await page.getByLabel("Formula 1", { exact: true }).fill("A / B * 100");
 		const results = page.getByRole("table", { name: "Results" });
@@ -188,7 +196,33 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 		);
 		await page.getByLabel("Formula mode", { exact: true }).click();
 		await page.getByRole("button", { name: /^Breakdown:/ }).click();
-		await page.getByRole("option", { name: "Node", exact: true }).click();
+		for (const name of ["Node", "Host", "Resource"])
+			await expect(page.getByRole("option", { name, exact: true })).toHaveCount(
+				0,
+			);
+		const breakdownList = page.getByRole("listbox", { name: "Suggestions" });
+		const fullWidth = await breakdownList.evaluate(
+			(list) => list.getBoundingClientRect().width,
+		);
+		await page.getByPlaceholder("Search attributes").fill("cpu.mode");
+		await expect(page.getByRole("complementary")).toContainText("CPU mode");
+		await expect(page.getByRole("complementary")).toContainText("String");
+		await expect
+			.poll(() =>
+				breakdownList.evaluate((list) => list.getBoundingClientRect().width),
+			)
+			.toBeLessThan(fullWidth);
+		await page.getByPlaceholder("Search attributes").fill("");
+		await page
+			.getByRole("option", { name: "No breakdown", exact: true })
+			.hover();
+		await expect(page.getByRole("complementary")).toHaveCount(0);
+		await expect
+			.poll(() =>
+				breakdownList.evaluate((list) => list.getBoundingClientRect().width),
+			)
+			.toBe(fullWidth);
+		await page.getByRole("option", { name: /^CPU mode/ }).click();
 		await expect
 			.poll(() => results.getByRole("row").count())
 			.toBeGreaterThan(2);
@@ -220,7 +254,7 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 			.getByRole("combobox", { name: "Combine groups", exact: true })
 			.click();
 		await page.getByRole("option", { name: "Show each group" }).click();
-		// A calculated metric fills in named series and a formula from the picker.
+		// A calculated metric is one ordinary series; its inputs stay on the server.
 		await page
 			.getByRole("combobox", { name: "Comparison", exact: true })
 			.click();
@@ -232,20 +266,88 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 			.getByRole("combobox", { name: "Choose a metric", exact: true })
 			.click();
 		await page.getByRole("option", { name: /^CPU usage/ }).click();
-		await expect(page.getByLabel("Formula 1", { exact: true })).toHaveValue(
-			"A",
-		);
-		await expect(page.getByLabel("Formula 2", { exact: true })).toHaveValue(
-			"B",
-		);
-		await expect(page.getByLabel("Formula 3", { exact: true })).toHaveValue(
-			"C / D * 100",
-		);
 		await expect(
-			page.getByLabel("Formula 3 name", { exact: true }),
-		).toHaveValue("CPU usage");
+			page.getByLabel("Formula mode", { exact: true }),
+		).not.toBeChecked();
 		await expect(
-			results.getByRole("cell", { name: /^CPU usage · / }).first(),
+			page.getByRole("combobox", { name: "CPU usage", exact: true }),
+		).toHaveCount(1);
+		await expect(
+			page.getByRole("combobox", { name: "Calculation", exact: true }),
+		).toHaveCount(2);
+		await expect(
+			page.getByRole("button", { name: /^Breakdown:/ }),
+		).toHaveAccessibleName("Breakdown: No breakdown");
+		await expect(
+			results.getByRole("cell", { name: "C · CPU usage", exact: true }),
+		).toBeVisible();
+		const returnTo = page.url();
+		await page
+			.getByRole("link", { name: "View definition", exact: true })
+			.click();
+		await page
+			.getByRole("link", { name: "Use as template", exact: true })
+			.click();
+		await page
+			.getByRole("button", { name: "Save as calculated metric", exact: true })
+			.click();
+		let calculationDialog = page.getByRole("dialog", {
+			name: "Save as calculated metric",
+			exact: true,
+		});
+		const metricName = `Reusable CPU ${randomUUID()}`;
+		await calculationDialog
+			.getByRole("textbox", { name: "Name", exact: true })
+			.fill(metricName);
+		await calculationDialog
+			.getByRole("button", { name: "Save", exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", { name: metricName, level: 1, exact: true }),
+		).toBeVisible();
+		const definitionUrl = page.url();
+		await page
+			.getByRole("link", { name: "Edit calculation", exact: true })
+			.click();
+		await page
+			.getByRole("button", { name: "Save calculated metric", exact: true })
+			.click();
+		calculationDialog = page.getByRole("dialog", {
+			name: "Save calculated metric",
+			exact: true,
+		});
+		await calculationDialog
+			.getByRole("textbox", { name: "Name", exact: true })
+			.fill(`${metricName} renamed`);
+		await calculationDialog
+			.getByRole("button", { name: "Save", exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", {
+				name: `${metricName} renamed`,
+				level: 1,
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(page).toHaveURL(definitionUrl);
+		await page
+			.getByRole("link", { name: "Open in Explore", exact: true })
+			.click();
+		await expect(
+			page.getByRole("combobox", {
+				name: `${metricName} renamed`,
+				exact: true,
+			}),
+		).toHaveCount(1);
+		await expect(
+			page.getByRole("combobox", { name: "Calculation", exact: true }),
+		).toHaveCount(0);
+		await expect(
+			page.getByLabel("Formula mode", { exact: true }),
+		).not.toBeChecked();
+		await page.goto(returnTo);
+		await expect(
+			results.getByRole("cell", { name: "C · CPU usage", exact: true }),
 		).toBeVisible();
 		// Dragging across the chart narrows the range to the selected span.
 		const range = page.getByRole("button", { name: /^Time range: / });

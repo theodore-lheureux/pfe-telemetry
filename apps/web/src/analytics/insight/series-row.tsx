@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { Link } from "@tanstack/react-router";
 import { InfoIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
@@ -19,7 +20,12 @@ import {
 import type { ProjectReference } from "../../organizations/contracts";
 import { AttributeFilter } from "../attribute-filter";
 import { useMetricAttributes } from "../catalog";
-import type { Calculation, Combine, MetricDefinition } from "../contracts";
+import {
+	type Calculation,
+	type Combine,
+	MAX_FILTERS,
+	type MetricDefinition,
+} from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
 import { metricDescription } from "../metric-names";
 import { MetricPicker } from "../metric-picker";
@@ -30,7 +36,6 @@ import {
 	COMBINE_GROUPS,
 	COMBINE_OPTION_LABEL,
 } from "./labels";
-import type { Preset } from "./presets";
 
 // Borderless selects read as a phrase, "Rate per second  Sum of all sources", and wrap
 // rather than truncate when the panel is narrow.
@@ -48,8 +53,6 @@ export function SeriesRow({
 	removable,
 	onChange,
 	onRemove,
-	presets,
-	onPreset,
 }: {
 	userId: string;
 	reference: ProjectReference;
@@ -60,9 +63,6 @@ export function SeriesRow({
 	removable: boolean;
 	onChange: (series: DraftSeries) => void;
 	onRemove: () => void;
-	/** Calculated metrics, each with whether choosing it here fits in the free letters. */
-	presets: { preset: Preset; fits: boolean }[];
-	onPreset: (preset: Preset) => void;
 }) {
 	const [wantsAttributes, setWantsAttributes] = useState(false);
 	const attributes = useMetricAttributes(
@@ -73,7 +73,16 @@ export function SeriesRow({
 	);
 	const definition = metrics.find((metric) => metric.name === series.metric);
 	const allowed = definition ? ALLOWED_CALCULATIONS[definition.behavior] : [];
-	const description = series.metric ? metricDescription(series.metric) : null;
+	const fixedFilters = Math.max(
+		0,
+		...(definition?.calculated?.inputs.map(
+			(input) => input.filters?.length ?? 0,
+		) ?? []),
+	);
+	const description =
+		definition?.note ||
+		definition?.description ||
+		(series.metric ? metricDescription(series.metric) : null);
 	return (
 		<div className="rounded-md border bg-background">
 			<div className="flex items-center gap-1.5 p-1.5">
@@ -90,21 +99,19 @@ export function SeriesRow({
 					disabled={disabled}
 					placeholder={m.insight_metric_choose()}
 					className="h-8 min-w-0 flex-1 border-transparent px-2 shadow-none hover:bg-muted"
-					presets={presets.map(({ preset, fits }) => ({
-						id: preset.id,
-						label: preset.name(),
-						description: preset.description(),
-						unavailable: fits
-							? undefined
-							: m.insight_preset_no_room({ count: preset.series.length }),
-					}))}
-					onPreset={(id) => {
-						const entry = presets.find(({ preset }) => preset.id === id);
-						if (entry) onPreset(entry.preset);
-					}}
 					onChange={(name) => {
 						const next = metrics.find((metric) => metric.name === name);
 						if (!next) return;
+						if (next.calculated) {
+							onChange({
+								...series,
+								metric: next.name,
+								calculation: "last",
+								combine: "sum",
+								filters: [],
+							});
+							return;
+						}
 						// Each kind starts on its most common calculation and combination.
 						const gauge = next.behavior === "gauge";
 						onChange({
@@ -116,7 +123,22 @@ export function SeriesRow({
 						});
 					}}
 				/>
-				{description && (
+				{definition?.calculated && (
+					<Button
+						asChild
+						variant="ghost"
+						size="icon-xs"
+						aria-label={m.definitions_view_definition()}
+					>
+						<Link
+							to="/organizations/$organizationId/projects/$projectId/definitions/metrics/$metric"
+							params={{ ...reference, metric: definition.name }}
+						>
+							<InfoIcon aria-hidden="true" />
+						</Link>
+					</Button>
+				)}
+				{description && !definition?.calculated && (
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button
@@ -146,67 +168,76 @@ export function SeriesRow({
 			</div>
 			{definition && (
 				<div className="flex items-start gap-0.5 border-t px-1.5 py-1">
-					<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-						<Select
-							value={series.calculation}
-							disabled={disabled}
-							onValueChange={(value) =>
-								onChange({ ...series, calculation: value as Calculation })
-							}
-						>
-							<SelectTrigger
-								size="sm"
-								aria-label={m.insight_calculation()}
-								className={INLINE}
+					{definition.calculated && (
+						<span className="flex-1 self-center px-1.5 text-xs text-muted-foreground">
+							{m.calculated_metric()}
+						</span>
+					)}
+					{!definition.calculated && (
+						<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
+							<Select
+								value={series.calculation}
+								disabled={disabled}
+								onValueChange={(value) =>
+									onChange({ ...series, calculation: value as Calculation })
+								}
 							>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent position="popper" align="start">
-								{allowed.map((value) => (
-									<SelectItem key={value} value={value}>
-										{CALCULATION_LABEL[value]()}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-						<Select
-							value={series.combine}
-							disabled={disabled}
-							onValueChange={(value) =>
-								onChange({ ...series, combine: value as Combine })
-							}
-						>
-							<SelectTrigger
-								size="sm"
-								aria-label={m.insight_combine()}
-								className={INLINE}
+								<SelectTrigger
+									size="sm"
+									aria-label={m.insight_calculation()}
+									className={INLINE}
+								>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent position="popper" align="start">
+									{allowed.map((value) => (
+										<SelectItem key={value} value={value}>
+											{CALCULATION_LABEL[value]()}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+							<Select
+								value={series.combine}
+								disabled={disabled}
+								onValueChange={(value) =>
+									onChange({ ...series, combine: value as Combine })
+								}
 							>
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent position="popper" align="start">
-								<p className="max-w-64 px-1.5 py-1 text-xs text-muted-foreground">
-									{m.insight_combine_help()}
-								</p>
-								{COMBINE_GROUPS.map((group) => (
-									<SelectGroup key={group.values[0]}>
-										<SelectLabel>{group.label()}</SelectLabel>
-										{group.values.map((value) => (
-											<SelectItem key={value} value={value}>
-												{COMBINE_OPTION_LABEL[value]()}
-											</SelectItem>
-										))}
-									</SelectGroup>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
+								<SelectTrigger
+									size="sm"
+									aria-label={m.insight_combine()}
+									className={INLINE}
+								>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent position="popper" align="start">
+									<p className="max-w-64 px-1.5 py-1 text-xs text-muted-foreground">
+										{m.insight_combine_help()}
+									</p>
+									{COMBINE_GROUPS.map((group) => (
+										<SelectGroup key={group.values[0]}>
+											<SelectLabel>{group.label()}</SelectLabel>
+											{group.values.map((value) => (
+												<SelectItem key={value} value={value}>
+													{COMBINE_OPTION_LABEL[value]()}
+												</SelectItem>
+											))}
+										</SelectGroup>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+					)}
 					<span className="shrink-0">
 						<AttributeFilter
 							trigger="icon"
 							attributes={attributes.data}
 							loading={attributes.isFetching}
 							values={{ userId, reference, metric: series.metric }}
-							disabled={disabled}
+							disabled={
+								disabled || series.filters.length + fixedFilters >= MAX_FILTERS
+							}
 							onOpen={() => setWantsAttributes(true)}
 							onAdd={(filter) =>
 								onChange({

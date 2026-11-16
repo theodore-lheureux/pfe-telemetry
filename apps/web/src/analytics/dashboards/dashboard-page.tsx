@@ -40,7 +40,12 @@ import {
 	updateDashboardLayout,
 	updateDashboardTile,
 } from "../dashboards.functions";
-import { type Display, decodeDraft, encodeDraft } from "../insight/draft";
+import {
+	type Display,
+	decodeDraft,
+	draftMetricNames,
+	encodeDraft,
+} from "../insight/draft";
 import { InsightNameDialog } from "../saved/name-dialog";
 import { AddTilesDialog } from "./add-tiles-dialog";
 import { useDashboardActions } from "./dashboard-actions";
@@ -430,6 +435,7 @@ export function DashboardPage({
 					)}
 				>
 					<DashboardToolbar
+						metrics={[...drafts.values()].flatMap(draftMetricNames)}
 						userId={userId}
 						reference={reference}
 						filters={filters}
@@ -537,7 +543,20 @@ export function DashboardPage({
 				}}
 			/>
 			<TileOverridesDialog
+				metrics={
+					overriding
+						? draftMetricNames(
+								drafts.get(overriding.id) ??
+									decodeDraft(overriding.insight.draft),
+							)
+						: []
+				}
 				open={overriding !== null}
+				supportsBreakdown={
+					!overriding ||
+					(drafts.get(overriding.id) ?? decodeDraft(overriding.insight.draft))
+						.display.type !== "stat"
+				}
 				name={overriding?.insight.name ?? ""}
 				initial={overriding ? overridesOf(overriding) : EMPTY_OVERRIDES}
 				userId={userId}

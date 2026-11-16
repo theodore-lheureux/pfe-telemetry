@@ -3,7 +3,7 @@ import type { QueryResult, SeriesResult } from "../contracts";
 import type { Display } from "./draft";
 import {
 	type FormulaNames,
-	formatValue,
+	formatValueDetails,
 	seriesLabel,
 	seriesSource,
 	visibleSeries,
@@ -57,6 +57,18 @@ export function seriesView(
 			`var(--viz-${index + 1})`,
 		]),
 	);
+	const formatted = (
+		series: SeriesResult | undefined,
+		value: number | null,
+		minimumFractionDigits = 0,
+	) =>
+		formatValueDetails(
+			value,
+			display,
+			series ? seriesSource(result, series) : null,
+			locale,
+			minimumFractionDigits,
+		);
 	return {
 		visible,
 		current,
@@ -65,12 +77,11 @@ export function seriesView(
 		label: (series: SeriesResult) =>
 			seriesLabel(result, series, groupLabel, names),
 		format: (series: SeriesResult | undefined) => (value: number | null) =>
-			formatValue(
-				value,
-				display.unit,
-				series ? seriesSource(result, series) : null,
-				locale,
-			),
+			formatted(series, value).text,
+		formatDetails:
+			(series: SeriesResult | undefined) =>
+			(value: number | null, minimumFractionDigits = 0) =>
+				formatted(series, value, minimumFractionDigits),
 		empty: !visible.some((series) =>
 			series.points.some((point) => point.value !== null),
 		),

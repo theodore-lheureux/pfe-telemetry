@@ -15,6 +15,7 @@ export function ExplorerToolbar({
 	fetching,
 	selection,
 	columns,
+	lockMetric = false,
 	onSelection,
 	onColumns,
 	onReload,
@@ -25,6 +26,7 @@ export function ExplorerToolbar({
 	fetching: boolean;
 	selection: ExplorerSelection;
 	columns: ExplorerColumnSettings;
+	lockMetric?: boolean;
 	onSelection: (selection: ExplorerSelection) => void;
 	onColumns: (columns: ExplorerColumnSettings) => void;
 	onReload: () => void;
@@ -38,6 +40,7 @@ export function ExplorerToolbar({
 					reference={reference}
 					value={selection}
 					disabled={!hydrated}
+					lockMetric={lockMetric}
 					onChange={onSelection}
 				/>
 			</div>

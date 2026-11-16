@@ -1,5 +1,6 @@
 export * from "./activity-schema";
 export * from "./auth-schema";
+export * from "./calculated-metrics-schema";
 export * from "./capacity-schema";
 export * from "./collectors-schema";
 export * from "./create-receipts-schema";

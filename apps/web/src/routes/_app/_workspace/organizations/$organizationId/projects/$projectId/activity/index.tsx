@@ -10,7 +10,11 @@ import { projectParams } from "@/organizations/route-data";
 export const Route = createFileRoute(
 	"/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/",
 )({
-	loader: async ({ params }) => {
+	// Definitions link here with a metric, so its points open already filtered.
+	validateSearch: (search: Record<string, unknown>): { metric?: string } =>
+		typeof search.metric === "string" ? { metric: search.metric } : {},
+	loaderDeps: ({ search }) => ({ metric: search.metric }),
+	loader: async ({ params, deps }) => {
 		const reference = projectParams(params);
 		// The first page projects the attribute columns this member has chosen.
 		const columns = await getExplorerColumns({ data: reference });
@@ -18,7 +22,11 @@ export const Route = createFileRoute(
 		return {
 			columns,
 			initial: await listActivityPoints({
-				data: { ...reference, ...(fields.length ? { fields } : {}) },
+				data: {
+					...reference,
+					...(fields.length ? { fields } : {}),
+					...(deps.metric ? { metric: deps.metric } : {}),
+				},
 			}),
 		};
 	},
@@ -28,15 +36,17 @@ export const Route = createFileRoute(
 });
 function Explorer() {
 	const { user } = Route.useRouteContext(),
-		reference = projectParams(Route.useParams());
+		reference = projectParams(Route.useParams()),
+		{ metric } = Route.useSearch();
 	return (
 		<ActivityPage
-			key={`${user.id}/${reference.projectId}/explorer`}
+			key={`${user.id}/${reference.projectId}/explorer/${metric ?? ""}`}
 			mode="explorer"
 			userId={user.id}
 			reference={reference}
 			initial={Route.useLoaderData().initial}
 			columns={Route.useLoaderData().columns}
+			metric={metric}
 		/>
 	);
 }

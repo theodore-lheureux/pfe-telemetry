@@ -21,7 +21,12 @@ import {
 import { type Comparison, INTERVALS, type Interval } from "../contracts";
 import { autoInterval, effectiveInterval, intervalFits } from "../intervals";
 import { DisplayOptions, spreadUnavailable } from "./display-options";
-import { type DisplayType, type InsightDraft, MAX_RANGE_DAYS } from "./draft";
+import {
+	type DisplayType,
+	type InsightDraft,
+	MAX_RANGE_DAYS,
+	withDisplay,
+} from "./draft";
 import {
 	DISPLAY_ICON,
 	DISPLAY_LABEL,
@@ -91,7 +96,7 @@ export function InsightToolbar({
 				});
 	const display = draft.display;
 	const setDisplay = (next: Partial<InsightDraft["display"]>) =>
-		onChange({ ...draft, display: { ...display, ...next } });
+		onChange(withDisplay(draft, { ...display, ...next }));
 	return (
 		<div className="flex flex-wrap items-center gap-2">
 			<DateRangePicker

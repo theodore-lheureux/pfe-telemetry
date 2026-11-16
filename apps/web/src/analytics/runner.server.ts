@@ -13,7 +13,7 @@ import {
 	type SeriesResult,
 } from "./contracts";
 import { metricDefinitions } from "./discovery.server";
-import { evaluateFormula, parseFormula } from "./formula";
+import { formulaSeries } from "./formula-series";
 import {
 	ALLOWED_CALCULATIONS,
 	comparisonRange,
@@ -178,66 +178,6 @@ async function readWindow(
 			),
 		}));
 	return { series, limited };
-}
-
-/** Applies each formula to the measure series that share a group and bucket. */
-function formulaSeries(
-	query: AnalyticsQuery,
-	series: SeriesResult[],
-): SeriesResult[] {
-	const results: SeriesResult[] = [];
-	for (const formula of query.formulas ?? []) {
-		const node = parseFormula(
-			formula.expression,
-			query.measures.map((measure) => measure.name),
-		);
-		// Inputs keyed by window, group and bucket; a formula never mixes windows.
-		const inputs = new Map<string, Map<string, number | null>>();
-		const keys = new Map<
-			string,
-			{ group: (string | null)[]; other: boolean; comparison: boolean }
-		>();
-		const buckets = new Map<string, Set<number | null>>();
-		for (const entry of series) {
-			const key = JSON.stringify([
-				entry.group,
-				entry.other ?? false,
-				entry.comparison ?? false,
-			]);
-			keys.set(key, {
-				group: entry.group,
-				other: entry.other ?? false,
-				comparison: entry.comparison ?? false,
-			});
-			const bucketSet = buckets.get(key) ?? new Set();
-			for (const point of entry.points) {
-				bucketSet.add(point.bucketMs);
-				const values = inputs.get(`${key}|${point.bucketMs}`) ?? new Map();
-				values.set(entry.measure, point.value);
-				inputs.set(`${key}|${point.bucketMs}`, values);
-			}
-			buckets.set(key, bucketSet);
-		}
-		for (const [key, identity] of keys) {
-			const points = [...(buckets.get(key) ?? [])]
-				.sort((a, b) => (a ?? 0) - (b ?? 0))
-				.map((bucketMs) => {
-					const values = inputs.get(`${key}|${bucketMs}`);
-					return {
-						bucketMs,
-						value: evaluateFormula(node, (name) => values?.get(name) ?? null),
-					};
-				});
-			results.push({
-				measure: formula.name,
-				group: identity.group,
-				...(identity.other ? { other: true } : {}),
-				...(identity.comparison ? { comparison: true } : {}),
-				points,
-			});
-		}
-	}
-	return results;
 }
 
 // Collectors report this once per collection cycle, whatever else they measure.

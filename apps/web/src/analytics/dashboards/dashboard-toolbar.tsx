@@ -23,7 +23,7 @@ import {
 } from "../../components/ui/select";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AttributeFilter } from "../attribute-filter";
-import { useMetricAttributes } from "../catalog";
+import { useQueryAttributes } from "../catalog";
 import { INTERVALS, type Interval } from "../contracts";
 import type { DashboardFilters } from "../dashboard-filters";
 import { FilterChips, withFilter } from "../filter-chips";
@@ -54,20 +54,22 @@ export function DashboardToolbar({
 	filters,
 	disabled,
 	onChange,
+	metrics,
 }: {
 	userId: string;
 	reference: ProjectReference;
 	filters: DashboardFilters;
 	disabled: boolean;
 	onChange: (filters: DashboardFilters) => void;
+	metrics: string[];
 }) {
 	const id = useId();
 	// Attributes load the first time a list that offers them opens.
 	const [wantsAttributes, setWantsAttributes] = useState(false);
-	const attributes = useMetricAttributes(
+	const attributes = useQueryAttributes(
 		userId,
 		reference,
-		undefined,
+		metrics,
 		wantsAttributes,
 	);
 	const range = filters.range && parseSerializedRange(filters.range);

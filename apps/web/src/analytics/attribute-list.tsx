@@ -1,17 +1,19 @@
 import { m } from "@recount/i18n/messages";
-import { CheckIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import {
-	Command,
 	CommandEmpty,
 	CommandGroup,
-	CommandInput,
 	CommandItem,
-	CommandList,
 } from "../components/ui/command";
 import type { AttributeDefinition } from "./contracts";
+import { DefinitionChoice } from "./definition-choice";
 import { attributeField, isFieldKey } from "./fields";
 import { attributeLabel } from "./metric-names";
+import {
+	attributePreview,
+	PickerCommand,
+	type PickerPreview,
+} from "./picker-command";
 
 /** A choice listed above the attributes, such as a core field. */
 export interface ListOption {
@@ -29,6 +31,12 @@ export function AttributeList({
 	options = [],
 	optionsHeading,
 	selected,
+	isDisabled,
+	searchPlaceholder = m.activity_attribute_search(),
+	emptyMessage = m.activity_attribute_none(),
+	showPreview = true,
+	searchAction,
+	outlined,
 	onSelect,
 }: {
 	attributes: AttributeDefinition[] | undefined;
@@ -37,74 +45,89 @@ export function AttributeList({
 	optionsHeading?: string;
 	/** The chosen field or option value, marked in the list. */
 	selected?: string;
+	isDisabled?: (field: string) => boolean;
+	searchPlaceholder?: string;
+	emptyMessage?: string;
+	showPreview?: boolean;
+	searchAction?: ReactNode;
+	/** Outline the search box when the list is shown inline rather than in a popover. */
+	outlined?: boolean;
 	onSelect: (field: string, attribute?: AttributeDefinition) => void;
 }) {
-	const filterable = (attributes ?? []).filter((attribute) =>
-		isFieldKey(attribute.key),
+	// Members can hide attributes; one already chosen stays so it can be read and cleared.
+	const filterable = (attributes ?? []).filter(
+		(attribute) =>
+			isFieldKey(attribute.key) &&
+			(attribute.status !== "hidden" ||
+				attributeField(attribute.scope, attribute.key) === selected),
 	);
 	const groups = [
 		{ scope: "point", label: m.activity_attribute_point() },
 		{ scope: "resource", label: m.activity_attribute_resource() },
 	] as const;
-	const check = (value: string): ReactNode =>
-		value === selected && (
-			<CheckIcon aria-hidden="true" className="ml-auto size-4" />
-		);
+	const previews = new Map<string, PickerPreview>(
+		filterable.map((attribute) => [
+			`${attributeField(attribute.scope, attribute.key)}/${attribute.kind}`,
+			attributePreview(attribute),
+		]),
+	);
 	return (
-		<Command>
-			<CommandInput placeholder={m.activity_attribute_search()} />
-			<CommandList>
-				<CommandEmpty>
-					{loading
-						? m.activity_attribute_loading()
-						: m.activity_attribute_none()}
-				</CommandEmpty>
-				{options.length > 0 && (
-					<CommandGroup heading={optionsHeading}>
-						{options.map((option) => (
-							<CommandItem
-								key={option.value}
-								value={`option ${option.label} ${option.value}`}
-								onSelect={() => onSelect(option.value)}
-							>
-								{option.label}
-								{check(option.value)}
-							</CommandItem>
-						))}
+		<PickerCommand
+			search={searchPlaceholder}
+			previews={showPreview ? previews : undefined}
+			searchAction={searchAction}
+			outlined={outlined}
+		>
+			<CommandEmpty>
+				{loading ? m.activity_attribute_loading() : emptyMessage}
+			</CommandEmpty>
+			{options.length > 0 && (
+				<CommandGroup heading={optionsHeading}>
+					{options.map((option) => (
+						<CommandItem
+							key={option.value}
+							value={`option ${option.label} ${option.value}`}
+							disabled={isDisabled?.(option.value)}
+							data-checked={option.value === selected}
+							onSelect={() => onSelect(option.value)}
+						>
+							{option.label}
+						</CommandItem>
+					))}
+				</CommandGroup>
+			)}
+			{groups.map((group) => {
+				const items = filterable.filter(
+					(attribute) => attribute.scope === group.scope,
+				);
+				return items.length ? (
+					<CommandGroup key={group.scope} heading={group.label}>
+						{items.map((attribute) => {
+							const field = attributeField(attribute.scope, attribute.key);
+							return (
+								<CommandItem
+									key={`${attribute.scope}/${attribute.key}/${attribute.kind}`}
+									value={`${field}/${attribute.kind}`}
+									keywords={[
+										group.scope,
+										attributeLabel(attribute.key),
+										attribute.key,
+									]}
+									disabled={isDisabled?.(field)}
+									data-checked={field === selected}
+									onSelect={() => onSelect(field, attribute)}
+								>
+									<DefinitionChoice
+										kind="attribute"
+										name={attribute.key}
+										description={attribute.note}
+									/>
+								</CommandItem>
+							);
+						})}
 					</CommandGroup>
-				)}
-				{groups.map((group) => {
-					const items = filterable.filter(
-						(attribute) => attribute.scope === group.scope,
-					);
-					return items.length ? (
-						<CommandGroup key={group.scope} heading={group.label}>
-							{items.map((attribute) => {
-								const field = attributeField(attribute.scope, attribute.key);
-								return (
-									<CommandItem
-										key={`${attribute.scope}/${attribute.key}/${attribute.kind}`}
-										value={`${group.scope} ${attributeLabel(attribute.key)} ${attribute.key}`}
-										onSelect={() => onSelect(field, attribute)}
-									>
-										<span className="flex min-w-0 flex-1 flex-col">
-											<span className="truncate">
-												{attributeLabel(attribute.key)}
-											</span>
-											{attributeLabel(attribute.key) !== attribute.key && (
-												<span className="truncate font-mono text-[11px] text-muted-foreground">
-													{attribute.key}
-												</span>
-											)}
-										</span>
-										{check(field)}
-									</CommandItem>
-								);
-							})}
-						</CommandGroup>
-					) : null;
-				})}
-			</CommandList>
-		</Command>
+				) : null;
+			})}
+		</PickerCommand>
 	);
 }

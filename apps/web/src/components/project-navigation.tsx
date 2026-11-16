@@ -2,6 +2,7 @@ import { m } from "@recount/i18n/messages";
 import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
 	BookmarkIcon,
+	BookOpenIcon,
 	LayoutDashboardIcon,
 	ListIcon,
 	type LucideIcon,
@@ -26,6 +27,7 @@ type ProjectPath =
 	| "/organizations/$organizationId/projects/$projectId/insights"
 	| "/organizations/$organizationId/projects/$projectId/activity"
 	| "/organizations/$organizationId/projects/$projectId/nodes"
+	| "/organizations/$organizationId/projects/$projectId/definitions"
 	| "/organizations/$organizationId/projects/$projectId/executions";
 
 interface Entry {
@@ -74,6 +76,11 @@ const GROUPS: { label?: () => string; entries: Entry[] }[] = [
 				to: "/organizations/$organizationId/projects/$projectId/nodes",
 				icon: ServerIcon,
 				label: m.nodes,
+			},
+			{
+				to: "/organizations/$organizationId/projects/$projectId/definitions",
+				icon: BookOpenIcon,
+				label: m.definitions,
 			},
 		],
 	},

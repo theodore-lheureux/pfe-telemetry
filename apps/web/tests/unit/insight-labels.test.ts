@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import type { QueryResult, SeriesResult } from "../../src/analytics/contracts";
-import { plottedTitle, seriesLabel } from "../../src/analytics/insight/labels";
+import type { Display } from "../../src/analytics/insight/draft";
+import {
+	formatValue,
+	plottedTitle,
+	seriesLabel,
+} from "../../src/analytics/insight/labels";
 
 const measure = (name: string) => ({
 	name,
@@ -70,4 +75,23 @@ test("a formula of one series reads as that series", () => {
 	expect(seriesLabel(single, series("F", []), label)).toBe(
 		"B · Node memory total",
 	);
+});
+
+test("values name what they count without UCUM annotations and keep small magnitudes", () => {
+	const stored = (unit: string) => ({ unit, calculation: "avg" as const });
+	const auto = { unit: "auto" as const };
+	expect(formatValue(30, auto, stored("{process}"), "en")).toBe("30");
+	expect(formatValue(0.0015, auto, stored("{process}"), "en")).toBe("0.0015");
+	expect(formatValue(0.55, auto, stored("ms"), "en")).toBe("0.55 ms");
+});
+
+test("a chosen unit formats every value, including custom text around it", () => {
+	const as = (unit: Display["unit"], unitAffix?: string) => ({
+		unit,
+		unitAffix,
+	});
+	expect(formatValue(1500, as("short"), null, "en")).toBe("1.5K");
+	expect(formatValue(12.5, as("currency"), null, "en")).toBe("$12.50");
+	expect(formatValue(42, as("prefix", "~"), null, "en")).toBe("~42");
+	expect(formatValue(42, as("postfix", " req"), null, "en")).toBe("42 req");
 });

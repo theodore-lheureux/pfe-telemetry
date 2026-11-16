@@ -35,24 +35,34 @@ import { PacketSheet } from "./packet-sheet";
 import { useExplorerPoints } from "./use-explorer-points";
 import { useLiveActivity } from "./use-live-activity";
 
-const DEFAULT_SELECTION: ExplorerSelection = {
-	range: DEFAULT_RANGE,
-	filters: [],
-};
-
+/**
+ * Activity's Explorer or Live view. With `embedded`, the Explorer shows one metric's
+ * points inside another page: no page header and no metric choice.
+ */
 export function ActivityPage({
 	mode,
 	userId,
 	reference,
 	initial,
 	columns: initialColumns,
+	metric,
+	embedded = false,
 }: {
 	mode: "explorer" | "live";
 	userId: string;
 	reference: ProjectReference;
 	initial?: OperationResult<PointPage>;
 	columns?: OperationResult<ExplorerColumnSettings>;
+	/** The metric the Explorer starts on. */
+	metric?: string;
+	embedded?: boolean;
 }) {
+	// The unfiltered selection; it is replaced, never edited, so identity marks it.
+	const [unfiltered] = useState<ExplorerSelection>(() => ({
+		range: DEFAULT_RANGE,
+		filters: [],
+		...(metric ? { metric } : {}),
+	}));
 	const hydrated = useHydrated();
 	const numbers = useMemo(() => new Intl.NumberFormat(getLocale()), []);
 	const [pausedBy, setPausedBy] = useState<PausedBy | null>(null),
@@ -62,7 +72,7 @@ export function ActivityPage({
 		[cursors, setCursors] = useState<(PointCursor | undefined)[]>([undefined]),
 		[generation, setGeneration] = useState(0),
 		[selected, setSelected] = useState<PacketSummary | null>(null),
-		[selection, setSelection] = useState(DEFAULT_SELECTION),
+		[selection, setSelection] = useState(unfiltered),
 		[liveNodes, setLiveNodes] = useState<string[]>([]),
 		[columnSettings, setColumnSettings] = useState<ExplorerColumnSettings>(
 			initialColumns?.data ?? {
@@ -168,7 +178,10 @@ export function ActivityPage({
 	);
 	const columns = useActivityColumns({
 		mode,
-		columns: columnSettings.columns,
+		// Embedded on one metric's page, every row would repeat that metric's name.
+		columns: embedded
+			? columnSettings.columns.filter((column) => column.field !== "metric")
+			: columnSettings.columns,
 		expanded,
 		inspect,
 		hydrated,
@@ -208,7 +221,7 @@ export function ActivityPage({
 			: 0;
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
-			<ActivityHeader mode={mode} reference={reference} />
+			{!embedded && <ActivityHeader mode={mode} reference={reference} />}
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				{mode === "explorer" ? (
 					<ExplorerToolbar
@@ -218,13 +231,14 @@ export function ActivityPage({
 						fetching={result.isFetching}
 						selection={selection}
 						columns={columnSettings}
+						lockMetric={embedded}
 						onSelection={(next) => {
 							restart();
 							setSelection(
 								isDefaultRange(next.range) &&
-									!next.metric &&
+									next.metric === unfiltered.metric &&
 									!next.filters.length
-									? DEFAULT_SELECTION
+									? unfiltered
 									: next,
 							);
 						}}
@@ -299,7 +313,7 @@ export function ActivityPage({
 					empty && (
 						<ActivityEmpty
 							mode={mode}
-							filtered={selection !== DEFAULT_SELECTION}
+							filtered={selection !== unfiltered}
 							disabled={!hydrated || result.isFetching}
 							onSearchFurther={
 								mode === "explorer" && page?.nextCursor ? older : undefined

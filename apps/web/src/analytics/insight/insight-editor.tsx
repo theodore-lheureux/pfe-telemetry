@@ -14,6 +14,7 @@ import { MutationFailure, unwrapOperation } from "../../lib/operation-result";
 import type { ProjectReference } from "../../organizations/contracts";
 import { runAnalyticsQuery } from "../analytics.functions";
 import { AnalyticsHeader } from "../analytics-header";
+import type { CalculatedMetric } from "../calculated-metrics";
 import type { MetricDefinition, QueryResult } from "../contracts";
 import { formulaNames, type InsightDraft, toQuery } from "./draft";
 import { InsightChart } from "./insight-chart";
@@ -35,6 +36,8 @@ export function InsightEditor({
 	onDraft,
 	heading,
 	description,
+	canWrite,
+	editingCalculation,
 }: {
 	userId: string;
 	reference: ProjectReference;
@@ -45,6 +48,8 @@ export function InsightEditor({
 	/** Replace the page title and description, such as with the insight's name. */
 	heading?: ReactNode;
 	description?: ReactNode;
+	canWrite: boolean;
+	editingCalculation?: CalculatedMetric;
 }) {
 	const hydrated = useHydrated();
 	const locale = getLocale(),
@@ -115,8 +120,14 @@ export function InsightEditor({
 						userId={userId}
 						reference={reference}
 						draft={draft}
-						metrics={usable}
+						metrics={
+							editingCalculation
+								? usable.filter((metric) => !metric.calculated)
+								: usable
+						}
 						disabled={!hydrated}
+						canWrite={canWrite}
+						editingCalculation={editingCalculation}
 						onChange={onDraft}
 					/>
 					<div className="flex min-w-0 flex-col gap-4">

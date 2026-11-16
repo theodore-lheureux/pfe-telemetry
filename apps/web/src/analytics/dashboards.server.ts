@@ -12,6 +12,7 @@ import { OperationError } from "../lib/operation-error";
 import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
 import { nodeNames } from "./analytics.server";
+import { lockCalculationReferences } from "./calculated-references.server";
 import {
 	type AddTilesInput,
 	type CopyTileInput,
@@ -30,6 +31,7 @@ import {
 	type TileWidth,
 	type UpdateTileInput,
 } from "./dashboards";
+import { decodeDraft } from "./insight/draft";
 import { person } from "./saved-insights.server";
 
 type Database = ReturnType<typeof getDatabase>;
@@ -517,6 +519,11 @@ export async function duplicateTile(
 			)
 			.where(thisTile(input));
 		if (!tile) throw new OperationError("NOT_FOUND", "Tile not found");
+		await lockCalculationReferences(
+			transaction,
+			input,
+			decodeDraft(JSON.stringify(tile.draft)),
+		);
 		const position = await nextPosition(transaction, input.dashboardId);
 		const [copy] = await transaction
 			.insert(savedInsight)

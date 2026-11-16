@@ -369,9 +369,20 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 			.getByRole("button", { name: "Configure columns", exact: true })
 			.click();
 		const dialog = page.getByRole("dialog", { name: "Configure columns" });
+		await expect(
+			dialog
+				.locator('[data-slot="input-group"]')
+				.getByRole("combobox", { name: "Category", exact: true }),
+		).toBeVisible();
 		await dialog
 			.getByRole("button", { name: "Remove Resource", exact: true })
 			.click();
+		await dialog
+			.getByRole("combobox", { name: "Category", exact: true })
+			.click();
+		await page.getByRole("option", { name: /^Resource attributes:/ }).click();
+		await dialog.getByRole("option", { name: /^Host name/ }).hover();
+		await expect(dialog.getByRole("complementary")).toHaveCount(0);
 		await dialog.getByRole("option", { name: /^Host name/ }).click();
 		await dialog
 			.getByRole("button", { name: "Rename Host name", exact: true })

@@ -1,7 +1,6 @@
 import { m } from "@recount/i18n/messages";
-import { type FormEvent, useId, useMemo, useState } from "react";
+import { type FormEvent, useId, useState } from "react";
 import { useMetricAttributes } from "../analytics/catalog";
-import { attributeField, isFieldKey } from "../analytics/fields";
 import { DialogActions } from "../components/dialog-actions";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
@@ -16,7 +15,7 @@ import { type OperationResult, unwrapOperation } from "../lib/operation-result";
 import type { ProjectReference } from "../organizations/contracts";
 import { saveExplorerColumns } from "./activity.functions";
 import { AvailableColumns } from "./available-columns";
-import { BUILT_IN_COLUMNS, type ExplorerColumnSettings } from "./columns";
+import type { ExplorerColumnSettings } from "./columns";
 import { VisibleColumns } from "./visible-columns";
 
 /** Choose, order and rename Explorer columns, for oneself or as the project default. */
@@ -41,15 +40,6 @@ export function ColumnsDialog({
 		[pending, setPending] = useState(false),
 		[failed, setFailed] = useState(false);
 	const attributes = useMetricAttributes(userId, reference, undefined, open);
-	const fields = useMemo(() => {
-		const all: string[] = [...BUILT_IN_COLUMNS];
-		for (const attribute of attributes.data ?? [])
-			if (isFieldKey(attribute.key)) {
-				const field = attributeField(attribute.scope, attribute.key);
-				if (!all.includes(field)) all.push(field);
-			}
-		return all;
-	}, [attributes.data]);
 	const reset = () => {
 		setDraft(settings.columns);
 		setAsDefault(false);
@@ -102,7 +92,7 @@ export function ColumnsDialog({
 								{m.columns_available()}
 							</h3>
 							<AvailableColumns
-								fields={fields}
+								attributes={attributes.data}
 								visible={draft.map((column) => column.field)}
 								loading={attributes.isFetching}
 								onAdd={(field) => setDraft([...draft, { field }])}
