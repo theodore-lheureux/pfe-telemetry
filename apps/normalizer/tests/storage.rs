@@ -510,17 +510,26 @@ async fn poison_is_visible_without_rows_or_checkpoint_advance() {
 
 #[tokio::test]
 #[ignore = "requires explicit reused Kafka/ClickHouse endpoints and fresh logical fixture permission"]
-async fn missing_checkpoint_does_not_choose_an_implicit_start() {
+async fn new_group_starts_at_retained_earliest() {
     let storage = Storage::new(false, false).await;
     storage.publish(&fixture(&[])).await;
     storage.start();
-    storage.assert_blocked(Offset::Invalid).await;
+    storage
+        .wait("fresh group did not consume retained points", 30, || {
+            storage.count(true) == 15
+        })
+        .await;
+    storage
+        .wait("fresh group did not commit retained points", 30, || {
+            storage.checkpoint() == Offset::Offset(15)
+        })
+        .await;
     storage.close().await;
 }
 
 #[tokio::test]
 #[ignore = "requires explicit reused Kafka/ClickHouse endpoints and fresh short-retention topic permission"]
-async fn naturally_expired_checkpoint_does_not_consume_a_readable_suffix() {
+async fn naturally_expired_checkpoint_resumes_the_retained_suffix() {
     let storage = Storage::new(true, true).await;
     let body = fixture(&[]);
     storage.publish(&body).await;
@@ -528,17 +537,72 @@ async fn naturally_expired_checkpoint_does_not_consume_a_readable_suffix() {
     storage.publish(&body).await;
     storage
         .wait("owned topic's first segment did not expire", 100, || {
-            storage
+            let (low, high) = storage
                 .observer
                 .fetch_watermarks(&storage.topic, 0, Duration::from_secs(2))
-                .unwrap()
-                .0
-                > 0
+                .unwrap();
+            low > 0 && low == high
         })
         .await;
-    storage.publish(&body).await;
+    let first_retained = storage.publish(&body).await;
     storage.start();
-    storage.assert_blocked(Offset::Offset(0)).await;
+    storage
+        .wait("retained suffix did not become visible", 30, || {
+            storage.count(true) == 15
+        })
+        .await;
+    storage
+        .wait("retained suffix checkpoint did not advance", 30, || {
+            storage.checkpoint() == Offset::Offset(first_retained + 15)
+        })
+        .await;
+    assert_eq!(storage.count(false), 15);
+    storage.close().await;
+}
+
+#[tokio::test]
+#[ignore = "requires explicit reused Kafka/ClickHouse endpoints and fresh logical fixture permission"]
+async fn worker_outage_catches_up_current_schema_points_without_offset_loss() {
+    let storage = Storage::new(true, false).await;
+    let seed = decode(&fixture(&[])).remove(0);
+    let outage = Instant::now();
+    let count = 512;
+    let mut payload_bytes = 0;
+    for index in 0..count {
+        let mut row = seed.clone();
+        row.sample_id[..8].copy_from_slice(&(index as u64).to_be_bytes());
+        let wire = projection::serialize(&row);
+        payload_bytes += wire.len();
+        storage.publish_wire(&wire).await;
+    }
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(storage.checkpoint(), Offset::Offset(0));
+    assert_eq!(
+        storage
+            .observer
+            .fetch_watermarks(&storage.topic, 0, Duration::from_secs(3))
+            .unwrap(),
+        (0, count as i64)
+    );
+    let outage_seconds = outage.elapsed().as_secs_f64();
+    let catchup = Instant::now();
+    storage.start();
+    storage
+        .wait("outage backlog did not become fully visible", 30, || {
+            storage.count(true) == count
+        })
+        .await;
+    storage
+        .wait("outage backlog checkpoint did not catch up", 30, || {
+            storage.checkpoint() == Offset::Offset(count as i64)
+        })
+        .await;
+    let seconds = catchup.elapsed().as_secs_f64();
+    assert_eq!(storage.count(false), count);
+    eprintln!(
+        "storage_catchup_complete samples={count} payload_bytes={payload_bytes} outage_seconds={outage_seconds:.3} catchup_seconds={seconds:.3} payload_bytes_per_second={:.0}",
+        payload_bytes as f64 / seconds,
+    );
     storage.close().await;
 }
 

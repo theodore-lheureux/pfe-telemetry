@@ -20,6 +20,7 @@ impl Drop for Process {
 fn declaration_validation_needs_no_backends_and_preserves_cli_precedence() {
     for args in [
         vec!["validate"],
+        vec!["--metrics-file", "/nonexistent/normalizer.prom", "validate"],
         vec!["--max-points", "1", "validate"],
         vec![
             "--max-request-bytes",
@@ -93,6 +94,22 @@ fn declaration_validation_needs_no_backends_and_preserves_cli_precedence() {
         assert!(output.contains("declarations only"));
         assert!(errors.is_empty());
     }
+}
+
+#[test]
+fn configured_metrics_output_must_be_writable_before_runtime_startup() {
+    let output = Command::new(env!("CARGO_BIN_EXE_recount-normalizer"))
+        .env_clear()
+        .args(["--metrics-file", "/dev/null/normalizer.prom"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        error.contains("retention_metrics_initialization"),
+        "{error}"
+    );
+    assert!(!error.contains("state=starting"), "{error}");
 }
 
 #[test]

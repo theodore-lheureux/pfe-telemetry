@@ -1,46 +1,21 @@
 use crate::config::Config;
 use rdkafka::{
-    ClientConfig, Offset, TopicPartitionList,
+    ClientConfig,
     admin::{AdminClient, AdminOptions, OwnedResourceSpecifier, ResourceSpecifier},
-    consumer::{BaseConsumer, CommitMode, Consumer},
 };
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(3);
 
-fn consumer(config: &Config) -> Result<BaseConsumer, String> {
-    ClientConfig::new()
-        .set("bootstrap.servers", &config.bootstrap)
-        .set("group.id", &config.group)
-        .set("enable.auto.commit", "false")
-        .set("enable.auto.offset.store", "false")
-        .set("auto.offset.reset", "error")
-        .set("allow.auto.create.topics", "false")
-        .set("socket.timeout.ms", "3000")
-        .create()
-        .map_err(|error| error.to_string())
-}
-
-/// Initial snapshots only; later assignments and native errors belong to RustStream.
+/// Initial topology and transport snapshots; group offsets are resolved by librdkafka.
 pub async fn preflight(config: Config) -> Result<(), String> {
-    inspect(config, false).await
-}
-
-/// Explicit first-use initialization, never part of ordinary startup or replay.
-pub async fn bootstrap(config: Config) -> Result<(), String> {
-    inspect(config, true).await?;
-    eprintln!("state=bootstrapped policy=explicit_retained_earliest");
-    Ok(())
-}
-
-async fn inspect(config: Config, bootstrap: bool) -> Result<(), String> {
     config
         .limits
         .validate()
         .map_err(|error| error.to_string())?;
     config.validate_transport().map_err(str::to_owned)?;
     let declaration = config.clone();
-    let (admin, consumer) = tokio::task::spawn_blocking(move || {
+    let admin = tokio::task::spawn_blocking(move || {
         let admin: AdminClient<_> = ClientConfig::new()
             .set("bootstrap.servers", &declaration.bootstrap)
             .set("allow.auto.create.topics", "false")
@@ -82,8 +57,7 @@ async fn inspect(config: Config, bootstrap: bool) -> Result<(), String> {
                 return Err("topic partition count mismatch".to_owned());
             }
         }
-        let consumer = consumer(&declaration)?;
-        Ok((admin, consumer))
+        Ok(admin)
     })
     .await
     .map_err(|_| "startup metadata worker failed")??;
@@ -119,58 +93,5 @@ async fn inspect(config: Config, bootstrap: bool) -> Result<(), String> {
             return Err("topic max.message.bytes mismatch".into());
         }
     }
-    tokio::task::spawn_blocking(move || {
-        let mut query = TopicPartitionList::new();
-        for p in 0..config.raw_partitions as i32 {
-            query.add_partition(&config.raw_topic, p);
-        }
-        let committed = consumer
-            .committed_offsets(query, RPC_TIMEOUT)
-            .map_err(|error| error.to_string())?;
-        let deadline = Instant::now() + RPC_TIMEOUT;
-        let mut seed = TopicPartitionList::new();
-        for p in 0..config.raw_partitions as i32 {
-            let entry = committed
-                .find_partition(&config.raw_topic, p)
-                .ok_or("checkpoint response missing partition")?;
-            entry.error().map_err(|error| error.to_string())?;
-            let saved = match entry.offset() {
-                Offset::Offset(value) => Some(value),
-                Offset::Invalid => None,
-                _ => return Err("unexpected checkpoint type".into()),
-            };
-            let remaining = deadline
-                .checked_duration_since(Instant::now())
-                .ok_or("checkpoint snapshot deadline")?;
-            let (low, high) = consumer
-                .fetch_watermarks(&config.raw_topic, p, remaining)
-                .map_err(|error| error.to_string())?;
-            if bootstrap {
-                if saved.is_some() {
-                    return Err("bootstrap refuses existing checkpoints".into());
-                }
-                seed.add_partition_offset(&config.raw_topic, p, Offset::Offset(low))
-                    .map_err(|error| error.to_string())?;
-            } else {
-                checkpoint(saved, low, high)?;
-            }
-        }
-        if bootstrap {
-            consumer.assign(&seed).map_err(|error| error.to_string())?;
-            consumer
-                .commit(&seed, CommitMode::Sync)
-                .map_err(|_| "bootstrap commit unconfirmed; inspect checkpoints before retry")?;
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|_| "startup snapshot worker failed")?
-}
-
-pub fn checkpoint(saved: Option<i64>, low: i64, high: i64) -> Result<i64, &'static str> {
-    match saved {
-        None => Err("checkpoint missing: explicit bootstrap required"),
-        Some(value) if low >= 0 && high >= low && value >= low && value <= high => Ok(value),
-        _ => Err("retention_gap: committed offset outside broker watermarks"),
-    }
+    Ok(())
 }

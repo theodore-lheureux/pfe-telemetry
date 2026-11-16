@@ -1,5 +1,6 @@
 pub mod config;
 pub mod kafka;
+pub mod retention;
 pub mod runtime;
 
 use prost::Message;

@@ -5,7 +5,7 @@ use recount_telemetry_validation::{
     transport::{self, MAX_BROKER_BYTES, NORMALIZED_BROKER_BYTES, RAW_BROKER_BYTES},
     validate::Limits,
 };
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -27,6 +27,9 @@ pub struct Cli {
     late_topic: String,
     #[arg(long, env = "RECOUNT_NORMALIZER_GROUP", default_value = NORMALIZER_GROUP, value_parser = nonblank)]
     group: String,
+    /// Optional Prometheus text-file output; the parent directory must exist and be writable.
+    #[arg(long, env = "RECOUNT_NORMALIZER_METRICS_FILE")]
+    metrics_file: Option<PathBuf>,
     #[arg(long, env = "RECOUNT_RAW_PARTITIONS", default_value_t = 3, value_parser = clap::value_parser!(u32).range(1..=4096))]
     raw_partitions: u32,
     #[arg(long, env = "RECOUNT_NORMALIZED_PARTITIONS", default_value_t = 3, value_parser = clap::value_parser!(u32).range(1..=4096))]
@@ -54,8 +57,6 @@ pub struct Cli {
 pub enum Command {
     /// Check configuration declarations without connecting to Kafka.
     Validate,
-    /// Seed retained earliest offsets for a genuinely new group; never run on restart.
-    Bootstrap,
 }
 
 fn invalid(reason: &'static str) -> clap::Error {
@@ -76,6 +77,7 @@ impl Cli {
             normalized_topic: self.normalized_topic,
             late_topic: self.late_topic,
             group: self.group,
+            metrics_file: self.metrics_file,
             raw_partitions: self.raw_partitions,
             normalized_partitions: self.normalized_partitions,
             max_active: self.max_active as usize,
@@ -104,6 +106,7 @@ pub struct Config {
     pub normalized_topic: String,
     pub late_topic: String,
     pub group: String,
+    pub metrics_file: Option<PathBuf>,
     pub raw_partitions: u32,
     pub normalized_partitions: u32,
     pub max_active: usize,
@@ -143,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    fn defaults_and_explicit_bootstrap_preserve_normal_operation() {
+    fn defaults_and_metrics_output_preserve_normal_operation() {
         let cli = parse(&["normalizer"]).unwrap();
         assert_eq!(cli.command, None);
         let config = cli.into_config().unwrap();
@@ -152,6 +155,7 @@ mod tests {
         assert_eq!(config.normalized_topic, NORMALIZED_TOPIC);
         assert_eq!(config.late_topic, LATE_TOPIC);
         assert_eq!(config.group, NORMALIZER_GROUP);
+        assert_eq!(config.metrics_file, None);
         for topic in [RAW_TOPIC, NORMALIZED_TOPIC] {
             let cli = parse(&["normalizer", "--late-topic", topic]).unwrap();
             assert!(cli.into_config().is_err());
@@ -174,11 +178,12 @@ mod tests {
         assert_eq!(config.limits.normalized_record_bytes, 1048576);
         assert_eq!(config.limits.normalized_batch_bytes, 16777216);
         assert_eq!(
-            parse(&["normalizer", "bootstrap"]).unwrap().command,
-            Some(Command::Bootstrap)
+            parse(&["normalizer", "--metrics-file", "normalizer.prom"])
+                .unwrap()
+                .metrics_file,
+            Some(PathBuf::from("normalizer.prom"))
         );
         assert!(parse(&["normalizer", "run"]).is_err());
-        assert!(parse(&["normalizer", "bootstrap", "bootstrap"]).is_err());
         for flag in ["--help", "--version"] {
             let error = parse(&["normalizer", flag]).unwrap_err();
             assert!(!error.use_stderr());

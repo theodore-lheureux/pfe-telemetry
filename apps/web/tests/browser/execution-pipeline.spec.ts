@@ -1,6 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { once } from "node:events";
 import { createReadStream } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
@@ -525,13 +524,6 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 		rememberSecret(databaseUrl.password);
 		rememberSecret(databaseUrl.toString());
 		const startedAt = new Date(Date.now() - 1000);
-		start("normalizer", ["bootstrap"], [], "normalizer-bootstrap", kafka);
-		const bootstrap = children.pop();
-		if (!bootstrap) throw new Error("Missing normalizer bootstrap process");
-		const bootstrapExit = await once(bootstrap, "exit", {
-			signal: AbortSignal.timeout(30000),
-		});
-		expect(bootstrapExit[0], "Explicit fresh-group bootstrap succeeds").toBe(0);
 		const normalizer = start("normalizer", [], [], "normalizer", kafka);
 		const ingestion = start("ingestion-api", [], [], "ingestion-api", {
 			...kafka,

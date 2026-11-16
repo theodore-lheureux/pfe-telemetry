@@ -60,7 +60,7 @@ linux *args:
 ingestion-api *args:
     cargo run --locked -p recount-ingestion-api -- "$@"
 
-# Native normalizer; options precede the optional bootstrap subcommand.
+# Native normalizer; options precede the optional validate subcommand.
 normalizer *args:
     cargo run --locked -p recount-normalizer -- "$@"
 

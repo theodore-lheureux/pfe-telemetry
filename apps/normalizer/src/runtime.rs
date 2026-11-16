@@ -155,7 +155,7 @@ fn app(config: Config) -> impl App {
     let source = KafkaTopic::new(&config.raw_topic)
         .group(&config.group)
         .commit(Commit::Tracked)
-        .config("auto.offset.reset", "error")
+        .config("auto.offset.reset", "earliest")
         .config("auto.commit.interval.ms", "1000")
         .config(
             "session.timeout.ms",
@@ -192,7 +192,7 @@ fn app(config: Config) -> impl App {
         })
     })
     .after_startup(async |_: Arc<RunState>| {
-        eprintln!("state=ready checks=initial_snapshot native_errors=logged");
+        eprintln!("state=ready checks=initial_snapshot offset_reset=earliest");
         Ok::<_, Infallible>(())
     })
     .on_shutdown(async |_: Arc<RunState>| {

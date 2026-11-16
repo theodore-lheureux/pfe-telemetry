@@ -364,7 +364,21 @@ test("topic verification never creates or repairs topics; creation is explicit",
 	const tool = join(path, "tool.sh");
 	writeFileSync(
 		tool,
-		`#!/bin/bash\nprintf '%s\\n' "$*" >> "$MOCK_LOG"\ncase "$*" in\n*--describe*--topic*) [ "\${MOCK_MISSING:-}" != 1 ] || exit 1; echo 'PartitionCount: 3 ReplicationFactor: 1' ;;\n*--entity-type*) echo 'retention.ms=65536 retention.bytes=65536 segment.bytes=65536 segment.ms=65536 max.message.bytes=65536 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false compression.type=zstd ' ;;\nesac\n`,
+		`#!/bin/bash
+printf '%s\\n' "$*" >> "$MOCK_LOG"
+case "$*" in
+*--describe*--topic*) [ "\${MOCK_MISSING:-}" != 1 ] || exit 1; echo 'PartitionCount: 3 ReplicationFactor: 1' ;;
+*--entity-type*)
+    codec=zstd
+    [[ "$*" != *'--entity-name live '* ]] || codec=producer
+    bytes=65536
+    [[ "$*" != *'--entity-name late '* ]] || bytes=$RECOUNT_LATE_RETENTION_BYTES
+    [[ "$*" != *'--entity-name recount.participants '* ]] || bytes=$RECOUNT_PARTICIPANT_RETENTION_BYTES
+    echo "retention.ms=\${MOCK_RETENTION:-65536} sensitive=false synonyms={DEFAULT_CONFIG:retention.ms=65536}"
+    echo "retention.bytes=$bytes segment.bytes=1048576 segment.ms=65536 max.message.bytes=65536 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false compression.type=$codec"
+    ;;
+esac
+`,
 	);
 	chmodSync(tool, 0o755);
 	symlinkSync(tool, join(path, "kafka-topics.sh"));
@@ -389,7 +403,7 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		RECOUNT_BROKER_MESSAGE_BYTES: "65536",
 		RECOUNT_BROKER_FETCH_BYTES: "65536",
 	};
-	for (const prefix of ["RAW", "NORMALIZED", "LIVE"])
+	for (const prefix of ["RAW", "NORMALIZED", "LATE", "PARTICIPANT", "LIVE"])
 		for (const suffix of [
 			"RETENTION_MS",
 			"RETENTION_BYTES",
@@ -397,7 +411,8 @@ test("topic verification never creates or repairs topics; creation is explicit",
 			"SEGMENT_MS",
 			"BROKER_MAX_BYTES",
 		])
-			env[`RECOUNT_${prefix}_${suffix}`] = "65536";
+			env[`RECOUNT_${prefix}_${suffix}`] =
+				suffix === "SEGMENT_BYTES" ? "1048576" : "65536";
 	for (const [mode, missing] of [
 		["verify", ""],
 		["verify", "1"],
@@ -427,82 +442,38 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		expect(calls.includes("--alter") || calls.includes("--reset-offsets")).toBe(
 			false,
 		);
+		expect(calls).not.toContain("--if-not-exists");
 	}
-});
-
-test("fresh ClickHouse initialization seeds participant offsets and refuses every existing group", async () => {
-	const path = directory();
-	const log = join(path, "offset-calls");
-	const tool = join(path, "offset-tool.sh");
-	writeFileSync(
-		tool,
-		`#!/bin/bash
-printf '%s %s\\n' "$(basename "$0")" "$*" >> "$MOCK_LOG"
-group= topic=
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --group) group=$2; shift 2 ;;
-        --topic) topic=$2; shift 2 ;;
-        --list) printf '%s\\n' "\${MOCK_EXISTING_GROUP:-}"; exit 0 ;;
-        *) shift ;;
-    esac
-done
-if [[ "$(basename "$0")" == kafka-get-offsets.sh ]]; then
-    echo "$topic:0:0"
-    [[ "$topic" == participants ]] || echo "$topic:1:0"
-    exit 0
-fi
-case "$group" in
-    recount-clickhouse) echo "$group normalized 0 0"; echo "$group normalized 1 0" ;;
-    recount-clickhouse-late) echo "$group late 0 0"; echo "$group late 1 0" ;;
-    recount-clickhouse-participants) echo "$group participants 0 0" ;;
-esac
-`,
+	const drift = Bun.spawn(["bash", script, "verify"], {
+		env: { ...env, MOCK_RETENTION: "123" },
+		stdout: "ignore",
+		stderr: "pipe",
+	});
+	expect(await drift.exited).toBe(1);
+	expect(await new Response(drift.stderr).text()).toContain(
+		"expected retention.ms=65536",
 	);
-	chmodSync(tool, 0o755);
-	for (const name of ["kafka-consumer-groups.sh", "kafka-get-offsets.sh"])
-		symlinkSync(tool, join(path, name));
-	const script = join(path, "initialize.sh");
-	writeFileSync(
-		script,
-		readFileSync(
-			join(import.meta.dir, "../kafka/initialize-clickhouse-offsets.sh"),
-			"utf8",
-		).replace("tool=/opt/kafka/bin", `tool='${path}'`),
-	);
-	for (const existing of [
-		"",
-		"recount-clickhouse",
-		"recount-clickhouse-late",
-		"recount-clickhouse-participants",
-	]) {
-		writeFileSync(log, "");
-		const child = Bun.spawn(["bash", script], {
-			env: {
-				...process.env,
-				MOCK_LOG: log,
-				MOCK_EXISTING_GROUP: existing,
-				RECOUNT_CONFIRM_EMPTY_CLICKHOUSE_GROUP: "recount-clickhouse",
-				RECOUNT_KAFKA_BOOTSTRAP: "synthetic:9092",
-				RECOUNT_NORMALIZED_TOPIC: "normalized",
-				RECOUNT_LATE_TOPIC: "late",
-				RECOUNT_NORMALIZED_PARTITIONS: "2",
-				RECOUNT_PARTICIPANT_TOPIC: "participants",
-				RECOUNT_PARTICIPANT_PARTITIONS: "1",
-			},
-			stdout: "ignore",
-			stderr: "pipe",
-		});
-		expect(await child.exited).toBe(existing ? 1 : 0);
-		const calls = readFileSync(log, "utf8");
-		expect(calls.match(/--reset-offsets/g) ?? []).toHaveLength(
-			existing ? 0 : 3,
-		);
-		if (!existing)
-			expect(calls).toContain(
-				"--group recount-clickhouse-participants --topic participants --reset-offsets --to-offset 0 --execute",
-			);
-	}
+	writeFileSync(log, "");
+	const creation = Bun.spawn(["bash", script, "create"], {
+		env: {
+			...env,
+			RECOUNT_LATE_RETENTION_BYTES: "999",
+			RECOUNT_PARTICIPANT_RETENTION_BYTES: "777",
+		},
+		stdout: "pipe",
+		stderr: "pipe",
+	});
+	await new Response(creation.stdout).text();
+	expect(await creation.exited).toBe(0);
+	const commands = readFileSync(log, "utf8");
+	expect(
+		commands.split("\n").find((line) => line.includes("--create --topic late")),
+	).toContain("retention.bytes=999");
+	expect(
+		commands
+			.split("\n")
+			.find((line) => line.includes("--create --topic recount.participants")),
+	).toContain("retention.bytes=777");
 });
 
 test("resolved Compose preserves owner defaults and propagates only allowlisted overrides", () => {
@@ -525,6 +496,7 @@ test("resolved Compose preserves owner defaults and propagates only allowlisted 
 		RECOUNT_NORMALIZER_RETRY_MS: "1100",
 		RECOUNT_NORMALIZER_DELIVERY_MS: "12000",
 		RECOUNT_NORMALIZER_SHUTDOWN_MS: "16000",
+		RECOUNT_NORMALIZER_METRICS_FILE: "normalizer.prom",
 		RECOUNT_INGESTION_MAX_IN_FLIGHT: "2",
 		RECOUNT_BROKER_MESSAGE_BYTES: "9000000",
 		RECOUNT_BROKER_FETCH_BYTES: "11000000",

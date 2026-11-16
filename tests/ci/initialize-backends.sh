@@ -22,6 +22,5 @@ initialize kafka
 docker compose up --no-build --no-recreate --no-deps --detach --wait --wait-timeout 180 postgres kafka
 just --no-dotenv local topics-create
 just --no-dotenv local topics-verify
-just --no-dotenv local initialize-clickhouse-offsets
 initialize clickhouse
 just --no-dotenv local up

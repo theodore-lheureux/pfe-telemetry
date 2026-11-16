@@ -20,7 +20,7 @@ integration *args:
 authority *args:
     cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live "$@" -- --ignored --exact --nocapture
 
-# Real normalizer bootstrap, backlog progress, replay, rebalance and poison.
+# Real normalizer first start, backlog progress, replay, rebalance, expiry and poison.
 kafka *args:
     cargo test --locked -p recount-normalizer --test kafka "$@" -- --ignored --test-threads=1 --nocapture
 

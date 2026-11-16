@@ -44,14 +44,6 @@ provision-ingestion:
     test -n "${RECOUNT_INGESTION_PASSWORD:?Set RECOUNT_INGESTION_PASSWORD}"
     docker compose exec -T --env RECOUNT_INGESTION_PASSWORD postgres psql --username=recount --dbname=recount < ingestion-role.sql
 
-# Explicit fresh group only, with consumers stopped and retained earliest zero.
-initialize-clickhouse-offsets:
-    docker compose run --rm --no-deps --env RECOUNT_CONFIRM_EMPTY_CLICKHOUSE_GROUP=recount-clickhouse --entrypoint /bin/bash kafka-topics /etc/recount/initialize-clickhouse-offsets.sh
-
-# Native bootstrap; pass normalizer flags before its bootstrap subcommand.
-initialize-normalizer-offsets *args:
-    RECOUNT_KAFKA_BOOTSTRAP="127.0.0.1:${RECOUNT_KAFKA_HOST_PORT:-19092}" cargo run --locked --manifest-path ../../Cargo.toml -p recount-normalizer -- "$@" bootstrap
-
 # Start/update packaged apps after local up selects the backends. No backend changes here.
 apps-up:
     bun --no-env-file data.ts start

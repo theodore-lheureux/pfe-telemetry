@@ -7,7 +7,7 @@
   <format_schema_path>/etc/clickhouse-server/format_schemas/</format_schema_path>
   <kafka>
     <consumer>
-      <auto_offset_reset>error</auto_offset_reset>
+      <auto_offset_reset>earliest</auto_offset_reset>
       <queued_min_messages>1</queued_min_messages>
       <fetch_wait_max_ms>100</fetch_wait_max_ms>
       <session_timeout_ms>10000</session_timeout_ms>

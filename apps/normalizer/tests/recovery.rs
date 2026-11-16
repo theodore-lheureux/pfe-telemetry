@@ -1,29 +1,11 @@
 use prost::Message;
-use recount_normalizer::{kafka::checkpoint, prepare};
+use recount_normalizer::prepare;
 use recount_telemetry_schema::{identity, wire::AnalyticalPoint};
 use recount_telemetry_validation::{Category, validate::Limits};
 
 #[allow(dead_code)]
 #[path = "../../../tests/fixtures/telemetry/cases.rs"]
 mod cases;
-
-#[test]
-fn initial_checkpoints_require_explicit_bootstrap_and_surface_retention_gaps() {
-    assert!(
-        checkpoint(None, 20, 30)
-            .unwrap_err()
-            .contains("checkpoint missing")
-    );
-    for saved in [19, 31] {
-        assert!(
-            checkpoint(Some(saved), 20, 30)
-                .unwrap_err()
-                .contains("retention_gap")
-        );
-    }
-    assert_eq!(checkpoint(Some(20), 20, 30), Ok(20));
-    assert_eq!(checkpoint(Some(30), 20, 30), Ok(30));
-}
 
 #[test]
 fn effective_body_limits_need_matching_configured_transport_headroom() {

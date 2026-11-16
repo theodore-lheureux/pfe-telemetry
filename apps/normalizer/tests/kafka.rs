@@ -7,7 +7,9 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord},
     util::Timeout,
 };
-use recount_telemetry_schema::{identity, wire::AnalyticalPoint};
+use recount_telemetry_schema::{identity, metrics::metric::Data, wire::AnalyticalPoint};
+#[cfg(unix)]
+use std::io::Read;
 use std::{
     collections::BTreeMap,
     path::PathBuf,
@@ -95,12 +97,6 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    let bootstrap = env.command().arg("bootstrap").output().unwrap();
-    assert!(
-        bootstrap.status.success(),
-        "fresh progress bootstrap failed: {}",
-        String::from_utf8_lossy(&bootstrap.stderr)
-    );
     let reader = consumer(&env.broker, &format!("{}.observer", env.group));
     let mut assignment = TopicPartitionList::new();
     for p in 0..3 {
@@ -117,13 +113,16 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
         .create()
         .unwrap();
     let mut expected = BTreeMap::new();
-    const PER_PARTITION: i64 = 4;
+    const PER_PARTITION: i64 = 40;
+    let mut raw_bytes = 0;
+    let outage = Instant::now();
     // Pre-fill all raw partitions, so buffered/prefetched inputs persist while
     // the same production process must repeatedly release its two active slots.
     for index in 0..PER_PARTITION * 3 {
         let mut raw = cases::raw();
         raw.batch.as_mut().unwrap().client_id = format!("progress-{index}");
         let body = raw.encode_to_vec();
+        raw_bytes += body.len();
         let key = identity::raw_routing_key(&raw).unwrap();
         for record in recount_normalizer::prepare(
             &body,
@@ -148,6 +147,28 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
             .map_err(|(error, _)| error)
             .expect("progress raw publication failed");
     }
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let outage_seconds = outage.elapsed().as_secs_f64();
+    for p in 0..3 {
+        let mut query = TopicPartitionList::new();
+        query.add_partition(&env.raw, p);
+        assert_eq!(
+            observer
+                .committed_offsets(query, Duration::from_secs(3))
+                .unwrap()
+                .find_partition(&env.raw, p)
+                .unwrap()
+                .offset(),
+            Offset::Invalid
+        );
+        assert_eq!(
+            observer
+                .fetch_watermarks(&env.raw, p, Duration::from_secs(3))
+                .unwrap(),
+            (0, PER_PARTITION),
+        );
+    }
+    let catchup = Instant::now();
     let process = env.start();
     let deadline = Instant::now() + Duration::from_secs(20);
     let query = || {
@@ -178,6 +199,7 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+    let catchup_seconds = catchup.elapsed().as_secs_f64();
     assert!(
         collect(&reader, expected.len(), "continuous backlog").await == expected,
         "normalized sample identities/projections differ"
@@ -192,11 +214,291 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
         );
     }
     eprintln!(
-        "progress_complete inputs={} logical_samples={}",
+        "catchup_complete inputs={} logical_samples={} raw_payload_bytes={raw_bytes} normalized_payload_bytes={} outage_seconds={outage_seconds:.3} catchup_seconds={catchup_seconds:.3} raw_bytes_per_second={:.0}",
         PER_PARTITION * 3,
-        expected.len()
+        expected.len(),
+        expected.values().map(Message::encoded_len).sum::<usize>(),
+        raw_bytes as f64 / catchup_seconds,
     );
     drop(process);
+}
+
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires explicit reused Kafka endpoint and fresh short-retention topic permission"]
+async fn natural_time_and_byte_expiry_warn_count_and_resume_the_suffix() {
+    assert_eq!(setting("RECOUNT_NORMALIZER_TEST_ALLOW_PUBLISH"), "1");
+    let namespace = setting("RECOUNT_NORMALIZER_TEST_NAMESPACE");
+    assert!(namespace.starts_with("recount."));
+    assert!(
+        namespace
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+    );
+    let broker = setting("RECOUNT_NORMALIZER_TEST_BROKER");
+    let admin: AdminClient<_> = ClientConfig::new()
+        .set("bootstrap.servers", &broker)
+        .create()
+        .unwrap();
+    let producer: FutureProducer = ClientConfig::new()
+        .set("bootstrap.servers", &broker)
+        .set("enable.idempotence", "true")
+        .set("acks", "all")
+        .create()
+        .unwrap();
+    for bytes in [false, true] {
+        let prefix = format!(
+            "{namespace}.expiry.{}.{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let env = Environment {
+            binary: env!("CARGO_BIN_EXE_recount-normalizer").into(),
+            broker: broker.clone(),
+            raw: format!("{prefix}.raw"),
+            normalized: format!("{prefix}.normalized"),
+            late: format!("{prefix}.late"),
+            group: format!("{prefix}.group"),
+        };
+        let results = admin
+            .create_topics(
+                &[
+                    NewTopic::new(&env.raw, 3, TopicReplication::Fixed(1))
+                        .set("max.message.bytes", "6291456")
+                        .set("retention.ms", if bytes { "21600000" } else { "1000" })
+                        .set(
+                            "retention.bytes",
+                            if bytes { "1048576" } else { "134217728" },
+                        )
+                        .set("segment.bytes", "1048576")
+                        .set("segment.ms", "1000"),
+                    NewTopic::new(&env.normalized, 3, TopicReplication::Fixed(1))
+                        .set("max.message.bytes", "2097152"),
+                    NewTopic::new(&env.late, 3, TopicReplication::Fixed(1))
+                        .set("max.message.bytes", "2097152"),
+                ],
+                &AdminOptions::new().request_timeout(Some(Duration::from_secs(5))),
+            )
+            .await
+            .unwrap();
+        assert!(results.iter().all(Result::is_ok), "{results:?}");
+        let observer = consumer(&env.broker, &env.group);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if [&env.raw, &env.normalized, &env.late].iter().all(|topic| {
+                (0..3).all(|p| {
+                    observer
+                        .fetch_watermarks(topic, p, Duration::from_secs(1))
+                        .is_ok_and(|v| v == (0, 0))
+                })
+            }) {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "owned topics not ready: {prefix}"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let mut seed = TopicPartitionList::new();
+        for p in 0..3 {
+            seed.add_partition_offset(&env.raw, p, Offset::Offset(0))
+                .unwrap();
+        }
+        observer.assign(&seed).unwrap();
+        observer.commit(&seed, CommitMode::Sync).unwrap();
+        let metrics = std::env::temp_dir().join(format!("{prefix}.prom"));
+        let mut paused = if bytes {
+            None
+        } else {
+            let process = Process(
+                env.command()
+                    .env("RECOUNT_NORMALIZER_METRICS_FILE", &metrics)
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            );
+            let deadline = Instant::now() + Duration::from_secs(20);
+            loop {
+                let groups = observer
+                    .fetch_group_list(Some(&env.group), Duration::from_secs(2))
+                    .unwrap();
+                if groups
+                    .groups()
+                    .iter()
+                    .any(|group| group.state() == "Stable" && group.members().len() == 1)
+                {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "owned worker did not join");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert!(
+                Command::new("kill")
+                    .args(["-STOP", &process.0.id().to_string()])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+            Some(process)
+        };
+        let mut raw = cases::raw();
+        if bytes {
+            // Wide single-point records exercise byte eviction without turning this
+            // expiry case into another throughput benchmark.
+            let mut request = cases::request();
+            request.resource_metrics.truncate(1);
+            let scope = &mut request.resource_metrics[0].scope_metrics[0];
+            scope.metrics.truncate(1);
+            let metric = &mut scope.metrics[0];
+            metric.description = "x".repeat(32768);
+            let Some(Data::Gauge(gauge)) = &mut metric.data else {
+                panic!("single-point gauge fixture");
+            };
+            gauge.data_points.truncate(1);
+            raw.otlp_request = request.encode_to_vec();
+            raw.bindings.truncate(1);
+        }
+        let body = raw.encode_to_vec();
+        let key = identity::raw_routing_key(&raw).unwrap();
+        let publish = || async {
+            producer
+                .send(
+                    FutureRecord::to(&env.raw)
+                        .partition(0)
+                        .key(&key)
+                        .payload(&body),
+                    Timeout::After(Duration::from_secs(1)),
+                )
+                .await
+                .unwrap();
+        };
+        publish().await;
+        tokio::time::sleep(Duration::from_millis(1250)).await;
+        let count = if bytes {
+            3 * 1048576 / body.len() + 10
+        } else {
+            1
+        };
+        for _ in 0..count {
+            publish().await;
+        }
+        let deadline = Instant::now() + Duration::from_secs(100);
+        let low = loop {
+            let (low, _) = observer
+                .fetch_watermarks(&env.raw, 0, Duration::from_secs(3))
+                .unwrap();
+            if low > 0 {
+                break low;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "owned prefix did not expire: {prefix}"
+            );
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        };
+        publish().await;
+        let high = observer
+            .fetch_watermarks(&env.raw, 0, Duration::from_secs(3))
+            .unwrap()
+            .1;
+        let reader = consumer(&env.broker, &format!("{}.observer", env.group));
+        let mut outputs = TopicPartitionList::new();
+        for p in 0..3 {
+            outputs
+                .add_partition_offset(&env.late, p, Offset::Offset(0))
+                .unwrap();
+        }
+        reader.assign(&outputs).unwrap();
+        if let Some(process) = &mut paused {
+            assert!(
+                Command::new("kill")
+                    .args(["-CONT", &process.0.id().to_string()])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        } else {
+            paused = Some(Process(
+                env.command()
+                    .env("RECOUNT_NORMALIZER_METRICS_FILE", &metrics)
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            ));
+        }
+        committed(&observer, &env.raw, 0, high).await;
+        let expected: BTreeMap<_, _> = recount_normalizer::prepare(
+            &body,
+            Some(&key),
+            3,
+            recount_telemetry_validation::validate::Limits::default(),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|record| {
+            let row = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
+            (row.sample_id.clone(), row)
+        })
+        .collect();
+        assert_eq!(
+            collect(&reader, expected.len(), "retained suffix").await,
+            expected
+        );
+        let metric = std::fs::read_to_string(&metrics).unwrap();
+        let resets: u64 = metric
+            .lines()
+            .find_map(|line| line.strip_prefix("recount_normalizer_retention_gaps_total "))
+            .unwrap()
+            .parse()
+            .unwrap();
+        let process = paused.as_mut().unwrap();
+        assert!(
+            process.0.try_wait().unwrap().is_none(),
+            "retention stopped the worker"
+        );
+        process.0.kill().unwrap();
+        process.0.wait().unwrap();
+        let mut warning = String::new();
+        process
+            .0
+            .stderr
+            .take()
+            .unwrap()
+            .read_to_string(&mut warning)
+            .unwrap();
+        assert!(resets > 0, "{metric}\n{warning}");
+        assert!(
+            warning.contains("event=retention_gap action=resume_earliest")
+                && warning.contains(&env.raw),
+            "{warning}"
+        );
+        for p in 0..3 {
+            assert_eq!(
+                observer
+                    .fetch_watermarks(&env.normalized, p, Duration::from_secs(3))
+                    .unwrap(),
+                (0, 0)
+            );
+        }
+        std::fs::remove_file(metrics).unwrap();
+        eprintln!(
+            "expiry_recovered cause={} earliest={low} committed={high} resets={resets} topic={}",
+            if bytes { "bytes" } else { "time" },
+            env.raw
+        );
+        let results = admin
+            .delete_topics(
+                &[&env.raw, &env.normalized, &env.late],
+                &AdminOptions::new(),
+            )
+            .await
+            .unwrap();
+        assert!(results.iter().all(Result::is_ok), "{results:?}");
+    }
 }
 
 fn setting(name: &str) -> String {
@@ -265,8 +567,9 @@ async fn collect(
                 Some(message.partition() as u32)
             );
             rows.insert(point.sample_id.clone(), point);
+        } else {
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
     }
     assert_eq!(
         rows.len(),
@@ -284,12 +587,13 @@ async fn committed(observer: &BaseConsumer, topic: &str, partition: i32, next: i
         let offsets = observer
             .committed_offsets(query, Duration::from_secs(1))
             .unwrap();
-        if offsets.find_partition(topic, partition).unwrap().offset() == Offset::Offset(next) {
+        let actual = offsets.find_partition(topic, partition).unwrap().offset();
+        if actual == Offset::Offset(next) {
             return;
         }
         assert!(
             Instant::now() < deadline,
-            "raw completion checkpoint not confirmed"
+            "raw completion checkpoint not confirmed: expected={next} actual={actual:?}"
         );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
@@ -299,7 +603,7 @@ async fn committed(observer: &BaseConsumer, topic: &str, partition: i32, next: i
 /// topics. Does not create/delete topics, groups, tables, or broker containers.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires explicit reused Kafka endpoint and fresh isolated topics/group"]
-async fn real_kafka_bootstrap_replay_rebalance_and_global_handler_poison() {
+async fn real_kafka_first_start_replay_rebalance_and_global_handler_poison() {
     assert_eq!(setting("RECOUNT_NORMALIZER_TEST_ALLOW_PUBLISH"), "1");
     let env = Environment {
         binary: env!("CARGO_BIN_EXE_recount-normalizer").into(),
@@ -332,29 +636,9 @@ async fn real_kafka_bootstrap_replay_rebalance_and_global_handler_poison() {
     }
     let reader = consumer(&env.broker, &format!("{}.observer", env.group));
     reader.assign(&assignment).unwrap();
-    // Missing checkpoints and a wrong partition count must not become ready.
-    let output = env.command().output().unwrap();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("checkpoint missing"));
     assert!(
         !env.command()
             .env("RECOUNT_NORMALIZED_PARTITIONS", "2")
-            .output()
-            .unwrap()
-            .status
-            .success()
-    );
-    assert!(
-        env.command()
-            .arg("bootstrap")
-            .output()
-            .unwrap()
-            .status
-            .success()
-    );
-    assert!(
-        !env.command()
-            .arg("bootstrap")
             .output()
             .unwrap()
             .status
@@ -536,25 +820,4 @@ async fn real_kafka_bootstrap_replay_rebalance_and_global_handler_poison() {
     );
     drop(second);
     drop(process);
-
-    // An unavailable saved checkpoint must fail visibly, not reset. This is a
-    // separate synthetic group; no topic retention or existing group is changed.
-    let gap_group = format!("{}.gap", env.group);
-    let gap = consumer(&env.broker, &gap_group);
-    let mut saved = TopicPartitionList::new();
-    for partition in 0..3 {
-        let next = if partition == 0 { 1000 } else { 0 };
-        saved
-            .add_partition_offset(&env.raw, partition, Offset::Offset(next))
-            .unwrap();
-    }
-    gap.assign(&saved).unwrap();
-    gap.commit(&saved, CommitMode::Sync).unwrap();
-    let output = env
-        .command()
-        .env("RECOUNT_NORMALIZER_GROUP", &gap_group)
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    assert!(String::from_utf8_lossy(&output.stderr).contains("retention_gap"));
 }
