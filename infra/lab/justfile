@@ -38,6 +38,13 @@ provision *nodes:
 collectors *args:
     uv run --project ../.. --locked ansible-playbook ansible/collector.yml "$@"
 
+# Opt-in scheduler setup; does not provision collectors or restart monitoring.
+slurm *args:
+    uv run --project ../.. --locked ansible-playbook ansible/slurm.yml "$@"
+
+slurm-verify *args:
+    uv run --project ../.. --locked ansible-playbook ansible/slurm-verify.yml "$@"
+
 # Run cpu, memory, or io on all nodes or an inventory limit.
 workload kind='cpu' seconds='10' nodes='all' *args:
     uv run --project ../.. --locked ansible-playbook ansible/workload.yml --limit "$3" --extra-vars "recount_workload=$1" --extra-vars "recount_duration=$2" "${@:4}"

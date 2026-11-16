@@ -1,0 +1,19 @@
+ClusterName=recount-lab
+SlurmctldHost={{ hostvars['node1'].recount_hostname }}({{ hostvars['node1'].recount_private_ip }})
+AuthType=auth/munge
+SlurmUser=slurm
+StateSaveLocation=/var/lib/slurm/slurmctld
+SlurmdSpoolDir=/var/lib/slurm/slurmd
+ProctrackType=proctrack/cgroup
+TaskPlugin=task/cgroup
+SelectType=select/cons_tres
+SelectTypeParameters=CR_CPU_Memory
+ReturnToService=2
+SlurmctldTimeout=120
+SlurmdTimeout=120
+DefMemPerCPU=128
+MaxMemPerCPU=256
+{% for node in groups['compute'] | sort %}
+NodeName={{ node }} NodeHostname={{ hostvars[node].recount_hostname }} NodeAddr={{ hostvars[node].recount_private_ip }} CPUs=1 RealMemory={{ recount_slurm_memory_mb }} State=UNKNOWN
+{% endfor %}
+PartitionName=lab Nodes=node[1-2] Default=YES MaxTime=00:05:00 State=UP

@@ -1,0 +1,9 @@
+---
+- name: Configure the two-node Slurm lab
+  hosts: compute
+  become: true
+  any_errors_fatal: true
+  gather_facts: true
+  gather_subset: ["!all", min, hardware]
+  roles:
+    - slurm

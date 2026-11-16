@@ -59,7 +59,10 @@ If startup fails partway through, inspect `status` and the native error output, 
 ansible/
   ansible.cfg
   group_vars/compute.yml
+  roles/slurm/
   site.yml
+  slurm.yml
+  slurm-verify.yml
   tasks/verify.yml
   workload.yml
   files/sequential-write.fio
@@ -96,7 +99,7 @@ The local `.env` also controls `RECOUNT_INGESTION_PORT`, `RECOUNT_LAB_PROMETHEUS
 
 The two private addresses use an internal VirtualBox network, with no bridge to the LAN. The host reaches the guests through Vagrant SSH. Each guest also has a NAT interface; `nat-localhostreachable` lets `10.0.2.2` reach host loopback services. The repository and host home are not mounted in the guests.
 
-VM names use the `recount-test` prefix. The internal network and monitoring Compose project are named `recount-test`. Use one active checkout per host. The ingestion API binds to host loopback and accepts authenticated OTLP over local plaintext gRPC. The named gRPC health service checks connectivity, not telemetry visibility. Enroll collectors separately with a project credential and a Linux root grant.
+VM names default to `recount-lab-node1` and `recount-lab-node2`. The internal network and monitoring Compose project default to `recount-lab`. Use one active checkout per host. The ingestion API binds to host loopback and accepts authenticated OTLP over local plaintext gRPC. The named gRPC health service checks connectivity, not telemetry visibility. Enroll collectors separately with a project credential and a Linux root grant.
 
 ## VM interfaces and monitoring
 
@@ -142,6 +145,56 @@ Grafana shows the resulting node-level resource usage. An enrolled Recount colle
 
 `just dev` starts the web application independently of the test environment.
 
+## Two-node Slurm lab
+
+Slurm is opt-in and uses the existing `node1` and `node2` guests, not shared-kernel containers. Its playbook does not install collectors, enroll nodes, modify their retained queues, or manage Compose services. This verifies scheduler placement and user delegation only; execution tracking requires separate collector and launcher work.
+
+### Setup
+
+1. Follow [Existing local state](#existing-local-state) before any lifecycle or provisioning command. Export `VAGRANT_DOTFILE_PATH` to the existing metadata directory in the shell when working from a linked worktree. Match both Vagrant IDs with VirtualBox UUIDs and names, the inventory with local settings, and guest hostnames and retained collector bindings before provisioning.
+2. For saved guests, use `just lab vagrant resume --no-provision`. For already-running guests, skip resume. Check actual hostnames with `just lab vagrant ssh node1 -c hostname` and the equivalent for `node2`. Do not use `up`, `reload`, port changes, or new metadata as a workaround for a resume failure; inspect the error first.
+3. Run `just lab slurm` against both guests without a host limit. Reapply the same command for configuration changes. `just lab slurm --check --diff` previews changes on already-provisioned guests.
+
+The `slurm` role pins Ubuntu 26.04's [Slurm packages to `25.11.2-1ubuntu2`](https://packages.ubuntu.com/resolute/slurm-wlm) through exact package versions and an APT preference. It installs `slurmctld` on `node1`, `slurmd` and clients on both, and Munge authentication. The controller's package-generated Munge key is retained and shared privately with `node2`; subsequent runs reuse it. Controller and compute state stay under `/var/lib/slurm`, with no reset on provisioning.
+
+Slurm node names are `node1` and `node2`; their `NodeHostname`, `NodeAddr` and controller address come from the existing inventory. No guest hostname, address, SSH port, VM UUID or key belongs in shared configuration. The default partition is `lab`, with one schedulable CPU and 512 MiB per guest, 128 MiB per CPU by default, a 256 MiB per CPU request limit, and a five-minute time limit. The remaining memory supports the operating system, monitoring and any existing collector. `recount_slurm_memory_mb` can adjust the schedulable memory within the actual guest capacity.
+
+`task/cgroup` and `proctrack/cgroup` use `CgroupPlugin=cgroup/v2`, CPU and RAM constraints, and no additional swap allowance. Slurm uses systemd's delegated step scope; it does not bypass systemd or alter the boot configuration. The test user is the inventory's SSH user. Provisioning enables lingering so its systemd user manager and delegated subtree remain available after logout.
+
+### Verification
+
+```sh
+just lab slurm-verify
+just lab vagrant ssh node1 -c 'sinfo -N -l; squeue'
+```
+
+The verification playbook runs `srun --nodes=2 --ntasks=2 --ntasks-per-node=1 --mpi=none` as the test user. Each task prints its Slurm node, guest hostname, shared job ID, UID, live `/proc/self/cgroup` path and directory ownership. The command fails unless both nodes participate and each task is under `job_$SLURM_JOB_ID/step_0/user/task_$SLURM_PROCID`. It also checks the installed version, `Delegate=yes`, writable user-manager cgroup files, and the user's ability to create a child cgroup and place a process in it through a transient delegated user service. The probe removes its own empty child after completion.
+
+For a longer manual inspection:
+
+```sh
+just lab vagrant ssh node1 -c 'srun -N2 -n2 --ntasks-per-node=1 --mpi=none --label sh -c '\''echo "job=$SLURM_JOB_ID host=$(hostname) pid=$$"; cat /proc/self/cgroup; sleep 60'\'''
+```
+
+While that job runs, inspect `sudo systemd-cgls /system.slice` on each guest. Slurm removes the job cgroups when the job ends; save verification output under ignored `.state/results` if it is needed later. Its delegated `slurmstepd.scope` and `slurmstepd infinity` helper remain after jobs finish or `slurmd` stops.
+
+Slurm 25.11 uses a systemd cgroup v2 hierarchy shaped like `/system.slice/<optional-node-prefix>slurmstepd.scope/job_<job-id>/step_0/user/task_<rank>`, not the cgroup v1 example `/slurm/uid_<uid>/job_<job-id>`. A scheduler adapter should capture the numeric ID from the `job_<job-id>` component and accept descendant steps/tasks under the observed scope. Read the UID from the process, not from this path. Match the actual verification output before enabling a collector scheduler pattern; this setup installs no adapter.
+
+The user-manager subtree is `/user.slice/user-<uid>.slice/user@<uid>.service` relative to `/sys/fs/cgroup`. Its directory, `cgroup.procs` and `cgroup.subtree_control` must be writable by the test user. Use a delegated child unit (`systemd-run --user --property=Delegate=yes …`) or the launcher's delegated subtree rather than moving SSH-session processes into the manager's root. This subtree is separate from Slurm's root-managed job hierarchy.
+
+### Teardown without deleting state
+
+Let jobs finish, and inspect `squeue` before stopping anything. To pause the entire lab while retaining running services and disks, use `just lab vagrant suspend`; monitoring and the application Compose stack are left untouched. Resume later with `just lab vagrant resume --no-provision`.
+
+To stop only Slurm, run these after all jobs finish:
+
+```sh
+just lab vagrant ssh node2 -c 'sudo systemctl stop slurmd'
+just lab vagrant ssh node1 -c 'sudo systemctl stop slurmd slurmctld'
+```
+
+`just lab slurm` starts the services again without clearing their state. Munge and user lingering remain configured; do not disable a user's manager while other sessions or workloads use it. Do not destroy VMs, remove Slurm state, rotate retained keys, delete collector queues/results, or remove Docker volumes as teardown.
+
 ## References
 
 - [Vagrant setup and architecture selection](https://developer.hashicorp.com/vagrant/tutorials/get-started/setup-project)
@@ -158,3 +211,4 @@ Grafana shows the resulting node-level resource usage. An enrolled Recount colle
 - [Ansible asynchronous execution](https://docs.ansible.com/projects/ansible/latest/playbook_guide/playbooks_async.html)
 - [stress-ng](https://github.com/ColinIanKing/stress-ng)
 - [fio job files and options](https://fio.readthedocs.io/en/latest/fio_doc.html)
+- [Slurm cgroup v2 and systemd delegation](https://slurm.schedmd.com/cgroup_v2.html)

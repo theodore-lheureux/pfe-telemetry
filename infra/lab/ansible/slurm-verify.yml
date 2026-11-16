@@ -1,0 +1,95 @@
+---
+- name: Verify Slurm placement and user cgroup delegation
+  hosts: compute
+  any_errors_fatal: true
+  gather_facts: false
+  vars_files:
+    - roles/slurm/defaults/main.yml
+  tasks:
+    - name: Require both lab nodes
+      ansible.builtin.assert:
+        that: ansible_play_hosts_all | sort == ['node1', 'node2']
+
+    - name: Check Slurm's pinned version
+      ansible.builtin.command:
+        argv: [dpkg-query, --show, "--showformat=${Version}", slurmd]
+      register: recount_slurm_installed
+      changed_when: false
+      failed_when: recount_slurm_installed.stdout != recount_slurm_version
+
+    - name: Read the test user UID
+      ansible.builtin.command: id -u
+      register: recount_slurm_verify_uid
+      changed_when: false
+
+    - name: Inspect the delegated user manager
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - show
+          - "user@{{ recount_slurm_verify_uid.stdout }}.service"
+          - --property=Delegate
+          - --property=ControlGroup
+      register: recount_slurm_delegation
+      changed_when: false
+      failed_when: "'Delegate=yes' not in recount_slurm_delegation.stdout_lines"
+
+    - name: Prove the test user can create and populate a delegated child
+      ansible.builtin.shell: |
+        set -eu
+        export XDG_RUNTIME_DIR=/run/user/$(id -u)
+        systemd-run --user --quiet --wait --pipe --expand-environment=no --property=Delegate=yes /bin/sh -eu -c '
+          path=$(cut -d: -f3 /proc/self/cgroup)
+          group=/sys/fs/cgroup$path/recount-lab-probe
+          mkdir "$group"
+          trap '\''rmdir "$group"'\'' EXIT
+          sh -eu -c '\''echo $$ > "$1/cgroup.procs"; cat /proc/self/cgroup'\'' sh "$group"
+        '
+        group=/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service
+        stat -c '%U:%G %u:%g %a %n' "$group" "$group/cgroup.procs" "$group/cgroup.subtree_control"
+        test -w "$group/cgroup.procs"
+        test -w "$group/cgroup.subtree_control"
+      register: recount_slurm_user_probe
+      changed_when: false
+
+    - name: Run one task on each node and inspect its live cgroup
+      ansible.builtin.command:
+        argv:
+          - srun
+          - --nodes=2
+          - --ntasks=2
+          - --ntasks-per-node=1
+          - --time=00:01:00
+          - --immediate=60
+          - --mpi=none
+          - --label
+          - /bin/sh
+          - -eu
+          - -c
+          - |
+            path=$(cut -d: -f3 /proc/self/cgroup)
+            case "$path" in
+              /system.slice/*slurmstepd.scope/job_"$SLURM_JOB_ID"/step_0/user/task_"$SLURM_PROCID") ;;
+              *) echo "Unexpected Slurm cgroup: $path" >&2; exit 1 ;;
+            esac
+            printf 'node=%s host=%s job=%s uid=%s path=%s\n' "$SLURMD_NODENAME" "$(hostname)" "$SLURM_JOB_ID" "$(id -u)" "$path"
+            stat -c '%U:%G %u:%g %a %n' "/sys/fs/cgroup$path"
+      register: recount_slurm_job_probe
+      changed_when: false
+      when: inventory_hostname == 'node1'
+
+    - name: Require a result from each Slurm node
+      ansible.builtin.assert:
+        that:
+          - "'node=node1 ' in recount_slurm_job_probe.stdout"
+          - "'node=node2 ' in recount_slurm_job_probe.stdout"
+      when: inventory_hostname == 'node1'
+
+    - name: Show the observed user delegation
+      ansible.builtin.debug:
+        msg: "{{ recount_slurm_delegation.stdout_lines + recount_slurm_user_probe.stdout_lines }}"
+
+    - name: Show the observed job placement
+      ansible.builtin.debug:
+        var: recount_slurm_job_probe.stdout_lines
+      when: inventory_hostname == 'node1'

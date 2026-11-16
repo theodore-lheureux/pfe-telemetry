@@ -1,0 +1,159 @@
+---
+- name: Require both existing Ubuntu lab nodes
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == 'Ubuntu'
+      - ansible_facts.distribution_version == '26.04'
+      - ansible_play_hosts_all | sort == ['node1', 'node2']
+      - ansible_facts.hostname == recount_hostname
+      - ansible_facts.processor_vcpus | int >= 1
+      - ansible_facts.memtotal_mb | int > recount_slurm_memory_mb | int
+    fail_msg: Run against both identified lab guests without a host limit.
+
+- name: Require unified cgroup v2
+  ansible.builtin.stat:
+    path: /sys/fs/cgroup/cgroup.controllers
+  register: recount_slurm_cgroup
+
+- name: Check cgroup v2 availability
+  ansible.builtin.assert:
+    that: recount_slurm_cgroup.stat.exists
+
+- name: Pin the distribution Slurm packages
+  ansible.builtin.copy:
+    dest: /etc/apt/preferences.d/recount-slurm
+    content: |
+      Package: slurm-* slurmd slurmctld libslurm*
+      Pin: version {{ recount_slurm_version }}
+      Pin-Priority: 1000
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install Munge and the pinned compute packages
+  ansible.builtin.apt:
+    name:
+      - munge
+      - "slurm-client={{ recount_slurm_version }}"
+      - "slurmd={{ recount_slurm_version }}"
+      - "slurm-wlm-basic-plugins={{ recount_slurm_version }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
+  notify: Restart lab Slurm
+
+- name: Install the pinned controller on node1
+  ansible.builtin.apt:
+    name: "slurmctld={{ recount_slurm_version }}"
+    state: present
+    policy_rc_d: 101
+  when: inventory_hostname == 'node1'
+  notify: Restart lab Slurm
+
+- name: Read the controller's existing Munge key
+  ansible.builtin.slurp:
+    src: /etc/munge/munge.key
+  register: recount_slurm_munge_key
+  when: inventory_hostname == 'node1'
+  no_log: true
+
+- name: Read the compute node's Munge key
+  ansible.builtin.slurp:
+    src: /etc/munge/munge.key
+  register: recount_slurm_compute_key
+  when: inventory_hostname == 'node2'
+  no_log: true
+
+- name: Share the controller's binary Munge key with node2
+  ansible.builtin.shell:
+    cmd: base64 --decode > /etc/munge/munge.key
+    stdin: "{{ hostvars['node1'].recount_slurm_munge_key.content }}"
+  when:
+    - inventory_hostname == 'node2'
+    - recount_slurm_compute_key.content != hostvars['node1'].recount_slurm_munge_key.content
+  no_log: true
+  changed_when: true
+  notify: Restart lab Munge
+
+- name: Protect the Munge key
+  ansible.builtin.file:
+    path: /etc/munge/munge.key
+    owner: munge
+    group: munge
+    mode: "0400"
+
+- name: Create Slurm state directories without clearing existing state
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: slurm
+    group: slurm
+    mode: "0755"
+  loop:
+    - /var/lib/slurm/slurmctld
+    - /var/lib/slurm/slurmd
+
+- name: Install the shared Slurm configuration
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/slurm/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - slurm.conf
+    - cgroup.conf
+  notify: Restart lab Slurm
+
+- name: Read the test user UID
+  ansible.builtin.command:
+    argv: [id, -u, "{{ ansible_user }}"]
+  register: recount_slurm_user_uid
+  changed_when: false
+  check_mode: false
+
+- name: Read the test user's lingering setting
+  ansible.builtin.command:
+    argv:
+      - loginctl
+      - show-user
+      - "{{ ansible_user }}"
+      - --property=Linger
+      - --value
+  register: recount_slurm_linger
+  changed_when: false
+  check_mode: false
+
+- name: Keep the test user's delegated manager available after logout
+  ansible.builtin.command:
+    argv: [loginctl, enable-linger, "{{ ansible_user }}"]
+  when: recount_slurm_linger.stdout != 'yes'
+  changed_when: true
+
+- name: Start the test user manager
+  ansible.builtin.systemd_service:
+    name: "user@{{ recount_slurm_user_uid.stdout }}.service"
+    state: started
+
+- name: Enable Munge
+  ansible.builtin.systemd_service:
+    name: munge
+    enabled: true
+    state: started
+
+- name: Apply changed authentication and Slurm configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the controller on node1
+  ansible.builtin.systemd_service:
+    name: slurmctld
+    enabled: true
+    state: started
+  when: inventory_hostname == 'node1'
+
+- name: Enable compute daemons on both nodes
+  ansible.builtin.systemd_service:
+    name: slurmd
+    enabled: true
+    state: started
