@@ -15,7 +15,7 @@ cargo run --locked -p recount-normalizer -- --max-points 8192 validate
 
 Match structural limits to the ingestion API. Body limits need at least 64 KiB of spare space within their respective broker caps. An `on_startup` hook verifies exact topic partition IDs/counts and effective `max.message.bytes` before the framework opens its subscription or publisher. These are bounded initial snapshots, not per-assignment or periodic checks. Topics are never created automatically. Incompatible disposable local topics are explicitly recreated, not migrated or reconciled in place.
 
-Kafka permissions must allow raw consumption, normalized production, group checkpoint operations and topic metadata/DescribeConfigs reads. The current transport is the plaintext development network; production TLS/SASL configuration is not implemented. These defaults are provisional safety settings, not fleet capacity or recovery guarantees.
+Kafka permissions must allow raw consumption, normalized production, group checkpoint operations and topic metadata/DescribeConfigs reads. Kafka traffic is plaintext on a single host's private container network, including the hosted deployment; TLS/SASL configuration is not implemented. These defaults are provisional safety settings, not fleet capacity or recovery guarantees.
 
 ## First start and recovery
 

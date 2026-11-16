@@ -20,15 +20,19 @@ const config: AuthConfig = {
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let sentCodes: { email: string; code: string; locale: string }[];
 let instances: ReturnType<typeof createAuth>[];
-function auth(allowSignUp = true) {
-	const instance = createAuth({ ...config, allowSignUp }, database.db, {
-		sendSignInCode: async (email, code, locale) => {
-			sentCodes.push({ email, code, locale });
+function auth(allowSignUp = true, overrides: Partial<AuthConfig> = {}) {
+	const instance = createAuth(
+		{ ...config, allowSignUp, ...overrides },
+		database.db,
+		{
+			sendSignInCode: async (email, code, locale) => {
+				sentCodes.push({ email, code, locale });
+			},
+			sendOrganizationInvitation: async () => {
+				throw new Error("Unexpected invitation email");
+			},
 		},
-		sendOrganizationInvitation: async () => {
-			throw new Error("Unexpected invitation email");
-		},
-	});
+	);
 	instances.push(instance);
 	return instance;
 }
@@ -130,6 +134,25 @@ test("email code creates one verified session, stores a hash and cannot be repla
 			headers: new Headers({ cookie: cookie(success) }),
 		}),
 	).toBeNull();
+});
+test("HTTPS origins issue only Secure, Secure-prefixed session cookies", async () => {
+	const instance = auth(true, {
+		origin: "https://app.recount.test",
+		rpID: "app.recount.test",
+	});
+	const response = await trustedCodeSignIn(
+		instance,
+		"secure@example.invalid",
+		(email) =>
+			sentCodes.filter((message) => message.email === email).at(-1)?.code,
+	);
+	const cookies = response.headers.getSetCookie();
+	const session = cookies.find((value) =>
+		value.startsWith("__Secure-better-auth.session_token="),
+	);
+	expect(session).toMatch(/;\s*HttpOnly/i);
+	expect(session).toMatch(/;\s*SameSite=Lax/i);
+	for (const value of cookies) expect(value).toMatch(/;\s*Secure(;|$)/i);
 });
 test("email code rotation, expiry and attempt limit are enforced", async () => {
 	const instance = auth();

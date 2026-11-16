@@ -35,7 +35,7 @@ Point the collector at the Recount web app, which enrolls the machine, and at th
 export RECOUNT_COLLECTOR_ENROLLMENT_URL=https://your-recount-app.example
 export RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=~/.config/recount/enrollment.key
 export RECOUNT_COLLECTOR_STATE_DIRECTORY=~/.local/state/recount
-export OTEL_EXPORTER_OTLP_ENDPOINT=https://ca.ingest.recount.cloud
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://ingest.recount.cloud
 recount-collector
 ```
 

@@ -54,6 +54,27 @@ A revoked node cannot obtain new tokens. Its collector keeps queued batches unti
 
 To rotate the signing key, add the new public key to the ingestion service's comma-separated list, switch the web application to the new seed, and remove the old public key after one token lifetime has passed.
 
+## Credentials and privileges
+
+No credential is committed to the repository. Each is generated where it is used or delivered through a private file.
+
+| Credential                                | Held by                                                | Provisioning                                                                                                                                                          | Grants                                                                                                         |
+| ----------------------------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Enrollment key                            | Collector machines, in a private file until enrollment | Created by a project admin and shown once; installed by configuration management                                                                                      | Enrolling machines into one project until expiry, revocation or the node limit; never telemetry submission     |
+| Node private key (`node.key`)             | One collector, mode `0600` in a `0700` state directory | Generated on the machine at first start; never sent to the server                                                                                                     | Requesting access tokens for that node                                                                         |
+| Node access token                         | Collector memory                                       | Issued by the web application, valid for one hour                                                                                                                     | Submitting telemetry for the node's host root, adapter and local kinds                                         |
+| `RECOUNT_COLLECTOR_SIGNING_KEY`           | Web application                                        | Generated per deployment; the hosted bootstrap writes it once to root-owned, mode-`0600` `/etc/recount/ingestion.env` ([OCI guide](../infra/oci-ingestion/README.md)) | Signing access tokens for every project in the deployment                                                      |
+| `RECOUNT_INGESTION_COLLECTOR_PUBLIC_KEYS` | Ingestion service                                      | Derived from the signing key                                                                                                                                          | Verification only                                                                                              |
+| `recount_ingestion` database role         | Ingestion service                                      | [`infra/local/ingestion-role.sql`](../infra/local/ingestion-role.sql) through `just local provision-ingestion` or the hosted bootstrap                                | `SELECT (id, project_id, organization_id, revoked_at)` on `ingestion.collector_node`, at most four connections |
+
+Enrolled collectors run as root to read host processes and their execution labels; their optional participant configuration must be root-owned.
+
+## Transport security
+
+Collectors verify the ingestion endpoint's certificate chain and hostname for `https://` endpoints, using system and WebPKI trust roots. Verification cannot be disabled, and an `https://` endpoint never falls back to plaintext. A private certificate authority is trusted through the standard `SSL_CERT_FILE` or `SSL_CERT_DIR` variables, which replace the system store. `http://` endpoints are an explicit choice for loopback or a trusted lab network.
+
+The ingestion service serves plaintext gRPC and relies on a TLS-terminating proxy on the same host. The hosted deployment uses Caddy with ACME certificates for `ingest.recount.cloud` and `app.recount.cloud`; see the [OCI layout](../infra/oci-ingestion/layout.md#network-and-tls). Browser sessions use `Secure` cookies whenever `BETTER_AUTH_URL` is HTTPS, which the web application requires outside localhost.
+
 ## Management
 
 **Project settings → Collectors** has two sections. Only effective project admins can view or change them.
@@ -72,12 +93,12 @@ To rotate the signing key, add the new public key to the ingestion service's com
 
 ## Alternatives considered
 
-| Option                                              | Why not chosen                                                                                                                                                                                  |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Per-node credentials created by an administrator    | Manual work per node and one authority query per submission                                                                                                                                     |
-| One shared fleet token for telemetry                | A leaked token exposes the whole fleet; no per-node revocation or identity                                                                                                                      |
-| Mutual TLS with a per-project certificate authority | Strongest transport binding, but requires certificate issuance, renewal and TLS through proxies; the collector currently supports only plaintext endpoints. Node key pairs leave this path open |
-| Long-lived per-node tokens issued at enrollment     | Revocation needs a per-submission lookup again                                                                                                                                                  |
+| Option                                              | Why not chosen                                                                                                                                                                              |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Per-node credentials created by an administrator    | Manual work per node and one authority query per submission                                                                                                                                 |
+| One shared fleet token for telemetry                | A leaked token exposes the whole fleet; no per-node revocation or identity                                                                                                                  |
+| Mutual TLS with a per-project certificate authority | Strongest transport binding, but requires per-node certificate issuance and renewal, and client-certificate forwarding or TLS passthrough at the proxy. Node key pairs leave this path open |
+| Long-lived per-node tokens issued at enrollment     | Revocation needs a per-submission lookup again                                                                                                                                              |
 
 ## Consequences
 

@@ -152,8 +152,9 @@ through ACME TLS-ALPN-01 on **443 only**; HTTP challenge and redirects are
 disabled, so there is no port-80 rule. The root manages only those two DNS-only
 A records in the existing `recount.cloud` zone. The apex and landing Worker
 remain unchanged. Verify DNS resolution and certificate issuance before activation.
-The proxy replaces untrusted forwarding headers and streams SSE without
-buffering. Verify HTTP/2 collector health/acceptance, passkeys, client-IP
+The proxy replaces untrusted forwarding headers, streams SSE without
+buffering and sends a one-year `Strict-Transport-Security` header for the web
+application. Verify HTTP/2 collector health/acceptance, passkeys, client-IP
 handling and SSE through the real proxy before admitting users.
 
 An existing proxy/tunnel may be preferable after inspection. Reuse it only

@@ -56,7 +56,7 @@ An enrolled root grants reporting within its namespace and explicitly allowed ad
 
 Private application reads independently authorize project access through Better Auth's canonical memberships. Route context and browser guards are not authorization boundaries. Keep ingestion's read-only authority role separate from the application's database role and ClickHouse query credential. See [collector enrollment](collector-enrollment.md) and [application access](application-access.md).
 
-The isolated development network uses plaintext OTLP/Kafka; production transport security is not supplied by that isolation. Do not log tokens or payloads. The Linux collector excludes arguments, environment variables, executable paths, application files and process memory. Retention/access policies apply to pending buffers, retained raw records and analytical projections alike.
+Collectors and browsers reach hosted services over HTTPS through a TLS-terminating proxy, and collectors verify its certificate and hostname. Behind the proxy, OTLP, Kafka and ClickHouse use plaintext on one host's loopback or private container networks, as does the isolated development network. Kafka and ClickHouse TLS are not implemented, so services cannot be split across hosts without adding it. Do not log tokens or payloads. The Linux collector excludes arguments, environment variables, executable paths, application files and process memory. Retention/access policies apply to pending buffers, retained raw records and analytical projections alike.
 
 ## Measurements and validation
 

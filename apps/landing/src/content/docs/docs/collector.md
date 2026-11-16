@@ -27,6 +27,8 @@ Settings are read once at startup. Command-line flags override environment varia
 
 Changing any setting requires a restart.
 
+Use an `https://` ingestion address outside a local test network. The collector checks the server's certificate and name and never falls back to an unencrypted connection. If your self-hosted address uses a private certificate authority, set `SSL_CERT_FILE` to a file that contains it.
+
 ## What it collects
 
 - **Node:** CPU time, total and available memory, disk I/O.
