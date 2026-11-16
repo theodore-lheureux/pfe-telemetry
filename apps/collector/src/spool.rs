@@ -17,6 +17,9 @@ use uuid::Uuid;
 
 use crate::{LossReason, LossTracker};
 
+#[cfg(test)]
+mod ownership_tests;
+
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 pub const MAX_REQUEST_BYTES: usize = 1024 * 1024;
 
@@ -157,7 +160,7 @@ impl Spool {
         .await?
     }
 
-    fn connection(&mut self) -> &mut SqliteConnection {
+    pub(crate) fn connection(&mut self) -> &mut SqliteConnection {
         self.connection.as_mut().expect("Queue is open")
     }
 
@@ -333,8 +336,11 @@ impl Spool {
         // Queue queries remain async; cleanup must outlive its awaiting caller.
         std::thread::spawn(move || {
             let result = runtime.block_on(connection.close());
+            // Fork can briefly duplicate this descriptor before CLOEXEC takes
+            // effect. Release the shared lock explicitly after database shutdown.
+            let unlocked = lock.as_ref().map(File::unlock).transpose();
             drop(lock);
-            let _ = closed.send(result);
+            let _ = closed.send(result.and(unlocked.map(|_| ()).map_err(sqlx::Error::Io)));
         });
         Some(waiting)
     }

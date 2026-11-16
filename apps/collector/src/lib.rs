@@ -1,6 +1,6 @@
 //! External Linux resource sampling and persistent OTLP export.
 //!
-//! Process discovery does not associate processes with distributed executions.
+//! Environment-labelled execution facts are independent of measurement identities.
 
 #[cfg(any(target_os = "linux", test))]
 mod clock;
@@ -22,6 +22,8 @@ mod linux;
 mod metrics;
 #[cfg(target_os = "linux")]
 mod network;
+#[cfg(target_os = "linux")]
+mod participants;
 #[cfg(target_os = "linux")]
 pub mod runtime;
 #[cfg(target_os = "linux")]

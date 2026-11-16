@@ -1957,6 +1957,7 @@ dependencies = [
  "opentelemetry-proto",
  "procfs",
  "prost",
+ "recount-telemetry-schema",
  "recount-telemetry-validation",
  "reqwest",
  "rustls",

@@ -30,6 +30,7 @@ type SharedSpool = Arc<tokio::sync::Mutex<Spool>>;
 const PENDING_SCANS: usize = 64;
 
 pub async fn run(config: Config) -> Result<()> {
+    let participants = crate::participants::Setup::load(&config)?;
     let sampler_config = config.sampling();
     let ExportConfig {
         endpoint,
@@ -48,6 +49,8 @@ pub async fn run(config: Config) -> Result<()> {
         None => (None, None),
     };
     let queue_destination = queue_destination(&config.endpoint, node);
+    let participants =
+        participants.bind(&config, node, authorization.as_ref(), endpoint.clone())?;
     let Config {
         interval_ms,
         queue_max_bytes: max_bytes,
@@ -74,7 +77,10 @@ pub async fn run(config: Config) -> Result<()> {
     if drain {
         let (_stop, stopped) = watch::channel(false);
         let result = tokio::select! {
-            result = export(client, spool.clone(), loss, max_age, None, stopped, authorization) => result,
+            result = async { tokio::try_join!(
+                export(client, spool.clone(), loss, max_age, None, stopped.clone(), authorization),
+                participants.run(&directory, stopped.clone())
+            ).map(|_| ()) } => result,
             () = shutdown_signal()? => Ok(()),
         };
         spool.lock().await.close_connection().await?;
@@ -89,6 +95,7 @@ pub async fn run(config: Config) -> Result<()> {
     let notify = Arc::new(Notify::new());
     let (scans, waiting) = mpsc::channel(PENDING_SCANS);
     let mut tasks = JoinSet::new();
+    participants.spawn(&mut tasks, &directory, stopped.clone());
     tasks.spawn(sample(collector, period, scans, stopped.clone()));
     tasks.spawn(persist(
         waiting,
@@ -325,7 +332,7 @@ fn retry_delay(status: &tonic::Status) -> Option<Duration> {
     }
 }
 
-fn backoff(attempt: u32) -> Duration {
+pub(crate) fn backoff(attempt: u32) -> Duration {
     let ceiling = (1u64 << attempt.min(5)).min(30) * 1000;
     // Equal jitter in [ceiling/2, ceiling], bounded at 30 seconds.
     let random = uuid::Uuid::now_v7().as_u128() as u64;
@@ -729,9 +736,8 @@ mod tests {
     }
 
     async fn server(receiver: Receiver) -> (Endpoint, tokio::sync::oneshot::Sender<()>) {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        drop(listener);
         let (stop, stopped) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
             tonic::transport::Server::builder()
@@ -740,9 +746,12 @@ mod tests {
                         .accept_compressed(CompressionEncoding::Gzip)
                         .send_compressed(CompressionEncoding::Gzip),
                 )
-                .serve_with_shutdown(address, async {
-                    let _ = stopped.await;
-                })
+                .serve_with_incoming_shutdown(
+                    tonic::transport::server::TcpIncoming::from(listener),
+                    async {
+                        let _ = stopped.await;
+                    },
+                )
                 .await
                 .unwrap();
         });

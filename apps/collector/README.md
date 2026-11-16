@@ -2,7 +2,7 @@
 
 `recount-collector` samples Linux node and visible-process resources and sends OTLP/gRPC metrics to the [ingestion API](../ingestion-api/README.md). Collection follows the [telemetry point contract](../../docs/telemetry-point-contract.md). Export uses a persistent queue with byte, batch-count and age limits, immutable batch metadata and `recount-collection-profile: linux`.
 
-The executable requires Linux and `/proc`. Linux dependencies are target-gated; running the executable on another OS returns an unsupported-platform error. It does not associate processes with distributed executions.
+The executable requires Linux and `/proc`. Linux dependencies are target-gated; running the executable on another OS returns an unsupported-platform error. Enrolled collectors run as root and discover execution membership from environment labels, independently of metrics.
 
 ## Configuration
 
@@ -14,6 +14,7 @@ The executable requires Linux and `/proc`. Linux dependencies are target-gated; 
 | `RECOUNT_COLLECTOR_ENROLLMENT_URL`        | Unset                                           | Web application URL that enrolls the node and renews its access tokens.                             |
 | `RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE`   | Unset                                           | Private file containing the project enrollment key; needed only until the node has enrolled.        |
 | `RECOUNT_COLLECTOR_STATE_DIRECTORY`       | `.state/collector`                              | Private directory for the node identity, `node.json` and `node.key`.                                |
+| `RECOUNT_COLLECTOR_PARTICIPANTS_CONFIG`   | Unset                                           | Optional root-owned JSON execution-discovery settings; enrollment enables the defaults below.       |
 | `RECOUNT_COLLECTOR_INTERVAL_MS`           | `1000`                                          | Intended sampling period, between 100 and 60000 ms.                                                 |
 | `RECOUNT_COLLECTOR_HOST_ID`               | `/etc/machine-id`                               | Host resource and enrolled machine ID, 1–128 UTF-8 bytes. Cloned machines need distinct values.     |
 | `RECOUNT_COLLECTOR_VISIBILITY`            | `restricted`                                    | `host` only when deployment has verified enumeration of initial host PIDs; otherwise `restricted`.  |
@@ -100,11 +101,54 @@ SIGINT/SIGTERM finishes acquisition, drains the scan buffer to disk, cancels net
 
 Loss feedback invalidates baseline counter continuity for subsequent scans. Current-epoch cumulative loss diagnostics can appear in later captures; SQLite's persisted-batch loss totals survive restarts, while exported current-epoch counters reset. Already enqueued observations retain their original segments and timestamps. The queue cannot recover measurements that were never committed, including an interrupted scan, or survive disk loss.
 
-Production OTLP TLS, execution associations and application instrumentation in this collector remain unimplemented. Application instrumentation uses standard OpenTelemetry SDKs; this collector gathers external Linux measurements.
+Production OTLP TLS and application instrumentation in this collector remain unimplemented. Application instrumentation uses standard OpenTelemetry SDKs; this collector gathers external Linux measurements.
 
-Only allowlisted identity and metric dimensions are exported, alongside the connection diagnostics above. Parsing `/proc/PID/stat` reads a process-name field and discards it. The sampler does not read command arguments, environment, executable links, application files or process memory. Host identity is read from machine/boot metadata or supplied through configuration; namespace identity is supplied by deployment. Neither process contents nor receiver-supplied free-form errors are logged.
+Only allowlisted identity and metric dimensions are exported, alongside the connection diagnostics above. Parsing `/proc/PID/stat` reads a process-name field and discards it. The metric sampler does not read command arguments, environment, executable links, application files or process memory. Separate execution discovery reads only the bounded environment described below. Host identity is read from machine/boot metadata or supplied through configuration; namespace identity is supplied by deployment. Neither discarded process contents nor receiver-supplied free-form errors are logged.
 
 Local connection failures wrapped by Tonic as `UNKNOWN` retain their underlying error and retry. A server-supplied `UNKNOWN` status remains terminal under the OTLP failure table.
+
+## Execution labels
+
+Enrollment enables execution discovery with the same node token, endpoint, sampling period, boot and process namespace as metrics. Run the enrolled collector as root. Facts follow the [execution participant contract](../../docs/execution-participants.md); OTLP measurements and process resource identities do not gain execution attributes.
+
+For each new PID plus start-ticks incarnation, discovery reads `/proc/PID/environ` at most once, up to 65,536 bytes plus one overflow-detection byte, and verifies identity around the read. Unreadable, malformed, truncated or oversized environments are unknown and produce no membership. That decision remains cached while the incarnation is alive, including unknown and fact-cap-skipped processes.
+
+Only a validated `RECOUNT_EXECUTION` key, optional `RECOUNT_EXECUTION_NAME`, `RECOUNT_EXECUTION_VERSION`, `RECOUNT_EXECUTION_PARAMETERS` and the matched variable name are retained. Parameters must be a JSON object of unique string keys and string values. Without an explicit key, configured scheduler variables map to prefixes, defaulting to `SLURM_JOB_ID` → `slurm:<value>`. Multiple scheduler matches use bytewise variable-name order. Invalid explicit keys never fall back to scheduler discovery; values are not trimmed or rewritten. Explicit metadata is ignored for scheduler keys.
+
+Every other environment variable is discarded immediately. Raw environment bytes, discarded variable names and values are never stored, logged or sent, including in parser errors and queues. The read buffer is temporary. Process UID comes from the kernel, not the environment. Labels are attribution within the enrolled node's project, not evidence of web identity or execution ownership.
+
+Children normally inherit labels at exec. Processes that clear their environment are unlabelled. Cached incarnations are not reread after exec or environment changes. Processes that disappear between scans or during downtime cannot be recovered. There is no launcher handoff, cgroup association or ancestry inference.
+
+Each labelled incarnation gets a membership fact. One rootless lifecycle spans the first to last labelled process for a key on this node and boot, retaining metadata, provenance and optional UID from the first process. Reappearance after closure creates a fresh participant. Disappearance closes coverage without inventing exit status. Unreadable identity checks preserve existing coverage without extending its last-seen time.
+
+The optional configuration file and every ancestor must be root-owned, not writable by group/other, and not symlinks. The file must be regular and at most 65,536 bytes. Unknown settings are rejected. For example, `/etc/recount-collector/participants.json`:
+
+```json
+{
+  "scheduler_variables": {
+    "SLURM_JOB_ID": "slurm",
+    "PBS_JOBID": "pbs",
+    "LSB_JOBID": "lsf"
+  },
+  "max_processes": 65536,
+  "max_facts": 262144,
+  "max_queue_bytes": 67108864,
+  "max_exports": 16,
+  "heartbeat_interval_seconds": 60
+}
+```
+
+An empty scheduler mapping disables scheduler discovery. Names follow the contract's environment-variable grammar and cannot use the reserved `RECOUNT_EXECUTION` prefix. Each mapping must produce a valid execution key. Limits are 1–1,000,000 cached processes, 2–1,000,000 retained facts, 65,536–1,073,741,824 queued/rejected payload bytes, and 1–64 exports before yielding.
+
+`heartbeat_interval_seconds` defaults to 60 and accepts 1–18446744073 seconds. Scans keep `last_seen` accurate in durable local state without changing published snapshots. Open facts get a new revision only when their last published `last_seen` is at least one heartbeat interval old, or another permitted field changes. Starts, ends, retractions and coverage corrections publish immediately; a final revision includes the latest local `last_seen` even between heartbeats. Lifecycle metadata remains immutable after its initial publication. Retries and acknowledgements use immutable snapshots, not newer local observations.
+
+Each scan checks at most `max_processes` cached identities and consumes at most `max_processes` proc-directory entries, resuming directory enumeration on subsequent scans. Cache saturation skips new reads rather than evicting live decisions. The global fact cap skips new associations without evicting live facts or retrying skipped incarnations later. Existing lifecycles still observe cap-skipped labelled processes. Bounded warnings report skipped counts; debug diagnostics report entries, environment-read attempts, unknown identity checks, cache size, discovery duration and reconciliation duration, never environment contents.
+
+Participant state uses a separately locked private SQLite queue under `QUEUE_DIRECTORY/participants`. Revision allocation, full fact snapshots and immutable retry bytes commit together. Initial lifecycle publication must be acknowledged before memberships can upload. Retryable Claim failures retain identical bytes with backoff; token rejection triggers renewal. Deterministic rejection retains the rejected snapshot for diagnosis, without retiming it. Queue or disk exhaustion stops collection without evicting retained facts. `--drain` also drains participant facts; rejected lifecycles leave dependent memberships blocked and return an error.
+
+Ended facts are pruned only after their final replacement is acknowledged and no queued retry depends on them. Retraction tombstones remain retained. Confirmed live membership evidence can restore IDs and revision sequences after restart without rereading its environment. Unknown decisions and cap-skipped labels have only an in-memory cache; uncertain rediscovery after restart uses fresh IDs. Old-boot coverage ends immediately after its last observation rather than extending through downtime. Losing the queue requires fresh identities, not restarting old revision sequences. No prototype claim files, schemas or queues are converted.
+
+The participant queue schema includes separate local observation state. Earlier disposable participant queues are incompatible and must be explicitly recreated after draining with the earlier collector. Startup rejects them without deleting data; the metric queue and enrollment state are separate and must be preserved.
 
 ## Enrollment and access tokens
 

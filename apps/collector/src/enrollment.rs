@@ -76,6 +76,7 @@ impl std::fmt::Display for RequestError {
 pub(crate) struct Authorization {
     token: watch::Receiver<Option<MetadataValue<Ascii>>>,
     stale: Arc<Notify>,
+    pub(crate) project: Option<Uuid>,
 }
 
 impl Authorization {
@@ -84,7 +85,11 @@ impl Authorization {
         token: watch::Receiver<Option<MetadataValue<Ascii>>>,
         stale: Arc<Notify>,
     ) -> Self {
-        Self { token, stale }
+        Self {
+            token,
+            stale,
+            project: None,
+        }
     }
 
     pub(crate) fn current(&self) -> Option<MetadataValue<Ascii>> {
@@ -129,12 +134,12 @@ pub(crate) async fn start(
         .user_agent(concat!("recount-collector/", env!("CARGO_PKG_VERSION")))
         .build()?;
     let node_path = config.state_directory.join(NODE_FILE);
-    let (id, token) = match fs::read(&node_path) {
+    let (id, project, token) = match fs::read(&node_path) {
         Ok(contents) => {
             let node: NodeFile = serde_json::from_slice(&contents)
                 .map_err(|_| io::Error::other(format!("Invalid {}", node_path.display())))?;
             tracing::info!(node_id = %node.node_id, project_id = %node.project_id, "Loaded collector node");
-            (node.node_id, None)
+            (node.node_id, node.project_id, None)
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
             let key_file = config.key_file.as_deref().ok_or_else(|| {
@@ -149,7 +154,7 @@ pub(crate) async fn start(
                 })?,
             )?;
             tracing::info!(node_id = %issued.node_id, project_id = %issued.project_id, "Enrolled collector node");
-            (issued.node_id, Some(issued.token))
+            (issued.node_id, issued.project_id, Some(issued.token))
         }
         Err(error) => return Err(error.into()),
     };
@@ -168,6 +173,7 @@ pub(crate) async fn start(
         Authorization {
             token: receiver,
             stale,
+            project: Some(project),
         },
     ))
 }

@@ -64,6 +64,13 @@ pub struct Config {
         default_value = ".state/collector"
     )]
     pub state_directory: PathBuf,
+    /// Root-owned JSON settings for environment-labelled execution discovery.
+    #[arg(
+        long,
+        env = "RECOUNT_COLLECTOR_PARTICIPANTS_CONFIG",
+        requires = "enrollment_url"
+    )]
+    pub participants_config: Option<PathBuf>,
     /// Enrolled host identity; defaults to the Linux machine ID.
     #[arg(long, env = "RECOUNT_COLLECTOR_HOST_ID")]
     pub host_id: Option<String>,
