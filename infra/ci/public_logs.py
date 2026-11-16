@@ -1,6 +1,7 @@
 """Keep cloud metadata and full OpenTofu output out of public Actions logs."""
 
 import argparse
+import html
 import json
 import os
 import re
@@ -76,6 +77,26 @@ def redact(output, values):
     for value in sorted(values, key=lambda item: (-len(item), item)):
         output = output.replace(value, "***")
     return output
+
+
+def write_plan_summary(masked_plan, environ):
+    path = environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    changes = [
+        line.strip()
+        for line in masked_plan.splitlines()
+        if line.startswith(("  # ", "Plan:", "No changes."))
+    ]
+    preview = "\n".join(changes) or "No resource-change summary was emitted."
+    with Path(path).open("a", encoding="utf-8") as output:
+        output.write(
+            "## OpenTofu plan\n\n"
+            f"<pre>{html.escape(preview)}</pre>\n\n"
+            "<details>\n<summary>Full masked plan</summary>\n\n"
+            f"<pre>{html.escape(masked_plan)}</pre>\n\n"
+            "</details>\n\n"
+        )
 
 
 def collectors_configuration(environ):
@@ -201,7 +222,9 @@ def run_tofu(root, operation, environ):
     )
     values = mask(environ, result.stdout)
     if operation == "plan":
-        print(redact(result.stdout, values), end="", flush=True)
+        masked_plan = redact(result.stdout, values)
+        print(masked_plan, end="", flush=True)
+        write_plan_summary(masked_plan, environ)
         return result.returncode
     if result.returncode:
         print(f"::error::OpenTofu {operation} failed; redacted diagnostics follow.")

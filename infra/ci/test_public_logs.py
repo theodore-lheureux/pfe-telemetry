@@ -307,6 +307,78 @@ class PublicLogTests(unittest.TestCase):
             self.assertEqual(path.read_text(), "configured=true\n")
             write.assert_called_once_with('{"vpc_id": "vpc-0123456789abcdef0"}')
 
+    def test_plan_job_summary_uses_the_same_redacted_diff_for_both_roots(self):
+        plan = (
+            "  # cloudflare_dns_record.ingestion will be created\n"
+            '  + zone_id = "aabbccddaabbccddaabbccddaabbccdd"\n'
+            '  + content = "192.0.2.10"\n'
+            '  + owner = "owner+summary@example.test"\n'
+            '  + id = "ocid1.instance.oc1.private"\n'
+            '  + account = "123456789012"\n'
+            '  + bucket = "private-state-bucket"\n'
+            '  + diagnostic = "synthetic-access-key"\n'
+            '  + comment = "</pre></details><script>unsafe</script>"\n'
+            "Plan: 1 to add, 0 to change, 0 to destroy.\n"
+        )
+        for root in ("infra/oci-ingestion", "infra/aws-collectors"):
+            with self.subTest(root=root), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "summary.md"
+                path.write_text("Existing summary\n\n")
+                environ = {
+                    "GITHUB_STEP_SUMMARY": str(path),
+                    "AWS_ACCOUNT_ID": "123456789012",
+                    "AWS_STATE_BUCKET": "private-state-bucket",
+                    "AWS_ACCESS_KEY_ID": "synthetic-access-key",
+                }
+                log = io.StringIO()
+                with (
+                    patch.object(public_logs.subprocess, "run") as process,
+                    contextlib.redirect_stdout(log),
+                ):
+                    process.return_value.returncode = 0
+                    process.return_value.stdout = plan
+                    self.assertEqual(public_logs.run_tofu(root, "plan", environ), 0)
+                text = path.read_text()
+                visible_log = "\n".join(
+                    line
+                    for line in log.getvalue().splitlines()
+                    if not line.startswith("::add-mask::")
+                )
+                for private in (
+                    "aabbccddaabbccddaabbccddaabbccdd",
+                    "192.0.2.10",
+                    "owner+summary@example.test",
+                    "ocid1.instance.oc1.private",
+                    "123456789012",
+                    "private-state-bucket",
+                    "synthetic-access-key",
+                ):
+                    self.assertNotIn(private, text)
+                    self.assertNotIn(private, visible_log)
+                self.assertTrue(text.startswith("Existing summary\n\n"))
+                self.assertIn("<details>", text)
+                self.assertIn("<summary>Full masked plan</summary>", text)
+                self.assertIn("&lt;script&gt;unsafe&lt;/script&gt;", text)
+                self.assertNotIn("<script>", text)
+                self.assertEqual(text.count("</details>"), 1)
+                preview, details = text.split("<details>", 1)
+                self.assertIn(
+                    "# cloudflare_dns_record.ingestion will be created", preview
+                )
+                self.assertIn("Plan: 1 to add, 0 to change, 0 to destroy.", preview)
+                self.assertNotIn("+ content", preview)
+                self.assertIn("+ content = &quot;***&quot;", details)
+                self.assertIn("-no-color", process.call_args.args[0])
+
+    def test_no_change_plan_summary_does_not_invent_resource_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "summary.md"
+            public_logs.write_plan_summary(
+                "No changes. Your infrastructure matches the configuration.\n",
+                {"GITHUB_STEP_SUMMARY": str(path)},
+            )
+            self.assertIn("No changes.", path.read_text().split("<details>", 1)[0])
+
     def test_empty_collectors_configuration_skips_without_json_error(self):
         for raw in ("", " \n ", "{}"):
             with tempfile.TemporaryDirectory() as directory:
