@@ -19,10 +19,15 @@ check:
     tofu -chdir=. test
     tofu -chdir=../ingestion-bootstrap/aws test
     tofu -chdir=../ingestion-bootstrap/oci test
+    tofu -chdir=../aws-collectors init -backend=false -input=false
+    tofu -chdir=../aws-collectors fmt -check -recursive
+    tofu -chdir=../aws-collectors validate
+    tofu -chdir=../aws-collectors test
     cd ../.. && python3 -m unittest discover -s infra/oci-ingestion/ci -p 'test_*.py'
+    cd ../.. && python3 -m unittest discover -s infra/aws-collectors -p 'test_*.py'
     shellcheck deploy/*.sh
-    cd ../.. && actionlint .github/workflows/ingestion-*.yml
-    cd ../.. && uvx zizmor==1.32.0 --offline .github/workflows/ingestion-*.yml .github/actions/ingestion-infra-setup/action.yml
+    cd ../.. && actionlint .github/workflows/ingestion-*.yml .github/workflows/collectors-infra.yml
+    cd ../.. && uvx zizmor==1.32.0 --offline .github/workflows/ingestion-*.yml .github/workflows/collectors-infra.yml .github/actions/ingestion-infra-setup/action.yml .github/actions/collectors-infra-setup/action.yml
 
 # Read-only local inspection only. Infrastructure changes run through GitHub CD.
 plan:

@@ -1,0 +1,9 @@
+expected_account_id      = "123456789012"
+vpc_id                   = "vpc-REPLACE"
+subnet_ids               = ["subnet-REPLACE-FIRST", "subnet-REPLACE-SECOND"]
+ingestion_endpoint       = "https://ingestion.example.test"
+enrollment_url           = "https://web.example.test"
+collector_release_url    = "https://github.com/example/recount/releases/download/ingestion-REPLACE/recount-collector-arm64.tar.gz"
+collector_release_sha256 = "REPLACE_WITH_64_LOWERCASE_HEX_DIGITS"
+# Enable only after recording successful real HTTPS point acceptance.
+oracle_endpoint_verified = false
