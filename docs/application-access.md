@@ -121,3 +121,20 @@ Invitation email links open `/invitations/$invitationId`. Sign-in preserves that
 ## Validation
 
 Run `just test-db` with an isolated PostgreSQL test account as described in [web development](../apps/web/README.md#test-database-changes). The organization tests cover private defaults, role precedence, cross-organization identifiers and foreign keys, revocation, native promotion restrictions, concurrent owner loss and user-delete cascades. Invitation regressions cover native role restrictions, verified mailbox matching, expiry, replay, concurrent acceptance, resend, delivery failure and shared send-attempt limits. `just test-web` checks invitation validation and email rendering/delivery with a non-network transport.
+
+Project access is verified against one role matrix, `apps/web/tests/project-roles.ts`. It defines the expected read, write and admin access of each actor class:
+
+| Actor                                    | Read | Write | Admin | Denial            |
+| ---------------------------------------- | ---- | ----- | ----- | ----------------- |
+| Organization owner                       | Yes  | Yes   | Yes   |                   |
+| Organization admin                       | Yes  | Yes   | Yes   |                   |
+| Organization member without project role | No   | No    | No    | `NOT_FOUND`       |
+| Project viewer                           | Yes  | No    | No    | `FORBIDDEN`       |
+| Project member                           | Yes  | Yes   | No    | `FORBIDDEN`       |
+| Project admin                            | Yes  | Yes   | Yes   |                   |
+| Outsider                                 | No   | No    | No    | `NOT_FOUND`       |
+| Unauthenticated                          | No   | No    | No    | `UNAUTHENTICATED` |
+
+`apps/web/tests/integration/execution-access.test.ts` applies the matrix to execution list and detail reads, analytics queries and catalogs, attribute discovery, the activity explorer, live-channel authorization, a dashboard write and a project settings update. The application's ClickHouse reader client points at a local HTTP stub that records each statement. Denied calls must issue no statement. Every statement from an authorized call must bind the authorized project ID, and each `FROM` or `JOIN` source that is a telemetry table must be followed directly by `WHERE project_id = {project:String}`. Common table expressions and subqueries are checked at their own sources; any other table fails the test. Every operation, including writes and live-channel authorization, returns `NOT_FOUND` for sibling-project and cross-organization substitutions without reaching ClickHouse.
+
+`apps/web/tests/browser/execution-ui.spec.ts` covers rendered execution pages, direct RPCs and live channels for separate readers. It also signs out of an account with project access, then signs in as an organization member without a project role. Back navigation to the cached execution pages and a fresh server render show neither the execution name nor its key.

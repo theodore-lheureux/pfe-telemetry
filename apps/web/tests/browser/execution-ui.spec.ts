@@ -3,7 +3,13 @@ import { createServer } from "node:http";
 import { m } from "@recount/i18n/messages";
 import * as organizations from "../../src/organizations/organizations.server";
 import * as projects from "../../src/organizations/projects.server";
-import { test as base, data, expect } from "./fixtures";
+import {
+	test as base,
+	data,
+	dismissPasskeySetup,
+	expect,
+	openWorkspaceMenu,
+} from "./fixtures";
 
 const liveSecret = "execution-live-fixture-secret-only";
 
@@ -348,4 +354,107 @@ test("two project readers and an organization operator use isolated execution pa
 			}
 		}
 	}
+});
+
+test("an account switch leaves no previous execution data in rendered, cached or restored pages", async ({
+	page,
+	workspace,
+	executionRows,
+}) => {
+	const replacementEmail = "switch-member@example.invalid";
+	const replacement = await workspace.signIn(page, replacementEmail);
+	const owner = await workspace.signIn(page, "switch-owner@example.invalid");
+	const organization = data(
+		await workspace.operations(owner.headers, () =>
+			organizations.createOrganization(workspace.auth, owner.headers, {
+				name: "Account switch",
+				slug: "account-switch",
+			}),
+		),
+	);
+	const project = data(
+		await workspace.operations(owner.headers, (actor) =>
+			projects.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
+				organizationId: organization.id,
+				name: "Private",
+			}),
+		),
+	);
+	// The next account belongs to the organization but has no project role.
+	await workspace.auth.api.addMember({
+		body: {
+			organizationId: organization.id,
+			userId: replacement.userId,
+			role: "member",
+		},
+	});
+	const name = "Confidential workload";
+	const executionKey = "run:confidential";
+	executionRows.push({
+		project: project.id,
+		executionKey,
+		name,
+		workloadVersion: null,
+		parameters: [],
+		nodeCount: 1,
+		participantCount: 1,
+		environmentVariables: ["RECOUNT_EXECUTION"],
+		firstSeenNs: "1793700000000000000",
+		lastSeenNs: "1793700001000000000",
+	});
+	const list = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/executions`;
+	const detail = `${list}/${encodeURIComponent(executionKey)}`;
+	await page.goto(list);
+	await expect(
+		page.getByRole("button", {
+			name: "Switch project, organization or account",
+			exact: true,
+		}),
+	).toBeEnabled();
+	await page.getByRole("link", { name, exact: true }).click();
+	await expect(page.getByRole("heading", { name, exact: true })).toBeVisible();
+	await expect(page).toHaveURL(detail);
+	// Keep both execution pages in history; sign-in and sign-out replace their own entries.
+	await page
+		.getByRole("navigation", { name: "Project navigation" })
+		.getByRole("link", { name: "Overview", exact: true })
+		.click();
+	await expect(page).not.toHaveURL(detail);
+
+	await openWorkspaceMenu(page);
+	await page.getByRole("menuitem", { name: "Sign out", exact: true }).click();
+	await expect(
+		page.getByRole("heading", { name: "Sign in", exact: true }),
+	).toBeVisible();
+	await workspace.enableCodeDelivery(page);
+	await page
+		.getByLabel("Email address", { exact: true })
+		.fill(replacementEmail);
+	await page
+		.getByRole("button", { name: "Continue with email", exact: true })
+		.click();
+	await workspace.submitReceivedCode(page, replacementEmail);
+	await dismissPasskeySetup(page);
+	await expect(page).not.toHaveURL(/\/login/);
+
+	const absent = async () => {
+		await expect(
+			page.getByRole("heading", { name: "Page not found", exact: true }),
+		).toBeVisible();
+		await expect(page.getByText(name)).toHaveCount(0);
+		const html = await page.content();
+		expect(html).not.toContain(name);
+		expect(html).not.toContain(executionKey);
+	};
+	// Back navigation must reload with the new identity rather than restore the old page.
+	for (const url of [detail, list]) {
+		for (let step = 0; step < 4 && page.url() !== url; step++)
+			await page.goBack({ waitUntil: "commit" });
+		expect(page.url()).toBe(url);
+		await absent();
+	}
+	const response = await page.goto(detail);
+	expect(response?.status()).toBe(404);
+	await absent();
 });
