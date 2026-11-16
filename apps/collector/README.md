@@ -34,6 +34,7 @@ DCGM's pipe/SM profiling remains on GPU/MIG resources: public PID/job reports ex
 | `RECOUNT_COLLECTOR_VISIBILITY`            | `restricted`                                    | `host` only when deployment has verified enumeration of initial host PIDs; otherwise `restricted`.  |
 | `RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID`  | `host` with host visibility; required otherwise | Verified boot-local PID namespace identity, 1–128 UTF-8 bytes.                                      |
 | `RECOUNT_COLLECTOR_QUEUE_DIRECTORY`       | `.state/collector-queue`                        | Private persistent queue directory on a local filesystem; one collector per directory.              |
+| `RECOUNT_COLLECTOR_LOCK_DIRECTORY`        | `/run/recount-collector`                        | Private machine-wide directory for [per-host run locks](#one-collection-run-per-host).              |
 | `RECOUNT_COLLECTOR_QUEUE_MAX_BYTES`       | `67108864`                                      | Maximum queued Protobuf payload bytes, between 1 MiB and 1 GiB.                                     |
 | `RECOUNT_COLLECTOR_QUEUE_MAX_BATCHES`     | `1024`                                          | Maximum pending batches, between 1 and 65536.                                                       |
 | `RECOUNT_COLLECTOR_QUEUE_MAX_AGE_SECONDS` | `3600`                                          | Local batch lifetime, 1–18446744073 seconds; choose no greater than the enrolled source upload age. |
@@ -78,6 +79,14 @@ Process resources carry PID, namespace ID and incarnation `start-ticks:<decimal>
 A segment remains stable only across successful, increasing-time, non-decreasing reads of the same counter stream. Reset, failed or missed reads, skipped cycles, discarded identities, device disappearance/reappearance, restart and known local loss invalidate continuity. Missing streams are removed after every scan. Loss feedback conservatively invalidates all baseline streams because partial OTLP rejection does not identify rejected streams. Scans assembled concurrently with loss, and queued scans carrying stale continuity, are discarded rather than emitted with obsolete segments.
 
 Counters have zero start timestamps when their origin is unknown. Node CPU initially uses the boot timestamp from `/proc/stat` when it does not exceed the reading timestamp; after a clock discontinuity that cached origin is omitted. Gauges always have zero start timestamps. Derive rates only across matching identity, source, instrumentation version, dimensions, epoch and segment, following the contract's increasing-time and non-decreasing-value rules.
+
+## One collection run per host
+
+Only one collection run reports a host at a time, so readers never combine concurrent epochs of one node. Before enrollment and sampling, the collector takes an exclusive lock on `host-<base64url host ID>.lock` in the lock directory. It holds the lock until sampling has stopped and buffered scans are committed to its queue, including when the process is stopped with SIGINT or SIGTERM. The kernel releases it if the process dies. A restarted collector's first point therefore follows the previous run's last point, even when the two runs use different queue or state directories; their timestamps keep that order unless the wall clock is stepped backwards between the runs.
+
+A starting run waits up to 30 seconds for the previous run of the same host to stop, then exits with `Another collector is still reporting host <host ID> after 30s; stop it before starting this one (lock <path>)`. Collectors for different host IDs do not wait for each other. `--drain` does not sample and takes no lock.
+
+The lock directory follows the queue directory's mode 0700 rule. A collector running as root creates the default `/run/recount-collector`; a service running as another user can obtain it with systemd's `RuntimeDirectory=recount-collector` and `RuntimeDirectoryPreserve=yes`, which keeps systemd from deleting a lock another collector still holds when the unit stops. The guarantee requires every collector on a machine to run as the same user, or all as root, and to use the same lock directory. Containers and other mount namespaces see only the directory mounted into them, so the [packaged image](Dockerfile) needs a writable lock directory, and excluding collectors across containers requires mounting the same host directory into each.
 
 ## Coverage and clocks
 

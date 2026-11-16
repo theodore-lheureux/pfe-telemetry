@@ -21,13 +21,15 @@ use crate::{
     config::{Config, ExportConfig, queue_destination},
     delivery::ScanContents,
     enrollment::{self, Authorization},
-    point_count,
+    node_lock, point_count,
     spool::{Batch, MAX_REQUEST_BYTES, Result, Spool, unix_nanos},
     transport::Client,
 };
 
 type SharedSpool = Arc<tokio::sync::Mutex<Spool>>;
 const PENDING_SCANS: usize = 64;
+/// How long a starting run waits for a previous run of the same host to finish shutting down.
+const NODE_LOCK_WAIT: Duration = Duration::from_secs(30);
 
 pub async fn run(config: Config) -> Result<()> {
     let participants = crate::participants::Setup::load(&config)?;
@@ -36,9 +38,23 @@ pub async fn run(config: Config) -> Result<()> {
         endpoint,
         enrollment,
     } = config.export()?;
+    let host_id = if config.drain && enrollment.is_none() {
+        None
+    } else {
+        Some(crate::linux::host_id_or_machine_id(config.host_id.clone())?)
+    };
+    // Sampling runs lock before enrollment, so another sampling run can neither re-key
+    // nor report this node. `--drain` does not sample and takes no lock.
+    let node_lock = match &host_id {
+        Some(host_id) if !config.drain => tokio::select! {
+            lock = node_lock::acquire(&config.lock_directory, host_id, NODE_LOCK_WAIT) => Some(lock?),
+            () = shutdown_signal()? => return Ok(()),
+        },
+        _ => None,
+    };
     let (node, authorization) = match enrollment {
         Some(enrollment) => {
-            let machine_id = crate::linux::host_id_or_machine_id(config.host_id.clone())?;
+            let machine_id = host_id.expect("Enrollment resolves the host ID");
             // First enrollment retries until the web application answers.
             let (node, authorization) = tokio::select! {
                 started = enrollment::start(enrollment, &machine_id) => started?,
@@ -120,9 +136,14 @@ pub async fn run(config: Config) -> Result<()> {
         "Starting Linux resource collection"
     );
     let (_running, cancelled) = tokio::sync::oneshot::channel::<()>();
-    tokio::spawn(supervise(tasks, stop, spool, async move {
-        tokio::select! { () = shutdown => {}, _ = cancelled => {} }
-    }))
+    tokio::spawn(async move {
+        // Release the node only after sampling has stopped, even if `run` is dropped.
+        let _node_lock = node_lock;
+        supervise(tasks, stop, spool, async move {
+            tokio::select! { () = shutdown => {}, _ = cancelled => {} }
+        })
+        .await
+    })
     .await?
 }
 
@@ -465,8 +486,14 @@ mod tests {
         ExportMetricsPartialSuccess, ExportMetricsServiceResponse,
         metrics_service_server::{MetricsService, MetricsServiceServer},
     };
-    use opentelemetry_proto::tonic::metrics::v1::{ResourceMetrics, number_data_point::Value};
-    use recount_telemetry_validation::delivery::{self, CollectorConnection};
+    use opentelemetry_proto::tonic::common::v1::{KeyValue, any_value::Value as AnyValue};
+    use opentelemetry_proto::tonic::metrics::v1::{
+        ResourceMetrics, metric::Data, number_data_point::Value,
+    };
+    use recount_telemetry_validation::{
+        delivery::{self, CollectorConnection},
+        linux_adapter::EPOCH_ID,
+    };
     use std::{net::SocketAddr, path::PathBuf, sync::Mutex};
     use tokio::{
         io::copy_bidirectional,
@@ -1074,7 +1101,9 @@ mod tests {
             "--endpoint",
             &endpoint.uri().to_string(),
             "--queue-directory",
-            path.to_str().unwrap(),
+            path.join("queue").to_str().unwrap(),
+            "--lock-directory",
+            path.join("lock").to_str().unwrap(),
             "--interval-ms",
             "100",
             "--host-id",
@@ -1090,7 +1119,7 @@ mod tests {
         assert!(task.await.unwrap_err().is_cancelled());
         let mut reopened = None;
         until(async || {
-            reopened = Spool::open(&path, &destination, 64 * 1024 * 1024, 1024)
+            reopened = Spool::open(&path.join("queue"), &destination, 64 * 1024 * 1024, 1024)
                 .await
                 .ok();
             reopened.is_some()
@@ -1105,6 +1134,145 @@ mod tests {
         reopened.close().await.unwrap();
         let _ = server_stop.send(());
         std::fs::remove_dir_all(path).unwrap();
+    }
+
+    /// Node CPU points as (epoch, mode, timestamp, seconds).
+    fn node_cpu(payloads: &[Vec<u8>]) -> Vec<(String, String, u64, f64)> {
+        let text = |attributes: &[KeyValue], key: &str| {
+            attributes.iter().find(|a| a.key == key).and_then(|a| {
+                match a.value.as_ref()?.value.as_ref()? {
+                    AnyValue::StringValue(value) => Some(value.clone()),
+                    _ => None,
+                }
+            })
+        };
+        let mut points = Vec::new();
+        for payload in payloads {
+            let request = ExportMetricsServiceRequest::decode(payload.as_slice()).unwrap();
+            for resource in request.resource_metrics {
+                let attributes = resource.resource.unwrap_or_default().attributes;
+                let Some(epoch) = text(&attributes, EPOCH_ID) else {
+                    continue;
+                };
+                for metric in resource.scope_metrics.into_iter().flat_map(|s| s.metrics) {
+                    let Some(Data::Sum(sum)) = metric.data else {
+                        continue;
+                    };
+                    if metric.name != catalogue::NODE_CPU_TIME.name {
+                        continue;
+                    }
+                    for point in sum.data_points {
+                        let Some(Value::AsDouble(seconds)) = point.value else {
+                            panic!("Node CPU time must be a double");
+                        };
+                        let mode = text(&point.attributes, "cpu.mode").unwrap();
+                        points.push((epoch.clone(), mode, point.time_unix_nano, seconds));
+                    }
+                }
+            }
+        }
+        points.sort_by_key(|(_, _, time, _)| *time);
+        points
+    }
+
+    #[tokio::test]
+    async fn restarted_collector_reports_a_node_only_after_the_previous_run_stops() {
+        let base = std::env::temp_dir().join(format!("recount-restart-{}", uuid::Uuid::now_v7()));
+        let receiver = Receiver::default();
+        let (endpoint, server_stop) = server(receiver.clone()).await;
+        let endpoint = endpoint.uri().to_string();
+        // Distinct queue directories: only the node lock can keep these runs apart.
+        let launch = |queue: &str| {
+            let config = Config::try_parse_from([
+                "collector",
+                "--endpoint",
+                &endpoint,
+                "--queue-directory",
+                base.join(queue).to_str().unwrap(),
+                "--lock-directory",
+                base.join("lock").to_str().unwrap(),
+                "--interval-ms",
+                "100",
+                "--host-id",
+                "restart-host",
+                "--process-namespace-id",
+                "test-namespace",
+            ])
+            .unwrap();
+            tokio::spawn(run(config))
+        };
+        let sent = || {
+            let state = receiver.0.lock().unwrap();
+            state
+                .requests
+                .iter()
+                .map(|r| r.2.clone())
+                .collect::<Vec<_>>()
+        };
+        let received = || node_cpu(&sent());
+        let epochs = |points: &[(String, String, u64, f64)]| {
+            let mut epochs = Vec::<String>::new();
+            for (epoch, ..) in points {
+                if !epochs.contains(epoch) {
+                    epochs.push(epoch.clone());
+                }
+            }
+            epochs
+        };
+
+        let first = launch("first-queue");
+        until(async || !received().is_empty()).await;
+        let second = launch("second-queue");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert_eq!(epochs(&received()).len(), 1, "Both runs reported the node");
+        assert!(!second.is_finished());
+
+        first.abort();
+        assert!(first.await.unwrap_err().is_cancelled());
+        until(async || epochs(&received()).len() == 2).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        second.abort();
+        assert!(second.await.unwrap_err().is_cancelled());
+
+        // Include scans each run committed but did not export before it stopped.
+        let destination = queue_destination(&endpoint, None);
+        let mut payloads = sent();
+        for queue in ["first-queue", "second-queue"] {
+            let mut reopened = None;
+            until(async || {
+                reopened = Spool::open(&base.join(queue), &destination, 64 * 1024 * 1024, 1024)
+                    .await
+                    .ok();
+                reopened.is_some()
+            })
+            .await;
+            let mut reopened = reopened.unwrap();
+            payloads.extend(
+                sqlx::query_scalar::<_, Vec<u8>>("SELECT payload FROM batches")
+                    .fetch_all(reopened.connection())
+                    .await
+                    .unwrap(),
+            );
+            reopened.close().await.unwrap();
+        }
+        let points = node_cpu(&payloads);
+        let [old, new] = <[String; 2]>::try_from(epochs(&points)).unwrap();
+        let times = |wanted: &str| {
+            points
+                .iter()
+                .filter(|(epoch, ..)| epoch == wanted)
+                .map(|(_, _, time, _)| *time)
+                .collect::<Vec<_>>()
+        };
+        let (old_times, new_times) = (times(&old), times(&new));
+        assert!(old_times.len() > 1 && new_times.len() > 1);
+        assert!(
+            old_times.iter().max() < new_times.iter().min(),
+            "Collection runs overlapped"
+        );
+
+        let _ = server_stop.send(());
+        std::fs::remove_dir_all(base).unwrap();
     }
 
     #[tokio::test]

@@ -39,6 +39,13 @@ pub struct Config {
         default_value = ".state/collector-queue"
     )]
     pub queue_directory: PathBuf,
+    /// Private machine-wide directory whose per-host locks allow one sampling run per host.
+    #[arg(
+        long,
+        env = "RECOUNT_COLLECTOR_LOCK_DIRECTORY",
+        default_value = "/run/recount-collector"
+    )]
+    pub lock_directory: PathBuf,
     /// OTLP/gRPC destination.
     #[arg(
         long,

@@ -462,8 +462,8 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 			contentType: "application/json",
 		});
 		await Promise.all(
-			["queue", "other-queue", "node", "other-node"].map((name) =>
-				mkdir(resolve(directory, name), { mode: 0o700 }),
+			["queue", "other-queue", "node", "other-node", "lock", "other-lock"].map(
+				(name) => mkdir(resolve(directory, name), { mode: 0o700 }),
 			),
 		);
 		const owner = await workspace.signIn(
@@ -548,6 +548,8 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 				"/test/queue",
 				"--state-directory",
 				"/test/node",
+				"--lock-directory",
+				"/test/lock",
 				...collectorBounds,
 			],
 			[
@@ -557,6 +559,8 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 				`type=bind,src=${hostDirectory}/queue,dst=/test/queue`,
 				"--mount",
 				`type=bind,src=${hostDirectory}/node,dst=/test/node`,
+				"--mount",
+				`type=bind,src=${hostDirectory}/lock,dst=/test/lock`,
 			],
 		);
 		const otherCollector = start(
@@ -576,6 +580,8 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 				"/test/other-queue",
 				"--state-directory",
 				"/test/other-node",
+				"--lock-directory",
+				"/test/other-lock",
 				...collectorBounds,
 			],
 			[
@@ -585,6 +591,8 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 				`type=bind,src=${hostDirectory}/other-queue,dst=/test/other-queue`,
 				"--mount",
 				`type=bind,src=${hostDirectory}/other-node,dst=/test/other-node`,
+				"--mount",
+				`type=bind,src=${hostDirectory}/other-lock,dst=/test/other-lock`,
 			],
 			"collector-other",
 		);

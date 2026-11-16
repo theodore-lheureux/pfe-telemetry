@@ -9,21 +9,22 @@ description: Configurer le collecteur Linux.
 
 Les paramètres sont lus une seule fois au démarrage. Les options de ligne de commande ont priorité sur les variables d’environnement; exécutez `recount-collector --help` pour connaître leurs noms.
 
-| Variable                                  | Par défaut                     | Signification                                                                           |
-| ----------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`             | `http://127.0.0.1:14317`       | Adresse d’ingestion de Recount.                                                         |
-| `RECOUNT_COLLECTOR_ENROLLMENT_URL`        | Aucune                         | Adresse de l’application Web de Recount qui inscrit la machine.                         |
-| `RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE`   | Aucune                         | Fichier privé qui contient la clé d’inscription. Utile seulement à l’inscription.       |
-| `RECOUNT_COLLECTOR_STATE_DIRECTORY`       | `.state/collector`             | Dossier privé où la machine conserve son identité après l’inscription.                  |
-| `RECOUNT_COLLECTOR_INTERVAL_MS`           | `1000`                         | Période d’échantillonnage, de 100 à 60000 ms.                                           |
-| `RECOUNT_COLLECTOR_HOST_ID`               | `/etc/machine-id`              | Identité de la machine à l’inscription. Les machines clonées ont besoin d’ID distincts. |
-| `RECOUNT_COLLECTOR_VISIBILITY`            | `restricted`                   | Mettez `host` seulement si le collecteur voit les processus de l’hôte.                  |
-| `RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID`  | `host` avec la visibilité hôte | Identité de l’espace de noms des PID. Obligatoire en visibilité restreinte.             |
-| `RECOUNT_COLLECTOR_QUEUE_DIRECTORY`       | `.state/collector-queue`       | Dossier local des données en attente d’envoi. Un collecteur par dossier.                |
-| `RECOUNT_COLLECTOR_QUEUE_MAX_BYTES`       | `67108864`                     | Quantité maximale de données en file, de 1 Mio à 1 Gio.                                 |
-| `RECOUNT_COLLECTOR_QUEUE_MAX_BATCHES`     | `1024`                         | Nombre maximal de lots en attente.                                                      |
-| `RECOUNT_COLLECTOR_QUEUE_MAX_AGE_SECONDS` | `3600`                         | Durée d’attente maximale d’un lot avant qu’il soit abandonné.                           |
-| `RUST_LOG`                                | `info`                         | Niveau de journalisation.                                                               |
+| Variable                                  | Par défaut                     | Signification                                                                                    |
+| ----------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`             | `http://127.0.0.1:14317`       | Adresse d’ingestion de Recount.                                                                  |
+| `RECOUNT_COLLECTOR_ENROLLMENT_URL`        | Aucune                         | Adresse de l’application Web de Recount qui inscrit la machine.                                  |
+| `RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE`   | Aucune                         | Fichier privé qui contient la clé d’inscription. Utile seulement à l’inscription.                |
+| `RECOUNT_COLLECTOR_STATE_DIRECTORY`       | `.state/collector`             | Dossier privé où la machine conserve son identité après l’inscription.                           |
+| `RECOUNT_COLLECTOR_INTERVAL_MS`           | `1000`                         | Période d’échantillonnage, de 100 à 60000 ms.                                                    |
+| `RECOUNT_COLLECTOR_HOST_ID`               | `/etc/machine-id`              | Identité de la machine à l’inscription. Les machines clonées ont besoin d’ID distincts.          |
+| `RECOUNT_COLLECTOR_VISIBILITY`            | `restricted`                   | Mettez `host` seulement si le collecteur voit les processus de l’hôte.                           |
+| `RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID`  | `host` avec la visibilité hôte | Identité de l’espace de noms des PID. Obligatoire en visibilité restreinte.                      |
+| `RECOUNT_COLLECTOR_QUEUE_DIRECTORY`       | `.state/collector-queue`       | Dossier local des données en attente d’envoi. Un collecteur par dossier.                         |
+| `RECOUNT_COLLECTOR_LOCK_DIRECTORY`        | `/run/recount-collector`       | Dossier privé commun à tous les collecteurs de la machine, pour qu’un seul la déclare à la fois. |
+| `RECOUNT_COLLECTOR_QUEUE_MAX_BYTES`       | `67108864`                     | Quantité maximale de données en file, de 1 Mio à 1 Gio.                                          |
+| `RECOUNT_COLLECTOR_QUEUE_MAX_BATCHES`     | `1024`                         | Nombre maximal de lots en attente.                                                               |
+| `RECOUNT_COLLECTOR_QUEUE_MAX_AGE_SECONDS` | `3600`                         | Durée d’attente maximale d’un lot avant qu’il soit abandonné.                                    |
+| `RUST_LOG`                                | `info`                         | Niveau de journalisation.                                                                        |
 
 Tout changement de paramètre exige un redémarrage.
 

@@ -25,6 +25,8 @@ mod metrics;
 #[cfg(target_os = "linux")]
 mod network;
 #[cfg(target_os = "linux")]
+mod node_lock;
+#[cfg(target_os = "linux")]
 mod participants;
 #[cfg(target_os = "linux")]
 pub mod runtime;

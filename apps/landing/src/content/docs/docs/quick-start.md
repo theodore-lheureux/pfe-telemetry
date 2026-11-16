@@ -35,11 +35,12 @@ Point the collector at the Recount web app, which enrolls the machine, and at th
 export RECOUNT_COLLECTOR_ENROLLMENT_URL=https://your-recount-app.example
 export RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=~/.config/recount/enrollment.key
 export RECOUNT_COLLECTOR_STATE_DIRECTORY=~/.local/state/recount
+export RECOUNT_COLLECTOR_LOCK_DIRECTORY=~/.local/state/recount/lock
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://ca.ingest.recount.cloud
 recount-collector
 ```
 
-Use the address you sign in at as the enrollment URL. The ingestion address shown is the one for Recount Cloud; if you [self-host](/docs/self-hosting/), use your own. On first start the machine enrolls itself and appears under **Nodes** on the Collectors page.
+Use the address you sign in at as the enrollment URL. The ingestion address shown is the one for Recount Cloud; if you [self-host](/docs/self-hosting/), use your own. Without root, the lock directory above replaces the default `/run/recount-collector`. Only one collector reports a machine at a time, provided every collector on it runs as the same user, or all as root, and uses the same lock directory. On first start the machine enrolls itself and appears under **Nodes** on the Collectors page.
 
 ## 5. Record an execution
 
