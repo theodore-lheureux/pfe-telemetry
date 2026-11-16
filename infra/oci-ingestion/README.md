@@ -12,9 +12,10 @@ approval-gated GitHub environments configured. OCI bootstrap created the CD user
 API key, group, scoped policies, agent permissions and project compartment.
 Live storage grants were narrowed
 and confirmed with `oci iam policy get`. The first approved CD apply created
-the data volume, backup policy/assignment and DNS records, but attachment and
-security-list update failed with authorization errors. The bootstrap policy has
-been corrected; a fresh approved CD apply is required to finish those changes.
+the data volume, backup policy/assignment and DNS records. The subsequent apply
+added the OCI TCP/443 rule but still denied attachment. The owner-approved
+bootstrap policy now uses standard compartment service-family grants; a fresh
+approved CD apply is required to finish the attachment.
 Certificates and application deployment remain pending.
 Trusted host-key verification and read-only guest inspection are complete;
 connection details remain ignored. The host has no Docker, Bun or Caddy yet,
@@ -53,14 +54,15 @@ changing the landing workflow.
 inspected public SSH rule; use approved operator CIDRs, or an empty set after
 verifying another management path. Storage and backups belong only in the
 project `storage_compartment_id`; the VM remains in its existing compartment.
-Core write authorization uses supported resource-tag conditions on the selected
-VM and security list. Confirm the corrected permissions in the fresh CD apply;
-do not broaden root-compartment grants on failure.
+The owner approved broad compute/network and Run Command service-family access
+in the VM compartment, with storage management in the project compartment.
+Identity/policy management remains excluded; see the bootstrap guide's risk note.
 
 After a partial apply, never reuse the old saved plan or reset state. Generate
 a new plan against the existing remote state. The targeted read-only recovery
-plan showed only the missing attachment and security-list update; storage,
-backup and DNS resources must remain preserved. Review the full fresh CD plan
+plan initially showed the missing attachment and security-list update; the 443
+rule is now applied. Storage, backup and DNS resources must remain preserved.
+Review the full fresh CD plan
 before approving it. A closed TCP/443 does not distinguish a missing OCI rule
 from the host firewall or absent Caddy.
 
@@ -135,10 +137,9 @@ Set environment variables after approval:
 | `ingestion-deploy`, variable | `OCI_INGESTION_ARCH=arm64`                                                                                                 |
 
 `OCI_COMPARTMENT_ID` selects the isolated project compartment where commands are
-stored, not the root compartment containing the VM. Creation remains
-exact-VM-conditioned; status reads need a separate target-conditioned execution
-family grant in the VM compartment. Both operations were verified live with a
-harmless command under the dedicated CD identity.
+stored, not the root compartment containing the VM. CD has the owner-approved
+Run Command family grants in the VM compartment. The Oracle agent's separate
+dynamic group remains bound to its own VM.
 
 Infrastructure changes run through `ingestion-infra.yml`. Plan runs for
 same-repository PRs and relevant `main` changes; fork PRs get offline checks only.
@@ -174,15 +175,14 @@ environment secret. The runner writes mode-0600 files and removes them on
 completion. Rotate/revoke the key through the owner-managed process; no private
 key belongs in OpenTofu state or release artifacts.
 
-Application release activation needs only `INSTANCE_AGENT_COMMAND_CREATE` and
-`INSTANCE_AGENT_COMMAND_EXECUTION_INSPECT` for the selected instance. Infrastructure
-CD also needs the managed storage, backup and security-list permissions in the
-bootstrap guide. Neither may manage IAM. Anonymous
+Release activation uses Run Command. Infrastructure CD also has the reviewed
+compute, network and project-storage service families in the bootstrap guide,
+but no IAM administration. Anonymous
 public-release downloads need no additional OCI transfer permissions. The agent's
 dynamic group must include only the existing VM and have command-execution
-permission for itself. Before creating any policy, verify that Run Command
-authorization supports the required one-instance restriction. The VM is in the
-root compartment; a compartment-wide policy is not acceptable isolation.
+permission for itself. Verify that the reviewed service-family policy is
+installed. The VM is in the root
+compartment, so the CD key has broad compute/network authority there.
 
 See Oracle's [Run Command prerequisites](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/runningcommands.htm)
 and [command permissions](https://docs.oracle.com/en-us/iaas/Content/Identity/Reference/corepolicyreference.htm).

@@ -45,45 +45,37 @@ Use the tenancy's actual home region for IAM operations. The owner may select
 `oci_profile=pfe-api` and `oci_auth=APIKey` in ignored bootstrap configuration.
 This tenancy requires an owner-selected `cd_email`; do not invent an address.
 
-The root creates a dedicated `recount-ingestion-data` compartment. Volume and
-backup management is granted only there; the VM remains in its original
-compartment. Core instance-attach and security-list-update permissions use the
-existing resources' `Oracle-Tags.CreatedOn` markers through
-`target.resource.tag`, not unsupported Core ID predicates. The markers are read
-from the selected resource IDs; verify uniqueness before rebinding targets and
-never copy these authorization markers to another resource. Missing or invalid
-markers fail closed, and duplicate security-list markers block bootstrap.
+The owner-approved CD policy uses standard service families without resource
+predicates: `manage instance-family`, `manage virtual-network-family` and both
+Run Command families in the VM's compartment; `manage volume-family` in the
+dedicated project storage compartment; and read-only volume inventory in the
+VM's compartment. It grants no identity, group, policy, Vault or object-storage
+management. The VM remains where it is and no resource needs retagging.
 
-Attachment objects do not exist yet and cannot carry target tags at creation.
-The additional root-compartment grant therefore permits only
-`VOLUME_ATTACHMENT_CREATE` during `AttachVolume`, with no detach/delete grant.
-The API must also authorize the marked VM and a project-compartment volume.
-This follows Oracle's [tag-based attach requirements](https://docs.oracle.com/en-us/iaas/Content/Tagging/Tasks/managingaccesswithtags.htm#block-volume-service-limitations).
-No VM or network resource needs retagging. Run Command remains exact-VM-conditioned.
-The principal has read-only inventory access in the VM's compartment, but no
-unconditional root-compartment storage management, IAM or object-storage access.
-Release downloads are public.
+Residual risk: these credentials can create, modify or delete compute/network resources in the VM compartment and its descendants, and manage project storage, causing cost or data loss beyond this deployment.
 
-Commands are stored in the project compartment and may be created only for the
-selected VM. Command metadata reads stay in that compartment. Execution-family
-reads in the VM compartment are separately target-conditioned; live testing
-showed that a command-read grant alone could not read execution status.
-Creation and successful execution inspection have both been verified.
-The boot-volume inventory grant permits only the `GetBootVolume` operation;
-root-compartment data-volume listing was denied in a live negative check.
+Oracle's [Core permissions reference](https://docs.oracle.com/en-us/iaas/Content/Identity/Reference/corepolicyreference.htm)
+requires all three permissions for `AttachVolume`: `INSTANCE_ATTACH_VOLUME` on
+the instance, `VOLUME_WRITE` on the volume, and `VOLUME_ATTACHMENT_CREATE` for
+the attachment. `manage instance-family` includes the instance and attachment
+permissions in the VM compartment; project `manage volume-family` supplies the
+volume permission across compartments. Root boot-volume inventory is read-only.
 
-**Validate target-condition support with real requests.** The OCI
-reference does not establish all instance/security-list target variables for
-these operations. Unsupported conditions fail closed, but a successful policy
-creation alone does not prove authorization. The first CD apply returned 404
-for both `AttachVolume` and `UpdateSecurityList` with the former ID predicates.
-Audit and read-only CD-identity planning confirmed the partial state: existing
-storage/backups/DNS are preserved, and only the missing attachment and HTTPS rule
-remain to apply. The corrected policy uses documented tag/operation conditions;
-verify the write operations in a fresh approved CD apply, never a local ingestion apply.
-Never remove
-conditions or broaden to all instances/security lists to make deployment work.
-If OCI cannot express that boundary, stop for a design decision.
+The volume uses an Oracle-provided encryption key, not a Vault CMK. Oracle's
+[encryption reference](https://docs.oracle.com/en-us/iaas/Content/Block/Concepts/blockvolumeencryption.htm)
+documents no additional Vault/key-delegate grant for this paravirtualized
+in-transit encryption path. Customer-managed keys would need separate review.
+
+The tagged security-list update succeeded and TCP/443 is now allowed by OCI,
+but the second CD apply still denied attachment. The owner chose the broader
+service families instead of further tag/ID condition tuning. No documented
+non-mutating `AttachVolume` authorization probe is available; read checks and
+mocked plans do not prove write authorization. Verify the actual attachment in
+a fresh approved CD apply, never a local attach followed by state import.
+
+Oracle documents defined-tag authorization for Compute and Networking without
+a general exclusion for default `Oracle-Tags`; the successful security-list
+update confirms that path here, but does not prove the instance attach check.
 
 Inspect all current identity memberships/policies and agent configuration first;
 reuse existing equivalents rather than duplicating grants. Initialize the root
