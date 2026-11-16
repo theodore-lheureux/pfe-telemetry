@@ -1,10 +1,15 @@
+mod gpu;
 mod node;
 mod process;
+mod setup;
+#[cfg(test)]
+mod tests;
 
 use process::discovered_entry;
+pub(crate) use setup::host_id_or_machine_id;
 
 use std::{
-    fs, io,
+    io,
     time::{Duration, Instant},
 };
 
@@ -12,10 +17,8 @@ use opentelemetry_proto::tonic::{
     common::v1::KeyValue,
     metrics::v1::{Metric, NumberDataPoint, number_data_point::Value},
 };
-use procfs::{CurrentSI, KernelStats, process::Process};
-use recount_telemetry_validation::authority::identifier;
 use recount_telemetry_validation::catalogue::{self, Definition};
-use recount_telemetry_validation::linux_adapter::{self as adapter, IdentifierKind, Scope};
+use recount_telemetry_validation::linux_adapter::{self as adapter, Scope};
 
 use crate::{
     clock::{SamplingClock, is_discontinuity},
@@ -24,23 +27,6 @@ use crate::{
     diagnostics::ReadStatus,
     metrics::{counter, gauge, integer, point, resource, string},
 };
-
-/// The host resource ID: an explicitly enrolled host ID, otherwise the Linux machine ID.
-/// It is also the machine ID a node enrolls with.
-pub(crate) fn host_id_or_machine_id(host_id: Option<String>) -> io::Result<String> {
-    match host_id {
-        Some(id) if identifier(&id) => Ok(id),
-        Some(_) => Err(io::Error::other(
-            "Enrolled host ID must be 1-128 bytes without control characters",
-        )),
-        None => adapter::parse_identifier(
-            &fs::read_to_string("/etc/machine-id")?,
-            IdentifierKind::Machine,
-        )
-        .map(str::to_owned)
-        .ok_or_else(|| io::Error::other("Invalid Linux machine identifier")),
-    }
-}
 
 /// Sampling identity and interval for one collection epoch.
 pub struct CollectorConfig {
@@ -71,109 +57,11 @@ pub struct Collector {
     loss: LossTracker,
     loss_generation: u64,
     cycle_points: u64,
+    gpu: Option<crate::gpu::Gpu>,
+    gpu_authorization: Option<crate::enrollment::Authorization>,
 }
 
 impl Collector {
-    /// Reads required Linux identity and source constants. An explicitly enrolled
-    /// host ID overrides machine-id, including for cloned machines.
-    pub fn new(config: CollectorConfig, loss: LossTracker) -> io::Result<Self> {
-        let CollectorConfig {
-            interval,
-            host_id,
-            namespace_id,
-            host_visibility,
-        } = config;
-        let host_id = host_id_or_machine_id(host_id)?;
-        let boot_id = adapter::parse_identifier(
-            &fs::read_to_string("/proc/sys/kernel/random/boot_id")?,
-            IdentifierKind::Boot,
-        )
-        .ok_or_else(|| io::Error::other("Invalid Linux boot identifier"))?
-        .to_owned();
-        // Refuse a proc mount whose PID numbering differs from the caller's.
-        let own = Process::myself()
-            .and_then(|process| process.stat())
-            .map_err(|_| io::Error::other("Cannot verify procfs PID namespace"))?;
-        if u32::try_from(own.pid).ok() != Some(std::process::id()) {
-            return Err(io::Error::other(
-                "Procfs PID namespace differs from collector namespace",
-            ));
-        }
-        let namespace = match namespace_id {
-            Some(id) if identifier(&id) => id,
-            Some(_) => {
-                return Err(io::Error::other(
-                    "Process namespace ID must be 1-128 bytes without control characters",
-                ));
-            }
-            None if host_visibility => "host".into(),
-            None => {
-                return Err(io::Error::other(
-                    "Restricted visibility requires RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID",
-                ));
-            }
-        };
-        if host_visibility && namespace != "host" {
-            return Err(io::Error::other(
-                "Host visibility requires initial host PID namespace",
-            ));
-        }
-        let interval_ns = i64::try_from(interval.as_nanos())
-            .map_err(|_| io::Error::other("Sampling interval exceeds int64"))?;
-        if interval_ns <= 0 {
-            return Err(io::Error::other("Sampling interval must be positive"));
-        }
-        let stats =
-            KernelStats::current().map_err(|_| io::Error::other("Cannot read Linux boot time"))?;
-        let boot_time_ns = stats
-            .btime
-            .checked_mul(1_000_000_000)
-            .ok_or_else(|| io::Error::other("Boot time exceeds timestamp range"))?;
-        let ticks_per_second = procfs::ticks_per_second();
-        let page_size = procfs::page_size();
-        if ticks_per_second == 0 || ticks_per_second > i64::MAX as u64 || page_size == 0 {
-            return Err(io::Error::other("Invalid Linux clock tick or page size"));
-        }
-        let epoch = uuid::Uuid::new_v4().to_string();
-        let mut clock = SamplingClock::new()?;
-        let epoch_start = clock.timestamp()?;
-        loss.start_epoch(&epoch);
-        let mut host = vec![
-            string(adapter::HOST_ID, host_id),
-            string(adapter::BOOT_ID, boot_id.clone()),
-            string("os.type", "linux"),
-            string("recount.collection.source", "rust-procfs"),
-        ];
-        // Hostname is display-only and must obey the contract's string limit.
-        if let Ok(name) = fs::read_to_string("/proc/sys/kernel/hostname") {
-            let name = name.trim();
-            if !name.is_empty() && name.len() <= 128 {
-                host.push(string("host.name", name));
-            }
-        }
-        Ok(Self {
-            host,
-            boot: boot_id,
-            namespace,
-            visibility: if host_visibility {
-                "host"
-            } else {
-                "restricted"
-            },
-            interval_ns,
-            boot_time_ns,
-            ticks_per_second,
-            page_size,
-            epoch,
-            epoch_start,
-            clock,
-            continuity: Continuity::default(),
-            loss_generation: loss.generation(),
-            loss,
-            cycle_points: 0,
-        })
-    }
-
     /// Invalidates all baseline counter streams after a skipped scheduled cycle.
     pub fn missed_cycle(&mut self) {
         self.continuity.invalidate();
@@ -217,6 +105,9 @@ impl Collector {
                     .record(&self.epoch, LossReason::BufferExpired, self.cycle_points);
                 self.continuity.invalidate();
                 self.epoch = uuid::Uuid::new_v4().to_string();
+                if let Some(gpu) = &mut self.gpu {
+                    gpu.invalidate();
+                }
                 self.clock = SamplingClock::new()?;
                 self.epoch_start = self.clock.timestamp()?;
                 // The cached boot wall time belongs to the pre-step clock.
@@ -272,6 +163,7 @@ impl Collector {
             Err(error) => discovery = ReadStatus::from_error(&error),
         }
         let time = self.clock.timestamp()?;
+        self.gpu_metrics(time, &mut resources);
         let duration = started.elapsed().as_secs_f64();
         let (_, losses) = self.loss.snapshot();
         let dropped = [
@@ -390,90 +282,4 @@ impl Collector {
 
 fn signed(value: u64) -> io::Result<i64> {
     i64::try_from(value).map_err(|_| io::Error::other("Diagnostic count exceeds int64"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn configured_host_and_namespace_reject_control_characters() {
-        for control in ['\n', '\t', '\0', '\u{0085}'] {
-            for host_invalid in [true, false] {
-                let invalid = format!("test{control}identity");
-                let error = Collector::new(
-                    CollectorConfig {
-                        interval: Duration::from_secs(1),
-                        host_id: Some(if host_invalid {
-                            invalid.clone()
-                        } else {
-                            "test-host".into()
-                        }),
-                        namespace_id: Some(if host_invalid {
-                            "test-namespace".into()
-                        } else {
-                            invalid
-                        }),
-                        host_visibility: false,
-                    },
-                    LossTracker::default(),
-                )
-                .err()
-                .expect("Control characters must be rejected");
-                assert!(error.to_string().contains("without control characters"));
-            }
-        }
-    }
-
-    #[test]
-    fn sampled_resources_obey_shared_identity_catalogue_and_window_contracts() {
-        let mut collector = Collector::new(
-            CollectorConfig {
-                interval: Duration::from_secs(1),
-                host_id: Some("test-host".into()),
-                namespace_id: Some("test-namespace".into()),
-                host_visibility: false,
-            },
-            LossTracker::default(),
-        )
-        .unwrap();
-        let contents = collector
-            .sample()
-            .unwrap()
-            .expect("Stable sampling clock")
-            .into_contents();
-        let window_names = contents
-            .window
-            .scope_metrics
-            .iter()
-            .flat_map(|s| &s.metrics)
-            .map(|m| m.name.as_str())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            window_names,
-            [catalogue::SCAN_DURATION.name, catalogue::CLOCK_STATUS.name]
-        );
-        let mut saw_self = false;
-        let mut saw_cpu = false;
-        for resource in contents
-            .measurements
-            .iter()
-            .chain([&contents.window, &contents.diagnostics])
-        {
-            let attrs = &resource.resource.as_ref().unwrap().attributes;
-            let identity = adapter::resource_identity(attrs).unwrap();
-            assert_eq!(identity.host, "test-host");
-            if let Some(process) = identity.process {
-                assert_eq!(process.namespace, "test-namespace");
-                saw_self |= process.pid == u64::from(std::process::id());
-            }
-            for metric in resource.scope_metrics.iter().flat_map(|s| &s.metrics) {
-                catalogue::validate_adapter_metric(metric, catalogue::Adapter::Linux).unwrap();
-                assert_ne!(metric.name, catalogue::CLOCK_UNCERTAINTY.name);
-                saw_cpu |= metric.name == catalogue::NODE_CPU_TIME.name;
-            }
-        }
-        assert!(saw_self);
-        assert!(saw_cpu);
-    }
 }

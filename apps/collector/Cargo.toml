@@ -28,6 +28,8 @@ serde_json = "1.0.154"
 getrandom = "0.4.3"
 serde = { version = "1.0.229", features = ["derive"] }
 recount-telemetry-schema = { version = "0.1.0", path = "../../crates/telemetry-schema" }
+recount-nvidia-dcgm = { version = "0.1.0", path = "../../crates/nvidia-dcgm" }
+nvml-wrapper = "0.13.0"
 
 [lints]
 workspace = true

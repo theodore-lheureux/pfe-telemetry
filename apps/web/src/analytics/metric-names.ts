@@ -4,8 +4,101 @@ import { m } from "@recount/i18n/messages";
 // any sent by standard OpenTelemetry exporters, keep their technical names.
 const METRICS: Record<
 	string,
-	{ name: () => string; description: () => string }
+	{ name: () => string; description: () => string; ratio?: boolean }
 > = {
+	"recount.process.gpu.memory.used": {
+		name: m.gpu_process_memory,
+		description: m.gpu_process_memory_description,
+	},
+	"recount.process.gpu.utilization": {
+		ratio: true,
+		name: m.gpu_process_utilization,
+		description: m.gpu_process_utilization_description,
+	},
+	"recount.process.gpu.memory.activity": {
+		ratio: true,
+		name: m.gpu_process_memory_activity,
+		description: m.gpu_process_memory_activity_description,
+	},
+	"recount.gpu.process.discovery.status": {
+		name: m.gpu_process_discovery,
+		description: m.gpu_process_discovery_description,
+	},
+	"recount.gpu.engine.activity": {
+		ratio: true,
+		name: m.gpu_engine,
+		description: m.gpu_engine_description,
+	},
+	"recount.gpu.sm.activity": {
+		ratio: true,
+		name: m.gpu_sm_activity,
+		description: m.gpu_sm_activity_description,
+	},
+	"recount.gpu.sm.occupancy": {
+		ratio: true,
+		name: m.gpu_sm_occupancy,
+		description: m.gpu_sm_occupancy_description,
+	},
+	"recount.gpu.pipe.activity": {
+		ratio: true,
+		name: m.gpu_pipe_activity,
+		description: m.gpu_pipe_activity_description,
+	},
+	"recount.gpu.dram.activity": {
+		ratio: true,
+		name: m.gpu_dram_activity,
+		description: m.gpu_dram_activity_description,
+	},
+	"recount.gpu.utilization": {
+		ratio: true,
+		name: m.gpu_utilization,
+		description: m.gpu_utilization_description,
+	},
+	"recount.gpu.memory.activity": {
+		ratio: true,
+		name: m.gpu_memory_activity,
+		description: m.gpu_memory_activity_description,
+	},
+	"recount.gpu.memory.total": {
+		name: m.gpu_memory_total,
+		description: m.gpu_memory_total_description,
+	},
+	"recount.gpu.memory.used": {
+		name: m.gpu_memory_used,
+		description: m.gpu_memory_used_description,
+	},
+	"recount.gpu.power": {
+		name: m.gpu_power,
+		description: m.gpu_power_description,
+	},
+	"recount.gpu.temperature": {
+		name: m.gpu_temperature,
+		description: m.gpu_temperature_description,
+	},
+	"recount.gpu.clock": {
+		name: m.gpu_clock,
+		description: m.gpu_clock_description,
+	},
+	"recount.gpu.ecc.errors": {
+		name: m.gpu_ecc,
+		description: m.gpu_ecc_description,
+	},
+	"recount.gpu.xid.last": {
+		name: m.gpu_xid,
+		description: m.gpu_xid_description,
+	},
+	"recount.gpu.pcie.throughput": {
+		name: m.gpu_pcie,
+		description: m.gpu_pcie_description,
+	},
+	"recount.gpu.nvlink.throughput": {
+		name: m.gpu_nvlink,
+		description: m.gpu_nvlink_description,
+	},
+	"recount.gpu.discovery.status": {
+		name: m.gpu_discovery,
+		description: m.gpu_discovery_description,
+	},
 	"recount.node.cpu.time": {
 		name: m.metric_node_cpu_time,
 		description: m.metric_node_cpu_time_description,
@@ -94,6 +187,10 @@ export function metricDescription(name: string) {
 	return METRICS[name]?.description() ?? null;
 }
 
+export function isRatioMetric(name: string) {
+	return METRICS[name]?.ratio === true;
+}
+
 /** Whether the metric has a friendly name distinct from its technical one. */
 export function isNamedMetric(name: string) {
 	return name in METRICS;
@@ -112,5 +209,6 @@ export function unitLabel(unit: string) {
 	if (!unit || unit === "1") return "";
 	if (unit === "By") return m.unit_bytes();
 	if (unit === "s") return m.unit_seconds();
+	if (unit === "Cel") return "°C";
 	return /^\{(.+)\}$/.exec(unit)?.[1] ?? unit;
 }

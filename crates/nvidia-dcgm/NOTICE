@@ -1,0 +1,17 @@
+Recount DCGM bindings
+
+The ABI declarations in src/ffi/raw.rs and fixtures/runtime.c are derived from
+NVIDIA DCGM v4.7.0 dcgm_structs.h and dcgm_agent.h. Test-only fake/injection
+declarations also derive from dcgm_structs_internal.h and dcgm_test_apis.h:
+https://github.com/NVIDIA/DCGM/tree/9fae2867e6e5264fa0fca22a07dc898d591baa21/dcgmlib
+
+Copyright (c) 2025-2026 NVIDIA CORPORATION. All rights reserved.
+Licensed under the Apache License, Version 2.0; see LICENSE-APACHE.
+The Rust declarations are a reduced, modified binding, not NVIDIA's full headers.
+
+fixtures/nvidia-profiling-example.txt transcribes the published numerical example
+from NVIDIA's DCGM profiling guide and identifies its source. Synthetic wrappers
+and the native ABI test shim are not recordings of the owner's hardware.
+
+No NVIDIA driver, DCGM runtime, CUDA library or proprietary profiling module is
+included. Installed runtime components retain their own distribution terms.

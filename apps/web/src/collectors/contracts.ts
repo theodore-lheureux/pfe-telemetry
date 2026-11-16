@@ -1,7 +1,7 @@
 import type { ProjectReference } from "../organizations/contracts";
 
 export const MAX_U64_NANOSECONDS_DURATION_SECONDS = 18_446_744_073;
-export const DEFAULT_LINUX_LOCAL_KINDS = [4, 6];
+export const DEFAULT_LINUX_LOCAL_KINDS = [3, 4, 6];
 export const LOCAL_KINDS = [2, 3, 4, 6, 8] as const;
 export const MAX_NODES_PER_REQUEST = 500;
 export const NODES_PER_PAGE = 100;

@@ -4,6 +4,20 @@
 
 The executable requires Linux and `/proc`. Linux dependencies are target-gated; running the executable on another OS returns an unsupported-platform error. Enrolled collectors run as root and discover execution membership from environment labels, independently of metrics.
 
+## NVIDIA GPU telemetry
+
+The collector automatically loads an installed `libdcgm.so.4`, reuses the local host engine or owns an embedded engine, and discovers physical GPU and verified MIG UUIDs. No GPU configuration, exporter or CUDA toolkit is required. Missing NVIDIA facilities leave CPU/process collection running without invented GPU values.
+
+DCGM profiling supplies FP16/FP32/FP64/Tensor-pipe activity, SM activity/occupancy, engine/DRAM activity and supported PCIe/NVLink rates. Core gauges cover utilization, framebuffer memory, power, temperature, SM/memory clocks and ECC/XID errors. The [GPU collection design](../../docs/nvidia-gpu-collection.md) defines fields, units, identity, licensing and capability limits.
+
+Acquisition uses a separate bounded worker at one second or the collector interval when slower. Only owned watches/groups are removed. Native cache timestamps are retained; repeated, stale, unsupported, denied and blank values produce read statuses rather than zero. The collector does not pause profilers, enable accounting or change MIG configuration. Monitoring can still contend with developer profilers.
+
+New Linux enrollment keys allow local GPU resources. Explicit or existing policies that omit GPU kind suppress GPU acquisition/export without rejecting CPU/process batches. A successful empty startup inventory stays CPU-only until restart.
+
+Safe runtime-loaded NVML supplements DCGM with process allocation bytes and supported SM/memory activity on the existing process identities. With verified host PID visibility and GPU/process grants, existing environment-labelled executions receive those process points automatically. CPU identities bracket the actual GPU queries and are rechecked afterward. Unknown/reused PIDs, ambiguous windows and missing samples are omitted or unavailable; buffered utilization warms up for two acquisition intervals, while current allocation does not need that history.
+
+DCGM's pipe/SM profiling remains on GPU/MIG resources: public PID/job reports expose no per-pipe breakdown. No accounting modes are enabled and no device power/activity is divided among processes. Owner-recorded A10 fixtures cover vendor capabilities and load-dependent device values, including unoffered FP64; collector-on-hardware and process-attribution validation remain pending. Driver-free fake-entity integration is not a hardware-support claim. The templates rework is already on the base, so no GPU-specific dashboard, page or component is added.
+
 ## Configuration
 
 `recount-collector --help` lists command-line equivalents. Command-line arguments override environment variables; settings are read once at startup.

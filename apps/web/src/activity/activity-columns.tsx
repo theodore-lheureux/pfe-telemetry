@@ -209,6 +209,8 @@ export function useActivityColumns({
 										point.value,
 										point.unit,
 										locale,
+										0,
+										point.metricName,
 									);
 									return (
 										<span className="tabular-nums" title={value.exact}>

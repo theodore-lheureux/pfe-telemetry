@@ -1,0 +1,10 @@
+# NVIDIA DCGM profiling guide, "CUDA Test Generator (dcgmproftester)" example.
+# https://docs.nvidia.com/datacenter/dcgm/latest/learn/modules/profiling.html
+# Transcribed published dmon observations: graphics engine, Tensor, DRAM ratios.
+# No native timestamps/status bytes were published. Test wrapping is synthetic.
+# These are not recordings from the owner's T4 or a full native ABI transcript.
+0.000 0.000 0.000
+0.552 0.527 0.000
+0.969 0.928 0.000
+0.973 0.931 0.000
+0.971 0.929 0.000

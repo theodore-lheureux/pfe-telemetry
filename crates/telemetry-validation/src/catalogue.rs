@@ -22,6 +22,7 @@ pub enum Adapter {
 pub enum Constraint {
     NonNegative,
     UnitInterval,
+    Signed,
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Definition {
@@ -57,6 +58,27 @@ catalogue! {
     DISCOVERED_PROCESSES => ("recount.collection.discovered.processes","{process}",Gauge,Int64,Linux,NonNegative),
     DISCARDED_PROCESSES => ("recount.collection.discarded.processes","{process}",Gauge,Int64,Linux,NonNegative),
     DROPPED_POINTS => ("recount.collection.dropped.points","{point}",CumulativeMonotonic,Int64,Linux,NonNegative),
+    GPU_ENGINE_ACTIVITY => ("recount.gpu.engine.activity","1",Gauge,Float64,Linux,UnitInterval),
+    GPU_SM_ACTIVITY => ("recount.gpu.sm.activity","1",Gauge,Float64,Linux,UnitInterval),
+    GPU_SM_OCCUPANCY => ("recount.gpu.sm.occupancy","1",Gauge,Float64,Linux,UnitInterval),
+    GPU_PIPE_ACTIVITY => ("recount.gpu.pipe.activity","1",Gauge,Float64,Linux,UnitInterval),
+    GPU_DRAM_ACTIVITY => ("recount.gpu.dram.activity","1",Gauge,Float64,Linux,UnitInterval),
+    GPU_UTILIZATION => ("recount.gpu.utilization","1",Gauge,Float64,Linux,UnitInterval),
+    GPU_MEMORY_ACTIVITY => ("recount.gpu.memory.activity","1",Gauge,Float64,Linux,UnitInterval),
+    GPU_MEMORY_TOTAL => ("recount.gpu.memory.total","By",Gauge,Int64,Linux,NonNegative),
+    GPU_MEMORY_USED => ("recount.gpu.memory.used","By",Gauge,Int64,Linux,NonNegative),
+    GPU_POWER => ("recount.gpu.power","W",Gauge,Float64,Linux,NonNegative),
+    GPU_TEMPERATURE => ("recount.gpu.temperature","Cel",Gauge,Int64,Linux,Signed),
+    GPU_CLOCK => ("recount.gpu.clock","Hz",Gauge,Int64,Linux,NonNegative),
+    GPU_ECC_ERRORS => ("recount.gpu.ecc.errors","{error}",Gauge,Int64,Linux,NonNegative),
+    GPU_XID_LAST => ("recount.gpu.xid.last","{error}",Gauge,Int64,Linux,NonNegative),
+    GPU_PCIE_THROUGHPUT => ("recount.gpu.pcie.throughput","By/s",Gauge,Float64,Linux,NonNegative),
+    GPU_NVLINK_THROUGHPUT => ("recount.gpu.nvlink.throughput","By/s",Gauge,Float64,Linux,NonNegative),
+    GPU_DISCOVERY_STATUS => ("recount.gpu.discovery.status","1",Gauge,Int64,Linux,NonNegative),
+    PROCESS_GPU_MEMORY_USED => ("recount.process.gpu.memory.used","By",Gauge,Int64,Linux,NonNegative),
+    PROCESS_GPU_UTILIZATION => ("recount.process.gpu.utilization","1",Gauge,Float64,Linux,UnitInterval),
+    PROCESS_GPU_MEMORY_ACTIVITY => ("recount.process.gpu.memory.activity","1",Gauge,Float64,Linux,UnitInterval),
+    GPU_PROCESS_DISCOVERY_STATUS => ("recount.gpu.process.discovery.status","1",Gauge,Int64,Linux,NonNegative),
     DCGM_GR_ENGINE_ACTIVE => ("DCGM_FI_PROF_GR_ENGINE_ACTIVE","1",Gauge,Float64,Dcgm,UnitInterval),
     DCGM_SM_ACTIVE => ("DCGM_FI_PROF_SM_ACTIVE","1",Gauge,Float64,Dcgm,UnitInterval),
     DCGM_SM_OCCUPANCY => ("DCGM_FI_PROF_SM_OCCUPANCY","1",Gauge,Float64,Dcgm,UnitInterval),
@@ -106,7 +128,9 @@ pub fn validate_adapter_metric(metric: &Metric, adapter: Adapter) -> Result<(), 
         };
         match (def.value, p.value) {
             (_, None) if p.flags & 1 != 0 => {}
-            (Value::Int64, Some(Number::AsInt(v))) if v >= 0 => {
+            (Value::Int64, Some(Number::AsInt(v)))
+                if v >= 0 || def.constraint == Constraint::Signed =>
+            {
                 if def.constraint == Constraint::UnitInterval && v > 1 {
                     return Err(invalid());
                 }
@@ -149,7 +173,6 @@ mod tests {
             .iter()
             .filter(|def| def.constraint == Constraint::UnitInterval)
         {
-            assert_eq!(def.adapter, Adapter::Dcgm);
             for value in [0.0, 1.0] {
                 validate_adapter_metric(&gauge(def, Number::AsDouble(value)), def.adapter).unwrap();
             }

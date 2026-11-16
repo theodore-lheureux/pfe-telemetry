@@ -14,6 +14,8 @@ mod delivery;
 mod diagnostics;
 #[cfg(target_os = "linux")]
 mod enrollment;
+#[cfg(target_os = "linux")]
+mod gpu;
 #[cfg(any(target_os = "linux", test))]
 mod identity;
 #[cfg(target_os = "linux")]

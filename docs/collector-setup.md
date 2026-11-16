@@ -9,7 +9,7 @@ Collectors enroll themselves into a project with an enrollment key; [collector e
 3. Optionally add comma-separated labels, which every node enrolled with the key receives, a node limit and an expiry. Use a short expiry and a limit for one-off keys.
 4. Create the key and save it from the reveal dialog. The key is shown only once; hiding the dialog, reloading or leaving the page discards it. If it is lost, revoke the key and create another.
 
-New Linux keys allow process and container resources and use a maximum submission age of 3600 seconds with 60 seconds of clock skew. Keep each collector's queue lifetime no greater than the submission age.
+New Linux keys allow GPU, process and container resources and use a maximum submission age of 3600 seconds with 60 seconds of clock skew. Existing and explicit kind grants are not widened. Keep each collector's queue lifetime no greater than the submission age.
 
 Store the key where only the collector's user can read it, without putting it in command arguments, shell history, URLs or tickets:
 

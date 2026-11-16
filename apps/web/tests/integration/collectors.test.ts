@@ -217,7 +217,7 @@ test("enrollment issues a signed token and reenrollment keeps the node", async (
 	const created = data(await createKey({ labels: ["prod", "linux"] }));
 	expect(created.key).toMatch(/^recount_enroll_/);
 	expect(created.enrollmentKey).not.toHaveProperty("keySha256");
-	expect(created.enrollmentKey.allowedLocalKinds).toEqual([4, 6]);
+	expect(created.enrollmentKey.allowedLocalKinds).toEqual([3, 4, 6]);
 
 	const first = machine();
 	const enrolled = await collectors.enrollNode(database.db, {
@@ -234,7 +234,7 @@ test("enrollment issues a signed token and reenrollment keeps the node", async (
 		root: "machine-a",
 		rootKind: 1,
 		adapter: "linux",
-		localKinds: [4, 6],
+		localKinds: [3, 4, 6],
 		maxAge: 3600,
 		skew: 60,
 		aud: "recount-ingestion",
@@ -328,7 +328,7 @@ test("another enrollment key cannot replace a node or acquire its renewal policy
 	expect(claims(renewed.token)).toMatchObject({
 		sub: enrolled.nodeId,
 		adapter: "linux",
-		localKinds: [4, 6],
+		localKinds: [3, 4, 6],
 		maxAge: 3600,
 		skew: 60,
 	});

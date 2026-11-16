@@ -4,6 +4,8 @@ use recount_telemetry_schema::{
     identity::{TypedHash, hex},
     point::string_attribute,
 };
+mod gpu;
+pub use gpu::gpu_uuid;
 
 pub const ADAPTER: &str = "linux";
 pub const HOST_ID: &str = "host.id";
@@ -18,6 +20,8 @@ pub const NAMESPACE_ID: &str = "recount.process.namespace_id";
 pub const START_TICKS: &str = "recount.process.start_time_ticks";
 pub const INCARNATION_ID: &str = "recount.process.incarnation_id";
 pub const CLOCK_TICKS: &str = "recount.linux.clock_ticks_per_second";
+pub const GPU_UUID: &str = "gpu.uuid";
+pub const GPU_PARENT_UUID: &str = "recount.gpu.parent_uuid";
 
 #[derive(Clone, Copy)]
 pub enum IdentifierKind {
@@ -49,6 +53,7 @@ pub enum Scope {
     Node,
     Process,
     Collector,
+    Gpu,
 }
 
 impl Scope {
@@ -57,6 +62,7 @@ impl Scope {
             Self::Node => "node",
             Self::Process => "process",
             Self::Collector => "collector",
+            Self::Gpu => "gpu",
         }
     }
 }
@@ -83,6 +89,7 @@ pub struct ResourceIdentity<'a> {
     pub host: &'a str,
     pub scope: Scope,
     pub process: Option<ProcessIdentity<'a>>,
+    pub gpu: Option<&'a str>,
 }
 
 pub fn resource_identity(attrs: &[KeyValue]) -> Result<ResourceIdentity<'_>, crate::Issue> {
@@ -107,6 +114,7 @@ pub fn resource_identity(attrs: &[KeyValue]) -> Result<ResourceIdentity<'_>, cra
         "node" => Scope::Node,
         "process" => Scope::Process,
         "collector" => Scope::Collector,
+        "gpu" => Scope::Gpu,
         _ => {
             return Err(crate::Issue::new(
                 crate::Category::Unsupported,
@@ -135,10 +143,12 @@ pub fn resource_identity(attrs: &[KeyValue]) -> Result<ResourceIdentity<'_>, cra
     } else {
         None
     };
+    let gpu = gpu::identity(attrs, scope)?;
     Ok(ResourceIdentity {
         host,
         scope,
         process,
+        gpu,
     })
 }
 

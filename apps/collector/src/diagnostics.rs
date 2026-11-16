@@ -1,6 +1,6 @@
 use procfs::ProcError;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(i64)]
 pub(crate) enum ReadStatus {
     Read = 0,

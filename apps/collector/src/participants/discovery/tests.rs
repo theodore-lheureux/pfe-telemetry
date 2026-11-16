@@ -1,8 +1,9 @@
+use procfs::process::Process;
 use std::{
     fs,
     io::{BufRead, BufReader, Write},
     process::{Child, Command, Stdio},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use super::*;

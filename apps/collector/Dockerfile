@@ -6,5 +6,8 @@ COPY --chmod=0555 ${RECOUNT_ARTIFACT_DIR}/bin/recount-collector /recount-collect
 
 FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS runtime
 COPY --from=artifact /recount-collector /usr/local/bin/recount-collector
+COPY apps/collector/NOTICE-NVIDIA /usr/share/doc/recount-collector/NOTICE-NVIDIA
+COPY crates/nvidia-dcgm/NOTICE /usr/share/doc/recount-collector/NOTICE-DCGM
+COPY crates/nvidia-dcgm/LICENSE-APACHE /usr/share/doc/recount-collector/LICENSE-APACHE
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/recount-collector"]

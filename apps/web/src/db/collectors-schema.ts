@@ -31,7 +31,7 @@ export const enrollmentKey = ingestionSchema.table(
 		allowedLocalKinds: integer("allowed_local_kinds")
 			.array()
 			.notNull()
-			.default(sql`ARRAY[4,6]::integer[]`),
+			.default(sql`ARRAY[3,4,6]::integer[]`),
 		maximumSubmissionAge: bigint("maximum_submission_age", { mode: "number" })
 			.default(3600)
 			.notNull(),

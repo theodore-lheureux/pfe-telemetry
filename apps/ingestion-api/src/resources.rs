@@ -47,19 +47,23 @@ pub fn resolve(
                         "Linux adapter resource claims must use native identity",
                     ));
                 }
-                if let Some(process) = identity.process {
-                    let incarnation = process.incarnation();
-                    let id = local_resource_id(
-                        &source.security.project_id,
-                        host,
-                        ResourceKind::Process,
-                        &incarnation,
-                    )
-                    .map_err(|_| Status::invalid_argument("Invalid local resource incarnation"))?;
+                let local = if let Some(process) = identity.process {
+                    Some((ResourceKind::Process, process.incarnation()))
+                } else {
+                    identity
+                        .gpu
+                        .map(|uuid| (ResourceKind::Gpu, format!("gpu:{uuid}")))
+                };
+                if let Some((kind, incarnation)) = local {
+                    let id =
+                        local_resource_id(&source.security.project_id, host, kind, &incarnation)
+                            .map_err(|_| {
+                                Status::invalid_argument("Invalid local resource incarnation")
+                            })?;
                     (
                         ResourceRef {
                             id,
-                            kind: ResourceKind::Process as i32,
+                            kind: kind as i32,
                         },
                         Scope::Local(LocalResource {
                             root_id: host.into(),
@@ -118,6 +122,7 @@ pub fn resolve(
 
 #[cfg(test)]
 mod tests {
+    mod gpu;
     use super::*;
     use recount_telemetry_schema::{
         common::{AnyValue, KeyValue, any_value::Value},

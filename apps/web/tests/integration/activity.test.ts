@@ -205,6 +205,7 @@ test("Explorer columns are per member, fall back to the project default, and onl
 	);
 	const mine = [
 		{ field: 'attributes["cpu.mode"]', label: "Mode" },
+		{ field: 'attributes["gpu.pipe"]' },
 		{ field: "metric" },
 	];
 	const saved = await saveColumns(

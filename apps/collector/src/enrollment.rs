@@ -1,3 +1,5 @@
+mod gpu;
+
 use std::{
     fs::{self, DirBuilder, OpenOptions},
     io::{self, Write},

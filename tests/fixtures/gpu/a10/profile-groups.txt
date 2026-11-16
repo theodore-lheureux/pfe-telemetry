@@ -1,0 +1,7 @@
+# Trimmed profile-groups.txt: group.subgroup followed by offered field IDs.
+A.1 1002 1003 1004 1007
+A.3 1008
+B.0 1005
+C.0 1009 1010
+D.0 1001
+E.0 1011 1012

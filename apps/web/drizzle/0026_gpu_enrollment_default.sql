@@ -1,0 +1,1 @@
+ALTER TABLE "ingestion"."enrollment_key" ALTER COLUMN "allowed_local_kinds" SET DEFAULT ARRAY[3,4,6]::integer[];

@@ -1,5 +1,5 @@
 [workspace]
-members = ["apps/collector", "apps/ingestion-api", "apps/normalizer", "apps/recount", "crates/telemetry-schema", "crates/telemetry-validation"]
+members = ["apps/collector", "apps/ingestion-api", "apps/normalizer", "apps/recount", "crates/telemetry-schema", "crates/telemetry-validation", "crates/nvidia-dcgm"]
 resolver = "3"
 
 [workspace.package]

@@ -87,9 +87,10 @@ pub async fn run(config: Config) -> Result<()> {
         return result;
     }
     let feedback = loss.clone();
-    let collector =
+    let mut collector =
         tokio::task::spawn_blocking(move || crate::Collector::new(sampler_config, feedback))
             .await??;
+    collector.gpu_authorization(authorization.clone());
     let shutdown = shutdown_signal()?;
     let (stop, stopped) = watch::channel(false);
     let notify = Arc::new(Notify::new());

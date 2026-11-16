@@ -1,9 +1,14 @@
-# Runtime images consume only host-built artifacts and application Dockerfiles.
+# Runtime images consume host-built artifacts, Dockerfiles and required notices.
 # Run infra/local/artifacts.ts before Buildx Bake; no source compilation in Docker.
 **
 !apps/
 !apps/*/
 !apps/*/Dockerfile
+!apps/collector/NOTICE-NVIDIA
+!crates/
+!crates/nvidia-dcgm/
+!crates/nvidia-dcgm/NOTICE
+!crates/nvidia-dcgm/LICENSE-APACHE
 !.state/
 !.state/artifacts/
 !.state/artifacts/**
