@@ -1,0 +1,4 @@
+{
+  "node1": "recount-vbox-1\nactive\nnode1          1      lab* idle  \nnode2          1      lab* idle  \n",
+  "node2": "recount-vbox-2\nactive\nnode1          1      lab* idle  \nnode2          1      lab* idle  \n"
+}

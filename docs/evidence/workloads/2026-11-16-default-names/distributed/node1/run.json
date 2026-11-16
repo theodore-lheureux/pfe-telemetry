@@ -1,0 +1,38 @@
+{
+  "category": "distributed",
+  "execution_key": "slurm:12",
+  "seed": 42,
+  "duration_seconds": 60,
+  "command": [
+    "stress-ng",
+    "--seed",
+    "42",
+    "--timeout",
+    "60s",
+    "--metrics-brief",
+    "--yaml",
+    "/var/tmp/recount-workloads-workload-20261116-0925-distributed/tool-result.yaml",
+    "--cpu",
+    "1",
+    "--cpu-method",
+    "sqrt"
+  ],
+  "node": {
+    "hostname": "recount-vbox-1",
+    "logical_cpus": 1,
+    "kernel": "7.0.0-22-generic",
+    "architecture": "aarch64",
+    "memory_total_bytes": 854925312
+  },
+  "versions": {
+    "stress-ng": "stress-ng, version 0.20.01 (gcc 15.2.0, aarch64 Linux 7.0.0-22-generic)",
+    "recount": "recount 0.1.0",
+    "srun": "slurm-wlm 25.11.2"
+  },
+  "slurm_rank": "0",
+  "started_unix_nano": 1794821048406893212,
+  "ended_unix_nano": 1794821108425015760,
+  "returncode": 0,
+  "stdout": "stress-ng: info:  [34437] setting to a 1 min run per stressor\nstress-ng: info:  [34437] dispatching hogs: 1 cpu\nstress-ng: info:  [34437] note: system has only 3727 MB of free memory and swap, recommend using --oom-avoid\nstress-ng: metrc: [34437] stressor       bogo ops real time  usr time  sys time   bogo ops/s     bogo ops/s\nstress-ng: metrc: [34437]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)\nstress-ng: metrc: [34437] cpu                1905     60.01     58.55      0.10        31.75          32.48\nstress-ng: info:  [34437] skipped: 0\nstress-ng: info:  [34437] passed: 1: cpu (1)\nstress-ng: info:  [34437] failed: 0\nstress-ng: info:  [34437] metrics untrustworthy: 0\nstress-ng: info:  [34437] successful run completed in 1 min\n",
+  "stderr": ""
+}

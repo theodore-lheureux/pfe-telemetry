@@ -1,0 +1,180 @@
+{
+  "project_id": "6aece5be-5fe5-4898-a52d-aadbad05bcf8",
+  "deployed_commit": "19f254f8151d6413c3db195dacc438216501ad27",
+  "workloads": [
+    {
+      "category": "cpu",
+      "expected_behavior": "One busy CPU worker, small resident set and negligible disk I/O.",
+      "execution_key": "run:workload-20261116-0925-cpu",
+      "node_count": 1,
+      "participant_count": 1,
+      "membership_count": 2,
+      "environment_variables": ["RECOUNT_EXECUTION"],
+      "point_count": 960,
+      "metric_names": [
+        "process.cpu.time",
+        "process.disk.io",
+        "recount.collection.read.status",
+        "recount.process.memory.rss"
+      ],
+      "scope_versions": ["0.1.0"],
+      "sampled_counter_deltas": {
+        "process.cpu.time": 0.0,
+        "process.disk.io:read": 0,
+        "process.disk.io:write": 0
+      },
+      "sampled_counter_deltas_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": {
+          "process.cpu.time": 0.0,
+          "process.disk.io:read": 0,
+          "process.disk.io:write": 0
+        }
+      },
+      "peak_process_rss_sum_bytes_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": 17031168
+      },
+      "counter_sample_span_seconds_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": 58.988708518
+      }
+    },
+    {
+      "category": "memory",
+      "expected_behavior": "128 MiB worker allocation plus process overhead; write64 also consumes CPU.",
+      "execution_key": "run:workload-20261116-0925-memory",
+      "node_count": 1,
+      "participant_count": 1,
+      "membership_count": 2,
+      "environment_variables": ["RECOUNT_EXECUTION"],
+      "point_count": 960,
+      "metric_names": [
+        "process.cpu.time",
+        "process.disk.io",
+        "recount.collection.read.status",
+        "recount.process.memory.rss"
+      ],
+      "scope_versions": ["0.1.0"],
+      "sampled_counter_deltas": {
+        "process.cpu.time": 0.0,
+        "process.disk.io:read": 0,
+        "process.disk.io:write": 0
+      },
+      "sampled_counter_deltas_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": {
+          "process.cpu.time": 0.0,
+          "process.disk.io:read": 0,
+          "process.disk.io:write": 0
+        }
+      },
+      "peak_process_rss_sum_bytes_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": 18116608
+      },
+      "counter_sample_span_seconds_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": 58.999490987
+      }
+    },
+    {
+      "category": "io",
+      "expected_behavior": "Increasing direct-write byte counter with negligible reads.",
+      "execution_key": "run:workload-20261116-0925-io",
+      "node_count": 1,
+      "participant_count": 1,
+      "membership_count": 3,
+      "environment_variables": ["RECOUNT_EXECUTION"],
+      "point_count": 1440,
+      "metric_names": [
+        "process.cpu.time",
+        "process.disk.io",
+        "recount.collection.read.status",
+        "recount.process.memory.rss"
+      ],
+      "scope_versions": ["0.1.0"],
+      "sampled_counter_deltas": {
+        "process.cpu.time": 16.73,
+        "process.disk.io:read": 0,
+        "process.disk.io:write": 81510727680
+      },
+      "sampled_counter_deltas_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": {
+          "process.cpu.time": 16.73,
+          "process.disk.io:read": 0,
+          "process.disk.io:write": 81510727680
+        }
+      },
+      "peak_process_rss_sum_bytes_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": 32399360
+      },
+      "counter_sample_span_seconds_by_node": {
+        "fb243b0b-d184-4f3f-9797-116f578293b3": 59.001057056
+      }
+    },
+    {
+      "category": "distributed",
+      "expected_behavior": "CPU time grows on both nodes under one scheduler-derived execution key.",
+      "execution_key": "slurm:12",
+      "node_count": 2,
+      "participant_count": 2,
+      "membership_count": 4,
+      "environment_variables": ["SLURM_JOB_ID"],
+      "point_count": 1888,
+      "metric_names": [
+        "process.cpu.time",
+        "process.disk.io",
+        "recount.collection.read.status",
+        "recount.process.memory.rss"
+      ],
+      "scope_versions": ["0.1.0"],
+      "sampled_counter_deltas": {
+        "process.cpu.time": 0.0,
+        "process.disk.io:read": 0,
+        "process.disk.io:write": 0
+      },
+      "sampled_counter_deltas_by_node": {
+        "f4228d18-e86b-406f-a1a3-32b602873613": {
+          "process.cpu.time": 0.0,
+          "process.disk.io:read": 0,
+          "process.disk.io:write": 0
+        },
+        "fb243b0b-d184-4f3f-9797-116f578293b3": {
+          "process.cpu.time": 0.0,
+          "process.disk.io:read": 0,
+          "process.disk.io:write": 0
+        }
+      },
+      "peak_process_rss_sum_bytes_by_node": {
+        "f4228d18-e86b-406f-a1a3-32b602873613": 19193856,
+        "fb243b0b-d184-4f3f-9797-116f578293b3": 17850368
+      },
+      "counter_sample_span_seconds_by_node": {
+        "f4228d18-e86b-406f-a1a3-32b602873613": 57.999878692,
+        "fb243b0b-d184-4f3f-9797-116f578293b3": 58.000603728
+      }
+    }
+  ],
+  "sha256": {
+    "cpu/node1/run.json": "ee8eca97a8cf29f01629d56762df76f25322c847a1b6246ca19ba1ba6406a788",
+    "cpu/node1/tool-result.yaml.gz": "354e46eca52fe781968d418c86d9122330ca49e963d2de2a71653c2cad6a3283",
+    "cpu/participants.jsonl": "f34829287bf12e853500819ae5d6766ba8d4aa6a085c8c5ed24c750d5d6042d6",
+    "cpu/points.jsonl.gz": "d9c2b47bf78563b5652da31cbb483e2c23eb6c52f7a5486db428b2caaf9b1aa1",
+    "cpu/ui.json": "809a6ec11a90e46803f2d5f3aa6fa382586cad49ed8cc5a6c69da4aebf6da9ea",
+    "distributed/node1/run.json": "aeea00e52ffd9874fc0add50ee1ba1b9ceda15c29ed6d54e9fa21e6dbaf0e9af",
+    "distributed/node1/tool-result.yaml.gz": "12727ab337f2ddee511a52c81167d8086a2959bf635e37f00fb97a97ac13787c",
+    "distributed/node2/run.json": "9c9f5990b317dd1d4b4268d45505c0eec4dcca0f632af2ba4428dddc78bb8b29",
+    "distributed/node2/tool-result.yaml.gz": "05f6121fe492268a7e041aea1ddfe9e0a680dcac45eea2033129e2359cacee7e",
+    "distributed/participants.jsonl": "650058638d7895d2193f1ebfda90faeaf0dd9fbd378a241bbf7e4102b6de95e2",
+    "distributed/points.jsonl.gz": "cbed817919727f5c77a34f5be503c6edf0c3d9ddbf7a233b9507df4194152cc1",
+    "distributed/ui.json": "e4010e83f07800287b5bf7aa7d21005a5ddd0bc529b9d2fb9eee579befaa3d9f",
+    "io/node1/run.json": "1fae4fa8a1bba1d911dcec3ca801c2d4d1a16332700e55e15889baa9bc90e7c6",
+    "io/node1/tool-result.json.gz": "a3a321d7acd566e85db30bb11fedf4b1ba54ab5fcaba4388c00f14a47daeac66",
+    "io/participants.jsonl": "6267c2008e2810580e78e722c4a72678762bd0b418cca89729b47a95856c751f",
+    "io/points.jsonl.gz": "e6528accfe6598398cd115624169d2ab8c05fbeaa1a464fc24977fe552405b6d",
+    "io/ui.json": "fb84c23974bc3e4e8cff00e46d1ea7defb177f7b41d19a723c31536085cd1546",
+    "launches.json": "7b92553a243a097216c71c6e8b0ac3800fc3445a7a2ff96cc453e3c84cdb8b92",
+    "memory/node1/run.json": "635288f2a794085b167a77d7a490454ac622dba9f6f7a8ce1946f8a688e6fa49",
+    "memory/node1/tool-result.yaml.gz": "3e334d4571b9d8ffaee68e49e373e68d3b9e3e48a7624a02ec7eccf77371d5d6",
+    "memory/participants.jsonl": "5d5dc96c6d02523901ab30d1cda49c7701ae083de2e907a8f0cea73a52f2a951",
+    "memory/points.jsonl.gz": "38fd31a90e7421e92db2ec72a063d7011ff1248a88635d7336569c6d3a0542d5",
+    "memory/ui.json": "06a25801f239ab8d5e29d8a7f797dd7820acb665a798d4bc409c40c121870437",
+    "preflight.json": "03ce71aace51df2bfc86235da22fd9d681d0e022b1ed6701351fc5d7bd585631",
+    "ui-listing.json": "3e271f0f3f1eb5396d48c302ca9a36cc10c8a703934883b06d524d5f03f77776"
+  }
+}

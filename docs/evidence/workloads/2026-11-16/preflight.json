@@ -1,0 +1,4 @@
+{
+  "node1": "recount-vbox-1\nactive\n64ca3c377db697f898c450149a5eab108ec39e5fd898703352edcf0a2623b13c  /usr/local/bin/recount-collector\nf6f298d1cd13959f1f03a808dd43c4e3ea7d5ac1683f46c7b4226b5adc3c64ae  /usr/local/bin/recount\nnode1          1      lab* idle  \nnode2          1      lab* idle  \n",
+  "node2": "recount-vbox-2\nactive\n64ca3c377db697f898c450149a5eab108ec39e5fd898703352edcf0a2623b13c  /usr/local/bin/recount-collector\nf6f298d1cd13959f1f03a808dd43c4e3ea7d5ac1683f46c7b4226b5adc3c64ae  /usr/local/bin/recount\nnode1          1      lab* idle  \nnode2          1      lab* idle  \n"
+}

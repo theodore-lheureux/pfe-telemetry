@@ -1,0 +1,6 @@
+{
+  "path": "/organizations/inEIPjUrHOdOSu2JPaoUzEEMOsrFRXK1/projects/6aece5be-5fe5-4898-a52d-aadbad05bcf8/executions/slurm%3A13",
+  "heading": "slurm:13",
+  "text": "slurm:13\n\nExecution key: slurm:13\n\nNodes: 2\n\nParticipants: 2\n\nMatched environment variables: SLURM_JOB_ID\n\nFirst seen: \nNov 16, 2026 04:29:48\n\nLast seen: \nNov 16, 2026 04:30:47",
+  "times": ["2026-11-16T09:29:48.566Z", "2026-11-16T09:30:47.770Z"]
+}

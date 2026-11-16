@@ -1,0 +1,36 @@
+{
+  "category": "io",
+  "execution_key": "run:workload-20261116-0934-io",
+  "seed": 42,
+  "duration_seconds": 60,
+  "command": [
+    "fio",
+    "--output-format=json",
+    "--output=/var/tmp/recount-workloads-workload-20261116-0934-io/tool-result.json",
+    "--directory=/var/tmp/recount-workloads-workload-20261116-0934-io",
+    "--runtime=60",
+    "--size=64M",
+    "--numjobs=1",
+    "--randrepeat=1",
+    "--randseed=42",
+    "/var/tmp/recount-workloads-workload-20261116-0934-io/sequential-write.fio"
+  ],
+  "node": {
+    "hostname": "recount-vbox-1",
+    "logical_cpus": 1,
+    "kernel": "7.0.0-22-generic",
+    "architecture": "aarch64",
+    "memory_total_bytes": 854925312
+  },
+  "versions": {
+    "fio": "fio-3.41",
+    "recount": "recount 0.1.0",
+    "srun": "slurm-wlm 25.11.2"
+  },
+  "slurm_rank": null,
+  "started_unix_nano": 1794821322379582957,
+  "ended_unix_nano": 1794821382690344206,
+  "returncode": 0,
+  "stdout": "",
+  "stderr": ""
+}

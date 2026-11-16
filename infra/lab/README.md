@@ -143,6 +143,11 @@ Each run creates an ignored directory under `infra/lab/.state/results`, with one
 
 Grafana shows the resulting node-level resource usage. An enrolled Recount collector can also record node context, but these workload commands do not create application execution recordings or establish workload attribution. Distributed application behavior needs a separate workload.
 
+For labelled CPU, memory and I/O executions plus a two-node `srun` case, use the
+[workload collection evaluation](../../docs/workload-evaluation.md). It includes
+repeatable scripts, execution-scoped collector evidence and UI checks without
+changing the collection schema or provisioning the lab.
+
 `just dev` starts the web application independently of the test environment.
 
 ## Two-node Slurm lab

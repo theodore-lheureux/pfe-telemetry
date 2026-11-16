@@ -1,0 +1,41 @@
+{
+  "category": "memory",
+  "execution_key": "run:workload-20261116-0925-memory",
+  "seed": 42,
+  "duration_seconds": 60,
+  "command": [
+    "stress-ng",
+    "--seed",
+    "42",
+    "--timeout",
+    "60s",
+    "--metrics-brief",
+    "--yaml",
+    "/var/tmp/recount-workloads-workload-20261116-0925-memory/tool-result.yaml",
+    "--vm",
+    "1",
+    "--vm-bytes",
+    "128M",
+    "--vm-keep",
+    "--vm-method",
+    "write64"
+  ],
+  "node": {
+    "hostname": "recount-vbox-1",
+    "logical_cpus": 1,
+    "kernel": "7.0.0-22-generic",
+    "architecture": "aarch64",
+    "memory_total_bytes": 854925312
+  },
+  "versions": {
+    "stress-ng": "stress-ng, version 0.20.01 (gcc 15.2.0, aarch64 Linux 7.0.0-22-generic)",
+    "recount": "recount 0.1.0",
+    "srun": "slurm-wlm 25.11.2"
+  },
+  "slurm_rank": null,
+  "started_unix_nano": 1794820918023095185,
+  "ended_unix_nano": 1794820978071357202,
+  "returncode": 0,
+  "stdout": "stress-ng: info:  [34021] setting to a 1 min run per stressor\nstress-ng: info:  [34021] dispatching hogs: 1 vm\nstress-ng: info:  [34021] note: system has only 3720 MB of free memory and swap, recommend using --oom-avoid\nstress-ng: info:  [34022] vm: using 128MB per stressor instance (total 128MB of 65.93MB available memory)\nstress-ng: metrc: [34021] stressor       bogo ops real time  usr time  sys time   bogo ops/s     bogo ops/s\nstress-ng: metrc: [34021]                           (secs)    (secs)    (secs)   (real time) (usr+sys time)\nstress-ng: metrc: [34021] vm              2428466     60.03     58.39      0.23     40454.01       41422.95\nstress-ng: info:  [34021] skipped: 0\nstress-ng: info:  [34021] passed: 1: vm (1)\nstress-ng: info:  [34021] failed: 0\nstress-ng: info:  [34021] metrics untrustworthy: 0\nstress-ng: info:  [34021] successful run completed in 1 min\n",
+  "stderr": ""
+}

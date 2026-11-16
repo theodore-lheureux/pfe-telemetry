@@ -1,0 +1,21 @@
+{
+  "path": "/organizations/inEIPjUrHOdOSu2JPaoUzEEMOsrFRXK1/projects/6aece5be-5fe5-4898-a52d-aadbad05bcf8/executions",
+  "links": [
+    {
+      "text": "Workload cpu",
+      "path": "/organizations/inEIPjUrHOdOSu2JPaoUzEEMOsrFRXK1/projects/6aece5be-5fe5-4898-a52d-aadbad05bcf8/executions/run%3Aworkload-20261116-0934-cpu"
+    },
+    {
+      "text": "Workload io",
+      "path": "/organizations/inEIPjUrHOdOSu2JPaoUzEEMOsrFRXK1/projects/6aece5be-5fe5-4898-a52d-aadbad05bcf8/executions/run%3Aworkload-20261116-0934-io"
+    },
+    {
+      "text": "Workload memory",
+      "path": "/organizations/inEIPjUrHOdOSu2JPaoUzEEMOsrFRXK1/projects/6aece5be-5fe5-4898-a52d-aadbad05bcf8/executions/run%3Aworkload-20261116-0934-memory"
+    },
+    {
+      "text": "slurm:13",
+      "path": "/organizations/inEIPjUrHOdOSu2JPaoUzEEMOsrFRXK1/projects/6aece5be-5fe5-4898-a52d-aadbad05bcf8/executions/slurm%3A13"
+    }
+  ]
+}

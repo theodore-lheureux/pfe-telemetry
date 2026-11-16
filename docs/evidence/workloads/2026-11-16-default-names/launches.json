@@ -1,0 +1,101 @@
+[
+  {
+    "category": "cpu",
+    "command": [
+      "recount",
+      "run",
+      "--execution",
+      "run:workload-20261116-0925-cpu",
+      "--name",
+      "Workload cpu",
+      "--version",
+      "0.1.0",
+      "--param",
+      "category=cpu",
+      "--param",
+      "seed=42",
+      "--param",
+      "duration_seconds=60",
+      "--",
+      "python3",
+      "/var/tmp/recount-workloads-workload-20261116-0925-cpu/guest.py",
+      "cpu",
+      "60",
+      "42"
+    ],
+    "stdout": "{\"execution_key\": \"run:workload-20261116-0925-cpu\", \"hostname\": \"recount-vbox-1\"}\n"
+  },
+  {
+    "category": "memory",
+    "command": [
+      "recount",
+      "run",
+      "--execution",
+      "run:workload-20261116-0925-memory",
+      "--name",
+      "Workload memory",
+      "--version",
+      "0.1.0",
+      "--param",
+      "category=memory",
+      "--param",
+      "seed=42",
+      "--param",
+      "duration_seconds=60",
+      "--",
+      "python3",
+      "/var/tmp/recount-workloads-workload-20261116-0925-memory/guest.py",
+      "memory",
+      "60",
+      "42"
+    ],
+    "stdout": "{\"execution_key\": \"run:workload-20261116-0925-memory\", \"hostname\": \"recount-vbox-1\"}\n"
+  },
+  {
+    "category": "io",
+    "command": [
+      "recount",
+      "run",
+      "--execution",
+      "run:workload-20261116-0925-io",
+      "--name",
+      "Workload io",
+      "--version",
+      "0.1.0",
+      "--param",
+      "category=io",
+      "--param",
+      "seed=42",
+      "--param",
+      "duration_seconds=60",
+      "--",
+      "python3",
+      "/var/tmp/recount-workloads-workload-20261116-0925-io/guest.py",
+      "io",
+      "60",
+      "42"
+    ],
+    "stdout": "{\"execution_key\": \"run:workload-20261116-0925-io\", \"hostname\": \"recount-vbox-1\"}\n"
+  },
+  {
+    "category": "distributed",
+    "command": [
+      "srun",
+      "--job-name=workload-20261116-0925",
+      "--nodes=2",
+      "--ntasks=2",
+      "--ntasks-per-node=1",
+      "--cpus-per-task=1",
+      "--mem=192M",
+      "--time=00:03:00",
+      "--immediate=30",
+      "--mpi=none",
+      "python3",
+      "/var/tmp/recount-workloads-workload-20261116-0925-distributed/guest.py",
+      "distributed",
+      "60",
+      "42"
+    ],
+    "stdout": "{\"execution_key\": \"slurm:12\", \"hostname\": \"recount-vbox-1\"}\n{\"execution_key\": \"slurm:12\", \"hostname\": \"recount-vbox-2\"}\n"
+  }
+]
