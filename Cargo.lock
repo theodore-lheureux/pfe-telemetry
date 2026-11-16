@@ -2224,6 +2224,7 @@ dependencies = [
  "ed25519-dalek",
  "opentelemetry-proto",
  "prost",
+ "rcgen",
  "rdkafka",
  "recount-telemetry-schema",
  "recount-telemetry-validation",

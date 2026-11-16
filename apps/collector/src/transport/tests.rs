@@ -1,12 +1,17 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use base64::{Engine, engine::general_purpose::STANDARD};
 use clap::Parser;
 use opentelemetry_proto::tonic::collector::metrics::v1::metrics_service_server::{
     MetricsService, MetricsServiceServer,
 };
 use rcgen::{BasicConstraints, CertificateParams, IsCa, Issuer, KeyPair, KeyUsagePurpose};
+use serde::Deserialize;
 use tokio::net::TcpListener;
-use tonic::transport::{Certificate, ClientTlsConfig, Identity, Server, ServerTlsConfig};
+use tonic::{
+    Code,
+    transport::{Certificate, ClientTlsConfig, Identity, Server, ServerTlsConfig},
+};
 
 use super::*;
 use crate::config::Config;
@@ -113,4 +118,88 @@ async fn https_export_verifies_ca_and_hostname_and_preserves_connection_diagnost
     drop(client);
     stop.send(()).unwrap();
     server.await.unwrap().unwrap();
+}
+
+/// Written by the ingestion API's live TLS proxy test.
+#[derive(Deserialize)]
+struct LiveFixture {
+    endpoint: String,
+    upstream: String,
+    other_ca: String,
+    cases: Vec<LiveCase>,
+}
+
+#[derive(Deserialize)]
+struct LiveCase {
+    name: String,
+    token: Option<String>,
+    body: String,
+    code: i32,
+}
+
+impl LiveCase {
+    fn request(&self) -> Request<ExportMetricsServiceRequest> {
+        let body = STANDARD.decode(&self.body).unwrap();
+        let mut request = Request::new(ExportMetricsServiceRequest::decode(&*body).unwrap());
+        if let Some(token) = &self.token {
+            request
+                .metadata_mut()
+                .insert("authorization", format!("Bearer {token}").parse().unwrap());
+        }
+        request
+    }
+}
+
+fn configured(endpoint: &str) -> Endpoint {
+    Config::try_parse_from(["collector", "--endpoint", endpoint])
+        .unwrap()
+        .export()
+        .unwrap()
+        .endpoint
+}
+
+async fn code(client: &mut Client, request: Request<ExportMetricsServiceRequest>) -> Code {
+    match client.export(request).await {
+        Ok(_) => Code::Ok,
+        Err(status) => status.code(),
+    }
+}
+
+#[tokio::test]
+#[ignore = "driven by the ingestion API's live TLS proxy test"]
+async fn proxied_tls_export_and_credentials_are_live() {
+    let path = std::env::var("RECOUNT_TLS_TEST_FIXTURE").expect("A proxy fixture is required");
+    let fixture: LiveFixture = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let valid = fixture
+        .cases
+        .iter()
+        .find(|case| case.code == Code::Ok as i32)
+        .unwrap();
+
+    let other_ca = ClientTlsConfig::new().ca_certificate(Certificate::from_pem(&fixture.other_ca));
+    let endpoint = configured(&fixture.endpoint).tls_config(other_ca).unwrap();
+    assert_eq!(
+        code(&mut Client::new(endpoint), valid.request()).await,
+        Code::Unavailable
+    );
+
+    // The plaintext upstream answers h2c, but an HTTPS endpoint never downgrades to it.
+    let plaintext = configured(&format!("http://{}", fixture.upstream));
+    let mut anonymous = valid.request();
+    anonymous.metadata_mut().remove("authorization");
+    assert_eq!(
+        code(&mut Client::new(plaintext), anonymous).await,
+        Code::Unauthenticated
+    );
+    let https = configured(&format!("https://{}", fixture.upstream));
+    assert_eq!(
+        code(&mut Client::new(https), valid.request()).await,
+        Code::Unavailable
+    );
+
+    let mut client = Client::new(configured(&fixture.endpoint));
+    for case in &fixture.cases {
+        let outcome = code(&mut client, case.request()).await;
+        assert_eq!(outcome as i32, case.code, "{}", case.name);
+    }
 }

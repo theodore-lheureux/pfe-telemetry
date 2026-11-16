@@ -33,4 +33,5 @@ uuid = { version = "1.28.0", features = ["v7"] }
 workspace = true
 
 [dev-dependencies]
+rcgen = { version = "0.14.10", default-features = false, features = ["ring", "pem", "crypto"] }
 tokio-stream = { version = "0.1.19", features = ["net"] }

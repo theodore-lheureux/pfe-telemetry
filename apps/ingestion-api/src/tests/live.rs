@@ -4,6 +4,8 @@ use recount_telemetry_schema::wire::{
 };
 use std::path::PathBuf;
 
+mod tls_proxy;
+
 struct Database {
     client: tokio_postgres::Client,
     admin: tokio_postgres::Client,
@@ -174,10 +176,19 @@ fn signing() -> ed25519_dalek::SigningKey {
 
 /// A token as the web application signs it; `changes` overrides individual claims.
 fn token(db: &Database, node: Uuid, changes: serde_json::Value) -> String {
+    signed_token(&signing(), db, node, changes)
+}
+
+fn signed_token(
+    key: &ed25519_dalek::SigningKey,
+    db: &Database,
+    node: Uuid,
+    changes: serde_json::Value,
+) -> String {
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     use ed25519_dalek::Signer;
     let now = unix_nanos().unwrap() / 1_000_000_000;
-    let public = URL_SAFE_NO_PAD.encode(signing().verifying_key().as_bytes());
+    let public = URL_SAFE_NO_PAD.encode(key.verifying_key().as_bytes());
     let mut claims = serde_json::json!({
         "sub": node.to_string(),
         "org": "test-org",
@@ -202,7 +213,7 @@ fn token(db: &Database, node: Uuid, changes: serde_json::Value) -> String {
         URL_SAFE_NO_PAD.encode(header.to_string()),
         URL_SAFE_NO_PAD.encode(claims.to_string())
     );
-    let signature = signing().sign(input.as_bytes());
+    let signature = key.sign(input.as_bytes());
     format!("{input}.{}", URL_SAFE_NO_PAD.encode(signature.to_bytes()))
 }
 

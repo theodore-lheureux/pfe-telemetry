@@ -20,6 +20,10 @@ integration *args:
 authority *args:
     cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live "$@" -- --ignored --exact --nocapture
 
+# Real collector exports and credentials through the production Caddy site block over TLS.
+tls *args:
+    cargo test --locked -p recount-ingestion-api --lib tests::live::tls_proxy::collector_exports_through_the_production_tls_proxy "$@" -- --ignored --exact --nocapture
+
 # Real normalizer first start, backlog progress, replay, rebalance, expiry and poison.
 kafka *args:
     cargo test --locked -p recount-normalizer --test kafka "$@" -- --ignored --test-threads=1 --nocapture

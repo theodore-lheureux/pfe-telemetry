@@ -22,14 +22,15 @@ An ignored test is not evidence that its live boundary passed.
 The [identity and interruption evaluation](../docs/identity-interruption-evaluation.md)
 records focused scenarios, reproduction commands and their limits.
 
-| Boundary                                                               | Command                                                                                                                                           | Required allocation                                                                                                                      |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Application database, auth and shipped ingestion grants                | `bun --no-env-file test --timeout 30000 apps/web/tests/integration`                                                                               | `TEST_DATABASE_URL`, an administrator URL permitting disposable databases and scoped roles; host `psql` for the shipped provisioning SQL |
-| Ingestion authority, rotation, revocation, expiry and outage           | `cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live -- --ignored --exact` | `TEST_DATABASE_URL` and locked web dependencies                                                                                          |
-| Normalizer progress, first start, replay, rebalance, expiry and poison | `cargo test --locked -p recount-normalizer --test kafka -- --ignored --test-threads=1`                                                            | Explicit normalizer settings below                                                                                                       |
-| Real ClickHouse HTTP reader                                            | `bun --no-env-file test --timeout 30000 apps/web/tests/telemetry/clickhouse.test.ts`                                                              | ClickHouse administrator and restricted-reader credentials, plus `RECOUNT_CONTRACT_FIXTURE`                                              |
-| Native Kafka-to-ClickHouse storage                                     | `cargo test --locked -p recount-normalizer --test storage -- --ignored --test-threads=1 --skip unclean_restart --skip invalid_initialized`        | Explicit storage settings below; no service restart authority                                                                            |
-| Browser with native Bun web                                            | `node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts`                                                           | `TEST_DATABASE_URL`; installed Playwright Chromium                                                                                       |
+| Boundary                                                               | Command                                                                                                                                           | Required allocation                                                                                                                            |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Application database, auth and shipped ingestion grants                | `bun --no-env-file test --timeout 30000 apps/web/tests/integration`                                                                               | `TEST_DATABASE_URL`, an administrator URL permitting disposable databases and scoped roles; host `psql` for the shipped provisioning SQL       |
+| Ingestion authority, rotation, revocation, expiry and outage           | `cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live -- --ignored --exact` | `TEST_DATABASE_URL` and locked web dependencies                                                                                                |
+| Collector TLS, proxy and credentials through the production Caddy site | `just test-integration tls`                                                                                                                       | `TEST_DATABASE_URL`, locked web dependencies, Docker host networking and [collector TLS settings](#collector-tls-through-the-production-proxy) |
+| Normalizer progress, first start, replay, rebalance, expiry and poison | `cargo test --locked -p recount-normalizer --test kafka -- --ignored --test-threads=1`                                                            | Explicit normalizer settings below                                                                                                             |
+| Real ClickHouse HTTP reader                                            | `bun --no-env-file test --timeout 30000 apps/web/tests/telemetry/clickhouse.test.ts`                                                              | ClickHouse administrator and restricted-reader credentials, plus `RECOUNT_CONTRACT_FIXTURE`                                                    |
+| Native Kafka-to-ClickHouse storage                                     | `cargo test --locked -p recount-normalizer --test storage -- --ignored --test-threads=1 --skip unclean_restart --skip invalid_initialized`        | Explicit storage settings below; no service restart authority                                                                                  |
+| Browser with native Bun web                                            | `node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts`                                                           | `TEST_DATABASE_URL`; installed Playwright Chromium                                                                                             |
 
 Build the fixture natively and discover its executable from Cargo's JSON output,
 not an assumed `target/` directory:
@@ -41,6 +42,56 @@ cargo build --locked -p recount-telemetry-validation --example contract_fixture 
 Set `RECOUNT_CONTRACT_FIXTURE` to the resulting `contract_fixture` executable.
 The HTTP suite invokes it with `--ordinary` and `--columns`; the storage suite
 also verifies all generated fields and scalar Float64 bits with `--verify`.
+
+## Collector TLS through the production proxy
+
+The ingestion API's `tls_proxy` live test runs the real node-token authority
+and router natively. It starts the global options and ingestion site block of
+the [production Caddyfile](../infra/oci-ingestion/deploy/Caddyfile) in the
+pinned Caddy image with host networking. The test replaces the site's ACME
+`tls` block with a local certificate file pair, its address with the test
+hostname and port, and the `h2c` upstream port; everything else is unchanged.
+A throwaway certificate authority and server certificate
+are generated under `.state/` for each run. The collector library's ignored
+`proxied_tls_export_and_credentials_are_live` test then exports through the
+real `--endpoint` configuration and transport, trusting that authority through
+`SSL_CERT_FILE`.
+
+The collector side checks that an export over TLS and HTTP/2 is accepted; a
+different certificate authority is rejected; an `https://`
+endpoint does not fall back to the plaintext upstream; and missing, expired,
+revoked, untrusted-signer and cross-machine credentials are refused. The
+ingestion side then requires exactly one published record, bound to the token's
+project and node. Client-side hostname verification is covered by the
+collector's `https_export_verifies_ca_and_hostname_and_preserves_connection_diagnostics`
+unit test: Caddy itself refuses a handshake whose SNI matches no site.
+
+- `RECOUNT_TLS_TEST_COLLECTOR_TESTS`: the Linux collector library test
+  executable, discovered from Cargo's JSON output.
+- `RECOUNT_TLS_TEST_COLLECTOR_RUNNER`: on macOS only, the command prefix that
+  runs it in the Linux build container, `just linux`. Leave it unset on Linux.
+- `RECOUNT_TLS_TEST_HOST`: the name the collector uses to reach the proxy;
+  `localhost` by default, `host.docker.internal` from the Linux build container.
+
+Host networking is available on Linux and OrbStack, and in Docker Desktop once
+enabled. On macOS:
+
+```sh
+collector_tests=$(just linux cargo test --locked -p recount-collector --lib --no-run --message-format=json \
+  | jq -r 'select(.reason == "compiler-artifact" and .profile.test and .target.name == "recount_collector") | .executable')
+RECOUNT_TLS_TEST_COLLECTOR_TESTS="$collector_tests" RECOUNT_TLS_TEST_COLLECTOR_RUNNER="just linux" \
+  RECOUNT_TLS_TEST_HOST=host.docker.internal just test-integration tls
+```
+
+On Linux, build and run the collector tests natively: set only
+`RECOUNT_TLS_TEST_COLLECTOR_TESTS`, from `cargo test --locked -p recount-collector --lib --no-run --message-format=json`.
+
+The test removes its proxy container and fixture directory, even when an
+assertion fails. If the process is killed instead, remove leftover proxies with
+`docker rm --force $(docker ps --all --quiet --filter label=recount-tls-test)`
+and their `.state/recount-tls-test-*` directories. Like the authority test, a
+failed run leaves its disposable `recount_ingestion_test_*` database and role
+for inspection.
 
 ## Backend settings and isolation
 

@@ -27,6 +27,8 @@ Les paramètres sont lus une seule fois au démarrage. Les options de ligne de c
 
 Tout changement de paramètre exige un redémarrage.
 
+Utilisez une adresse d’ingestion `https://` en dehors d’un réseau de test local. Le collecteur vérifie le certificat et le nom du serveur, et ne se rabat jamais sur une connexion non chiffrée. Si votre adresse auto-hébergée utilise une autorité de certification privée, définissez `SSL_CERT_FILE` sur un fichier qui la contient.
+
 ## Ce qu’il recueille
 
 - **Nœud :** temps processeur, mémoire totale et disponible, E/S disque.

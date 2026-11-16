@@ -150,6 +150,8 @@ class ComposeTests(unittest.TestCase):
         )
         self.assertEqual(text.count("disable_http_challenge"), 2)
         self.assertIn("auto_https disable_redirects", text)
+        app = text[: text.index("https://ingest.recount.cloud")]
+        self.assertIn('header Strict-Transport-Security "max-age=31536000"', app)
 
     def test_release_images_keep_loopback_ports_and_private_role_networks(self):
         root = Path(__file__).resolve().parents[3]
