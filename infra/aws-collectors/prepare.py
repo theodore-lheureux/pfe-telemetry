@@ -1,22 +1,23 @@
 #!/usr/bin/python3
-"""Install one checksum-pinned release and retrieve enrollment only into root tmpfs."""
+"""Ansible installs releases; service starts retrieve enrollment only into tmpfs."""
 
 import hashlib
 import io
 import json
 import os
+import sys
 import tarfile
 import urllib.request
 from pathlib import Path
 
-import boto3
 
-
-def install(config):
-    target = Path("/usr/local/bin/recount-collector")
-    receipt = Path("/var/lib/recount-collector/release.sha256")
+def install(
+    config,
+    target=Path("/usr/local/bin/recount-collector"),
+    receipt=Path("/var/lib/recount-collector/release.sha256"),
+):
     if target.exists() and receipt.exists() and receipt.read_text() == config["sha256"]:
-        return
+        return False
     with urllib.request.urlopen(config["release_url"], timeout=60) as response:
         content = response.read(64 * 1024 * 1024 + 1)
     if (
@@ -43,12 +44,12 @@ def install(config):
     temporary.chmod(0o755)
     temporary.replace(target)
     receipt.write_text(config["sha256"])
+    return True
 
 
-def main():
-    os.umask(0o077)
-    config = json.loads(Path("/etc/recount-collector/bootstrap.json").read_text())
-    install(config)
+def enroll(config):
+    import boto3
+
     key_file = Path("/run/recount-collector/enrollment.key")
     if Path("/var/lib/recount-collector/node/node.json").exists():
         key_file.unlink(missing_ok=True)
@@ -58,6 +59,17 @@ def main():
     )["Parameter"]["Value"]
     key_file.write_text(value)
     key_file.chmod(0o600)
+
+
+def main():
+    os.umask(0o077)
+    config = json.loads(Path("/etc/recount-collector/bootstrap.json").read_text())
+    if sys.argv[1:] == ["install"]:
+        print("installed" if install(config) else "unchanged")
+    elif sys.argv[1:] == ["enroll"]:
+        enroll(config)
+    else:
+        raise ValueError("Expected install or enroll")
 
 
 if __name__ == "__main__":

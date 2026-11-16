@@ -45,17 +45,8 @@ locals {
 
 resource "aws_security_group" "collectors" {
   name        = "recount-collectors"
-  description = "Collector egress; SSH only from explicitly selected operator networks"
+  description = "Collector and Systems Manager egress; no inbound access"
   vpc_id      = var.vpc_id
-  dynamic "ingress" {
-    for_each = var.ssh_cidrs
-    content {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      cidr_blocks = [ingress.value]
-    }
-  }
   egress {
     from_port   = 0
     to_port     = 0
@@ -105,39 +96,11 @@ resource "aws_launch_template" "collectors" {
   }
   user_data = base64encode("#cloud-config\n${yamlencode({
     package_update = true
-    packages       = ["ca-certificates", "curl", "python3-boto3"]
-    write_files = [
-      {
-        path        = "/etc/recount-collector/bootstrap.json"
-        permissions = "0600"
-        content = jsonencode({
-          endpoint       = var.ingestion_endpoint
-          enrollment_url = var.enrollment_url
-          parameter      = var.enrollment_parameter_name
-          release_url    = var.collector_release_url
-          sha256         = var.collector_release_sha256
-        })
-      },
-      {
-        path        = "/usr/local/sbin/recount-collector-prepare"
-        permissions = "0700"
-        content     = file("${path.module}/prepare.py")
-      },
-      {
-        path        = "/etc/systemd/system/recount-collector.service"
-        permissions = "0644"
-        content     = file("${path.module}/collector.service")
-      },
-      {
-        path        = "/etc/recount-collector/runtime.env"
-        permissions = "0600"
-        content     = "OTEL_EXPORTER_OTLP_ENDPOINT=${var.ingestion_endpoint}\nRECOUNT_COLLECTOR_ENROLLMENT_URL=${var.enrollment_url}\n"
-      }
-    ]
-    runcmd = [
-      ["systemctl", "daemon-reload"],
-      ["systemctl", "enable", "--now", "recount-collector.service"]
-    ]
+    packages       = ["ca-certificates", "curl", "python3"]
+    runcmd = [[
+      "bash", "-euc",
+      "snap list amazon-ssm-agent >/dev/null 2>&1 || snap install amazon-ssm-agent --classic; snap start --enable amazon-ssm-agent"
+    ]]
   })}")
   lifecycle {
     precondition {

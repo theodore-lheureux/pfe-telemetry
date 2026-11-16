@@ -1,0 +1,9 @@
+plugin: amazon.aws.aws_ec2
+regions: [us-east-2]
+filters:
+  tag:project: recount
+  tag:component: collectors
+  instance-state-name: running
+hostnames: [instance-id]
+groups:
+  recount_collectors: "ec2_tags.project == 'recount' and ec2_tags.component == 'collectors'"

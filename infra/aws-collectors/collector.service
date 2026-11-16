@@ -18,7 +18,7 @@ Environment=RECOUNT_COLLECTOR_VISIBILITY=host
 Environment=RECOUNT_COLLECTOR_STATE_DIRECTORY=/var/lib/recount-collector/node
 Environment=RECOUNT_COLLECTOR_QUEUE_DIRECTORY=/var/lib/recount-collector/queue
 Environment=RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=/run/recount-collector/enrollment.key
-ExecStartPre=/usr/local/sbin/recount-collector-prepare
+ExecStartPre=/usr/local/sbin/recount-collector-prepare enroll
 ExecStart=/usr/local/bin/recount-collector
 ExecStartPost=/bin/sh -c 'while [ ! -f /var/lib/recount-collector/node/node.json ]; do sleep 2; done; rm -f /run/recount-collector/enrollment.key'
 Restart=on-failure
@@ -28,7 +28,7 @@ TimeoutStopSec=60
 MemoryMax=256M
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/recount-collector /run/recount-collector /usr/local/bin
+ReadWritePaths=/var/lib/recount-collector /run/recount-collector
 
 [Install]
 WantedBy=multi-user.target

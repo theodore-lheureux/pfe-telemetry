@@ -8,4 +8,7 @@ dependencies = []
 package = false
 
 [dependency-groups]
-dev = ["ansible==14.4.0"]
+dev = [
+    "ansible==14.4.0",
+    "boto3==1.44.4",
+]

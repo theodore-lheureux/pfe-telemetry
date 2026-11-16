@@ -21,6 +21,18 @@ run "collectors_are_region_tag_and_state_scoped" {
     collectors_vpc_id = "vpc-synthetic"
   }
   assert {
+    condition     = jsondecode(aws_iam_role_policy.enrollment[0].policy).Statement[1].Effect == "Deny" && jsondecode(aws_iam_role_policy.enrollment[0].policy).Statement[1].NotResource == "arn:aws:ssm:us-east-2:123456789012:parameter/recount/collectors/enrollment"
+    error_message = "The managed SSM policy must not broaden reads to other parameters."
+  }
+  assert {
+    condition     = aws_iam_role_policy_attachment.collector_ssm[0].policy_arn == "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+    error_message = "Collectors need managed SSM agent permissions, not inbound SSH."
+  }
+  assert {
+    condition     = length(aws_iam_user_policy.collector_transfer[0].policy) <= 2048 && jsondecode(aws_iam_user_policy.collector_transfer[0].policy).Statement[0].Resource == "arn:aws:s3:::recount-collector-transfer-123456789012"
+    error_message = "CD may manage only the exact transfer bucket and its inline policy must fit IAM limits."
+  }
+  assert {
     condition     = aws_iam_user.collectors_cd[0].name == "recount-collectors-cd"
     error_message = "Collectors must not reuse the ingestion CD identity."
   }

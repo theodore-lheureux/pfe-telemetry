@@ -41,6 +41,7 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 infra/ci/public_logs.py mask
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - uses: opentofu/setup-opentofu@e95ccdd20623115bfd7d47df14a3250d6066a9d0 # v1.0.7
         with:
           tofu_version: 1.13.9
@@ -52,6 +53,8 @@ jobs:
           tofu -chdir=infra/aws-collectors test
           python3 -m unittest discover -s infra/aws-collectors -p 'test_*.py'
           python3 -m unittest discover -s infra/ci -p 'test_*.py'
+          ANSIBLE_CONFIG=infra/aws-collectors/ansible/ansible.cfg uv run --locked ansible-playbook \
+            --syntax-check -i recount_collectors, infra/aws-collectors/ansible/collector.yml
 
   plan:
     needs: check

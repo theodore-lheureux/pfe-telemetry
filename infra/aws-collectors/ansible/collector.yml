@@ -1,0 +1,111 @@
+- name: Install the approved collector release through Systems Manager
+  hosts: recount_collectors
+  become: true
+  gather_facts: true
+  gather_subset: ["!all", min]
+  vars:
+    ansible_connection: amazon.aws.aws_ssm
+    ansible_aws_ssm_region: us-east-2
+    ansible_aws_ssm_bucket_name: "{{ recount_transfer_bucket }}"
+    ansible_aws_ssm_bucket_sse_mode: AES256
+    recount_collector_endpoint: https://ingest.recount.cloud
+    recount_collector_enrollment_url: https://app.recount.cloud
+    recount_enrollment_parameter: /recount/collectors/enrollment
+  pre_tasks:
+    - name: Require exactly the approved ARM64 Ubuntu collectors
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 2
+          - ansible_facts.architecture == "aarch64"
+          - ansible_facts.distribution == "Ubuntu"
+          - recount_collector_release_url is match('^https://github.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/[A-Za-z0-9_.-]+/recount-collector-arm64.tar.gz$')
+          - recount_collector_release_sha256 is match('^[a-f0-9]{64}$')
+          - recount_collector_endpoint == "https://ingest.recount.cloud"
+          - recount_collector_enrollment_url == "https://app.recount.cloud"
+        quiet: true
+
+    - name: Wait for the minimal cloud-init bootstrap
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+  tasks:
+    - name: Install collector download and enrollment prerequisites
+      ansible.builtin.apt:
+        name: [ca-certificates, curl, python3-boto3]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create private collector directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+      loop: [/etc/recount-collector, /var/lib/recount-collector]
+
+    - name: Install non-secret release and enrollment selections
+      ansible.builtin.copy:
+        content: "{{ {'release_url': recount_collector_release_url, 'sha256': recount_collector_release_sha256, 'parameter': recount_enrollment_parameter} | to_nice_json }}\n"
+        dest: /etc/recount-collector/bootstrap.json
+        owner: root
+        group: root
+        mode: "0600"
+      notify: Restart the collector
+
+    - name: Install the finite release and private enrollment helper
+      ansible.builtin.copy:
+        src: ../prepare.py
+        dest: /usr/local/sbin/recount-collector-prepare
+        owner: root
+        group: root
+        mode: "0700"
+      notify: Restart the collector
+
+    - name: Install the checksum-verified native release without touching node state
+      ansible.builtin.command:
+        argv: [/usr/local/sbin/recount-collector-prepare, install]
+      register: recount_release_install
+      changed_when: recount_release_install.stdout == "installed"
+      notify: Restart the collector
+
+    - name: Configure production export and enrollment
+      ansible.builtin.copy:
+        content: |
+          OTEL_EXPORTER_OTLP_ENDPOINT={{ recount_collector_endpoint }}
+          RECOUNT_COLLECTOR_ENROLLMENT_URL={{ recount_collector_enrollment_url }}
+        dest: /etc/recount-collector/runtime.env
+        owner: root
+        group: root
+        mode: "0600"
+      notify: Restart the collector
+
+    - name: Install the bounded collector service
+      ansible.builtin.copy:
+        src: ../collector.service
+        dest: /etc/systemd/system/recount-collector.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart the collector
+
+    - name: Enable the collector and preserve its existing identity and queue
+      ansible.builtin.systemd_service:
+        name: recount-collector
+        daemon_reload: true
+        enabled: true
+        state: started
+
+    - name: Apply collector configuration before checking enrollment
+      ansible.builtin.meta: flush_handlers
+
+    - name: Confirm the private node identity exists after enrollment
+      ansible.builtin.stat:
+        path: /var/lib/recount-collector/node/node.json
+      register: recount_node_identity
+      failed_when: not recount_node_identity.stat.exists
+  handlers:
+    - name: Restart the collector
+      ansible.builtin.systemd_service:
+        name: recount-collector
+        state: restarted

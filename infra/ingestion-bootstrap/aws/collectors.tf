@@ -58,18 +58,56 @@ resource "aws_iam_instance_profile" "collector" {
   tags  = local.collector_tags
 }
 
+resource "aws_iam_role_policy_attachment" "collector_ssm" {
+  count      = var.collectors_vpc_id == null ? 0 : 1
+  role       = aws_iam_role.collector[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_user_policy" "collector_transfer" {
+  count = var.collectors_vpc_id == null ? 0 : 1
+  name  = "collector-ansible-transfer-bucket"
+  user  = aws_iam_user.collectors_cd[0].name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:CreateBucket", "s3:DeleteBucket", "s3:ListBucket", "s3:GetBucketLocation",
+        "s3:GetBucketTagging", "s3:PutBucketTagging", "s3:GetBucketPolicy", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy",
+        "s3:GetBucketPublicAccessBlock", "s3:PutBucketPublicAccessBlock",
+        "s3:GetBucketOwnershipControls", "s3:PutBucketOwnershipControls", "s3:DeleteBucketOwnershipControls",
+        "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration",
+        "s3:GetBucketVersioning", "s3:PutBucketVersioning", "s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration",
+        "s3:GetBucketAcl", "s3:GetBucketCORS", "s3:GetBucketLogging",
+        "s3:GetBucketWebsite", "s3:GetBucketRequestPayment", "s3:GetAccelerateConfiguration",
+        "s3:GetReplicationConfiguration", "s3:GetBucketObjectLockConfiguration"
+      ]
+      Resource = "arn:aws:s3:::recount-collector-transfer-${var.expected_account_id}"
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "enrollment" {
   count = var.collectors_vpc_id == null ? 0 : 1
   name  = "collector-enrollment-read"
   role  = aws_iam_role.collector[0].id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Action    = ["ssm:GetParameter"]
-      Resource  = "arn:aws:ssm:us-east-2:${var.expected_account_id}:parameter${var.collectors_enrollment_parameter_name}"
-      Condition = local.collector_region
-    }]
+    Statement = [
+      {
+        Effect    = "Allow"
+        Action    = ["ssm:GetParameter"]
+        Resource  = "arn:aws:ssm:us-east-2:${var.expected_account_id}:parameter${var.collectors_enrollment_parameter_name}"
+        Condition = local.collector_region
+      },
+      {
+        # AmazonSSMManagedInstanceCore otherwise permits reading every parameter.
+        Effect      = "Deny"
+        Action      = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParameterHistory", "ssm:GetParametersByPath"]
+        NotResource = "arn:aws:ssm:us-east-2:${var.expected_account_id}:parameter${var.collectors_enrollment_parameter_name}"
+      }
+    ]
   })
 }
 

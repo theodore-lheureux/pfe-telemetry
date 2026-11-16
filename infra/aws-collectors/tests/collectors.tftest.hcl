@@ -8,23 +8,20 @@ mock_provider "aws" {
   mock_data "aws_ami" {
     defaults = { id = "ami-00000000000000000", root_device_name = "/dev/sda1" }
   }
+  mock_resource "aws_s3_bucket" {
+    defaults = { id = "recount-collector-transfer-123456789012", arn = "arn:aws:s3:::recount-collector-transfer-123456789012" }
+  }
 }
 
 variables {
   expected_account_id      = "123456789012"
   vpc_id                   = "vpc-synthetic"
   subnet_ids               = ["subnet-first", "subnet-second"]
-  collector_release_url    = "https://github.com/example/recount/releases/download/ingestion-synthetic/recount-collector-arm64.tar.gz"
-  collector_release_sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   oracle_endpoint_verified = true
 }
 
 run "two_private_enrolled_arm_collectors" {
   command = plan
-  assert {
-    condition     = var.ingestion_endpoint == "https://ingest.recount.cloud" && var.enrollment_url == "https://app.recount.cloud"
-    error_message = "Use the owned public ingestion and application hostnames."
-  }
   assert {
     condition     = length(aws_instance.collector) == 2 && aws_launch_template.collectors.instance_type == "t4g.nano"
     error_message = "Allocate exactly two Graviton nano collectors."
@@ -46,8 +43,16 @@ run "two_private_enrolled_arm_collectors" {
     error_message = "Tag instances, root volumes and interfaces during launch."
   }
   assert {
-    condition     = !strcontains(base64decode(aws_launch_template.collectors.user_data), "recount_enroll_")
-    error_message = "Enrollment secret values must never be embedded in cloud-init."
+    condition     = !strcontains(base64decode(aws_launch_template.collectors.user_data), "recount") && strcontains(base64decode(aws_launch_template.collectors.user_data), "amazon-ssm-agent")
+    error_message = "Cloud-init must only prepare Systems Manager, never collector software or secrets."
+  }
+  assert {
+    condition     = aws_s3_bucket_public_access_block.transfer.block_public_acls && aws_s3_bucket_public_access_block.transfer.block_public_policy && aws_s3_bucket_public_access_block.transfer.ignore_public_acls && aws_s3_bucket_public_access_block.transfer.restrict_public_buckets
+    error_message = "Ansible transfers require a fully private bucket."
+  }
+  assert {
+    condition     = aws_s3_bucket_versioning.transfer.versioning_configuration[0].status == "Disabled" && aws_s3_bucket_lifecycle_configuration.transfer.rule[0].expiration[0].days == 1
+    error_message = "Do not retain old transfer versions; expire interrupted transfers after one day."
   }
 }
 
@@ -59,10 +64,10 @@ run "oracle_must_be_live_first" {
   expect_failures = [aws_launch_template.collectors]
 }
 
-run "plaintext_ingestion_is_rejected" {
+run "distinct_subnets_are_required" {
   command = plan
   variables {
-    ingestion_endpoint = "http://ingest.recount.cloud"
+    subnet_ids = ["subnet-first", "subnet-first"]
   }
-  expect_failures = [var.ingestion_endpoint]
+  expect_failures = [var.subnet_ids]
 }

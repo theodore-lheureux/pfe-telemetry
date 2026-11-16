@@ -27,6 +27,7 @@ check:
     cd ../.. && python3 -m unittest discover -s infra/ci -p 'test_*.py'
     cd ../.. && python3 -m unittest discover -s infra/aws-collectors -p 'test_*.py'
     ANSIBLE_CONFIG=ansible/ansible.cfg uv run ansible-playbook --syntax-check -i recount_ingestion, ansible/bootstrap.yml
+    ANSIBLE_CONFIG=../aws-collectors/ansible/ansible.cfg uv run ansible-playbook --syntax-check -i recount_collectors, ../aws-collectors/ansible/collector.yml
     cd ../.. && bun test infra/oci-ingestion/ansible/configure.test.ts
     shellcheck deploy/*.sh
     cd ../.. && actionlint .github/workflows/ingestion-*.yml .github/workflows/collectors-infra.yml

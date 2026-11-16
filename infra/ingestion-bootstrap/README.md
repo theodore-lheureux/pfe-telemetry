@@ -90,6 +90,15 @@ Set `collectors_vpc_id` privately in the AWS bootstrap to enable the second
 role/profile. The policy uses an Ohio condition, tag-on-create requirements and
 owned-resource tag conditions. Role passing and enrollment parameter reads are
 limited to the runtime role and exact SSM parameter. CD cannot read enrollment.
+The runtime role also receives `AmazonSSMManagedInstanceCore` for Ansible sessions
+without inbound ports. A separate inline CD policy permits configuration of only
+`recount-collector-transfer-ACCOUNT`, the private SSM file-transfer bucket created
+by collectors CD. It grants no object reads or writes. Operator Ansible sessions
+use the owner's AWS profile and presigned transfers; the instance role needs no
+S3 access. IAM changes remain in this local bootstrap, never in CD.
+The enrollment policy explicitly denies parameter reads outside the selected
+enrollment ARN: the AWS-managed SSM policy otherwise permits wildcard parameter
+reads. Session Manager's agent/control-channel permissions remain available.
 The larger collector policy is customer-managed because the 2,048-character
 user-inline limit is too small; it remains below the 6,144-character managed
 policy limit and is attached only to the dedicated user.
