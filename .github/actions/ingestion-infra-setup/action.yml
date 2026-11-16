@@ -3,6 +3,9 @@ description: Initialize only the OCI ingestion root with scoped CI credentials.
 runs:
   using: composite
   steps:
+    - name: Mask infrastructure identifiers
+      shell: bash
+      run: python3 infra/ci/public_logs.py mask
     - uses: opentofu/setup-opentofu@e95ccdd20623115bfd7d47df14a3250d6066a9d0 # v1.0.7
       with:
         tofu_version: 1.13.9

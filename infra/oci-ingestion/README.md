@@ -70,14 +70,14 @@ approval. Do not apply or import as part of inspection.
 | `ingestion-release.yml` | Manual native amd64/arm64 builds; immutable per-run bundles     | Publishing uses `ingestion-release` environment   |
 | `ingestion-deploy.yml`  | Manual activation of an already published release on `main`     | `ingestion-deploy` environment                    |
 
-Before enabling workflows, the owner must create/protect these environments,
-restrict them to `main`, require reviewers and prevent self-review. Publishing
+Apply, release and deployment environments restrict execution to `main`, require
+reviewers and prevent self-review. Plan runs do not require review. Publishing
 creates a release/tag and uploading credentials changes secrets: both need
 explicit approval. No workflow is dispatched by this task. Runner minutes and
 artifact/release storage must fit the owner's approved GitHub allowance.
 
-The environments are prepared with owner review and self-review disabled.
-An initiator cannot approve their own run. Reviewer approval is separate from
+The apply/release/deploy environments use owner review with self-review disabled.
+An initiator cannot approve their own apply. Reviewer approval is separate from
 the authorization to push these workflow files; neither is bypassed here.
 
 Release IDs are `COMMIT-RUN-ATTEMPT`. Rust, the web bundle and schema exporter
@@ -106,11 +106,10 @@ above 2 GiB, keeping the receiver's staging allowance bounded.
 
 Set environment variables after approval:
 
-| Environment                | Variables                                                           |
-| -------------------------- | ------------------------------------------------------------------- |
-| `ingestion-deploy`         | `OCI_INSTANCE_ID`, `OCI_COMPARTMENT_ID`, `OCI_INGESTION_ARCH=arm64` |
-| `ingestion-deploy`         | `OCI_TENANCY_ID`, `OCI_USER_ID`, `OCI_API_KEY_FINGERPRINT`          |
-| `ingestion-deploy`, secret | `OCI_API_PRIVATE_KEY`                                               |
+| Environment                  | Variables                                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `ingestion-deploy`, secrets  | `OCI_INSTANCE_ID`, `OCI_COMPARTMENT_ID`, `OCI_TENANCY_ID`, `OCI_USER_ID`, `OCI_API_KEY_FINGERPRINT`, `OCI_API_PRIVATE_KEY` |
+| `ingestion-deploy`, variable | `OCI_INGESTION_ARCH=arm64`                                                                                                 |
 
 `OCI_COMPARTMENT_ID` selects the isolated project compartment where commands are
 stored, not the root compartment containing the VM. Creation remains
@@ -123,6 +122,16 @@ same-repository PRs and relevant `main` changes; fork PRs get offline checks onl
 Apply is manual on `main`, after approval in `ingestion-infrastructure`.
 All runs share a concurrency group and native S3 locks. Apply uses the exact
 encrypted plan from the same run; stale state fails rather than silently re-planning.
+
+The repository's Actions logs are public. Cloud identifiers and tfvars JSON are
+environment secrets so runner headers are masked from the first step. The
+shared public-log helper additionally masks nested values and email-shaped
+strings, buffers the full `-no-color` plan, and prints it only after redacting
+runtime identifiers and emails. Apply logs use a limited JSON summary.
+Imported Oracle provenance tags
+remain ignored by lifecycle configuration, but state and full plans still
+contain them; only the encrypted plan artifact is uploaded. Existing published
+run logs are not retroactively redacted by these changes.
 
 The [bootstrap roots](../ingestion-bootstrap/README.md) run locally once with
 AWS/OCI profile `pfe` to create identities, policies and public keys. They are

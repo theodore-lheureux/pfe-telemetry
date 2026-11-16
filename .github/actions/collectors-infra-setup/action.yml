@@ -1,22 +1,25 @@
 name: Configure collectors infrastructure
 description: Initialize only the collectors root with its dedicated AWS state and EC2 identity.
+outputs:
+  configured:
+    description: Whether a nonempty collectors configuration was provided
+    value: ${{ steps.configuration.outputs.configured }}
 runs:
   using: composite
   steps:
+    - name: Check and mask collectors configuration
+      id: configuration
+      shell: bash
+      run: python3 infra/ci/public_logs.py collectors-configuration
     - uses: opentofu/setup-opentofu@e95ccdd20623115bfd7d47df14a3250d6066a9d0 # v1.0.7
+      if: steps.configuration.outputs.configured == 'true'
       with:
         tofu_version: 1.13.9
         tofu_wrapper: false
     - name: Initialize collectors state
+      if: steps.configuration.outputs.configured == 'true'
       shell: bash
       run: |
-        umask 077
-        python3 - <<'PY'
-        import json, os
-        from pathlib import Path
-        values = json.loads(os.environ["COLLECTORS_TFVARS_JSON"])
-        Path("infra/aws-collectors/terraform.tfvars.json").write_text(json.dumps(values))
-        PY
         tofu -chdir=infra/aws-collectors init -input=false -lockfile=readonly \
           -backend-config="bucket=$AWS_STATE_BUCKET" -backend-config=region=us-east-2 \
           -backend-config="allowed_account_ids=[\"$AWS_ACCOUNT_ID\"]"

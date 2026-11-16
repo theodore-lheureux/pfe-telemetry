@@ -24,6 +24,7 @@ check:
     tofu -chdir=../aws-collectors validate
     tofu -chdir=../aws-collectors test
     cd ../.. && python3 -m unittest discover -s infra/oci-ingestion/ci -p 'test_*.py'
+    cd ../.. && python3 -m unittest discover -s infra/ci -p 'test_*.py'
     cd ../.. && python3 -m unittest discover -s infra/aws-collectors -p 'test_*.py'
     shellcheck deploy/*.sh
     cd ../.. && actionlint .github/workflows/ingestion-*.yml .github/workflows/collectors-infra.yml

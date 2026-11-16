@@ -96,17 +96,20 @@ states. See [collectors](../aws-collectors/README.md) for the endpoint/release g
 
 ## GitHub protection and rotation
 
-Create `ingestion-plan`, `ingestion-infrastructure`, `ingestion-release` and
-`ingestion-deploy` environments with owner review and no self-review. Restrict
-apply/release/deploy to `main`. The plan environment may admit same-repository PR
-merge refs only after reviewing their Terraform, workflows, composite actions and
-scripts: Terraform providers and external commands are executable code with
-credential access. Fork PRs get offline validation only.
+Plan environments admit same-repository PR merge refs without review; fork PRs
+get offline validation only. Apply, release and deployment environments require
+owner review, prevent self-review and are restricted to `main`. Terraform,
+workflows, composite actions and scripts are executable code with credential
+access, so write access to same-repository PR branches remains a trust boundary.
 
 The plan/apply environments receive the scoped AWS key, OCI private key and
 `PLAN_ENCRYPTION_KEY` (a separately generated high-entropy secret shared between
-them). Set `AWS_ACCOUNT_ID`, `AWS_STATE_BUCKET`, `INGESTION_TFVARS_JSON`,
-`OCI_TENANCY_ID`, `OCI_USER_ID` and `OCI_API_KEY_FINGERPRINT` as variables.
+them). Store `AWS_ACCOUNT_ID`, `AWS_STATE_BUCKET`, `INGESTION_TFVARS_JSON`,
+`OCI_TENANCY_ID`, `OCI_USER_ID` and `OCI_API_KEY_FINGERPRINT` as environment
+secrets too, not plain variables: public runner headers log variables before
+scripts can register masks. Use the same rule for instance/compartment IDs and
+`COLLECTORS_TFVARS_JSON`. Technical selections such as `OCI_INGESTION_ARCH`
+may remain variables.
 Only the OCI identity is also needed in `ingestion-deploy`. Do not upload owner
 sessions, bootstrap credentials, private keys or raw plans as artifacts.
 
@@ -114,6 +117,12 @@ The CD workflow encrypts saved plans with GPG AES256 and integrity protection.
 Only the ciphertext is retained for one day. Apply downloads the same run's
 artifact after approval and uses native S3 locking. The bootstrap state objects
 are outside the AWS user's allowed prefix.
+
+The public-log helper registers identifier masks before cloud commands, then
+buffers the full `-no-color` plan. Runtime identifiers and email-shaped strings
+are masked before that plan is printed for review. Apply output uses a limited
+JSON summary. The encrypted plan artifact retains the full original values for
+private review.
 
 Rotate keys at least every 90 days and immediately on suspected disclosure:
 pause CD, create a second scoped key, update every consuming environment via

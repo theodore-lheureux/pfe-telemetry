@@ -5,6 +5,7 @@ on:
     paths:
       [
         "infra/aws-collectors/**",
+        "infra/ci/**",
         ".github/workflows/collectors-infra.yml",
         ".github/actions/collectors-infra-setup/**",
       ]
@@ -13,6 +14,7 @@ on:
     paths:
       [
         "infra/aws-collectors/**",
+        "infra/ci/**",
         ".github/workflows/collectors-infra.yml",
         ".github/actions/collectors-infra-setup/**",
       ]
@@ -38,6 +40,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - run: python3 infra/ci/public_logs.py mask
       - uses: opentofu/setup-opentofu@e95ccdd20623115bfd7d47df14a3250d6066a9d0 # v1.0.7
         with:
           tofu_version: 1.13.9
@@ -48,6 +51,7 @@ jobs:
           tofu -chdir=infra/aws-collectors validate
           tofu -chdir=infra/aws-collectors test
           python3 -m unittest discover -s infra/aws-collectors -p 'test_*.py'
+          python3 -m unittest discover -s infra/ci -p 'test_*.py'
 
   plan:
     needs: check
@@ -55,12 +59,14 @@ jobs:
     environment: collectors-plan
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      configured: ${{ steps.setup.outputs.configured }}
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_COLLECTORS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_COLLECTORS_SECRET_ACCESS_KEY }}
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_STATE_BUCKET: ${{ vars.AWS_STATE_BUCKET }}
-      COLLECTORS_TFVARS_JSON: ${{ vars.COLLECTORS_TFVARS_JSON }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      AWS_STATE_BUCKET: ${{ secrets.AWS_STATE_BUCKET }}
+      COLLECTORS_TFVARS_JSON: ${{ secrets.COLLECTORS_TFVARS_JSON }}
       PLAN_ENCRYPTION_KEY: ${{ secrets.PLAN_ENCRYPTION_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,15 +74,18 @@ jobs:
           persist-credentials: false
       # The reviewed checkout is intentional; pinned actionlint lacks $/ syntax.
       - uses: ./.github/actions/collectors-infra-setup # zizmor: ignore[self-repository]
+        id: setup
       - name: Plan with native S3 locking
+        if: steps.setup.outputs.configured == 'true'
         run: |
-          tofu -chdir=infra/aws-collectors plan -input=false -lock-timeout=5m -out=deployment.tfplan
+          python3 infra/ci/public_logs.py plan infra/aws-collectors
           test -n "$PLAN_ENCRYPTION_KEY"
           printf '%s' "$PLAN_ENCRYPTION_KEY" | gpg --batch --yes --pinentry-mode loopback \
             --passphrase-fd 0 --symmetric --cipher-algo AES256 \
             --output infra/aws-collectors/deployment.tfplan.gpg infra/aws-collectors/deployment.tfplan
           echo 'Estimated running cost: USD 14.71/month for two collectors (730 hours), excluding transfer and taxes.' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.setup.outputs.configured == 'true'
         with:
           name: collectors-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: infra/aws-collectors/deployment.tfplan.gpg
@@ -88,16 +97,16 @@ jobs:
 
   apply:
     needs: plan
-    if: github.event_name == 'workflow_dispatch' && inputs.apply && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && inputs.apply && github.ref == 'refs/heads/main' && needs.plan.outputs.configured == 'true'
     environment: collectors-infrastructure
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_COLLECTORS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_COLLECTORS_SECRET_ACCESS_KEY }}
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_STATE_BUCKET: ${{ vars.AWS_STATE_BUCKET }}
-      COLLECTORS_TFVARS_JSON: ${{ vars.COLLECTORS_TFVARS_JSON }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      AWS_STATE_BUCKET: ${{ secrets.AWS_STATE_BUCKET }}
+      COLLECTORS_TFVARS_JSON: ${{ secrets.COLLECTORS_TFVARS_JSON }}
       PLAN_ENCRYPTION_KEY: ${{ secrets.PLAN_ENCRYPTION_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -105,17 +114,20 @@ jobs:
           persist-credentials: false
       # The reviewed checkout is intentional; pinned actionlint lacks $/ syntax.
       - uses: ./.github/actions/collectors-infra-setup # zizmor: ignore[self-repository]
+        id: setup
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.setup.outputs.configured == 'true'
         with:
           name: collectors-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: infra/aws-collectors
       - name: Apply exactly the reviewed plan
+        if: steps.setup.outputs.configured == 'true'
         run: |
           test -n "$PLAN_ENCRYPTION_KEY"
           printf '%s' "$PLAN_ENCRYPTION_KEY" | gpg --batch --yes --pinentry-mode loopback \
             --passphrase-fd 0 --decrypt --output infra/aws-collectors/deployment.tfplan \
             infra/aws-collectors/deployment.tfplan.gpg
-          tofu -chdir=infra/aws-collectors apply -input=false -lock-timeout=5m deployment.tfplan
+          python3 infra/ci/public_logs.py apply infra/aws-collectors
       - name: Remove plaintext plan
         if: always()
         run: rm -f infra/aws-collectors/deployment.tfplan

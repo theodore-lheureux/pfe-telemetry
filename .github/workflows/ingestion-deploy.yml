@@ -27,10 +27,16 @@ jobs:
     env:
       RELEASE: ${{ inputs.release }}
       ARCH: ${{ vars.OCI_INGESTION_ARCH }}
+      OCI_API_KEY_FINGERPRINT: ${{ secrets.OCI_API_KEY_FINGERPRINT }}
+      OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
+      OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
+      OCI_INSTANCE_ID: ${{ secrets.OCI_INSTANCE_ID }}
+      OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - run: python3 infra/ci/public_logs.py mask
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.12.23"
@@ -52,14 +58,8 @@ jobs:
       - name: Materialize the scoped OCI deployment identity
         env:
           OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
-          OCI_API_KEY_FINGERPRINT: ${{ vars.OCI_API_KEY_FINGERPRINT }}
-          OCI_USER_ID: ${{ vars.OCI_USER_ID }}
-          OCI_TENANCY_ID: ${{ vars.OCI_TENANCY_ID }}
         run: python3 infra/oci-ingestion/ci/credentials.py
       - name: Activate the release through OCI Run Command
-        env:
-          OCI_INSTANCE_ID: ${{ vars.OCI_INSTANCE_ID }}
-          OCI_COMPARTMENT_ID: ${{ vars.OCI_COMPARTMENT_ID }}
         run: python3 infra/oci-ingestion/ci/run-command.py
       - name: Remove this runner's deployment credential files
         if: always()

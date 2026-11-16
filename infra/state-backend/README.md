@@ -46,7 +46,8 @@ The state-backend root runs locally with AWS profile `pfe` to maintain the
 existing bucket protections. The separate
 [identity bootstrap](../ingestion-bootstrap/README.md) creates a dedicated IAM
 user limited to the ingestion state and native lock object. Its access key is
-stored only in the approval-gated plan/apply environments. There is no OIDC
+stored only in the separate plan/apply environments; applies require approval.
+There is no OIDC
 provider and no IAM-management permission in CD.
 
 The ingestion root's plan/apply runs in GitHub Actions, not on the owner's

@@ -51,12 +51,16 @@ on `main` with approval in `collectors-infrastructure`, using the same run's
 encrypted plan. Runs share a concurrency group and native S3 locks. Fork PRs get
 offline checks only. Bootstrap never runs in CD.
 
-Only `collectors-plan` and `collectors-infrastructure` receive
-`AWS_COLLECTORS_ACCESS_KEY_ID`, `AWS_COLLECTORS_SECRET_ACCESS_KEY` and a shared
-`PLAN_ENCRYPTION_KEY` secret. Set `AWS_ACCOUNT_ID`, `AWS_STATE_BUCKET` and
-`COLLECTORS_TFVARS_JSON` in both. Use `terraform.tfvars.example` for the latter,
+Only `collectors-plan` and `collectors-infrastructure` receive the environment
+secrets `AWS_COLLECTORS_ACCESS_KEY_ID`, `AWS_COLLECTORS_SECRET_ACCESS_KEY`,
+`PLAN_ENCRYPTION_KEY`, `AWS_ACCOUNT_ID`, `AWS_STATE_BUCKET` and
+`COLLECTORS_TFVARS_JSON`. Use `terraform.tfvars.example` for the latter,
 with actual subnets, verified endpoints and an approved release checksum, never
 an enrollment value. Follow the bootstrap guide's key-rotation procedure.
+
+Until `COLLECTORS_TFVARS_JSON` is configured, the plan finishes with a skip
+notice: it does not initialize OpenTofu, upload an artifact or enable apply.
+Public logs retain the full plan with identifiers and runtime emails redacted.
 
 The native release workflow publishes collector archives and attestations.
 Verify the collector attestation against this repository, release workflow,

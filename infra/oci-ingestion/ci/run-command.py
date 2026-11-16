@@ -31,6 +31,7 @@ def oci(*args):
             ],
             text=True,
             timeout=90,
+            stderr=subprocess.PIPE,
         )
     )["data"]
 
@@ -62,7 +63,7 @@ def main():
         "--timeout-in-seconds",
         "1200",
     )
-    print(f"Submitted OCI deployment command {result['id']}", flush=True)
+    print("Submitted OCI deployment command", flush=True)
     deadline = time.monotonic() + 1260
     while time.monotonic() < deadline:
         status = oci(
@@ -91,4 +92,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (subprocess.SubprocessError, ValueError, OSError, KeyError):
+        raise SystemExit(
+            "OCI deployment request failed; private identifiers and raw diagnostics were withheld."
+        ) from None
