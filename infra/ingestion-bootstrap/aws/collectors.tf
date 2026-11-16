@@ -160,7 +160,7 @@ resource "aws_iam_policy" "collectors_cd" {
       {
         Sid       = "LaunchCanonicalImage", Effect = "Allow", Action = ["ec2:RunInstances"]
         Resource  = "arn:aws:ec2:us-east-2::image/ami-*"
-        Condition = { StringEquals = { "aws:RequestedRegion" = "us-east-2", "ec2:Owner" = "099720109477" } }
+        Condition = { StringEquals = { "aws:RequestedRegion" = "us-east-2" }, "ForAnyValue:StringEquals" = { "ec2:Owner" = ["amazon", "099720109477"] } }
       },
       {
         Sid       = "LaunchInSelectedNetwork", Effect = "Allow", Action = ["ec2:RunInstances"]
