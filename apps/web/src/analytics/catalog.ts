@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { queryOptions, useQueries, useQuery } from "@tanstack/react-query";
 import { unwrapOperation } from "../lib/operation-result";
 import type { ProjectReference } from "../organizations/contracts";
 import {
@@ -22,11 +22,17 @@ export function useAnalyticsCatalog(
 	reference: ProjectReference,
 	enabled: boolean,
 ) {
-	return useQuery({
+	return useQuery({ ...analyticsCatalogQuery(userId, reference), enabled });
+}
+
+export function analyticsCatalogQuery(
+	userId: string,
+	reference: ProjectReference,
+) {
+	return queryOptions({
 		queryKey: ["analytics-catalog", userId, reference.projectId],
 		queryFn: async ({ signal }) =>
 			unwrapOperation(await getAnalyticsCatalog({ data: reference, signal })),
-		enabled,
 		staleTime: 60_000,
 		retry: false,
 	});

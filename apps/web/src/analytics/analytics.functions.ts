@@ -13,7 +13,6 @@ import {
 import {
 	parseAttributeValuesInput,
 	parseMetricAttributesInput,
-	parseOverviewInput,
 	parseRunQueryInput,
 } from "./validation";
 
@@ -50,15 +49,6 @@ export const getAttributeValues = createServerFn({ method: "GET" })
 	.handler(({ data, context: { identity, database, request } }) =>
 		withActor(identity, (actor) =>
 			analytics.attributeValues(database, actor, data, request.signal),
-		),
-	);
-
-export const getOverviewSection = createServerFn({ method: "GET" })
-	.middleware([privateOperation])
-	.validator(parseOverviewInput)
-	.handler(({ data, context: { identity, database, request } }) =>
-		withActor(identity, (actor) =>
-			analytics.overviewSection(database, actor, data, request.signal),
 		),
 	);
 

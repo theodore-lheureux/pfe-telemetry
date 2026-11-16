@@ -30,7 +30,7 @@ import type { ProjectReference } from "../../organizations/contracts";
 import type { QueryResult } from "../contracts";
 import type { DashboardFilters, TileOverrides } from "../dashboard-filters";
 import type { DashboardTile, TileHeight, TileWidth } from "../dashboards";
-import { formulaNames, type InsightDraft } from "../insight/draft";
+import { encodeDraft, formulaNames, type InsightDraft } from "../insight/draft";
 import { ChartBody } from "../insight/insight-chart";
 import { InsightTable } from "../insight/insight-table";
 import { type SeriesView, seriesView } from "../insight/series-view";
@@ -96,6 +96,8 @@ export function DashboardTileCard({
 	resizer,
 	className,
 	style,
+	preview = false,
+	unavailable = false,
 }: {
 	tile: DashboardTile;
 	/** The insight's draft with the dashboard's and the tile's overrides applied. */
@@ -118,6 +120,8 @@ export function DashboardTileCard({
 	resizer?: ReactNode;
 	className?: string;
 	style?: React.CSSProperties;
+	preview?: boolean;
+	unavailable?: boolean;
 }) {
 	const id = useId();
 	const element = useRef<HTMLElement>(null);
@@ -134,7 +138,7 @@ export function DashboardTileCard({
 		now: at,
 		queue,
 		// Waits for the first measurement, so tiles below the fold never start loading.
-		active: near === true,
+		active: near === true && !unavailable,
 	});
 	const fetching = result.isFetching;
 	useEffect(() => {
@@ -194,21 +198,27 @@ export function DashboardTileCard({
 							<Link
 								to="/organizations/$organizationId/projects/$projectId/explore"
 								params={reference}
-								search={{ insight: tile.insight.id }}
+								search={
+									preview
+										? { q: encodeDraft(draft) }
+										: { insight: tile.insight.id }
+								}
 								className="block truncate rounded-sm hover:underline"
 							>
 								{tile.insight.name}
 							</Link>
 						</h3>
-						<TileInfo
-							tile={tile}
-							draft={draft}
-							filters={filters}
-							overrides={overrides}
-							computedAt={computedAt}
-							result={result.data}
-							userId={userId}
-						/>
+						{!preview && (
+							<TileInfo
+								tile={tile}
+								draft={draft}
+								filters={filters}
+								overrides={overrides}
+								computedAt={computedAt}
+								result={result.data}
+								userId={userId}
+							/>
+						)}
 					</div>
 					{tile.insight.description && !tile.options.hideDescription && (
 						<p
@@ -268,6 +278,7 @@ export function DashboardTileCard({
 				<TileBody
 					draft={draft}
 					ready={query !== null}
+					unavailable={unavailable}
 					error={result.error}
 					data={result.data}
 					view={view}
@@ -290,6 +301,7 @@ function TileBody({
 	hydrated,
 	near,
 	onZoom,
+	unavailable,
 }: {
 	draft: InsightDraft;
 	ready: boolean;
@@ -299,7 +311,18 @@ function TileBody({
 	hydrated: boolean;
 	near: boolean;
 	onZoom: (from: Date, to: Date) => void;
+	unavailable: boolean;
 }) {
+	if (unavailable)
+		return (
+			<IconEmptyState
+				icon={<LineChartIcon aria-hidden="true" />}
+				title={m.dashboard_template_panel_unavailable()}
+				description={m.dashboard_template_panel_unavailable_description()}
+				heading="h3"
+				className="h-full"
+			/>
+		);
 	if (!ready)
 		return (
 			<IconEmptyState

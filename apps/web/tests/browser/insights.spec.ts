@@ -10,7 +10,7 @@ test.skip(
 	"Requires the reused ClickHouse with recent node telemetry and disposable project permission",
 );
 
-test("Insights shows a fleet overview and charts discovered metrics in Explore", async ({
+test("Insights shows the Node health template and charts discovered metrics in Explore", async ({
 	page,
 	workspace,
 }, testInfo) => {
@@ -50,6 +50,7 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
         FROM telemetry.metric_points
         WHERE metric_name IN ('recount.node.cpu.time', 'recount.node.memory.total',
             'recount.node.memory.available', 'recount.collection.discovered.processes')
+          AND event_day >= toUInt32(intDiv(toUnixTimestamp(now() - INTERVAL 1 HOUR), 86400))
           AND time_unix_nano > toUInt64(now() - INTERVAL 1 HOUR) * 1000000000
         LIMIT 50000`,
 			query_params: { project: project.id },
@@ -69,28 +70,23 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
 		);
 		await expect(
-			page.getByRole("heading", { name: "Overview", exact: true }),
+			page.getByRole("heading", { name: "Node health", exact: true }),
 		).toBeVisible();
-		// The overview: fixed stat tiles compared with the previous period.
-		for (const stat of [
-			"Nodes reporting",
-			"CPU utilization",
-			"Memory used",
+		for (const panel of [
+			"CPU busy %",
+			"Memory used %",
 			"Processes",
+			"Disk throughput",
+			"Network throughput",
+			"Nodes",
 		])
 			await expect(
-				page.getByRole("button", {
-					name: `Show ${stat} in the chart`,
-					exact: true,
-				}),
+				page.getByRole("article", { name: panel, exact: true }),
 			).toBeVisible();
-		await expect(
-			page.getByRole("img", { name: "CPU utilization over time" }),
-		).toBeVisible();
+		const nodes = page.getByRole("article", { name: "Nodes", exact: true });
+		await nodes.scrollIntoViewIfNeeded();
 		await expect
-			.poll(() =>
-				page.getByRole("table", { name: "Nodes" }).getByRole("row").count(),
-			)
+			.poll(() => nodes.getByRole("table").getByRole("row").count())
 			.toBeGreaterThan(1);
 		await page.screenshot({
 			path: testInfo.outputPath("insights-overview.png"),
@@ -98,7 +94,10 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 		});
 		// The overview uses the shared range picker; a new range recomputes everything.
 		await page
-			.getByRole("button", { name: "Time range: Last hour", exact: true })
+			.getByRole("button", {
+				name: "Time range: No date range override",
+				exact: true,
+			})
 			.click();
 		await page
 			.getByRole("option", { name: "Last 24 hours", exact: true })
@@ -109,45 +108,53 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 				exact: true,
 			}),
 		).toBeVisible();
-		await expect(page.getByText(/^Computed/).first()).toBeVisible();
-		await expect(
-			page.getByRole("img", { name: "CPU utilization over time" }),
-		).toBeVisible();
-		// Numbers sort largest first, so the busiest node leads.
+		await expect(page).toHaveURL(/filters=/);
 		await page
-			.getByRole("table", { name: "Nodes" })
-			.getByRole("button", { name: "CPU utilization", exact: true })
+			.getByRole("link", { name: "Dashboards", exact: true })
+			.first()
 			.click();
 		await expect(
-			page
-				.getByRole("table", { name: "Nodes" })
-				.getByRole("columnheader", { name: "CPU utilization" }),
-		).toHaveAttribute("aria-sort", "descending");
+			page.getByRole("region", { name: "Suggested templates" }),
+		).toContainText("Node health");
+		await expect(
+			page.getByRole("region", { name: "Suggested templates" }),
+		).toContainText("4 of 6 panels");
+		await page.getByRole("link", { name: "Overview", exact: true }).click();
+		await expect(
+			page.getByRole("heading", { name: "Node health", level: 1, exact: true }),
+		).toBeVisible();
 		await page
 			.getByRole("button", {
-				name: "Show Memory used in the chart",
+				name: "Create dashboard from template",
 				exact: true,
 			})
 			.click();
+		await expect(page).toHaveURL(/\/dashboards\/[^/]+$/);
 		await expect(
-			page.getByRole("img", { name: "Memory used over time" }),
+			page.getByRole("button", { name: "Add insights", exact: true }),
 		).toBeVisible();
+		await expect(
+			page
+				.getByRole("article", { name: "CPU busy %", exact: true })
+				.getByRole("link", { name: "CPU busy %", exact: true }),
+		).toHaveAttribute("href", /insight=/);
 		await page.getByRole("link", { name: "Explore", exact: true }).click();
 		await page
 			.getByRole("combobox", { name: "Choose a metric", exact: true })
 			.click();
-		const metricPreview = page.getByRole("complementary");
+		const pickerPreview = page.locator('[data-slot="hover-card-content"]');
 		await page.getByPlaceholder("Search metrics").fill("recount.node.cpu.time");
-		await expect(metricPreview).toContainText("Node CPU time");
-		await expect(metricPreview).toContainText("Counter");
-		await page.getByPlaceholder("Search metrics").fill("no-such-metric");
-		await expect(metricPreview).toHaveCount(0);
-		await page.getByPlaceholder("Search metrics").fill("");
-		await page.keyboard.press("Home");
-		await page.keyboard.press("ArrowDown");
-		await expect(metricPreview).toContainText("Memory usage");
 		await page.getByRole("option", { name: /^Node CPU time/ }).hover();
-		await expect(metricPreview).toContainText("Node CPU time");
+		await expect(pickerPreview).toContainText("Node CPU time");
+		await expect(pickerPreview).toContainText("Counter");
+		await page.getByPlaceholder("Search metrics").fill("no-such-metric");
+		await expect(pickerPreview).toHaveCount(0);
+		await page.getByPlaceholder("Search metrics").fill("Memory usage");
+		await page.keyboard.press("ArrowDown");
+		await expect(pickerPreview).toContainText("Memory usage");
+		await page.getByPlaceholder("Search metrics").fill("recount.node.cpu.time");
+		await page.getByRole("option", { name: /^Node CPU time/ }).hover();
+		await expect(pickerPreview).toContainText("Node CPU time");
 		await page.screenshot({
 			path: testInfo.outputPath("insights-metric-picker.png"),
 		});
@@ -201,26 +208,20 @@ test("Insights shows a fleet overview and charts discovered metrics in Explore",
 				0,
 			);
 		const breakdownList = page.getByRole("listbox", { name: "Suggestions" });
-		const fullWidth = await breakdownList.evaluate(
-			(list) => list.getBoundingClientRect().width,
-		);
+		const fullWidth = await breakdownList.evaluate((list) => list.clientWidth);
 		await page.getByPlaceholder("Search attributes").fill("cpu.mode");
-		await expect(page.getByRole("complementary")).toContainText("CPU mode");
-		await expect(page.getByRole("complementary")).toContainText("String");
+		await expect(pickerPreview).toContainText("CPU mode");
+		await expect(pickerPreview).toContainText("String");
 		await expect
-			.poll(() =>
-				breakdownList.evaluate((list) => list.getBoundingClientRect().width),
-			)
-			.toBeLessThan(fullWidth);
+			.poll(() => breakdownList.evaluate((list) => list.clientWidth))
+			.toBe(fullWidth);
 		await page.getByPlaceholder("Search attributes").fill("");
 		await page
 			.getByRole("option", { name: "No breakdown", exact: true })
 			.hover();
-		await expect(page.getByRole("complementary")).toHaveCount(0);
+		await expect(pickerPreview).toHaveCount(0);
 		await expect
-			.poll(() =>
-				breakdownList.evaluate((list) => list.getBoundingClientRect().width),
-			)
+			.poll(() => breakdownList.evaluate((list) => list.clientWidth))
 			.toBe(fullWidth);
 		await page.getByRole("option", { name: /^CPU mode/ }).click();
 		await expect

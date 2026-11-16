@@ -26,8 +26,6 @@ import {
 	type Measure,
 	type MetricAttributesInput,
 	type MetricBehavior,
-	OVERVIEW_SECTIONS,
-	type OverviewSection,
 	RELATIVE_RANGES,
 	type RelativeRange,
 	type RunQueryInput,
@@ -371,15 +369,4 @@ export function parseAttributeValuesInput(
 	if (typeof field !== "string" || !parseAttributeField(field))
 		throw new InputError("INVALID_QUERY", "Invalid attribute field");
 	return { ...parseMetricAttributesInput(value), field };
-}
-
-export function parseOverviewInput(value: unknown) {
-	const request = record(value, "request");
-	if (!OVERVIEW_SECTIONS.includes(request.section as OverviewSection))
-		throw new InputError("INVALID_QUERY", "Invalid overview section");
-	return {
-		...parseProjectReference(value),
-		range: parseRange(request.range),
-		section: request.section as OverviewSection,
-	};
 }

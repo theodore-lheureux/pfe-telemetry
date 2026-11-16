@@ -26,8 +26,6 @@ import { withAnalyticsSlot } from "./capacity.server";
 import type {
 	AttributeValuesInput,
 	MetricAttributesInput,
-	OverviewSection,
-	QueryRange,
 	RunQueryInput,
 } from "./contracts";
 import {
@@ -35,7 +33,6 @@ import {
 	listAttributeValues,
 	listMetrics,
 } from "./discovery.server";
-import { buildOverviewSection } from "./overview.server";
 import { runQuery } from "./runner.server";
 
 type Database = ReturnType<typeof getDatabase>;
@@ -198,32 +195,4 @@ export async function attributeValues(
 			signal,
 		),
 	);
-}
-
-/** One section of the fixed fleet overview; readers see it for any project they can open. */
-export async function overviewSection(
-	database: Database,
-	actor: Actor,
-	input: ProjectReference & { range: QueryRange; section: OverviewSection },
-	signal?: AbortSignal,
-) {
-	await requireProject(database, actor, input);
-	const result = await withAnalyticsSlot(
-		database,
-		input.organizationId,
-		signal,
-		() =>
-			buildOverviewSection(input.projectId, input.range, input.section, signal),
-	);
-	if (!result) return null;
-	const names = new Map(
-		(await nodeNames(database, input)).map((node) => [node.id, node.hostname]),
-	);
-	return {
-		...result,
-		nodes: result.nodes.map((node) => ({
-			...node,
-			hostname: names.get(node.id) ?? null,
-		})),
-	};
 }

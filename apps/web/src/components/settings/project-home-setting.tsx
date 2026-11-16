@@ -19,7 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useAppMutation } from "../use-app-mutation";
 import { SettingsSection } from "./settings-section";
 
-/** Whether the project opens on the fleet overview or on one of its dashboards. */
+/** Whether the project opens on Node health or on one of its saved dashboards. */
 export function ProjectHomeSetting({ project }: { project: ProjectSummary }) {
 	const { user } = getRouteApi("/_app").useRouteContext();
 	const queryClient = useQueryClient();
@@ -80,7 +80,7 @@ export function ProjectHomeSetting({ project }: { project: ProjectSummary }) {
 							disabled={disabled}
 						>
 							<span className="block truncate">
-								{home.data?.name ?? m.overview()}
+								{home.data?.name ?? m.dashboard_template_node_health()}
 							</span>
 							<ChevronDownIcon
 								aria-hidden="true"
@@ -96,11 +96,11 @@ export function ProjectHomeSetting({ project }: { project: ProjectSummary }) {
 							onPick={(dashboard) => void choose(dashboard.id)}
 						>
 							<CommandItem
-								value={m.overview()}
+								value={m.dashboard_template_node_health()}
 								data-checked={current === null}
 								onSelect={() => void choose(null)}
 							>
-								{m.overview()}
+								{m.dashboard_template_node_health()}
 							</CommandItem>
 						</DashboardPicker>
 					</PopoverContent>

@@ -41,7 +41,7 @@ export function parseDashboardReference(value: unknown): DashboardReference {
 	};
 }
 
-/** A project and the dashboard it opens on, or null for the fleet overview. */
+/** A project and the dashboard it opens on, or null for the Node health template. */
 export function parseProjectHome(value: unknown) {
 	const input = record(value);
 	return {

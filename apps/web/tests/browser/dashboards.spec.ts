@@ -80,6 +80,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
         SELECT * REPLACE ({project:String} AS project_id)
         FROM telemetry.metric_points
         WHERE metric_name = 'recount.node.cpu.time'
+          AND event_day >= toUInt32(intDiv(toUnixTimestamp(now() - INTERVAL 30 MINUTE), 86400))
           AND time_unix_nano > toUInt64(now() - INTERVAL 30 MINUTE) * 1000000000
         LIMIT 20000`,
 			query_params: { project: project.id },
@@ -253,7 +254,13 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			.click();
 		await expect(page).toHaveURL(/filters=/);
 		await page.getByRole("button", { name: /^Breakdown:/ }).click();
-		await page.getByRole("option", { name: /^Host name/ }).click();
+		const breakdownSearch = page.getByRole("dialog").getByRole("combobox");
+		await breakdownSearch.fill("Host name");
+		await expect(
+			page.getByRole("option", { name: /^Host name/ }),
+		).toBeVisible();
+		await breakdownSearch.press("ArrowDown");
+		await breakdownSearch.press("Enter");
 		// Unsaved overrides are counted and outlined until saved or discarded.
 		await expect(page.getByText("Unsaved filters: 2")).toBeVisible();
 		// Its info lists each unsaved change, from the saved value to the current one.
@@ -280,7 +287,9 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await page.getByRole("button", { name: "About CPU over time" }).hover();
 		const info = page.locator('[data-slot="hover-card-content"]');
 		await expect(info.getByText("Node CPU time")).toBeVisible();
-		await expect(info.getByText("Host name", { exact: true })).toBeVisible();
+		await expect(
+			info.getByRole("definition").filter({ hasText: /^Host name/ }),
+		).toBeVisible();
 		await expect(info.getByText("Dashboard")).toHaveCount(2);
 		// A click pins it open after the pointer leaves; another click closes it.
 		const about = page.getByRole("button", { name: "About CPU over time" });
@@ -339,7 +348,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await expect(
 			tiles
 				.first()
-				.getByText(/recount-compute/)
+				.getByText(/^\d[\d,.]*$/)
 				.first(),
 		).toBeVisible();
 		await expect(lower.getByRole("img", { name: "Insight chart" })).toHaveCount(
@@ -534,14 +543,14 @@ test("a project opens on the dashboard chosen in its settings", async ({
 	const home = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}`;
 	await page.goto(home);
 	await expect(
-		page.getByRole("heading", { name: "Overview", level: 1 }),
+		page.getByRole("heading", { name: "Node health", level: 1 }),
 	).toBeVisible();
 
 	await page.goto(
 		workspace.origin + settingsPath("project-customization", reference),
 	);
 	const choice = page.getByRole("combobox", { name: "Opens on" });
-	await expect(choice).toHaveText("Overview");
+	await expect(choice).toHaveText("Node health");
 	await choice.click();
 	await page.getByRole("option", { name: "Operations" }).click();
 	await expect(choice).toHaveText("Operations");

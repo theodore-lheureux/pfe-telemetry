@@ -36,9 +36,6 @@ export const DEFAULT_SERIES_LIMIT = 25;
 export const MAX_FORMULAS = 26;
 /** Rows one query may return: measures × groups × buckets, per window. */
 export const MAX_RESULT_POINTS = 200_000;
-/** The overview's independently loaded parts, each one runner query. */
-export const OVERVIEW_SECTIONS = ["cpu", "memory", "processes"] as const;
-export type OverviewSection = (typeof OVERVIEW_SECTIONS)[number];
 /**
  * A band around each line from the sources it combines: their full range, or the
  * middle half (25th to 75th percentile), which ignores single outliers.

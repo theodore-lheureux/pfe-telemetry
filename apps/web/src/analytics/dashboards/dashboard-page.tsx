@@ -1,7 +1,14 @@
 import { m } from "@recount/i18n/messages";
 import { Link, useHydrated } from "@tanstack/react-router";
 import { ArrowLeftIcon, PanelsTopLeftIcon, PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { toast } from "sonner";
 import { serializeRange } from "../../components/date-range/date-range";
 import { FormFeedback } from "../../components/form-feedback";
@@ -104,6 +111,7 @@ export function DashboardPage({
 	dashboard,
 	urlFilters,
 	onFilters: writeFilters,
+	preview,
 }: {
 	userId: string;
 	reference: ProjectReference;
@@ -112,6 +120,11 @@ export function DashboardPage({
 	/** The URL's overrides as JSON, or absent for the saved ones. */
 	urlFilters: string | undefined;
 	onFilters: (filters: string | undefined) => void;
+	preview?: {
+		unavailable: string[];
+		notice: ReactNode;
+		actions: ReactNode;
+	};
 }) {
 	const hydrated = useHydrated();
 	const [tiles, setTiles] = useState(dashboard.tiles);
@@ -390,18 +403,19 @@ export function DashboardPage({
 				className="size-5 shrink-0 text-primary"
 			/>
 			<h1 className="truncate text-xl font-semibold">{dashboard.name}</h1>
-			{actions.menu(dashboard)}
+			{!preview && actions.menu(dashboard)}
 		</div>
 	);
 
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
 			<AnalyticsHeader
-				section="dashboards"
+				section={preview ? "overview" : "dashboards"}
 				heading={heading}
 				description={dashboard.description || m.dashboard_page_description()}
 				actions={
 					<>
+						{preview?.actions}
 						<RefreshControl
 							dashboardId={dashboard.id}
 							refreshedAt={now}
@@ -424,6 +438,7 @@ export function DashboardPage({
 					</>
 				}
 			/>
+			{preview?.notice}
 			{/* Sticks below the page title; bleeds into the gutters to hide tiles beneath. Its
 			    own padding replaces the section gap above it. */}
 			<div className="sticky top-(--sticky-header-height) z-10 -mx-4 -mt-5 -mb-2 flex flex-col gap-2 bg-background px-4 py-2 md:-mx-6 md:px-6">
@@ -464,6 +479,8 @@ export function DashboardPage({
 			{tiles.length ? (
 				<DashboardGrid
 					tiles={tiles}
+					preview={!!preview}
+					unavailable={preview?.unavailable}
 					userId={userId}
 					reference={reference}
 					now={now}

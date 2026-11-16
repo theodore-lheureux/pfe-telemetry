@@ -60,6 +60,8 @@ interface TileProps {
 	overridesOf: (tile: DashboardTile) => TileOverrides;
 	onFetching: (tileId: string, fetching: boolean) => void;
 	onZoom: (from: Date, to: Date) => void;
+	preview?: boolean;
+	unavailable?: string[];
 }
 
 /** The menu actions the page handles for a tile; moves and sizes stay in the grid. */
@@ -168,28 +170,30 @@ export function DashboardGrid({
 							{...props}
 							onResizing={showGuides}
 							onResize={(size) => resize(tile, size)}
-							menu={(tools) => (
-								<TileMenu
-									tile={tile}
-									tools={tools}
-									userId={props.userId}
-									reference={props.reference}
-									dashboardId={dashboardId}
-									canWrite={props.canWrite}
-									disabled={props.disabled}
-									overridden={overridden(tile)}
-									shownDraft={props.draftOf(tile)}
-									first={position === 0}
-									last={position === tiles.length - 1}
-									savingDisplay={savingTile === tile.id}
-									actions={{
-										...actionsFor(tile),
-										onMove: (offset) => move(position, position + offset),
-										onResize: (size) => resize(tile, size),
-										onRemove: () => onRemove(tile),
-									}}
-								/>
-							)}
+							menu={(tools) =>
+								!props.preview && (
+									<TileMenu
+										tile={tile}
+										tools={tools}
+										userId={props.userId}
+										reference={props.reference}
+										dashboardId={dashboardId}
+										canWrite={props.canWrite}
+										disabled={props.disabled}
+										overridden={overridden(tile)}
+										shownDraft={props.draftOf(tile)}
+										first={position === 0}
+										last={position === tiles.length - 1}
+										savingDisplay={savingTile === tile.id}
+										actions={{
+											...actionsFor(tile),
+											onMove: (offset) => move(position, position + offset),
+											onResize: (size) => resize(tile, size),
+											onRemove: () => onRemove(tile),
+										}}
+									/>
+								)
+							}
 						/>
 					))}
 				</div>
@@ -209,6 +213,7 @@ function SortableTile({
 	overridesOf,
 	canWrite,
 	disabled,
+	unavailable,
 	onResizing,
 	onResize,
 	...props
@@ -253,6 +258,7 @@ function SortableTile({
 					preview ? { width: preview.width, height: preview.height } : undefined
 				}
 				tile={tile}
+				unavailable={unavailable?.includes(tile.id)}
 				draft={draftOf(tile)}
 				overrides={overridesOf(tile)}
 				{...props}

@@ -27,6 +27,7 @@ import { AnalyticsHeader } from "../analytics-header";
 import type { DashboardSummary } from "../dashboards";
 import { CreatorCell } from "../saved/saved-columns";
 import { useDashboardActions } from "./dashboard-actions";
+import { TemplateSuggestions } from "./template-suggestions";
 
 const features = tableFeatures({
 	rowSortingFeature,
@@ -181,6 +182,9 @@ export function DashboardList({
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
 			<AnalyticsHeader section="dashboards" />
+			{canWrite && (
+				<TemplateSuggestions userId={userId} reference={reference} />
+			)}
 			{dashboards.length === 0 ? (
 				<IconEmptyState
 					icon={<PanelsTopLeftIcon aria-hidden="true" />}

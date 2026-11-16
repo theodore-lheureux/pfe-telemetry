@@ -580,7 +580,7 @@ export async function getProjectHomeChoice(
 	return row ?? null;
 }
 
-/** The dashboard the project opens on, loaded, or null for the fleet overview. */
+/** The dashboard the project opens on, loaded, or null for the Node health template. */
 export async function getProjectHome(
 	database: Database,
 	actor: Actor,
@@ -594,7 +594,7 @@ export async function getProjectHome(
 	});
 }
 
-/** Opens the project on a dashboard of its own, or on the fleet overview with null. */
+/** Opens the project on a saved dashboard, or on the Node health template with null. */
 export async function setProjectHome(
 	database: Database,
 	actor: Actor,

@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { nodeHealthTemplate } from "../../src/analytics/dashboard-templates";
+import { createTemplateDashboard } from "../../src/analytics/dashboard-templates.server";
 import {
 	addTiles,
 	copyTile,
@@ -23,8 +25,10 @@ import {
 } from "../../src/analytics/dashboards-validation";
 import {
 	DEFAULT_DRAFT,
+	decodeDraft,
 	encodeDraft,
 	newSeries,
+	sameDraft,
 } from "../../src/analytics/insight/draft";
 import {
 	deleteInsights,
@@ -136,6 +140,79 @@ test("members arrange dashboards of their project's insights; viewers only open 
 	expect(await listDashboards(db, { id: viewer.id }, reference)).toMatchObject([
 		{ id: dashboardId, name: "Fleet", tileCount: 0 },
 	]);
+
+	const templateTarget = {
+		...reference,
+		dashboardId: randomUUID(),
+		templateId: "node-health",
+	};
+	await expect(
+		createTemplateDashboard(db, { id: viewer.id }, templateTarget),
+	).rejects.toMatchObject({ code: "FORBIDDEN" });
+	await expect(
+		createTemplateDashboard(db, { id: outsider.id }, templateTarget),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	const [nodeHealth, retried] = await Promise.all([
+		createTemplateDashboard(db, { id: writer.id }, templateTarget),
+		createTemplateDashboard(db, { id: writer.id }, templateTarget),
+	]);
+	const template = nodeHealthTemplate();
+	expect(nodeHealth).toMatchObject({
+		name: template.name,
+		description: template.description,
+		filters: template.filters,
+	});
+	for (const [index, tile] of nodeHealth.tiles.entries()) {
+		const expected = template.tiles[index];
+		const { draft: expectedDraft, ...insight } = expected.insight;
+		expect(tile).toMatchObject({ ...expected, insight });
+		expect(
+			sameDraft(decodeDraft(tile.insight.draft), decodeDraft(expectedDraft)),
+		).toBe(true);
+	}
+	expect(retried.tiles.map((tile) => tile.insight.id)).toEqual(
+		nodeHealth.tiles.map((tile) => tile.insight.id),
+	);
+	expect(nodeHealth.tiles).toHaveLength(6);
+	await saveInsight(
+		db,
+		{ id: writer.id },
+		{
+			...reference,
+			insightId: nodeHealth.tiles[0].insight.id,
+			name: "Customized CPU",
+		},
+	);
+	const afterRetry = await createTemplateDashboard(
+		db,
+		{ id: writer.id },
+		templateTarget,
+	);
+	expect(afterRetry.tiles[0].insight.name).toBe("Customized CPU");
+	const independent = await createTemplateDashboard(
+		db,
+		{ id: writer.id },
+		{ ...templateTarget, dashboardId: randomUUID() },
+	);
+	expect(independent.tiles[0].insight.id).not.toBe(
+		nodeHealth.tiles[0].insight.id,
+	);
+	expect(independent.tiles[0].insight.name).toBe(
+		nodeHealthTemplate().tiles[0].insight.name,
+	);
+	await expect(
+		createTemplateDashboard(
+			db,
+			{ id: owner.id },
+			{ ...templateTarget, projectId: other.id },
+		),
+	).rejects.toMatchObject({ code: "CONFLICT" });
+	await deleteDashboard(db, { id: writer.id }, templateTarget);
+	await deleteDashboard(
+		db,
+		{ id: writer.id },
+		{ ...reference, dashboardId: independent.id },
+	);
 
 	// Tiles only show insights of the dashboard's own project.
 	await expect(
@@ -392,7 +469,7 @@ test("members arrange dashboards of their project's insights; viewers only open 
 
 	await deleteDashboard(db, { id: writer.id }, target);
 	expect(await listDashboards(db, { id: writer.id }, reference)).toEqual([]);
-	// Deleting the home dashboard returns the project to the fleet overview.
+	// Deleting the home dashboard returns the project to the Node health template.
 	expect(
 		await getProjectHomeChoice(db, { id: writer.id }, reference),
 	).toBeNull();
