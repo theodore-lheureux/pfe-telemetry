@@ -60,7 +60,11 @@ jobs:
           OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
         run: python3 infra/oci-ingestion/ci/credentials.py
       - name: Activate the release through OCI Run Command
+        id: activate
         run: python3 infra/oci-ingestion/ci/run-command.py
+      - name: Show redacted host failure output
+        if: failure() && steps.activate.outcome == 'failure'
+        run: python3 infra/ci/public_logs.py host-failure
       - name: Remove this runner's deployment credential files
         if: always()
-        run: rm -f "$HOME/.oci/config" "$HOME/.oci/deployment.pem"
+        run: rm -f "$HOME/.oci/config" "$HOME/.oci/deployment.pem" .state/oci-deploy-execution.json

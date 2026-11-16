@@ -27,6 +27,7 @@ IDENTIFIERS = (
 )
 CONFIGURATIONS = ("INGESTION_TFVARS_JSON", "COLLECTORS_TFVARS_JSON")
 PRIVATE_PATTERNS = (
+    re.compile(r"""\b[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s@:'"<>]*:[^@\s'"<>]+@[^\s'"<>]+"""),
     re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
     re.compile(r"\bocid1\.[A-Za-z0-9._-]+\b"),
     re.compile(r"\b\d{12}\b"),
@@ -36,6 +37,7 @@ PRIVATE_PATTERNS = (
 )
 HCL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 ACTIONS = {"create", "read", "update", "replace", "delete", "move", "import"}
+ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))")
 
 
 def strings(value):
@@ -74,6 +76,9 @@ def mask(environ, output=""):
 
 
 def redact(output, values):
+    values = set(values)
+    for pattern in PRIVATE_PATTERNS:
+        values.update(pattern.findall(output))
     for value in sorted(values, key=lambda item: (-len(item), item)):
         output = output.replace(value, "***")
     return output
@@ -97,6 +102,31 @@ def write_plan_summary(masked_plan, environ):
             f"<pre>{html.escape(masked_plan)}</pre>\n\n"
             "</details>\n\n"
         )
+
+
+def host_failure_tail(environ, path=None):
+    path = path or Path(".state/oci-deploy-execution.json")
+    if not path.is_file():
+        print(
+            "No OCI host execution output was captured; inspect the request privately."
+        )
+        return
+    status = json.loads(path.read_text(), strict=False)
+    content = status.get("content") or {}
+    text = content.get("text") or content.get("message") or ""
+    text = ANSI_ESCAPE.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
+    text = "".join(
+        character
+        for character in text
+        if character in "\n\t" or character.isprintable()
+    )
+    values = mask(environ, text)
+    masked = redact(text, values)
+    tail = "\n".join(masked.splitlines()[-40:])[-4096:]
+    code = content.get("exit-code")
+    print(f"OCI host exit code: {code if type(code) is int else 'unknown'}")
+    print("Redacted OCI host output tail:")
+    print(tail or "No host output was returned by OCI.")
 
 
 def collectors_configuration(environ):
@@ -238,7 +268,8 @@ def run_tofu(root, operation, environ):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "operation", choices=["mask", "collectors-configuration", "plan", "apply"]
+        "operation",
+        choices=["mask", "collectors-configuration", "plan", "apply", "host-failure"],
     )
     parser.add_argument(
         "root", nargs="?", choices=["infra/oci-ingestion", "infra/aws-collectors"]
@@ -249,6 +280,9 @@ def main():
         return 0
     if args.operation == "collectors-configuration":
         collectors_configuration(os.environ)
+        return 0
+    if args.operation == "host-failure":
+        host_failure_tail(os.environ)
         return 0
     if not args.root:
         parser.error("plan/apply requires a selected deployment root")

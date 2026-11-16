@@ -67,6 +67,8 @@ class RunCommandTests(unittest.TestCase):
         release = "a" * 40 + "-123-1"
         text = run_command.command_text(release, "arm64", "b" * 64)
         self.assertIn("/usr/local/sbin/recount-release", text)
+        self.assertIn('if [[ ! -x "$receiver" ]]', text)
+        self.assertIn('sudo -n -l -- "$receiver"', text)
         self.assertLess(len(text.encode()), 4096)
         for value in ("../../release", release + "; id", release + "\nwhoami"):
             with self.assertRaises(ValueError):
@@ -94,11 +96,36 @@ class RunCommandTests(unittest.TestCase):
                     "oci",
                     side_effect=[{"id": "synthetic-command"}, status],
                 ) as api,
+                patch.object(run_command, "save_execution") as save,
             ):
                 run_command.main()
+                save.assert_called_once_with(status)
                 arguments = api.call_args_list[0].args
                 content = json.loads(arguments[arguments.index("--content") + 1])
                 self.assertEqual(content["output"], {"outputType": "TEXT"})
+
+    def test_cli_response_accepts_literal_control_characters(self):
+        response = '{"data":{"content":{"text":"failure\\u001b[31m\\n"}}}'
+        response = response.replace("\\u001b", "\x1b").replace("\\n", "\n")
+        with patch.object(
+            run_command.subprocess, "check_output", return_value=response
+        ):
+            self.assertEqual(
+                run_command.oci("synthetic")["content"]["text"], "failure\x1b[31m\n"
+            )
+
+    def test_execution_receipt_is_private_and_retains_failure_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            receipt = path / "oci-deploy-execution.json"
+            receipt.write_text("old")
+            receipt.chmod(0o644)
+            status = {
+                "content": {"text": "sudo: a password is required\n", "exit-code": 1}
+            }
+            run_command.save_execution(status, path)
+            self.assertEqual(json.loads(receipt.read_text()), status)
+            self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
 
     def test_api_acceptance_is_not_deployment_success(self):
         for status in (

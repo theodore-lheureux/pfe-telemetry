@@ -13,7 +13,17 @@ def command_text(release, arch, digest):
         raise ValueError("Invalid release identifier")
     if arch not in ("arm64", "amd64") or not re.fullmatch(r"[a-f0-9]{64}", digest):
         raise ValueError("Invalid architecture or checksum")
-    return f"#!/bin/bash\nset -euo pipefail\nsudo -n /usr/local/sbin/recount-release {release} {arch} {digest}\n"
+    return (
+        "#!/bin/bash\nset -euo pipefail\n"
+        "receiver=/usr/local/sbin/recount-release\n"
+        'if [[ ! -x "$receiver" ]]; then\n'
+        "  echo 'Host bootstrap incomplete: the reviewed deployment receiver is not installed' >&2\n"
+        "  exit 78\nfi\n"
+        f'if ! sudo -n -l -- "$receiver" {release} {arch} {digest} >/dev/null 2>&1; then\n'
+        "  echo 'Host bootstrap incomplete: receiver-only NOPASSWD permission is missing for ocarun' >&2\n"
+        "  exit 78\nfi\n"
+        f'sudo -n "$receiver" {release} {arch} {digest}\n'
+    )
 
 
 def oci(*args):
@@ -32,8 +42,22 @@ def oci(*args):
             text=True,
             timeout=90,
             stderr=subprocess.PIPE,
-        )
+        ),
+        strict=False,
     )["data"]
+
+
+def save_execution(status, directory=None):
+    directory = directory or Path(".state")
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor = os.open(
+        directory / "oci-deploy-execution.json",
+        os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+        0o600,
+    )
+    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+        os.fchmod(output.fileno(), 0o600)
+        json.dump(status, output)
 
 
 def main():
@@ -62,6 +86,8 @@ def main():
         json.dumps(content),
         "--timeout-in-seconds",
         "1200",
+        "--display-name",
+        f"recount-ingestion-{release}",
     )
     print("Submitted OCI deployment command", flush=True)
     deadline = time.monotonic() + 1260
@@ -75,6 +101,7 @@ def main():
             "--instance-id",
             target,
         )
+        save_execution(status)
         state = status["lifecycle-state"]
         if state == "SUCCEEDED":
             if status.get("content", {}).get("exit-code") != 0:

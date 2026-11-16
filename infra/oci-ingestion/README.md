@@ -11,12 +11,11 @@ policy have been applied, native S3 locking verified with that identity, and
 approval-gated GitHub environments configured. OCI bootstrap created the CD user,
 API key, group, scoped policies, agent permissions and project compartment.
 Live storage grants were narrowed
-and confirmed with `oci iam policy get`. The first approved CD apply created
-the data volume, backup policy/assignment and DNS records. The subsequent apply
-added the OCI TCP/443 rule but still denied attachment. The owner-approved
-bootstrap policy now uses standard compartment service-family grants; a fresh
-approved CD apply is required to finish the attachment.
-Certificates and application deployment remain pending.
+and confirmed with `oci iam policy get`. Infrastructure CD has applied the data
+volume and attachment, backup policy/assignment, DNS and OCI TCP/443 rule.
+Certificates and application deployment remain pending. The receiver-only
+sudoers rule is installed and validated; the receiver and remaining host
+software/backend configuration still need preparation.
 Trusted host-key verification and read-only guest inspection are complete;
 connection details remain ignored. The host has no Docker, Bun or Caddy yet,
 and its firewall still rejects HTTPS.
@@ -235,8 +234,8 @@ setup, credentials, IAM, TLS/ingress and storage/backups plan.
    the migrations.
 6. Install the reviewed `deploy/receive.sh` as root-owned mode-0755
    `/usr/local/sbin/recount-release`. Put the exact public `owner/repository` in
-   root-owned `/etc/recount/repository`. Review `deploy/sudoers`, validate it
-   with `visudo -cf`, then install it root-owned mode-0440 under `/etc/sudoers.d/`.
+   root-owned `/etc/recount/repository`. Install the reviewed receiver-only rule
+   using [the one-time sudoers bootstrap](#one-time-run-command-sudoers-bootstrap).
    Keep `ocarun` out of the Docker group and never grant `NOPASSWD:ALL`.
    All receiver/config/release parent directories must be writable only by root.
 7. Configure the host proxy using `deploy/Caddyfile`: it serves exactly
@@ -248,12 +247,52 @@ Docker's existing `unless-stopped` policy restores initialized backend/applicati
 containers after reboot. Compose is sufficient; no extra systemd controller,
 Ansible service or Semaphore dependency is introduced.
 
+## One-time Run Command sudoers bootstrap
+
+Oracle Run Command runs as `ocarun`; cloud IAM permissions do not grant Linux
+sudo permission. Use the owner's existing key as `ubuntu` over a host-key-pinned,
+password-disabled SSH connection. Verify the fingerprint through trusted
+console/OCI output before connecting. Keep the working key/host configuration
+outside Git.
+
+Copy only the reviewed `deploy/install-sudoers.sh` and `deploy/sudoers` into a
+private temporary directory on the VM. From that directory, run:
+
+```sh
+sudo -n /bin/bash ./install-sudoers.sh ./sudoers
+sudo -n -u ocarun sudo -n -l
+```
+
+The script validates the exact rule bytes, checks protected parent directories,
+validates existing and new configuration with `visudo -c`, and installs
+`/etc/sudoers.d/recount-release` as root:root mode 0440. It refuses a differing
+existing file and verifies that `ocarun` has exactly one sudo command:
+
+```text
+(root) NOPASSWD: /usr/local/sbin/recount-release *
+```
+
+This step installs permissions only. It does not install the receiver, initialize
+data, start containers or activate a release. Do not approve another deploy
+until the receiver, mounted-data identity, backend manifest, migration receipt,
+private environment and required software are prepared. Never replace this rule
+with `NOPASSWD:ALL`.
+
 ## Activate and verify
 
 After explicit deployment approval, dispatch `Deploy ingestion release` with
 the approved release ID. It submits only the fixed receiver command with
 validated ID/architecture/checksum arguments, then waits for terminal execution
 success **and exit code zero**. API acceptance is not deployment success.
+
+Commands are created in the isolated project compartment, so an execution list
+scoped only to the VM's original compartment can miss them. Their display name
+includes the public release identifier. On failure, CI prints a bounded,
+redacted tail of the command/host output after removing terminal controls.
+The raw execution receipt remains mode 0600 on the runner and is removed during
+cleanup, never uploaded as an artifact. Control characters in OCI JSON are
+accepted with `strict=False`. Receiver absence or missing command-specific
+passwordless sudo is reported as incomplete host bootstrap before activation.
 
 The receiver checks architecture, free staging space plus a 30% disk reserve,
 SHA-256, backend/schema manifest equality, migration receipt and initialized
