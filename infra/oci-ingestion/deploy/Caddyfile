@@ -6,7 +6,7 @@
 https://app.recount.cloud {
 	tls {
 		issuer acme {
-			ca https://acme-v02.api.letsencrypt.org/directory
+			dir https://acme-v02.api.letsencrypt.org/directory
 			disable_http_challenge
 		}
 	}
@@ -24,7 +24,7 @@ https://app.recount.cloud {
 https://ingest.recount.cloud {
 	tls {
 		issuer acme {
-			ca https://acme-v02.api.letsencrypt.org/directory
+			dir https://acme-v02.api.letsencrypt.org/directory
 			disable_http_challenge
 		}
 	}

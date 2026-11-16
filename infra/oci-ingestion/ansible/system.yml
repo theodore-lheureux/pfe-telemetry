@@ -1,0 +1,131 @@
+- name: Install maintained Ubuntu runtime packages without starting default listeners
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - unzip
+      - docker.io
+      - caddy
+      - e2fsprogs
+      - iptables-persistent
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
+
+- name: Create the system Docker CLI plugin directory
+  ansible.builtin.file:
+    path: /usr/local/lib/docker/cli-plugins
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install Compose with explicit false bind options in its JSON output
+  ansible.builtin.get_url:
+    url: "https://github.com/docker/compose/releases/download/v{{ recount_compose_version }}/docker-compose-linux-aarch64"
+    dest: /usr/local/lib/docker/cli-plugins/docker-compose
+    checksum: "sha256:{{ recount_compose_sha256 }}"
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Verify the selected Compose version
+  ansible.builtin.command:
+    argv: [docker, compose, version, --short]
+  register: recount_installed_compose
+  changed_when: false
+  failed_when: recount_installed_compose.stdout != recount_compose_version
+
+- name: Create root-owned deployment directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - /opt/recount
+    - /opt/recount/bootstrap
+    - /opt/recount/releases
+    - /etc/recount
+
+- name: Download the project-pinned native Bun runtime
+  ansible.builtin.get_url:
+    url: "https://github.com/oven-sh/bun/releases/download/bun-v{{ recount_bun_version }}/bun-linux-aarch64.zip"
+    dest: /opt/recount/bootstrap/bun.zip
+    checksum: "sha256:{{ recount_bun_sha256 }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Extract the native Bun runtime
+  ansible.builtin.unarchive:
+    src: /opt/recount/bootstrap/bun.zip
+    dest: /opt/recount/bootstrap
+    remote_src: true
+    creates: /opt/recount/bootstrap/bun-linux-aarch64/bun
+
+- name: Install Bun in the receiver's protected executable path
+  ansible.builtin.copy:
+    src: /opt/recount/bootstrap/bun-linux-aarch64/bun
+    dest: /usr/local/bin/bun
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Verify the selected Bun version
+  ansible.builtin.command:
+    argv: [/usr/local/bin/bun, --version]
+  register: recount_installed_bun
+  changed_when: false
+  failed_when: recount_installed_bun.stdout != recount_bun_version
+
+- name: Install the reviewed deployment receiver
+  ansible.builtin.copy:
+    src: ../deploy/receive.sh
+    dest: /usr/local/sbin/recount-release
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install receiver permission bootstrap inputs
+  ansible.builtin.copy:
+    src: "../deploy/{{ item }}"
+    dest: "/opt/recount/bootstrap/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: [install-sudoers.sh, sudoers]
+
+- name: Inspect the existing receiver sudoers rule
+  ansible.builtin.stat:
+    path: /etc/sudoers.d/recount-release
+  register: recount_sudoers_rule
+
+- name: Validate the receiver-only passwordless sudo grant
+  ansible.builtin.command:
+    argv:
+      - /bin/bash
+      - /opt/recount/bootstrap/install-sudoers.sh
+      - /opt/recount/bootstrap/sudoers
+  changed_when: >-
+    not recount_sudoers_rule.stat.exists or
+    recount_sudoers_rule.stat.mode != "0440" or
+    recount_sudoers_rule.stat.uid != 0 or recount_sudoers_rule.stat.gid != 0
+
+- name: Verify the Run Command user cannot access Docker
+  ansible.builtin.command:
+    argv: [id, -nG, ocarun]
+  register: recount_ocarun_groups
+  changed_when: false
+  failed_when: "'docker' in recount_ocarun_groups.stdout.split()"
+
+- name: Configure the public release repository
+  ansible.builtin.copy:
+    content: "{{ recount_repository }}\n"
+    dest: /etc/recount/repository
+    owner: root
+    group: root
+    mode: "0600"

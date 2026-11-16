@@ -1,0 +1,94 @@
+- name: Inspect the explicit migration approval receipt
+  ansible.builtin.stat:
+    path: /etc/recount/approved-migrations.sha256
+  register: recount_migration_receipt
+
+- name: Bundle the existing Drizzle migration runner on the controller
+  ansible.builtin.command:
+    argv:
+      - bun
+      - build
+      - "{{ playbook_dir }}/../../../apps/web/scripts/migrations.ts"
+      - --target=bun
+      - --outfile
+      - "{{ inventory_dir }}/migrations.mjs"
+    creates: "{{ inventory_dir }}/migrations.mjs"
+  delegate_to: localhost
+  become: false
+
+- name: Install the bundled migration runner
+  ansible.builtin.copy:
+    src: "{{ inventory_dir }}/migrations.mjs"
+    dest: /opt/recount/bootstrap/migrations.mjs
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install the matching committed Drizzle migration history
+  ansible.builtin.copy:
+    src: ../../../apps/web/drizzle/
+    dest: /opt/recount/bootstrap/apps/web/drizzle/
+    owner: root
+    group: root
+    mode: "0600"
+    directory_mode: "0700"
+
+- name: Verify migration history against the approved release receipt
+  ansible.builtin.shell:
+    cmd: |
+      set -o pipefail
+      find apps/web/drizzle -type f -print0 | LC_ALL=C sort -z |
+        xargs -0 sha256sum | sha256sum | cut -d' ' -f1 |
+        cmp - /opt/recount/bootstrap/release/migrations.sha256
+    chdir: /opt/recount/bootstrap
+    executable: /bin/bash
+  changed_when: false
+
+- name: Install the existing restricted ingestion grants
+  ansible.builtin.copy:
+    src: ../../local/ingestion-role.sql
+    dest: /opt/recount/bootstrap/ingestion-role.sql
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Require explicit approval before applying first migrations and runtime grants
+  ansible.builtin.assert:
+    that: recount_initialize_backends | default(false) | bool
+    quiet: true
+  when: not recount_migration_receipt.stat.exists
+
+- name: Apply Drizzle migrations and provision distinct runtime roles
+  ansible.builtin.command:
+    argv: [bun, --no-env-file, /opt/recount/bootstrap/authority.ts]
+  environment: "{{ recount_compose_environment }}"
+  when: not recount_migration_receipt.stat.exists
+  no_log: true
+  changed_when: true
+
+- name: Record migration approval only after successful migrations and grants
+  ansible.builtin.copy:
+    src: /opt/recount/bootstrap/release/migrations.sha256
+    dest: /etc/recount/approved-migrations.sha256
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+  when: not recount_migration_receipt.stat.exists
+
+- name: Verify the existing migration receipt without replacing it
+  ansible.builtin.command:
+    argv:
+      [
+        cmp,
+        /etc/recount/approved-migrations.sha256,
+        /opt/recount/bootstrap/release/migrations.sha256,
+      ]
+  changed_when: false
+
+- name: Verify runtime database logins and restricted permissions
+  ansible.builtin.command:
+    argv: [bun, --no-env-file, /opt/recount/bootstrap/authority.ts, --verify]
+  environment: "{{ recount_compose_environment }}"
+  changed_when: false
+  no_log: true

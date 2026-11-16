@@ -1,0 +1,50 @@
+- name: Prepare the Oracle ingestion host without activating applications
+  hosts: recount_ingestion
+  become: true
+  gather_facts: true
+  vars:
+    recount_bun_version: "1.4.2"
+    recount_bun_sha256: 54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7
+    recount_compose_version: "5.7.1"
+    recount_compose_sha256: f2f49f903240895fa764c0dca3a14548b754ad9426f6b609ccaf55ec5a3aa2a5
+    recount_compose_environment:
+      COMPOSE_PROJECT_NAME: recount-ingestion
+      COMPOSE_ENV_FILES: /etc/recount/ingestion.env,/opt/recount/bootstrap/release/images.env
+      COMPOSE_FILE: /opt/recount/backend/infra/local/compose.yaml:/opt/recount/backend/infra/local/data.binds.yaml:/opt/recount/bootstrap/release/compose.apps.yaml:/opt/recount/bootstrap/release/compose.release.yaml
+  tasks:
+    - name: Require an explicitly selected ARM64 Ubuntu host and approved data device
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.distribution == "Ubuntu"
+          - ansible_facts.distribution_version is version("24.04", ">=")
+          - ansible_facts.architecture == "aarch64"
+          - recount_data_device.startswith("/dev/disk/by-id/")
+          - recount_data_mount.startswith("/")
+          - recount_expected_data_serial | length > 0
+          - recount_data_mount not in ["/", "/boot", "/var", "/opt", "/etc"]
+          - recount_release is match("^[a-f0-9]{40}-[0-9]+-[0-9]+$")
+          - recount_release_sha256 is match("^[a-f0-9]{64}$")
+          - recount_repository is match("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+        quiet: true
+      tags: [always]
+
+    - name: Install runtime software
+      ansible.builtin.import_tasks: system.yml
+      tags: [system]
+
+    - name: Mount only the selected project volume
+      ansible.builtin.import_tasks: storage.yml
+      tags: [storage]
+
+    - name: Prepare initialized backends and application authority
+      ansible.builtin.import_tasks: backends.yml
+      tags: [backends]
+
+    - name: Prepare HTTPS ingress
+      ansible.builtin.import_tasks: proxy.yml
+      tags: [proxy]
+  handlers:
+    - name: Restart Caddy
+      ansible.builtin.systemd_service:
+        name: caddy
+        state: restarted

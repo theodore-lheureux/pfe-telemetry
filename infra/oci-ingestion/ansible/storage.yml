@@ -1,0 +1,140 @@
+- name: Inspect the selected disk without modifying it
+  ansible.builtin.command:
+    argv:
+      - lsblk
+      - --json
+      - --bytes
+      - --output
+      - PATH,SIZE,TYPE,FSTYPE,UUID,MOUNTPOINTS,SERIAL
+      - "{{ recount_data_device }}"
+  register: recount_disk_inspection
+  changed_when: false
+
+- name: Select the inspected disk
+  ansible.builtin.set_fact:
+    recount_disk: "{{ (recount_disk_inspection.stdout | from_json).blockdevices | first }}"
+
+- name: Reject the boot disk, wrong allocation or unexpected device identity
+  ansible.builtin.assert:
+    that:
+      - recount_disk.type == "disk"
+      - recount_disk.size | int == 161061273600
+      - recount_disk.serial == recount_expected_data_serial
+      - recount_disk.get("children", []) | length == 0
+      - recount_disk.fstype in [none, "ext4"]
+      - recount_disk.mountpoints | reject("equalto", none) | difference([recount_data_mount]) | length == 0
+    quiet: true
+
+- name: Reject an occupied mount directory before formatting or mounting
+  ansible.builtin.shell:
+    cmd: |
+      if ! mountpoint -q -- {{ recount_data_mount | quote }}; then
+        test ! -d {{ recount_data_mount | quote }} ||
+          test -z "$(find {{ recount_data_mount | quote }} -mindepth 1 -maxdepth 1 -print -quit)"
+      fi
+    executable: /bin/bash
+  changed_when: false
+
+- name: Inspect signatures before first formatting
+  ansible.builtin.command:
+    argv: [wipefs, --no-act, --json, "{{ recount_data_device }}"]
+  register: recount_disk_signatures
+  changed_when: false
+  when: recount_disk.fstype == none
+
+- name: Require explicit approval and an entirely empty disk before formatting
+  ansible.builtin.assert:
+    that:
+      - recount_initialize_data_volume | default(false) | bool
+      - (recount_disk_signatures.stdout | from_json).signatures | length == 0
+    quiet: true
+  when: recount_disk.fstype == none
+
+- name: Create ext4 only on the approved empty project disk
+  community.general.filesystem:
+    dev: "{{ recount_data_device }}"
+    fstype: ext4
+    force: false
+  when: recount_disk.fstype == none
+
+- name: Read the selected filesystem UUID
+  ansible.builtin.command:
+    argv: [blkid, -s, UUID, -o, value, "{{ recount_data_device }}"]
+  register: recount_data_uuid
+  changed_when: false
+
+- name: Refuse a different filesystem from an existing mount identity receipt
+  ansible.builtin.shell:
+    cmd: |
+      if test -e /etc/recount/data-mount; then
+        cmp --silent /etc/recount/data-mount -
+      fi
+    stdin: "{{ recount_data_mount }}\n{{ recount_data_uuid.stdout }}"
+    executable: /bin/bash
+  changed_when: false
+
+- name: Mount project storage by UUID
+  ansible.posix.mount:
+    path: "{{ recount_data_mount }}"
+    src: "UUID={{ recount_data_uuid.stdout }}"
+    fstype: ext4
+    opts: defaults,_netdev,nofail,x-systemd.device-timeout=30s
+    state: mounted
+
+- name: Confirm the exact filesystem is mounted
+  ansible.builtin.command:
+    argv:
+      [
+        findmnt,
+        --mountpoint,
+        "{{ recount_data_mount }}",
+        --noheadings,
+        --output,
+        UUID,
+      ]
+  register: recount_mounted_uuid
+  changed_when: false
+  failed_when: recount_mounted_uuid.stdout != recount_data_uuid.stdout
+
+- name: Keep Docker from starting without the data filesystem
+  ansible.builtin.file:
+    path: /etc/systemd/system/docker.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Require the selected data mount for Docker startup
+  ansible.builtin.copy:
+    content: "[Unit]\nRequiresMountsFor={{ recount_data_mount }}\n"
+    dest: /etc/systemd/system/docker.service.d/recount-data.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Record the selected mount identity for release activation
+  ansible.builtin.copy:
+    content: "{{ recount_data_mount }}\n{{ recount_data_uuid.stdout }}\n"
+    dest: /etc/recount/data-mount
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Create explicit data directories on the mounted filesystem
+  ansible.builtin.file:
+    path: "{{ recount_data_mount }}/{{ item.name }}"
+    state: directory
+    owner: "{{ item.uid }}"
+    group: "{{ item.gid }}"
+    mode: "0750"
+  loop:
+    - { name: postgres, uid: "999", gid: "999" }
+    - { name: kafka, uid: "1000", gid: "1000" }
+    - { name: clickhouse, uid: "101", gid: "101" }
+
+- name: Start Docker with mount ordering enforced
+  ansible.builtin.systemd_service:
+    name: docker
+    state: started
+    enabled: true
+    daemon_reload: true

@@ -13,12 +13,10 @@ API key, group, scoped policies, agent permissions and project compartment.
 Live storage grants were narrowed
 and confirmed with `oci iam policy get`. Infrastructure CD has applied the data
 volume and attachment, backup policy/assignment, DNS and OCI TCP/443 rule.
-Certificates and application deployment remain pending. The receiver-only
-sudoers rule is installed and validated; the receiver and remaining host
-software/backend configuration still need preparation.
-Trusted host-key verification and read-only guest inspection are complete;
-connection details remain ignored. The host has no Docker, Bun or Caddy yet,
-and its firewall still rejects HTTPS.
+Application activation remains a separate CD operation. The
+[host bootstrap playbook](ansible/bootstrap.yml) prepares the runtime, persistent
+data mount, initialized backends, application authority and HTTPS proxy.
+Connection details and private configuration remain ignored.
 
 ## Reference the existing resources
 
@@ -186,66 +184,100 @@ compartment, so the CD key has broad compute/network authority there.
 See Oracle's [Run Command prerequisites](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/runningcommands.htm)
 and [command permissions](https://docs.oracle.com/en-us/iaas/Content/Identity/Reference/corepolicyreference.htm).
 The dedicated identity's command creation and successful status retrieval were
-verified on the Ubuntu VM. The deployment receiver and its restricted sudo rule
-remain uninstalled and untested.
+verified on the Ubuntu VM. Host bootstrap installs the deployment receiver and
+verifies its restricted sudo rule.
 
 ## Prepare the host after approval
 
 These are live changes. Do not perform them until the owner approves the host
 setup, credentials, IAM, TLS/ingress and storage/backups plan.
 
-1. Inspect guest software, workloads, disk usage and firewall through an
-   explicitly configured SSH host/key. Reuse installed Docker/Compose, Bun and
-   proxy where appropriate; approve any installation separately. The host needs
-   GNU coreutils, Bash, curl, tar, gzip and `flock`. It needs neither a compiler
-   nor an Actions runner.
-2. Provision root-owned `/opt/recount/releases` and `/etc/recount`. Download one
-   approved ARM64 bundle, verify its published SHA-256, and inspect it. Install
-   its `backend/` and `backend.SHA256SUMS` under `/opt/recount/` exactly once.
-   Verify the manifest from `/opt/recount/backend`. Do not overwrite a running
-   backend with a later release.
-3. Prepare root-owned mode-0600 `/etc/recount/ingestion.env`, following
-   `infra/local/.env.example` but using privately provisioned runtime credentials.
-   Use `COMPOSE_PROJECT_NAME=recount-ingestion`; point
-   `RECOUNT_SCHEMA_DIRECTORY` to `/opt/recount/backend/schema` and
-   `RECOUNT_CLICKHOUSE_IMAGE` to the approved bundle's `recount-clickhouse:RELEASE`.
-   Select `data.binds.yaml`, set the three data directories on the verified
-   mounted block filesystem, and include the deployment overlay for raised caps.
-   Record the selected mount directory and filesystem UUID as two lines in
-   root-owned mode-0600 `/etc/recount/data-mount`. Activation checks that exact
-   filesystem before allowing any database startup.
-   Keep defaults for topics, limits and ports. Create independent runtime roles
-   for web and ingestion; do not give web the PostgreSQL bootstrap credential.
-   The deployment overlay fixes `BETTER_AUTH_URL=https://app.recount.cloud`.
-   Configure matching signing/public keys and SMTP privately.
-4. Only for this explicitly approved new instance, load the bundle images and
-   follow [explicit initialization](../README.md#initialize-an-isolated-current-schema-instance).
-   Run native initialization helpers from an approved matching source checkout
-   with the backend, data-bind and deployment overlays selected and the
-   root-only environment selected. Initialize each empty named volume once,
-   record all three database identities, create/verify topics, apply the
-   committed Drizzle migrations with a schema-management credential, and grant
-   the restricted runtime roles. Nothing in ordinary release activation
-   initializes data, migrates databases, creates topics or seeds checkpoints.
-5. After confirming those migrations were applied from the release commit,
-   install its `migrations.sha256` as
-   `/etc/recount/approved-migrations.sha256`. This is an explicit operator receipt,
-   not proof obtained from the database. Never copy the receipt before applying
-   the migrations.
-6. Install the reviewed `deploy/receive.sh` as root-owned mode-0755
-   `/usr/local/sbin/recount-release`. Put the exact public `owner/repository` in
-   root-owned `/etc/recount/repository`. Install the reviewed receiver-only rule
-   using [the one-time sudoers bootstrap](#one-time-run-command-sudoers-bootstrap).
-   Keep `ocarun` out of the Docker group and never grant `NOPASSWD:ALL`.
-   All receiver/config/release parent directories must be writable only by root.
-7. Configure the host proxy using `deploy/Caddyfile`: it serves exactly
-   `app.recount.cloud` and `ingest.recount.cloud` using Let's Encrypt
-   TLS-ALPN-01 on 443. No port 80 is needed. Mount the approved
-   data volume and confirm backup eligibility before initialization.
+OpenTofu/CD owns cloud resources, DNS and IAM. Ansible owns host preparation over
+verified SSH as `ubuntu`, using the owner's existing key. Deploy CD owns only
+application release activation.
+
+1. Verify the SSH host key through trusted OCI output, then pin it in an ignored
+   known-hosts file. Inspect guest workloads, disk identity and signatures before
+   selecting the data volume. Confirm backup eligibility separately.
+2. Prepare an ignored inventory and private SMTP input using the
+   [bootstrap inputs](#bootstrap-inputs). Verify the published ARM64 archive's
+   GitHub attestation using the same repository/workflow/main/commit constraints
+   as release CD, then select its SHA-256. The controller checkout's Drizzle
+   history, runner and lockfile must match that release commit.
+3. Run from the repository root:
+
+   ```sh
+   ANSIBLE_CONFIG=infra/oci-ingestion/ansible/ansible.cfg \
+     uv run ansible-playbook \
+       -i infra/oci-ingestion/.state/ansible/inventory.json \
+       infra/oci-ingestion/ansible/bootstrap.yml --syntax-check
+   ANSIBLE_CONFIG=infra/oci-ingestion/ansible/ansible.cfg \
+     uv run ansible-playbook \
+       -i infra/oci-ingestion/.state/ansible/inventory.json \
+       infra/oci-ingestion/ansible/bootstrap.yml
+   ```
+
+4. Run the playbook again and require `changed=0`. Verify the UUID-backed mount
+   and `/etc/fstab`, backend health, runtime role restrictions, receiver-only
+   sudo grant, and TLS certificates through both real hostnames. Do not dispatch
+   application deployment until these checks pass.
+
+The playbook installs Ubuntu's Docker and Caddy packages plus checksum-pinned
+native Compose and Bun binaries. Compose must preserve explicit false bind
+options in `config --format json`; Ubuntu's older package omits them and fails
+the existing [data-selection guard](../local/data.ts). The playbook preserves
+Oracle firewall rules and adds only TCP/443.
+It formats only an explicitly approved, signature-free 150-GiB disk with the
+selected serial, mounts by UUID, and requires that mount before Docker starts.
+The root-only `/etc/recount/data-mount` records the identity checked by activation.
+
+The approved release is unpacked under `/opt/recount/bootstrap`, not the
+receiver's `/opt/recount/releases` directory. Its backend is installed once and
+verified on every run; a changed manifest fails rather than replacing it.
+Private runtime credentials and matching Ed25519 signing/public keys are created
+once in root-owned mode-0600 `/etc/recount/ingestion.env`. Web uses `recount_web`,
+not the PostgreSQL bootstrap account; ingestion receives the existing SELECT-only
+grants. Sign-up remains disabled.
+
+Explicit initialization reuses the existing empty-data helpers, records all
+three database identities and creates topics only on an empty broker. Partial
+data without a recorded identity fails for inspection; reruns never reset it.
+The controller bundles the existing Drizzle runner, and the host verifies the
+copied migration history against the release checksum before applying it.
+`approved-migrations.sha256` is written only after migrations and runtime grants
+succeed. This remains an operator receipt, not database-derived proof.
+
+No application container is started and `/opt/recount/current` is not changed.
+Ordinary activation never initializes databases, creates topics or migrates.
 
 Docker's existing `unless-stopped` policy restores initialized backend/application
 containers after reboot. Compose is sufficient; no extra systemd controller,
 Ansible service or Semaphore dependency is introduced.
+
+### Bootstrap inputs
+
+Keep inventory, known hosts, generated runner and SMTP input under ignored
+`.state/ansible/` with private directory/file permissions. The inventory must
+select exactly the approved host in group `recount_ingestion` and set:
+
+| Variable                                    | Value                                                                                                           |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `ansible_host`, `ansible_user`              | Verified VM address and `ubuntu`                                                                                |
+| `ansible_ssh_private_key_file`              | Owner's existing private key path                                                                               |
+| `ansible_ssh_common_args`                   | `-o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=...`                 |
+| `recount_data_device`                       | Stable `/dev/disk/by-id/` path of the inspected data disk                                                       |
+| `recount_expected_data_serial`              | Independently inspected disk serial                                                                             |
+| `recount_data_mount`                        | Approved absolute data mount directory                                                                          |
+| `recount_repository`                        | Exact public GitHub `owner/repository`                                                                          |
+| `recount_release`, `recount_release_sha256` | Approved release ID and attested ARM64 archive digest                                                           |
+| `recount_smtp_file`                         | Controller path to private JSON containing `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `EMAIL_FROM` |
+| `recount_initialize_data_volume`            | Explicit `true` only for approved first formatting                                                              |
+| `recount_initialize_backends`               | Explicit `true` only for approved first initialization/migrations                                               |
+
+Unset the two initialization approvals after successful preparation. Keep
+credentials out of command arguments, inventory examples and logs. Bootstrap
+never rotates existing runtime secrets; later credential or backend changes
+require separate maintenance.
 
 ## One-time Run Command sudoers bootstrap
 
@@ -255,7 +287,9 @@ password-disabled SSH connection. Verify the fingerprint through trusted
 console/OCI output before connecting. Keep the working key/host configuration
 outside Git.
 
-Copy only the reviewed `deploy/install-sudoers.sh` and `deploy/sudoers` into a
+The playbook installs and validates the reviewed receiver-only rule using
+`deploy/install-sudoers.sh`. For permission-only preparation without Ansible,
+copy only that script and `deploy/sudoers` into a
 private temporary directory on the VM. From that directory, run:
 
 ```sh
@@ -272,7 +306,7 @@ existing file and verifies that `ocarun` has exactly one sudo command:
 (root) NOPASSWD: /usr/local/sbin/recount-release *
 ```
 
-This step installs permissions only. It does not install the receiver, initialize
+The standalone script installs permissions only. It does not install the receiver, initialize
 data, start containers or activate a release. Do not approve another deploy
 until the receiver, mounted-data identity, backend manifest, migration receipt,
 private environment and required software are prepared. Never replace this rule
@@ -321,5 +355,6 @@ just --justfile infra/oci-ingestion/justfile check
 
 This includes the infrastructure roots, enabled-path provider mocks, collector retry
 configuration, deployment helpers, workflow linting and security checks.
-Mocks never contact AWS/OCI. Keep real identifiers/backend configuration ignored.
-Ansible syntax checks do not apply: this deployment adds no playbooks.
+Mocks never contact AWS/OCI. Ansible syntax checks and synthetic runtime
+configuration tests do not change the host or start containers. Keep real
+identifiers, inventory and backend configuration ignored.

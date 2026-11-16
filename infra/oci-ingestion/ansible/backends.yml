@@ -1,0 +1,249 @@
+- name: Verify the current checkout matches the release initialization and migration tooling
+  ansible.builtin.command:
+    chdir: "{{ playbook_dir }}/../../.."
+    argv:
+      - git
+      - diff
+      - --quiet
+      - "{{ recount_release.split('-')[0] }}"
+      - --
+      - apps/web/drizzle
+      - apps/web/scripts/migrations.ts
+      - infra/local/initialize.ts
+      - infra/local/ingestion-role.sql
+      - bun.lock
+  delegate_to: localhost
+  become: false
+  changed_when: false
+
+- name: Download the approved and attested release for backend preparation only
+  ansible.builtin.get_url:
+    url: "https://github.com/{{ recount_repository }}/releases/download/ingestion-{{ recount_release }}/recount-ingestion-arm64.tar.gz"
+    dest: /opt/recount/bootstrap/release.tar.gz
+    checksum: "sha256:{{ recount_release_sha256 }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Create the bootstrap release directory outside activation staging
+  ansible.builtin.file:
+    path: /opt/recount/bootstrap/release
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Extract the approved bootstrap release
+  ansible.builtin.unarchive:
+    src: /opt/recount/bootstrap/release.tar.gz
+    dest: /opt/recount/bootstrap/release
+    remote_src: true
+    creates: /opt/recount/bootstrap/release/release
+
+- name: Verify the bootstrap release and backend files
+  ansible.builtin.shell:
+    cmd: |
+      test "$(cat release)" = {{ recount_release | quote }}
+      test "$(cat arch)" = arm64
+      cd backend
+      sha256sum --check --status ../backend.SHA256SUMS
+    chdir: /opt/recount/bootstrap/release
+    executable: /bin/bash
+  changed_when: false
+
+- name: Inspect the installed backend manifest
+  ansible.builtin.stat:
+    path: /opt/recount/backend.SHA256SUMS
+  register: recount_backend_manifest
+
+- name: Refuse changes to an already installed backend
+  ansible.builtin.command:
+    argv:
+      [
+        cmp,
+        /opt/recount/backend.SHA256SUMS,
+        /opt/recount/bootstrap/release/backend.SHA256SUMS,
+      ]
+  when: recount_backend_manifest.stat.exists
+  changed_when: false
+
+- name: Install the immutable backend tree
+  ansible.builtin.command:
+    argv: [cp, -a, /opt/recount/bootstrap/release/backend, /opt/recount/backend]
+    creates: /opt/recount/backend
+
+- name: Verify the installed backend before recording its manifest
+  ansible.builtin.command:
+    cmd: sha256sum --check --status /opt/recount/bootstrap/release/backend.SHA256SUMS
+    chdir: /opt/recount/backend
+  changed_when: false
+
+- name: Record the installed backend manifest
+  ansible.builtin.copy:
+    src: /opt/recount/bootstrap/release/backend.SHA256SUMS
+    dest: /opt/recount/backend.SHA256SUMS
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install finite host preparation helpers
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/opt/recount/bootstrap/{{ item }}"
+    owner: root
+    group: root
+    mode: "0600"
+  loop: [configure.ts, authority.ts, web-role.sql]
+
+- name: Create private runtime credentials once using the approved SMTP configuration
+  ansible.builtin.command:
+    argv:
+      [
+        bun,
+        --no-env-file,
+        /opt/recount/bootstrap/configure.ts,
+        "{{ recount_data_mount }}",
+        "{{ recount_release }}",
+      ]
+    stdin: "{{ lookup('ansible.builtin.file', recount_smtp_file) }}"
+    creates: /etc/recount/ingestion.env
+  no_log: true
+
+- name: Preserve root-only runtime configuration
+  ansible.builtin.file:
+    path: /etc/recount/ingestion.env
+    state: file
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Check whether the pinned schema image is already loaded
+  ansible.builtin.command:
+    argv:
+      [
+        docker,
+        image,
+        inspect,
+        "recount-clickhouse:{{ recount_release }}",
+        --format,
+        "{{ '{{.Id}}' }}",
+      ]
+  register: recount_schema_image
+  failed_when: recount_schema_image.rc not in [0, 1]
+  changed_when: false
+
+- name: Load approved images without starting application services
+  ansible.builtin.command:
+    argv:
+      [
+        docker,
+        image,
+        load,
+        --input,
+        /opt/recount/bootstrap/release/images.tar.gz,
+      ]
+  when: recount_schema_image.rc == 1
+  changed_when: true
+
+- name: Inspect and initialize only explicitly approved empty backend data
+  ansible.builtin.include_tasks: initialize-role.yml
+  loop: [postgres, kafka]
+  loop_control:
+    loop_var: recount_role
+
+- name: Start initialized PostgreSQL and Kafka without recreating containers
+  ansible.builtin.command:
+    argv:
+      [
+        docker,
+        compose,
+        up,
+        --no-build,
+        --no-deps,
+        --no-recreate,
+        --detach,
+        --wait,
+        --wait-timeout,
+        "180",
+        postgres,
+        kafka,
+      ]
+  environment: "{{ recount_compose_environment }}"
+  register: recount_authority_start
+  changed_when: "'Created' in recount_authority_start.stderr or 'Started' in recount_authority_start.stderr"
+  no_log: true
+
+- name: Inspect existing project topics
+  ansible.builtin.command:
+    argv:
+      [
+        docker,
+        compose,
+        exec,
+        -T,
+        kafka,
+        /opt/kafka/bin/kafka-topics.sh,
+        --bootstrap-server,
+        kafka:9092,
+        --list,
+      ]
+  environment: "{{ recount_compose_environment }}"
+  register: recount_existing_topics
+  changed_when: false
+
+- name: Require explicit initialization approval before creating topics
+  ansible.builtin.assert:
+    that: recount_initialize_backends | default(false) | bool
+    quiet: true
+  when: recount_existing_topics.stdout | trim == ""
+
+- name: Create topics only in the empty approved project broker
+  ansible.builtin.command:
+    argv: [docker, compose, run, --rm, --no-deps, kafka-topics, create]
+  environment: "{{ recount_compose_environment }}"
+  when: recount_existing_topics.stdout | trim == ""
+  changed_when: true
+
+- name: Verify topics without altering them
+  ansible.builtin.command:
+    argv: [docker, compose, run, --rm, --no-deps, kafka-topics, verify]
+  environment: "{{ recount_compose_environment }}"
+  changed_when: false
+
+- name: Inspect and initialize only explicitly approved empty ClickHouse data
+  ansible.builtin.include_tasks: initialize-role.yml
+  loop: [clickhouse]
+  loop_control:
+    loop_var: recount_role
+
+- name: Start initialized ClickHouse without recreating containers
+  ansible.builtin.command:
+    argv:
+      [
+        docker,
+        compose,
+        up,
+        --no-build,
+        --no-deps,
+        --no-recreate,
+        --detach,
+        --wait,
+        --wait-timeout,
+        "180",
+        clickhouse,
+      ]
+  environment: "{{ recount_compose_environment }}"
+  register: recount_analytics_start
+  changed_when: "'Created' in recount_analytics_start.stderr or 'Started' in recount_analytics_start.stderr"
+  no_log: true
+
+- name: Prepare application schemas and restricted runtime roles
+  ansible.builtin.import_tasks: authority.yml
+
+- name: Verify all initialized data selections
+  ansible.builtin.command:
+    argv: [bun, --no-env-file, /opt/recount/backend/infra/local/data.ts, start]
+  environment: "{{ recount_compose_environment }}"
+  changed_when: false
+  no_log: true

@@ -36,6 +36,13 @@ rule before HTTPS can work; changing the OCI security list alone is insufficient
 Preserve its Oracle instance-service/metadata rules. No guest configuration,
 firewall, software or data was changed during inspection.
 
+Subsequent approved infrastructure CD attached the 150-GiB data volume and applied
+the DNS records, daily backup policy and TCP/443 cloud rule. Ansible host
+preparation installed the runtime and receiver, mounted that volume persistently,
+initialized the three backends and application authority, and enabled Caddy with
+valid certificates for both domains. Application release activation remains
+pending; the table above records the initial inspection, not the prepared host.
+
 ## Resource budget
 
 The deployment [overlay](deploy/compose.yaml) raises memory caps without changing
@@ -183,6 +190,10 @@ GitHub Actions handles native builds, approval gates and OCI-only release
 activation. Infrastructure plan/apply runs in serialized, approval-gated GitHub
 Actions with a scoped AWS state user and OCI identity. Only identity bootstrap
 runs locally with profile `pfe`; CD cannot manage IAM.
+The [Ansible bootstrap](README.md#prepare-the-host-after-approval) owns host
+packages, persistent storage, backend initialization, runtime authority and Caddy
+over host-key-verified SSH. It does not activate application releases; deployment
+CD invokes only the restricted receiver.
 **Semaphore is not needed for this layout.** The earlier
 AWS controller would duplicate orchestration, credentials and maintenance.
 Its EC2, disks, Cloudflare Tunnel/Access and state remain untouched; retirement

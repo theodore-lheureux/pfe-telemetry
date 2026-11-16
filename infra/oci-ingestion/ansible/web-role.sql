@@ -1,0 +1,12 @@
+\set ON_ERROR_STOP on
+\getenv web_password RECOUNT_WEB_PASSWORD
+
+SELECT 'CREATE ROLE recount_web' WHERE NOT EXISTS (
+    SELECT FROM pg_roles WHERE rolname = 'recount_web'
+) \gexec
+ALTER ROLE recount_web WITH LOGIN PASSWORD :'web_password'
+    NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+GRANT CONNECT ON DATABASE recount TO recount_web;
+GRANT USAGE ON SCHEMA app, ingestion TO recount_web;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app, ingestion TO recount_web;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA app, ingestion TO recount_web;

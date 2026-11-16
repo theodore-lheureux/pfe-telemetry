@@ -1,0 +1,38 @@
+- name: Allow HTTPS before the existing guest firewall rejection
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "443"
+    jump: ACCEPT
+    action: insert
+    rule_num: 1
+    comment: Recount HTTPS
+
+- name: Persist only the HTTPS rule without saving Docker-managed chains
+  ansible.builtin.lineinfile:
+    path: /etc/iptables/rules.v4
+    line: '-A INPUT -p tcp -m tcp --dport 443 -m comment --comment "Recount HTTPS" -j ACCEPT'
+    insertbefore: "^-A INPUT"
+    firstmatch: true
+    validate: /usr/sbin/iptables-restore --test %s
+
+- name: Enable firewall restoration at boot without reloading Docker-managed rules
+  ansible.builtin.systemd_service:
+    name: netfilter-persistent
+    enabled: true
+
+- name: Install the reviewed HTTPS proxy configuration
+  ansible.builtin.copy:
+    src: ../deploy/Caddyfile
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+  notify: Restart Caddy
+
+- name: Enable the HTTPS proxy
+  ansible.builtin.systemd_service:
+    name: caddy
+    state: started
+    enabled: true

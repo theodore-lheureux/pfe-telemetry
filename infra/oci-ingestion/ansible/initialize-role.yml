@@ -1,0 +1,85 @@
+- name: Inspect the recorded database identity
+  ansible.builtin.command:
+    argv:
+      [
+        grep,
+        -E,
+        "^RECOUNT_{{ recount_role | upper }}_DATA_ID=.+$",
+        /etc/recount/ingestion.env,
+      ]
+  register: recount_recorded_identity
+  changed_when: false
+  failed_when: recount_recorded_identity.rc not in [0, 1]
+  no_log: true
+
+- name: Require explicit approval for first database initialization
+  ansible.builtin.assert:
+    that: recount_initialize_backends | default(false) | bool
+    quiet: true
+  when: recount_recorded_identity.rc == 1
+
+- name: Install the existing empty-data initialization helper
+  ansible.builtin.copy:
+    src: ../../local/initialize.ts
+    dest: /opt/recount/bootstrap/initialize.ts
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install its matching data-selection helper
+  ansible.builtin.copy:
+    src: /opt/recount/backend/infra/local/data.ts
+    dest: /opt/recount/bootstrap/data.ts
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Initialize the selected empty data directory once
+  ansible.builtin.command:
+    argv:
+      [
+        bun,
+        --no-env-file,
+        /opt/recount/bootstrap/initialize.ts,
+        "{{ recount_role }}",
+      ]
+  environment: "{{ recount_compose_environment }}"
+  when: recount_recorded_identity.rc == 1
+  register: recount_initialized_identity
+  changed_when: true
+  no_log: true
+
+- name: Record the independently inspected initialized identity
+  ansible.builtin.lineinfile:
+    path: /etc/recount/ingestion.env
+    regexp: "^RECOUNT_{{ recount_role | upper }}_DATA_ID="
+    line: "{{ recount_initialized_identity.stdout | regex_search('RECOUNT_' ~ (recount_role | upper) ~ '_DATA_ID=[^\\s]+') }}"
+  when: recount_recorded_identity.rc == 1
+  no_log: true
+
+- name: Verify the recorded database identity against its actual contents
+  ansible.builtin.command:
+    argv:
+      [
+        docker,
+        compose,
+        run,
+        --rm,
+        -T,
+        --no-deps,
+        --entrypoint,
+        /bin/sh,
+        "{{ recount_role }}",
+        /etc/recount/data-entrypoint.sh,
+        "{{ recount_role }}",
+        --identity,
+      ]
+  environment: "{{ recount_compose_environment }}"
+  register: recount_actual_identity
+  changed_when: false
+  failed_when: >-
+    recount_actual_identity.rc != 0 or
+    (recount_recorded_identity.rc == 0 and
+    recount_actual_identity.stdout | trim != recount_recorded_identity.stdout.split("=", 1)[1] | trim)
+  no_log: true
