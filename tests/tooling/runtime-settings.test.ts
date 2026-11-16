@@ -135,6 +135,8 @@ else throw new Error("Unexpected Docker operation: " + args.join(" "));
 				RECOUNT_PIPELINE_PARTICIPANT_TOPIC: "allocated.participants",
 				RECOUNT_PIPELINE_PARTICIPANT_PARTITIONS: "5",
 				RECOUNT_STORAGE_TEST_CONTAINER_ID: "a".repeat(64),
+				RECOUNT_PIPELINE_DATABASE_NETWORK: `${project}_authority`,
+				RECOUNT_RUNTIME_DATABASE_NETWORK: `${project}_postgres-access`,
 			});
 		}
 	} finally {

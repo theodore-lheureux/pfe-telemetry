@@ -216,13 +216,14 @@ test("real workspace, collectors and administration retain Core geometry and key
 			}),
 		),
 	);
+	const collectorsPath = settingsUrl(
+		`/organizations/${organization.id}/projects/${project.id}`,
+		"collectors",
+	);
 	const paths = {
 		auth: "/login",
 		workspace: "/",
-		collectors: settingsUrl(
-			`/organizations/${organization.id}/projects/${project.id}`,
-			"collectors",
-		),
+		nodes: `/organizations/${organization.id}/projects/${project.id}/nodes`,
 		admin: settingsUrl(
 			`/organizations/${organization.id}`,
 			"organization-members",
@@ -254,15 +255,21 @@ test("real workspace, collectors and administration retain Core geometry and key
 					screen === "workspace"
 						? page.getByRole("heading", { name: "Executions", level: 1 })
 						: page.getByLabel(
-								screen === "collectors"
+								screen === "nodes"
 									? "Search hosts, machine IDs or labels"
 									: "Email address",
 								{ exact: true },
 							);
 				await expect(readyControl).toBeVisible();
 				await expect(readyControl).toBeEnabled();
+				const frame =
+					screen === "nodes"
+						? page
+								.locator('[data-slot="input-group"]')
+								.filter({ has: readyControl })
+						: readyControl;
 				if (screen !== "workspace")
-					await expect(readyControl).toHaveCSS(
+					await expect(frame).toHaveCSS(
 						"border-color",
 						dark ? "rgb(88, 113, 122)" : "rgb(131, 145, 150)",
 					);
@@ -294,10 +301,12 @@ test("real workspace, collectors and administration retain Core geometry and key
 						contrasts.selected = await contrast(selected);
 					for (const value of Object.values(contrasts))
 						expect(value).toBeGreaterThanOrEqual(4.5);
-					const field = page.locator('[data-slot="input"]:enabled').first();
-					if (await field.count()) {
-						contrasts.field = await contrast(field, "border-top-color");
-						expect(contrasts.field).toBeGreaterThanOrEqual(3);
+					if (screen !== "workspace") {
+						contrasts.field = await contrast(frame, "border-top-color");
+						expect(
+							contrasts.field,
+							`${screen} field border (${dark ? "dark" : "light"}, ${width}px)`,
+						).toBeGreaterThanOrEqual(3);
 					}
 					const primary = page
 						.locator('[data-slot="button"][data-variant="default"]:enabled')
@@ -322,7 +331,7 @@ test("real workspace, collectors and administration retain Core geometry and key
 				}
 				const controls = await page
 					.locator(
-						'[data-slot="button"], [data-slot="input"], [data-slot="native-select"]',
+						'[data-slot="button"], [data-slot="input"], [data-slot="input-group"], [data-slot="native-select"]',
 					)
 					.filter({ visible: true })
 					.evaluateAll((elements) =>
@@ -396,7 +405,7 @@ test("real workspace, collectors and administration retain Core geometry and key
 		});
 	}
 	await page.emulateMedia({ reducedMotion: "reduce" });
-	await page.goto(workspace.origin + paths.collectors);
+	await page.goto(workspace.origin + collectorsPath);
 	const keyName = "ThemeLifecycle".repeat(8);
 	const openCreate = page.getByRole("button", {
 		name: "Create enrollment key",
@@ -526,7 +535,7 @@ test("real workspace, collectors and administration retain Core geometry and key
 				overflow: false,
 			});
 		}
-		await page.goto(workspace.origin + paths.collectors);
+		await page.goto(workspace.origin + collectorsPath);
 		await page
 			.getByRole("button", {
 				name: m.enrollment_key_revoke_named(

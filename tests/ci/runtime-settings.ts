@@ -136,7 +136,8 @@ const settings: Record<string, string | undefined> = {
 	RECOUNT_PIPELINE_NORMALIZED_PARTITIONS: String(
 		topics.RECOUNT_NORMALIZED_PARTITIONS,
 	),
-	RECOUNT_RUNTIME_DATABASE_NETWORK: `${project}_authority`,
+	// The HTTP smoke client needs published ports, which internal bridges do not expose.
+	RECOUNT_RUNTIME_DATABASE_NETWORK: `${project}_postgres-access`,
 	RECOUNT_RUNTIME_DATABASE_HOST: "postgres",
 	RECOUNT_RUNTIME_DATABASE_PORT: "5432",
 };

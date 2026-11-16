@@ -373,7 +373,7 @@ for (const locale of ["en", "fr"] as const) {
 			);
 		}
 		async function expectProjectLinks(root: ReturnType<typeof page.locator>) {
-			await expect(root.getByRole("link")).toHaveCount(8);
+			await expect(root.getByRole("link")).toHaveCount(9);
 			const projectPath = `/organizations/${organization.id}/projects/${project.id}`;
 			for (const [name, path] of [
 				[m.overview({}, options), ""],
@@ -382,6 +382,7 @@ for (const locale of ["en", "fr"] as const) {
 				[m.insights({}, options), "/insights"],
 				[m.activity_title({}, options), "/activity"],
 				[m.nodes({}, options), "/nodes"],
+				[m.definitions({}, options), "/definitions"],
 				[m.executions({}, options), "/executions"],
 			])
 				await expect(

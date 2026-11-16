@@ -186,7 +186,7 @@ export function DashboardTileCard({
 			<header
 				{...header}
 				className={cn(
-					"group/header flex items-start gap-1 px-3 pt-3 pb-2",
+					"group/header flex shrink-0 items-start gap-1 px-3 pt-3 pb-2",
 					flush && "border-b",
 					header?.className,
 				)}
@@ -271,7 +271,7 @@ export function DashboardTileCard({
 			</header>
 			<div
 				className={cn(
-					"flex min-h-0 flex-1 flex-col gap-1",
+					"flex min-h-0 flex-1 flex-col gap-1 overflow-auto",
 					!flush && "px-3 pb-3",
 				)}
 			>
