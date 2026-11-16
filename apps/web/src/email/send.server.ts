@@ -2,7 +2,9 @@ import type { Locale } from "@recount/i18n";
 import {
 	emailBrandImages,
 	type OrganizationInvitationEmailProps,
+	type ProfileEmailProps,
 	renderOrganizationInvitationEmail,
+	renderProfileEmail,
 	renderSignInCodeEmail,
 } from "@recount/transactional";
 import nodemailer, { type Transporter } from "nodemailer";
@@ -27,6 +29,11 @@ const settings = z.object({
 });
 
 let sender: ReturnType<typeof createEmailSender> | undefined;
+
+export async function sendProfileEmail(props: ProfileEmailProps) {
+	sender ??= createEmailSender();
+	await sender.sendProfileEmail(props);
+}
 
 export async function sendOrganizationInvitation(
 	props: OrganizationInvitationEmailProps,
@@ -102,6 +109,8 @@ export function createEmailSender(
 		}
 	}
 	return {
+		sendProfileEmail: async (props: ProfileEmailProps) =>
+			deliver(props.email, await renderProfileEmail(props)),
 		sendSignInCode: async (
 			email: string,
 			code: string,

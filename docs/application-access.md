@@ -82,6 +82,22 @@ Create/resend attempts are limited to ten per user per minute across HTTP and se
 
 The form makes one batch request and refreshes Router-owned invitation data once. Rows and entered values stay intact during sending, refresh and the closing animation. Partial results mark successful rows read-only; subsequent submissions exclude those rows. Unknown responses and failed refreshes block blind resubmission until the current invitations have been checked. Refresh membership/session state after acceptance and preserve the local return URL through sign-in.
 
+## Verified profile email changes
+
+Profile email changes use Better Auth 1.7.15's built-in `changeEmail` and `verifyEmail` APIs. Both require a verified session created less than ten minutes ago and an expected-account header matching the current user. The replacement address receives a signed verification link valid for five minutes. It opens `/email-change`, where the user explicitly confirms after any required reauthentication. Opening the email alone does not change an identity or sign a browser in.
+
+Better Auth owns verification-token creation and validation; no application challenge table or custom OTP hashing is used. Requests for an occupied address receive the same acknowledgement without sending a link. PostgreSQL's unique email constraint also prevents an address claimed before confirmation from being assigned to another account. Native email-OTP change endpoints and general verification-email sending remain disabled.
+
+Email-code sign-in and second-factor completion use their ordinary Better Auth paths. After a change, a small hook deletes the user's other sessions and existing native `2fa-` verification challenges, then queues a notification to the previous address with an explicit request locale. These operations are not atomic with the email change and do not serialize concurrent sign-ins. An in-flight sign-in may therefore finish after revocation; failures after the identity update do not roll it back.
+
+The accepting session stays active; it need not be the session that requested the link. Email-change responses omit session cookies so a delayed response cannot replace an account selected in another tab. The browser retires form state on identity/navigation changes and refreshes Better Auth identity and Router data after success. Gravatar is derived from the new verified address. Memberships, project grants, passkeys and two-factor configuration remain attached to the same user ID.
+
+Better Auth's database-backed HTTP rule limits change requests to three per IP per minute, not per account. No custom per-account counter is maintained. Links are not bound to a requesting session or a latest-request record; the native signed token remains subject to its expiry and source-address checks.
+
+Pending invitations stay addressed to their original mailbox, not to a user ID. Organization domain enforcement is not implemented; the Coming soon setting does not restrict changes or grant access. Verification and notification emails resolve locale explicitly per request and use the owned authentication email-delivery lifecycle, which has no durable retry queue. A lost or failed response requires checking the current profile before requesting another link.
+
+The notification contains no bearer undo link. An enrolled passkey remains usable independently of either mailbox. For an unauthorized change, sign in with that passkey, revoke unfamiliar sessions and perform another verified email change. Changing back follows the same collision and verification checks; the previous mailbox has no permanent claim on the account or address. Without access to the new mailbox or an enrolled passkey, there is no automatic recovery or mailbox-only administrative override. Enroll a passkey before losing access to an address.
+
 ## Database integrity
 
 The native member table has unique `(organization_id, user_id)` and `(id, organization_id)` keys. The second key supports tenant-qualified project membership foreign keys. Both project and organization membership must reference the same organization, even when data is written outside application helpers.

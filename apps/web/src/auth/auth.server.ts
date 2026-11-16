@@ -1,6 +1,7 @@
 import { getDatabase } from "../db/client.server";
 import {
 	sendOrganizationInvitation,
+	sendProfileEmail,
 	sendSignInCode,
 } from "../email/send.server";
 import { readAuthConfig } from "./config.server";
@@ -18,6 +19,7 @@ export function getAuth() {
 			{
 				sendSignInCode,
 				sendOrganizationInvitation,
+				sendProfileEmail,
 			},
 			processAuthEmailDelivery(),
 		);

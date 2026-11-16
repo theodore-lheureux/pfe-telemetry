@@ -6,7 +6,6 @@ Unfinished controls stay disabled until their server operations, authorization a
 | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Activity Live: Attribute filters             | Metric and attribute projections in Live notifications, so Live can evaluate them before delivery              | [PFE-82](https://linear.app/pfe-telemetry/issue/PFE-82/add-bounded-metric-and-attribute-projections-for-live-filtering)       |
 | Organization and project settings: Upload    | Authorized image upload, replacement/removal and safe asset serving                                            | [PFE-83](https://linear.app/pfe-telemetry/issue/PFE-83/implement-organization-and-project-logo-uploads)                       |
-| Profile: Email address                       | Verified identity changes, fresh authentication and recovery                                                   | [PFE-85](https://linear.app/pfe-telemetry/issue/PFE-85/implement-verified-profile-email-changes-with-safe-recovery)           |
 | Project danger zone: Move project            | Coordinated transfer of permissions, enrollment and telemetry scope                                            | [PFE-88](https://linear.app/pfe-telemetry/issue/PFE-88/implement-safe-project-transfers-between-organizations)                |
 | Organization/project deletion                | Resumable cleanup and fencing across application data, Kafka and ClickHouse                                    | [PFE-72](https://linear.app/pfe-telemetry/issue/PFE-72/add-safe-organization-and-project-deletion-across-application-data)    |
 | Organization: Authentication domains         | Verified domains and automatic organization provisioning                                                       | [PFE-66](https://linear.app/pfe-telemetry/issue/PFE-66/add-verified-authentication-domains-and-automatic-organization)        |
@@ -27,13 +26,12 @@ The saved project week-start preference is available for future calendar control
 
 ## Intentional restrictions
 
-Project default access remains **No access** under the [access policy](application-access.md); that disabled field is not a pending public-project feature. Permission-based read-only views, loading/submission guards, pagination limits and unsupported-browser WebAuthn controls are also not missing implementations. The profile Gravatar controls, personal 2FA, passkeys, member CSV download, inspector search/copy and early-access notification form are implemented.
+Project default access remains **No access** under the [access policy](application-access.md); that disabled field is not a pending public-project feature. Permission-based read-only views, loading/submission guards, pagination limits and unsupported-browser WebAuthn controls are also not missing implementations. The profile Gravatar controls, [verified profile email changes](application-access.md#verified-profile-email-changes), personal 2FA, passkeys, member CSV download, inspector search/copy and early-access notification form are implemented.
 
 ## Source locations
 
 - Activity controls: [`activity-page.tsx`](../apps/web/src/activity/activity-page.tsx).
 - Entity logos: [`entity-identity-row.tsx`](../apps/web/src/components/settings/entity-identity-row.tsx).
-- Profile email: [`profile-details.tsx`](../apps/web/src/components/settings/profile-details.tsx).
 - Project transfers and deletion: [`danger-settings.tsx`](../apps/web/src/components/settings/danger-settings.tsx).
 - Organization policies: [`authentication-features.ts`](../apps/web/src/components/settings/authentication-features.ts) and [`settings-catalog.ts`](../apps/web/src/components/settings/settings-catalog.ts).
 - Public launch gate: [`site.ts`](../apps/landing/src/lib/site.ts) and [`coming-soon.astro`](../apps/landing/src/pages/[...lang]/coming-soon.astro).

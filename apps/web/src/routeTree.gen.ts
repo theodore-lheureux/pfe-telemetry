@@ -13,6 +13,7 @@ import { Route as AppRouteRouteImport } from './routes/_app/route'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DotwellKnownRecountCollectorKeysRouteImport } from './routes/[.]well-known/recount-collector-keys'
 import { Route as AppWorkspaceRouteRouteImport } from './routes/_app/_workspace/route'
+import { Route as AppEmailChangeRouteImport } from './routes/_app/email-change'
 import { Route as ApiReauthenticationRouteImport } from './routes/api/reauthentication'
 import { Route as InvitationsInvitationIdRouteImport } from './routes/invitations/$invitationId'
 import { Route as AppWorkspaceIndexRouteImport } from './routes/_app/_workspace/index'
@@ -60,6 +61,11 @@ const DotwellKnownRecountCollectorKeysRoute =
   } as any)
 const AppWorkspaceRouteRoute = AppWorkspaceRouteRouteImport.update({
   id: '/_workspace',
+  getParentRoute: () => AppRouteRoute,
+} as any)
+const AppEmailChangeRoute = AppEmailChangeRouteImport.update({
+  id: '/email-change',
+  path: '/email-change',
   getParentRoute: () => AppRouteRoute,
 } as any)
 const ApiReauthenticationRoute = ApiReauthenticationRouteImport.update({
@@ -283,6 +289,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppWorkspaceIndexRoute
   '/login': typeof LoginRoute
   '/.well-known/recount-collector-keys': typeof DotwellKnownRecountCollectorKeysRoute
+  '/email-change': typeof AppEmailChangeRoute
   '/api/reauthentication': typeof ApiReauthenticationRoute
   '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/settings': typeof AppWorkspaceSettingsRoute
@@ -316,6 +323,7 @@ export interface FileRoutesByTo {
   '/': typeof AppWorkspaceIndexRoute
   '/login': typeof LoginRoute
   '/.well-known/recount-collector-keys': typeof DotwellKnownRecountCollectorKeysRoute
+  '/email-change': typeof AppEmailChangeRoute
   '/api/reauthentication': typeof ApiReauthenticationRoute
   '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/settings': typeof AppWorkspaceSettingsRoute
@@ -347,6 +355,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/_workspace': typeof AppWorkspaceRouteRouteWithChildren
   '/.well-known/recount-collector-keys': typeof DotwellKnownRecountCollectorKeysRoute
+  '/_app/email-change': typeof AppEmailChangeRoute
   '/api/reauthentication': typeof ApiReauthenticationRoute
   '/invitations/$invitationId': typeof InvitationsInvitationIdRoute
   '/_app/_workspace/settings': typeof AppWorkspaceSettingsRoute
@@ -383,6 +392,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/.well-known/recount-collector-keys'
+    | '/email-change'
     | '/api/reauthentication'
     | '/invitations/$invitationId'
     | '/settings'
@@ -416,6 +426,7 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/.well-known/recount-collector-keys'
+    | '/email-change'
     | '/api/reauthentication'
     | '/invitations/$invitationId'
     | '/settings'
@@ -446,6 +457,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_app/_workspace'
     | '/.well-known/recount-collector-keys'
+    | '/_app/email-change'
     | '/api/reauthentication'
     | '/invitations/$invitationId'
     | '/_app/_workspace/settings'
@@ -517,6 +529,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppWorkspaceRouteRouteImport
+      parentRoute: typeof AppRouteRoute
+    }
+    '/_app/email-change': {
+      id: '/_app/email-change'
+      path: '/email-change'
+      fullPath: '/email-change'
+      preLoaderRoute: typeof AppEmailChangeRouteImport
       parentRoute: typeof AppRouteRoute
     }
     '/api/reauthentication': {
@@ -850,10 +869,12 @@ const AppWorkspaceRouteRouteWithChildren =
 
 interface AppRouteRouteChildren {
   AppWorkspaceRouteRoute: typeof AppWorkspaceRouteRouteWithChildren
+  AppEmailChangeRoute: typeof AppEmailChangeRoute
 }
 
 const AppRouteRouteChildren: AppRouteRouteChildren = {
   AppWorkspaceRouteRoute: AppWorkspaceRouteRouteWithChildren,
+  AppEmailChangeRoute: AppEmailChangeRoute,
 }
 
 const AppRouteRouteWithChildren = AppRouteRoute._addFileChildren(

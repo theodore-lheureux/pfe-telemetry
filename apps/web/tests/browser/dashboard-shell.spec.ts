@@ -81,7 +81,7 @@ test("settings search opens individual controls and closed timing details within
 	expect(new URL(page.url()).hash).toBe("#enrollment-keys");
 	await search.fill("email address");
 	await nav.getByRole("option", { name: "Email address", exact: true }).click();
-	await expect(page.locator("#profile-email")).toBeDisabled();
+	await expect(page.locator("#profile-email")).toHaveAttribute("readonly", "");
 	expect(new URL(page.url()).searchParams.get("organizationId")).toBe(
 		organization.id,
 	);
@@ -127,8 +127,8 @@ test("profile name, Gravatar refresh, passkey rename and session revocation use 
 			page.getByLabel("Email address", { exact: true }),
 		).toHaveJSProperty("readOnly", true);
 		await expect(
-			page.getByLabel("Email address", { exact: true }),
-		).toBeDisabled();
+			page.getByRole("button", { name: "Change sign-in email", exact: true }),
+		).toBeEnabled();
 		await expect(
 			page
 				.getByRole("region", { name: "Details", exact: true })

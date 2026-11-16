@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { test as base, expect, type Page } from "@playwright/test";
 import type { Locale } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
+import type { ProfileEmailProps } from "@recount/transactional";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
 import { readSigningKey } from "../../src/collectors/tokens.server";
@@ -368,6 +369,7 @@ async function createWorkspace(
 		RECOUNT_COLLECTOR_SIGNING_KEY: collectorSigningKey,
 	}).publicJwk.x;
 	const codes = new Map<string, string>();
+	const profileEmails: ProfileEmailProps[] = [];
 	const auth = createAuth(
 		{ origin, secret, rpID: "localhost", allowSignUp: true },
 		database.db,
@@ -376,6 +378,9 @@ async function createWorkspace(
 				codes.set(email, code);
 			},
 			sendOrganizationInvitation: async () => {},
+			sendProfileEmail: async (message) => {
+				profileEmails.push(message);
+			},
 		},
 	);
 	const operations = actorService(auth);
@@ -519,6 +524,7 @@ async function createWorkspace(
 		databaseUrl: url.toString(),
 		collectorPublicKey,
 		codes,
+		profileEmails,
 		database,
 		auth,
 		operations,

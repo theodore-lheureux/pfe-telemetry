@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { betterAuth } from "better-auth";
 import { twoFactor as nativeTwoFactor } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { accountContextHeader } from "../../src/auth/account-context";
 import { actorService } from "../../src/auth/actor.server";
 import { readAuthenticationState } from "../../src/auth/authentication-state.server";
@@ -28,6 +28,29 @@ const codes = new Map<string, string>();
 const origin = "http://localhost:3951";
 function headersFrom(response: Response) {
 	return sessionHeaders(response, new Headers({ origin }));
+}
+async function failSessionDeletion(id = "*") {
+	await database.db.execute(sql`
+		CREATE TABLE app.test_session_delete_failure (id text PRIMARY KEY);
+		CREATE FUNCTION app.test_reject_session_delete() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+			IF EXISTS (SELECT 1 FROM app.test_session_delete_failure WHERE id IN (OLD.id, '*')) THEN
+				RAISE EXCEPTION 'Injected session deletion failure';
+			END IF;
+			RETURN OLD;
+		END; $$;
+		CREATE TRIGGER test_reject_session_delete BEFORE DELETE ON app.session
+		FOR EACH ROW EXECUTE FUNCTION app.test_reject_session_delete();
+	`);
+	await database.db.execute(
+		sql`INSERT INTO app.test_session_delete_failure (id) VALUES (${id})`,
+	);
+	return () =>
+		database.db.execute(sql`
+		DROP TRIGGER test_reject_session_delete ON app.session;
+		DROP FUNCTION app.test_reject_session_delete();
+		DROP TABLE app.test_session_delete_failure;
+	`);
 }
 async function actor() {
 	const email = `${randomUUID()}@example.invalid`;
@@ -330,12 +353,8 @@ test("email-code 2FA issues no usable session until TOTP or a single-use recover
 	expect(
 		await auth.api.getSession({ headers: headersFrom(noBypass) }),
 	).toBeNull();
-	const context = await auth.$context;
-	const removeSession = context.internalAdapter.deleteSession;
+	const restoreDeletion = await failSessionDeletion();
 	try {
-		context.internalAdapter.deleteSession = async () => {
-			throw new Error("Injected session deletion failure");
-		};
 		const failed = await trustedCodeSignIn(
 			auth,
 			account.email,
@@ -357,7 +376,7 @@ test("email-code 2FA issues no usable session until TOTP or a single-use recover
 			await auth.api.getSession({ headers: headersFrom(failed) }),
 		).toBeNull();
 	} finally {
-		context.internalAdapter.deleteSession = removeSession;
+		await restoreDeletion();
 	}
 });
 
@@ -401,16 +420,22 @@ test("authenticator enrollment revokes other sessions while preserving the compl
 
 test("enrollment cannot deliver a completed session when other-session revocation fails", async () => {
 	const account = await actor();
+	const other = await trustedCodeSignIn(
+		auth,
+		account.email,
+		(email) => codes.get(email),
+		new Headers({ origin }),
+	);
+	const otherSession = await auth.api.getSession({
+		headers: headersFrom(other),
+	});
+	if (!otherSession) throw new Error("Expected other session");
 	const enabled = await auth.api.enableTwoFactor({
 		headers: account.headers,
 		body: { method: "totp" },
 	});
 	if (!("totpURI" in enabled)) throw new Error("Expected authenticator setup");
-	const context = await auth.$context;
-	const listSessions = context.internalAdapter.listSessions;
-	context.internalAdapter.listSessions = async () => {
-		throw new Error("Fixture session revocation unavailable");
-	};
+	const restoreDeletion = await failSessionDeletion(otherSession.session.id);
 	try {
 		const failed = await auth.api.verifyTOTP({
 			headers: account.headers,
@@ -425,12 +450,15 @@ test("enrollment cannot deliver a completed session when other-session revocatio
 			await auth.api.getSession({ headers: headersFrom(failed) }),
 		).toBeNull();
 		expect(
-			await database.db
-				.select()
-				.from(schema.session)
-				.where(eq(schema.session.userId, account.id)),
-		).toEqual([]);
+			failed.headers
+				.getSetCookie()
+				.every((value) => value.split(";")[0].split("=")[1] === ""),
+		).toBe(true);
+		expect(await auth.api.getSession({ headers: account.headers })).toBeNull();
+		expect(
+			await auth.api.getSession({ headers: headersFrom(other) }),
+		).not.toBeNull();
 	} finally {
-		context.internalAdapter.listSessions = listSessions;
+		await restoreDeletion();
 	}
 });

@@ -7,8 +7,7 @@ import { updateProfileName } from "../../auth/profile.functions";
 import { RenameEntityForm } from "../entity-form";
 import { UserAvatar } from "../identity-avatar";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
+import { ProfileEmail } from "./profile-email";
 import { SettingsSection } from "./settings-section";
 
 export function ProfileDetails() {
@@ -60,26 +59,8 @@ export function ProfileDetails() {
 					onSuccess={async () => {
 						await refreshBetterAuthIdentity();
 					}}
-				>
-					<div className="flex flex-col gap-2">
-						<Label htmlFor="profile-email">{m.email_address()}</Label>
-						<Input
-							id="profile-email"
-							type="email"
-							value={user.email}
-							readOnly
-							disabled
-							className="bg-muted text-muted-foreground"
-							aria-describedby="profile-email-help"
-						/>
-						<p
-							id="profile-email-help"
-							className="text-xs text-muted-foreground"
-						>
-							{m.profile_email_readonly()}
-						</p>
-					</div>
-				</RenameEntityForm>
+				/>
+				<ProfileEmail />
 			</SettingsSection>
 		</>
 	);

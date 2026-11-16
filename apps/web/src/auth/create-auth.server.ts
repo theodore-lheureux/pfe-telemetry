@@ -1,7 +1,10 @@
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { passkey } from "@better-auth/passkey";
 import { type Locale, requestLocale } from "@recount/i18n";
-import type { OrganizationInvitationEmailProps } from "@recount/transactional";
+import type {
+	OrganizationInvitationEmailProps,
+	ProfileEmailProps,
+} from "@recount/transactional";
 import { type BetterAuthPlugin, betterAuth } from "better-auth";
 import {
 	APIError,
@@ -23,6 +26,7 @@ import {
 	type AuthEmailDelivery,
 	createAuthEmailDelivery,
 } from "./email-delivery.server";
+import { profileEmailSecurity } from "./profile-email.server";
 import { sessionSignInMethod } from "./session-details.server";
 import { AUTH_FRESH_AGE_SECONDS } from "./session-policy";
 import { signInLinkUrl } from "./sign-in-link";
@@ -81,20 +85,23 @@ const credentialSecurity = {
 	},
 } satisfies BetterAuthPlugin;
 
+export type AuthEmail = {
+	sendSignInCode: (
+		email: string,
+		code: string,
+		locale: Locale,
+		url: string,
+	) => Promise<void>;
+	sendOrganizationInvitation: (
+		props: OrganizationInvitationEmailProps,
+	) => Promise<void>;
+	sendProfileEmail?: (props: ProfileEmailProps) => Promise<void>;
+};
+
 export function createAuth(
 	config: AuthConfig,
 	database: ReturnType<typeof getDatabase>,
-	email: {
-		sendSignInCode: (
-			email: string,
-			code: string,
-			locale: Locale,
-			url: string,
-		) => Promise<void>;
-		sendOrganizationInvitation: (
-			props: OrganizationInvitationEmailProps,
-		) => Promise<void>;
-	},
+	email: AuthEmail,
 	emailDelivery: AuthEmailDelivery = createAuthEmailDelivery(),
 ) {
 	const auth = betterAuth({
@@ -103,6 +110,7 @@ export function createAuth(
 		secret: config.secret,
 		trustedOrigins: [config.origin],
 		disabledPaths: [
+			"/send-verification-email",
 			"/two-factor/send-otp",
 			"/two-factor/verify-otp",
 			"/two-factor/view-backup-codes",
@@ -121,7 +129,26 @@ export function createAuth(
 			transaction: true,
 		}),
 		emailAndPassword: { enabled: false },
+		emailVerification: {
+			expiresIn: 300,
+			sendVerificationEmail: ({ user, token }, request) => {
+				const send = email.sendProfileEmail;
+				if (!send) throw new Error("Profile email delivery is unavailable");
+				const url = new URL("/email-change", config.origin);
+				url.searchParams.set("token", token);
+				url.searchParams.set("accountId", user.id);
+				return emailDelivery.send(() =>
+					send({
+						kind: "verification",
+						email: user.email,
+						url: url.href,
+						locale: requestLocale(request?.headers),
+					}),
+				);
+			},
+		},
 		user: {
+			changeEmail: { enabled: !!email.sendProfileEmail },
 			additionalFields: {
 				lastSignedInAt: {
 					type: "date",
@@ -151,7 +178,11 @@ export function createAuth(
 				},
 			},
 		},
-		rateLimit: { enabled: true, storage: "database" },
+		rateLimit: {
+			enabled: true,
+			storage: "database",
+			customRules: { "/change-email": { window: 60, max: 3 } },
+		},
 		advanced: {
 			backgroundTasks: { handler: emailDelivery.track },
 			useSecureCookies: config.origin.startsWith("https:"),
@@ -243,6 +274,7 @@ export function createAuth(
 				},
 			},
 			credentialSecurity,
+			profileEmailSecurity(database, config.origin, email, emailDelivery),
 			tanstackStartCookies(),
 		],
 	});

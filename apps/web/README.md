@@ -93,7 +93,9 @@ The integration suite requires a PostgreSQL account with permission to create da
 
 ## Authentication and email
 
-Better Auth provides PostgreSQL-backed sessions, passkeys and six-digit email codes. Password authentication is disabled. Codes expire after five minutes, are stored hashed and allow three attempts. Registration follows `RECOUNT_AUTH_ALLOW_SIGN_UP`; closed-registration requests receive the same public acknowledgement for known and unknown addresses. Recovery proves mailbox access; it does not automatically remove existing passkeys or other sessions. Account settings provide both actions.
+Better Auth provides PostgreSQL-backed sessions, passkeys and six-digit email codes. Password authentication is disabled. Codes expire after five minutes, are stored hashed and allow three attempts. Registration follows `RECOUNT_AUTH_ALLOW_SIGN_UP`; closed-registration requests receive the same public acknowledgement for known and unknown addresses. Signing in with an email code proves mailbox access; it does not automatically remove existing passkeys or other sessions. Account settings provide both actions.
+
+[Verified profile email changes](../../docs/application-access.md#verified-profile-email-changes) require fresh authentication and a verification link sent to the replacement address. They preserve the current session, revoke other web sessions and notify the previous address. Enrolled passkeys remain available for recovery; the previous mailbox cannot undo a completed change.
 
 Set these server-only values in `apps/web/.env` before using authentication:
 

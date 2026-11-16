@@ -3,6 +3,7 @@ import { render, toPlainText } from "react-email";
 import OrganizationInvitationEmail, {
 	type OrganizationInvitationEmailProps,
 } from "../emails/organization-invitation";
+import ProfileEmail, { type ProfileEmailProps } from "../emails/profile-email";
 import SignInCodeEmail, {
 	type SignInCodeEmailProps,
 } from "../emails/sign-in-code";
@@ -22,7 +23,21 @@ export const emailBrandImages = [
 ];
 
 export type { OrganizationInvitationEmailProps } from "../emails/organization-invitation";
+export type { ProfileEmailProps } from "../emails/profile-email";
 export type { SignInCodeEmailProps } from "../emails/sign-in-code";
+
+export async function renderProfileEmail(props: ProfileEmailProps) {
+	const html = await render(<ProfileEmail {...props} />);
+	const options = { locale: props.locale };
+	return {
+		subject:
+			props.kind === "verification"
+				? m.profile_email_change_verify_subject({}, options)
+				: m.profile_email_change_notice_subject({}, options),
+		html,
+		text: toPlainText(html),
+	};
+}
 
 export async function renderOrganizationInvitationEmail(
 	props: OrganizationInvitationEmailProps,
