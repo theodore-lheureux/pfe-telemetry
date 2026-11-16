@@ -1,5 +1,5 @@
 import { m } from "@recount/i18n/messages";
-import { useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { DialogActions } from "../../components/dialog-actions";
 import { FormFeedback } from "../../components/form-feedback";
 import { Button } from "../../components/ui/button";
@@ -23,6 +23,9 @@ export function DashboardDialog({
 	error,
 	onClose,
 	onSubmit,
+	children,
+	wide = false,
+	submitDisabled = false,
 }: {
 	open: boolean;
 	title: string;
@@ -31,6 +34,9 @@ export function DashboardDialog({
 	error: string;
 	onClose: () => void;
 	onSubmit: (value: { name: string; description: string }) => void;
+	children?: ReactNode;
+	wide?: boolean;
+	submitDisabled?: boolean;
 }) {
 	const id = useId();
 	const [name, setName] = useState(initial.name),
@@ -47,7 +53,10 @@ export function DashboardDialog({
 				if (!next && !pending) onClose();
 			}}
 		>
-			<DialogContent className="sm:max-w-md" showCloseButton={!pending}>
+			<DialogContent
+				className={wide ? "sm:max-w-3xl" : "sm:max-w-md"}
+				showCloseButton={!pending}
+			>
 				<form
 					method="post"
 					className="flex flex-col gap-4"
@@ -60,6 +69,7 @@ export function DashboardDialog({
 					<DialogHeader>
 						<DialogTitle>{title}</DialogTitle>
 					</DialogHeader>
+					{children}
 					<div className="flex flex-col gap-2">
 						<Label htmlFor={`${id}-name`}>{m.dashboard_name()}</Label>
 						<Input
@@ -91,7 +101,7 @@ export function DashboardDialog({
 					>
 						<Button
 							type="submit"
-							disabled={pending || !name.trim()}
+							disabled={pending || submitDisabled || !name.trim()}
 							pending={pending}
 							pendingLabel={m.saving()}
 						>

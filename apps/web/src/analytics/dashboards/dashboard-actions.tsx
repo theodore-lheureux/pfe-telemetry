@@ -22,6 +22,8 @@ import { useAppMutation } from "../../components/use-app-mutation";
 import type { ProjectReference } from "../../organizations/contracts";
 import { deleteDashboard, saveDashboard } from "../dashboards.functions";
 import { DashboardDialog } from "./dashboard-dialog";
+import { TemplateCreateDialog } from "./template-create-dialog";
+import { TemplateSaveDialog } from "./template-save-dialog";
 
 const LIST =
 	"/organizations/$organizationId/projects/$projectId/dashboards" as const;
@@ -36,15 +38,14 @@ interface Named {
 type Action =
 	| { kind: "create" }
 	| { kind: "edit"; dashboard: Named }
+	| { kind: "template"; dashboard: Named }
 	| { kind: "delete"; dashboard: Named };
 
 type Change =
-	| { kind: "create"; id: string; name: string; description: string }
 	| { kind: "edit"; dashboard: Named; name: string; description: string }
 	| { kind: "delete"; dashboard: Named };
 
 function changed(change: Change) {
-	if (change.kind === "create") return m.dashboard_created();
 	if (change.kind === "delete") return m.dashboard_deleted();
 	return m.changes_saved();
 }
@@ -74,8 +75,7 @@ export function useDashboardActions(
 			return saveDashboard({
 				data: {
 					...reference,
-					dashboardId:
-						change.kind === "create" ? change.id : change.dashboard.id,
+					dashboardId: change.dashboard.id,
 					name: change.name,
 					description: change.description,
 				},
@@ -105,13 +105,7 @@ export function useDashboardActions(
 			await navigate({ to: LIST, params: reference });
 			return;
 		}
-		const refreshed = await result.refresh(async (go) => {
-			if (change.kind === "create")
-				await go({
-					to: `${LIST}/$dashboardId`,
-					params: { ...reference, dashboardId: change.id },
-				});
-		});
+		const refreshed = await result.refresh();
 		if (refreshed) close();
 	};
 	const restoreFocus = (event: Event) => {
@@ -138,6 +132,11 @@ export function useDashboardActions(
 					<DropdownMenuItem onSelect={() => open({ kind: "edit", dashboard })}>
 						{m.dashboard_edit()}
 					</DropdownMenuItem>
+					<DropdownMenuItem
+						onSelect={() => open({ kind: "template", dashboard })}
+					>
+						{m.dashboard_templates_save_as()}
+					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
 						variant="destructive"
@@ -154,20 +153,33 @@ export function useDashboardActions(
 	const deleting = action?.kind === "delete" ? action.dashboard : null;
 	const dialogs = (
 		<>
+			{action?.kind === "create" && (
+				<TemplateCreateDialog
+					open
+					userId={userId}
+					reference={reference}
+					onClose={close}
+				/>
+			)}
+			{action?.kind === "template" && (
+				<TemplateSaveDialog
+					userId={userId}
+					reference={reference}
+					dashboard={action.dashboard}
+					onClose={close}
+				/>
+			)}
 			<DashboardDialog
-				open={action?.kind === "create" || action?.kind === "edit"}
+				open={action?.kind === "edit"}
 				title={editing ? m.dashboard_edit_title() : m.dashboard_new()}
 				initial={editing ?? { name: "", description: "" }}
 				pending={pending}
 				error={error}
 				onClose={close}
-				onSubmit={(value) =>
-					void apply(
-						editing
-							? { kind: "edit", dashboard: editing, ...value }
-							: { kind: "create", id: crypto.randomUUID(), ...value },
-					)
-				}
+				onSubmit={(value) => {
+					if (editing)
+						void apply({ kind: "edit", dashboard: editing, ...value });
+				}}
 			/>
 			<AlertDialog
 				open={!!deleting}

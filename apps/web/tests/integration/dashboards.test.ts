@@ -1,8 +1,15 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
-import { nodeHealthTemplate } from "../../src/analytics/dashboard-templates";
-import { createTemplateDashboard } from "../../src/analytics/dashboard-templates.server";
+import {
+	dashboardTemplate,
+	nodeHealthTemplate,
+} from "../../src/analytics/dashboard-templates";
+import {
+	createTemplateDashboard,
+	listDashboardTemplates,
+	saveDashboardTemplate,
+} from "../../src/analytics/dashboard-templates.server";
 import {
 	addTiles,
 	copyTile,
@@ -35,7 +42,12 @@ import {
 	saveInsight,
 } from "../../src/analytics/saved-insights.server";
 import { createAuth } from "../../src/auth/create-auth.server";
-import { member, projectMember } from "../../src/db/schema";
+import {
+	collectorNode,
+	enrollmentKey,
+	member,
+	projectMember,
+} from "../../src/db/schema";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
 import { trustedActor } from "../auth-actors";
@@ -207,6 +219,143 @@ test("members arrange dashboards of their project's insights; viewers only open 
 			{ ...templateTarget, projectId: other.id },
 		),
 	).rejects.toMatchObject({ code: "CONFLICT" });
+	const nodeId = randomUUID();
+	const keyId = randomUUID();
+	await db.insert(enrollmentKey).values({
+		id: keyId,
+		...reference,
+		name: "Template nodes",
+		keySha256: "a".repeat(64),
+	});
+	await db.insert(collectorNode).values({
+		id: nodeId,
+		...reference,
+		enrollmentKeyId: keyId,
+		machineId: "template-node",
+		hostname: "Template node",
+		publicKey: "a".repeat(43),
+	});
+	const filledTarget = {
+		...reference,
+		dashboardId: randomUUID(),
+		templateId: "node-health",
+		values: { $node: nodeId },
+	};
+	const filled = await createTemplateDashboard(
+		db,
+		{ id: writer.id },
+		filledTarget,
+	);
+	expect(JSON.parse(filled.filters)).toEqual({
+		filters: [{ field: "node", op: "eq", values: [nodeId] }],
+	});
+	await expect(
+		createTemplateDashboard(
+			db,
+			{ id: writer.id },
+			{
+				...filledTarget,
+				dashboardId: randomUUID(),
+				values: { $node: randomUUID() },
+			},
+		),
+	).rejects.toMatchObject({ reason: "INVALID_QUERY" });
+	await updateTile(
+		db,
+		{ id: writer.id },
+		{
+			...filledTarget,
+			tileId: filled.tiles[0].id,
+			options: { color: "purple" },
+			overrides: '{"interval":"5m"}',
+		},
+	);
+	const snapshotInput = {
+		...filledTarget,
+		templateId: randomUUID(),
+		name: "Team health",
+		description: "Custom snapshot",
+		parameterizeNode: true,
+	};
+	await expect(
+		saveDashboardTemplate(db, { id: viewer.id }, snapshotInput),
+	).rejects.toMatchObject({ code: "FORBIDDEN" });
+	await expect(
+		saveDashboardTemplate(db, { id: outsider.id }, snapshotInput),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await expect(
+		saveDashboardTemplate(
+			db,
+			{ id: owner.id },
+			{ ...snapshotInput, projectId: other.id },
+		),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await saveDashboardTemplate(db, { id: writer.id }, snapshotInput);
+	await saveDashboardTemplate(db, { id: writer.id }, snapshotInput);
+	const templates = await listDashboardTemplates(
+		db,
+		{ id: viewer.id },
+		reference,
+	);
+	expect(templates).toHaveLength(1);
+	expect(templates[0].template).toMatchObject({
+		name: "Team health",
+		filters: "{}",
+		variables: [{ name: "$node", field: "node" }],
+	});
+	expect(templates[0].template.tiles[0]).toMatchObject({
+		options: { color: "purple" },
+		overrides: '{"interval":"5m"}',
+	});
+	expect(
+		await listDashboardTemplates(
+			db,
+			{ id: owner.id },
+			{ ...reference, projectId: other.id },
+		),
+	).toEqual([]);
+	await expect(
+		listDashboardTemplates(db, { id: outsider.id }, reference),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await deleteDashboard(db, { id: writer.id }, filledTarget);
+	await deleteInsights(
+		db,
+		{ id: writer.id },
+		{ ...reference, insightIds: filled.tiles.map((tile) => tile.insight.id) },
+	);
+	const fromSnapshot = {
+		...reference,
+		dashboardId: randomUUID(),
+		templateId: snapshotInput.templateId,
+		values: { $node: nodeId },
+	};
+	const restored = await createTemplateDashboard(
+		db,
+		{ id: writer.id },
+		fromSnapshot,
+	);
+	expect(restored.name).toBe("Team health");
+	expect(restored.tiles).toHaveLength(6);
+	expect(restored.tiles[0].options).toEqual({ color: "purple" });
+	expect(restored.tiles[0].insight.id).not.toBe(filled.tiles[0].insight.id);
+	expect(dashboardTemplate(restored).tiles).toEqual(
+		templates[0].template.tiles,
+	);
+	await expect(
+		createTemplateDashboard(
+			db,
+			{ id: viewer.id },
+			{ ...fromSnapshot, dashboardId: randomUUID() },
+		),
+	).rejects.toMatchObject({ code: "FORBIDDEN" });
+	await expect(
+		createTemplateDashboard(
+			db,
+			{ id: owner.id },
+			{ ...fromSnapshot, projectId: other.id, dashboardId: randomUUID() },
+		),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await deleteDashboard(db, { id: writer.id }, fromSnapshot);
 	await deleteDashboard(db, { id: writer.id }, templateTarget);
 	await deleteDashboard(
 		db,
@@ -434,6 +583,21 @@ test("members arrange dashboards of their project's insights; viewers only open 
 		.where(eq(projectMember.memberId, memberIds.get(viewer.id) as string));
 	await expect(
 		getDashboard(db, { id: viewer.id }, target),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+
+	await expect(
+		listDashboardTemplates(db, { id: viewer.id }, reference),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await expect(
+		createTemplateDashboard(
+			db,
+			{ id: viewer.id },
+			{
+				...reference,
+				dashboardId: randomUUID(),
+				templateId: snapshotInput.templateId,
+			},
+		),
 	).rejects.toMatchObject({ code: "NOT_FOUND" });
 
 	await expect(

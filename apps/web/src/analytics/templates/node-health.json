@@ -1,0 +1,272 @@
+{
+  "name": "dashboard_template_node_health",
+  "description": "dashboard_template_node_health_description",
+  "filters": {},
+  "variables": [{ "name": "$node", "field": "node" }],
+  "tiles": [
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_cpu_busy",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.calculated.cpu-usage",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "percent",
+            "logScale": false,
+            "beginAtZero": true,
+            "yMax": 100
+          }
+        }
+      }
+    },
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_memory_used",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.calculated.memory-usage",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "percent",
+            "logScale": false,
+            "beginAtZero": true,
+            "yMax": 100
+          }
+        }
+      }
+    },
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_processes",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.collection.discovered.processes",
+              "calculation": "avg",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "none",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_disk_throughput",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "system.disk.io",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": [
+                {
+                  "field": "attributes[\"disk.io.direction\"]",
+                  "op": "eq",
+                  "values": ["read"]
+                }
+              ]
+            },
+            {
+              "name": "B",
+              "metric": "system.disk.io",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": [
+                {
+                  "field": "attributes[\"disk.io.direction\"]",
+                  "op": "eq",
+                  "values": ["write"]
+                }
+              ]
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "limit": 25,
+          "other": true,
+          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true,
+            "legend": "bottom"
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_network_throughput",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "system.network.io",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": [
+                {
+                  "field": "attributes[\"network.io.direction\"]",
+                  "op": "eq",
+                  "values": ["receive"]
+                }
+              ]
+            },
+            {
+              "name": "B",
+              "metric": "system.network.io",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": [
+                {
+                  "field": "attributes[\"network.io.direction\"]",
+                  "op": "eq",
+                  "values": ["transmit"]
+                }
+              ]
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "limit": 25,
+          "other": true,
+          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true,
+            "legend": "bottom"
+          }
+        }
+      }
+    },
+    {
+      "width": 12,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_nodes",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.calculated.cpu-usage",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            },
+            {
+              "name": "B",
+              "metric": "recount.calculated.memory-usage",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            },
+            {
+              "name": "C",
+              "metric": "recount.collection.discovered.processes",
+              "calculation": "avg",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "interval": "auto",
+          "display": {
+            "type": "table",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import {
 	unique,
 	uuid,
 } from "drizzle-orm/pg-core";
+import type { DashboardTemplate } from "../analytics/dashboard-templates";
 import { appSchema, user } from "./auth-schema";
 import { savedInsight } from "./insights-schema";
 import { project } from "./projects-schema";
@@ -18,6 +19,34 @@ import { project } from "./projects-schema";
 // Dashboards arrange a project's saved insights as tiles. Tiles reference the
 // dashboard and the insight together with the project, so a tile can never show
 // another project's insight.
+
+export const dashboardTemplateSnapshot = appSchema.table(
+	"dashboard_template",
+	{
+		id: uuid("id").defaultRandom().primaryKey(),
+		projectId: uuid("project_id").notNull(),
+		organizationId: text("organization_id").notNull(),
+		definition: jsonb("definition").$type<DashboardTemplate>().notNull(),
+		createdBy: text("created_by").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		createdAt: timestamp("created_at", { withTimezone: true })
+			.defaultNow()
+			.notNull(),
+	},
+	(table) => [
+		foreignKey({
+			name: "dashboard_template_project_fk",
+			columns: [table.projectId, table.organizationId],
+			foreignColumns: [project.id, project.organizationId],
+		}).onDelete("cascade"),
+		index("dashboard_template_project_idx").on(table.projectId),
+		check(
+			"dashboard_template_definition_bounded",
+			sql`jsonb_typeof(${table.definition}) = 'object' AND octet_length(${table.definition}::text) <= 524288`,
+		),
+	],
+);
 
 export const dashboard = appSchema.table(
 	"dashboard",
