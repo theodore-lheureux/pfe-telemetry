@@ -5,6 +5,8 @@ pub mod point;
 pub mod projection;
 pub const ANALYTICAL_COLUMNS: &str =
     include_str!(concat!(env!("OUT_DIR"), "/analytical-columns.sql"));
+pub const PARTICIPANT_COLUMNS: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/participant-columns.sql"));
 pub mod wire {
     include!(concat!(env!("OUT_DIR"), "/recount.telemetry.rs"));
 }

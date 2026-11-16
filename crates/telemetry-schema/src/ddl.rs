@@ -1,9 +1,68 @@
 use std::io;
 
 pub const TEMPLATE: &str = include_str!("../../../infra/clickhouse/schema.sql.in");
+pub const PARTICIPANT_TEMPLATE: &str =
+    include_str!("../../../infra/clickhouse/participants.sql.in");
 pub const BLOCK_ROWS: u32 = 64;
 pub const POLL_MESSAGES: u32 = 32;
 pub const FLUSH_MS: u32 = 2000;
+
+pub struct ParticipantSchema<'a> {
+    pub database: &'a str,
+    pub bootstrap: &'a str,
+    pub topic: &'a str,
+    pub group: &'a str,
+    pub partition_limit: u32,
+}
+
+impl ParticipantSchema<'_> {
+    pub fn render(&self) -> io::Result<String> {
+        let batching = Batching::for_partition_limit(self.partition_limit)?;
+        let identifier = |s: &str| {
+            !s.is_empty()
+                && s.bytes()
+                    .next()
+                    .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+                && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        };
+        let kafka = |s: &str| {
+            !s.is_empty()
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_.-".contains(&b))
+        };
+        if !identifier(self.database)
+            || !kafka(self.topic)
+            || !kafka(self.group)
+            || self.bootstrap.is_empty()
+            || !self
+                .bootstrap
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"_.:,[]-".contains(&b))
+        {
+            return Err(io::Error::other("Invalid participant schema inputs"));
+        }
+        let mut sql = PARTICIPANT_TEMPLATE.to_owned();
+        for (token, value) in [
+            ("__DATABASE__", self.database),
+            ("__KAFKA_BOOTSTRAP__", self.bootstrap),
+            ("__PARTICIPANT_TOPIC__", self.topic),
+            ("__PARTICIPANT_GROUP__", self.group),
+            ("__PARTICIPANT_COLUMNS__", crate::PARTICIPANT_COLUMNS.trim()),
+        ] {
+            sql = sql.replace(token, value);
+        }
+        sql = sql
+            .replace(
+                "__PARTICIPANT_BLOCK_ROWS__",
+                &batching.block_rows.to_string(),
+            )
+            .replace(
+                "__PARTICIPANT_POLL_MESSAGES__",
+                &batching.poll_messages.to_string(),
+            );
+        Ok(sql)
+    }
+}
 /// Rows per insert from the recent topic. Its points lie within a day of the normalizer's
 /// clock, so a block touches a few day partitions however many rows it holds.
 pub const RECENT_BLOCK_ROWS: u32 = 4096;
@@ -139,6 +198,28 @@ impl Schema<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn participant_batches_respect_small_insert_partition_guards() {
+        for limit in [1, 2, 8, 16, 128] {
+            let batching = Batching::for_partition_limit(limit).unwrap();
+            let sql = ParticipantSchema {
+                database: "disposable",
+                bootstrap: "kafka:9092",
+                topic: "test.participants",
+                group: "test.participants.consumer",
+                partition_limit: limit,
+            }
+            .render()
+            .unwrap();
+            assert!(sql.contains(&format!("kafka_max_block_size = {}", batching.block_rows)));
+            assert!(sql.contains(&format!(
+                "kafka_poll_max_batch_size = {}",
+                batching.poll_messages
+            )));
+            assert!(batching.maximum_rows() <= limit);
+        }
+    }
 
     #[test]
     fn isolated_names_and_strict_object_creation_are_rendered_without_sql_injection() {

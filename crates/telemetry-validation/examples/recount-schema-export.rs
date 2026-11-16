@@ -1,5 +1,7 @@
 use clap::Parser;
-use recount_telemetry_schema::ddl::{Batching, FLUSH_MS, RECENT_BLOCK_ROWS, Schema};
+use recount_telemetry_schema::ddl::{
+    Batching, FLUSH_MS, ParticipantSchema, RECENT_BLOCK_ROWS, Schema,
+};
 use recount_telemetry_validation::transport::{
     ConsumerBudget, MAX_BROKER_BYTES, MAX_OUTPUT_ROWS, NORMALIZED_BROKER_BYTES, OUTPUT_ROWS,
 };
@@ -12,11 +14,14 @@ use std::{
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const PROTO: &str = include_str!("../../telemetry-schema/proto/recount.proto");
+const PARTICIPANT_PROTO: &str = include_str!("../../telemetry-schema/proto/executions.proto");
+const PARTICIPANT_DDL: &str = include_str!("../../../infra/clickhouse/participants.sql.in");
 const GENERATOR: &str = include_str!("../../telemetry-schema/build.rs");
 const DDL: &str = include_str!("../../../infra/clickhouse/schema.sql.in");
 const RENDERER: &str = include_str!("../../telemetry-schema/src/ddl.rs");
 const SCHEMA_LIBRARY: &str = include_str!("../../telemetry-schema/src/lib.rs");
 const COLUMNS: &str = recount_telemetry_schema::ANALYTICAL_COLUMNS;
+const PARTICIPANT_COLUMNS: &str = recount_telemetry_schema::PARTICIPANT_COLUMNS;
 const TRANSPORT: &str = include_str!("../src/transport.rs");
 
 #[derive(Parser)]
@@ -26,6 +31,10 @@ const TRANSPORT: &str = include_str!("../src/transport.rs");
     about = "Prepare a trusted current ClickHouse schema bundle"
 )]
 struct Options {
+    #[arg(long, env = "RECOUNT_PARTICIPANT_TOPIC", default_value = recount_telemetry_schema::execution::TOPIC)]
+    participant_topic: String,
+    #[arg(long, default_value = recount_telemetry_schema::execution::CLICKHOUSE_GROUP)]
+    participant_group: String,
     #[arg(long)]
     output: PathBuf,
     #[arg(long = "source-root", default_value = ".")]
@@ -69,6 +78,11 @@ fn digest(bytes: &[u8]) -> String {
 fn verify_source(root: &Path) -> Result<()> {
     for (name, compiled) in [
         ("crates/telemetry-schema/proto/recount.proto", PROTO),
+        (
+            "crates/telemetry-schema/proto/executions.proto",
+            PARTICIPANT_PROTO,
+        ),
+        ("infra/clickhouse/participants.sql.in", PARTICIPANT_DDL),
         ("crates/telemetry-schema/build.rs", GENERATOR),
         ("infra/clickhouse/schema.sql.in", DDL),
         ("crates/telemetry-schema/src/ddl.rs", RENDERER),
@@ -85,13 +99,36 @@ fn verify_source(root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn expected_columns(columns: &str) -> String {
+    columns
+        .lines()
+        .map(|line| {
+            let (name, kind) = line
+                .trim()
+                .trim_end_matches(',')
+                .split_once(' ')
+                .expect("generated name/type column");
+            format!("{name}\t{kind}\n")
+        })
+        .collect()
+}
+
 fn prepare(options: &Options) -> Result<()> {
+    if options.participant_topic == options.topic
+        || options.participant_topic == options.late_topic
+        || options.participant_group == options.group
+        || options.participant_group == options.late_group
+    {
+        return Err(
+            invalid("Participant topic and group must be separate from metric consumers").into(),
+        );
+    }
     verify_source(&options.source)?;
     let budget = ConsumerBudget::normalized(options.normalized_broker_max_bytes as usize)?;
     let default_receive = budget.receive_bytes;
     let budget = budget.with_receive_limit(options.kafka_receive_bytes.map(|v| v as usize))?;
     let batching = Batching::for_partition_limit(options.rows)?;
-    let sql = Schema {
+    let mut sql = Schema {
         database: "telemetry",
         bootstrap: &options.bootstrap,
         topic: &options.topic,
@@ -104,23 +141,28 @@ fn prepare(options: &Options) -> Result<()> {
         if_not_exists: true,
     }
     .render()?;
+    sql.push_str(
+        &ParticipantSchema {
+            database: "telemetry",
+            bootstrap: &options.bootstrap,
+            topic: &options.participant_topic,
+            group: &options.participant_group,
+            partition_limit: options.rows,
+        }
+        .render()?,
+    );
     let columns = COLUMNS.trim();
-    let expected = columns
-        .lines()
-        .map(|line| {
-            let (name, kind) = line
-                .trim()
-                .trim_end_matches(',')
-                .split_once(' ')
-                .expect("generated name/type column");
-            format!("{name}\t{kind}\n")
-        })
-        .collect::<String>();
+    let expected = expected_columns(columns);
     let artifacts = BTreeMap::from([
         ("schemas/recount.proto", PROTO.to_owned()),
+        ("schemas/executions.proto", PARTICIPANT_PROTO.to_owned()),
         ("schema.sql", sql),
         ("analytical-columns.sql", format!("{columns}\n")),
         ("expected-columns.tsv", expected),
+        (
+            "expected-participant-columns.tsv",
+            expected_columns(PARTICIPANT_COLUMNS),
+        ),
         ("output-rows", format!("{}\n", options.rows)),
         ("default-output-rows", format!("{OUTPUT_ROWS}\n")),
         ("kafka-receive-bytes", format!("{}\n", budget.receive_bytes)),
@@ -186,6 +228,7 @@ fn prepare(options: &Options) -> Result<()> {
         "output_rows": options.rows,
         "database": "telemetry", "consumer_group": options.group,
         "late_topic": options.late_topic, "late_consumer_group": options.late_group,
+        "participant_topic": options.participant_topic, "participant_consumer_group": options.participant_group,
         "recent_block_rows": RECENT_BLOCK_ROWS,
         "kafka_format": "ProtobufSingle", "point_rows": 1,
         "normalized_broker_max_bytes": options.normalized_broker_max_bytes,
@@ -228,6 +271,11 @@ mod tests {
     fn write_source(root: &Path) {
         for (name, compiled) in [
             ("crates/telemetry-schema/proto/recount.proto", PROTO),
+            (
+                "crates/telemetry-schema/proto/executions.proto",
+                PARTICIPANT_PROTO,
+            ),
+            ("infra/clickhouse/participants.sql.in", PARTICIPANT_DDL),
             ("crates/telemetry-schema/build.rs", GENERATOR),
             ("infra/clickhouse/schema.sql.in", DDL),
             ("crates/telemetry-schema/src/ddl.rs", RENDERER),
@@ -258,6 +306,8 @@ mod tests {
         let parent = directory();
         write_source(&parent);
         let mut options = Options {
+            participant_topic: recount_telemetry_schema::execution::TOPIC.into(),
+            participant_group: recount_telemetry_schema::execution::CLICKHOUSE_GROUP.into(),
             output: parent.join("custom-receive"),
             source: parent.clone(),
             bootstrap: "kafka:9092".into(),
@@ -289,6 +339,8 @@ mod tests {
         let source = parent.join("source");
         write_source(&source);
         let make = |name: &str| Options {
+            participant_topic: recount_telemetry_schema::execution::TOPIC.into(),
+            participant_group: recount_telemetry_schema::execution::CLICKHOUSE_GROUP.into(),
             output: parent.join(name),
             source: source.clone(),
             bootstrap: "kafka:9092".into(),
@@ -304,6 +356,14 @@ mod tests {
         };
         let first = make("first");
         let second = make("second");
+        let mut conflict = make("conflict");
+        conflict.participant_topic = conflict.topic.clone();
+        assert!(prepare(&conflict).is_err());
+        assert!(!conflict.output.exists());
+        conflict.participant_topic = recount_telemetry_schema::execution::TOPIC.into();
+        conflict.participant_group = conflict.group.clone();
+        assert!(prepare(&conflict).is_err());
+        assert!(!conflict.output.exists());
         prepare(&first).unwrap();
         prepare(&second).unwrap();
         assert_eq!(
@@ -361,6 +421,8 @@ mod tests {
         write_source(&parent);
         verify_source(&parent).unwrap();
         let options = Options {
+            participant_topic: recount_telemetry_schema::execution::TOPIC.into(),
+            participant_group: recount_telemetry_schema::execution::CLICKHOUSE_GROUP.into(),
             output: parent.join("not-created"),
             source: parent.clone(),
             bootstrap: "kafka:9092".into(),
@@ -422,6 +484,8 @@ mod tests {
             ),
         ] {
             let options = Options {
+                participant_topic: recount_telemetry_schema::execution::TOPIC.into(),
+                participant_group: recount_telemetry_schema::execution::CLICKHOUSE_GROUP.into(),
                 output: parent.join(name),
                 source: parent.clone(),
                 bootstrap: "kafka:9092".into(),
@@ -452,6 +516,10 @@ mod tests {
                 .replace(
                     "/etc/clickhouse-server/format_schemas/recount.proto",
                     &quote(&options.output.join("schemas/recount.proto")),
+                )
+                .replace(
+                    "/etc/clickhouse-server/format_schemas/executions.proto",
+                    &quote(&options.output.join("schemas/executions.proto")),
                 )
                 .replace(
                     "clickhouse-client --version",

@@ -10,12 +10,10 @@ import { fromCrossJSON, toJSONAsync } from "seroval";
 import { actorService } from "../../apps/web/src/auth/actor.server";
 import { createAuth } from "../../apps/web/src/auth/create-auth.server";
 import type { ExecutionSummary } from "../../apps/web/src/executions/contracts";
-import * as executions from "../../apps/web/src/executions/executions.server";
 import type { OperationResult } from "../../apps/web/src/lib/operation-result";
 import * as organizations from "../../apps/web/src/organizations/organizations.server";
 import * as projects from "../../apps/web/src/organizations/projects.server";
 import { trustedCodeSignIn } from "../../apps/web/tests/auth-actors";
-import { createTestNode } from "../../apps/web/tests/collector-node";
 import { createTestDatabase } from "../../apps/web/tests/database";
 import { serverFunctionPaths } from "../../tooling/server-function-metadata";
 import { stageWeb } from "../../tooling/stage-web";
@@ -162,7 +160,7 @@ test("generated Bun output serves localized public pages and safe static assets 
 		socket.setNoDelay(true);
 		socket.write(
 			[
-				`POST ${rpcPath("createExecution")} HTTP/1.1`,
+				`POST ${rpcPath("createProject")} HTTP/1.1`,
 				`Host: localhost:${port}`,
 				`Origin: ${origin}`,
 				"Content-Type: application/json",
@@ -239,11 +237,26 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 	);
 	const telemetrySockets = new Set<Socket>();
 	let telemetryQueries = 0;
+	let executionRows: Record<string, unknown>[] = [];
 	const telemetry = createServer((request, response) => {
-		request.resume();
-		telemetryQueries++;
-		response.writeHead(200, { "Content-Type": "application/json" });
-		response.end("");
+		let query = "";
+		request.on("data", (chunk) => {
+			query += chunk.toString();
+		});
+		request.on("end", () => {
+			telemetryQueries++;
+			const project = new URL(
+				request.url ?? "/",
+				"http://fixture.invalid",
+			).searchParams.get("param_project");
+			const rows = executionRows.filter((row) => row.project === project);
+			response.writeHead(200, { "Content-Type": "application/json" });
+			response.end(
+				query.includes("execution_participants")
+					? rows.map((row) => `${JSON.stringify(row)}\n`).join("")
+					: "",
+			);
+		});
 	});
 	telemetry.keepAliveTimeout = 60_000;
 	telemetry.on("connection", (socket) => {
@@ -397,20 +410,24 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 			organizationId: organization.id,
 			projectId: project.id,
 		};
-		const { nodeId } = await createTestNode(database.db, reference);
-		const execution = data(
-			await operations(headers, (actor) =>
-				executions.createExecution(database.db, actor, {
-					...reference,
-					requestId: randomUUID(),
-					name: "Native execution",
-					nodeId,
-					hostId: null,
-					startedAt: "2026-11-03T10:00:00Z",
-					endedAt: "2026-11-03T11:00:00Z",
-				}),
-			),
-		);
+		const executionKey = "run:native";
+		executionRows = [
+			{
+				project: project.id,
+				executionKey,
+				name: "Native execution",
+				workloadVersion: null,
+				parameters: [],
+				nodeCount: 1,
+				participantCount: 1,
+				firstSeenNs: (
+					BigInt(Date.parse("2026-11-03T10:00:00Z")) * 1000000n
+				).toString(),
+				lastSeenNs: (
+					BigInt(Date.parse("2026-11-03T11:00:00Z")) * 1000000n
+				).toString(),
+			},
+		];
 		async function rpc<T>(operation: string, input: unknown): Promise<T> {
 			const url = new URL(rpcPath(operation), origin);
 			url.searchParams.set(
@@ -434,10 +451,10 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 		}
 		const result = await rpc<ExecutionSummary>("getExecution", {
 			...reference,
-			executionId: execution.executionId,
+			executionKey,
 		});
-		expect(result.startedAt).toBeInstanceOf(Date);
-		expect(result.startedAt.toISOString()).toBe("2026-11-03T10:00:00.000Z");
+		expect(result.firstSeen).toBeInstanceOf(Date);
+		expect(result.firstSeen.toISOString()).toBe("2026-11-03T10:00:00.000Z");
 		const anonymous = await fetch(`${origin}/settings?section=user`, {
 			redirect: "manual",
 		});
@@ -467,12 +484,11 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 		);
 		await privatePage();
 		expect(await connections()).toBeGreaterThan(0);
-		await rpc("queryExecutionTelemetry", {
+		await rpc("getMetricAttributes", {
 			...reference,
-			executionId: execution.executionId,
-			buckets: 10,
+			metric: "recount.node.cpu.time",
 		});
-		expect(telemetryQueries).toBe(1);
+		expect(telemetryQueries).toBe(2);
 		expect(telemetrySockets.size).toBeGreaterThan(0);
 		const telemetryOpenedAt = performance.now();
 		child.kill("SIGTERM");

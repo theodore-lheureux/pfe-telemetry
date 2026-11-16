@@ -4,6 +4,7 @@ pub mod broker;
 pub mod config;
 mod delivery;
 pub mod live;
+mod participants;
 pub mod resources;
 #[cfg(test)]
 mod tests;
@@ -13,7 +14,10 @@ use opentelemetry_proto::tonic::collector::metrics::v1::{
     metrics_service_server::{MetricsService, MetricsServiceServer},
 };
 use prost::Message;
-use recount_telemetry_schema::wire::{PayloadKind, RawRecord};
+use recount_telemetry_schema::{
+    execution::MAX_CLAIM_BYTES,
+    wire::{PayloadKind, RawRecord, execution_participants_server::ExecutionParticipantsServer},
+};
 use recount_telemetry_validation::{
     Category, Issue, metadata, policy,
     validate::{self, Limits},
@@ -67,6 +71,7 @@ pub fn unix_nanos() -> Result<u64> {
         .try_into()?)
 }
 
+#[derive(Clone)]
 struct Ingestion {
     authority: Arc<dyn auth::Authority>,
     sink: Arc<dyn broker::Sink>,
@@ -183,6 +188,10 @@ pub async fn configured_router(
         .set_service_status(HEALTH_SERVICE, ServingStatus::Serving)
         .await;
     let name = "opentelemetry.proto.collector.metrics.v1.MetricsService";
+    let participant_name = "recount.telemetry.ExecutionParticipants";
+    reporter
+        .set_service_status(participant_name, ServingStatus::NotServing)
+        .await;
     reporter
         .set_service_status("", ServingStatus::NotServing)
         .await;
@@ -212,6 +221,7 @@ pub async fn configured_router(
             };
             reporter.set_service_status("", state).await;
             reporter.set_service_status(name, state).await;
+            reporter.set_service_status(participant_name, state).await;
         }
     });
     let ingestion = Ingestion {
@@ -219,6 +229,8 @@ pub async fn configured_router(
         sink,
         limits,
     };
+    let participants = ExecutionParticipantsServer::new(ingestion.clone())
+        .max_decoding_message_size(MAX_CLAIM_BYTES);
     let metrics = MetricsServiceServer::new(ingestion)
         .accept_compressed(CompressionEncoding::Gzip)
         .send_compressed(CompressionEncoding::Gzip)
@@ -228,6 +240,7 @@ pub async fn configured_router(
         .concurrency_limit_per_connection(max_in_flight)
         .timeout(Duration::from_secs(10))
         .add_service(health)
+        .add_service(participants)
         .add_service(metrics))
 }
 

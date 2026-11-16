@@ -413,9 +413,9 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		expect(await child.exited).toBe(missing ? 1 : 0);
 		const calls = readFileSync(log, "utf8");
 		expect(calls.includes("--create")).toBe(mode.startsWith("create"));
-		// Raw, normalized and late topics store the zstd batches their producers send.
+		// Metric and participant topics retain the zstd batches their producers send.
 		if (mode === "create") {
-			expect(calls.match(/compression\.type=zstd/g)).toHaveLength(3);
+			expect(calls.match(/compression\.type=zstd/g)).toHaveLength(4);
 			expect(calls).toContain("--create --topic late --partitions 3");
 		}
 		if (mode === "create-live") {
@@ -427,6 +427,81 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		expect(calls.includes("--alter") || calls.includes("--reset-offsets")).toBe(
 			false,
 		);
+	}
+});
+
+test("fresh ClickHouse initialization seeds participant offsets and refuses every existing group", async () => {
+	const path = directory();
+	const log = join(path, "offset-calls");
+	const tool = join(path, "offset-tool.sh");
+	writeFileSync(
+		tool,
+		`#!/bin/bash
+printf '%s %s\\n' "$(basename "$0")" "$*" >> "$MOCK_LOG"
+group= topic=
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --group) group=$2; shift 2 ;;
+        --topic) topic=$2; shift 2 ;;
+        --list) printf '%s\\n' "\${MOCK_EXISTING_GROUP:-}"; exit 0 ;;
+        *) shift ;;
+    esac
+done
+if [[ "$(basename "$0")" == kafka-get-offsets.sh ]]; then
+    echo "$topic:0:0"
+    [[ "$topic" == participants ]] || echo "$topic:1:0"
+    exit 0
+fi
+case "$group" in
+    recount-clickhouse) echo "$group normalized 0 0"; echo "$group normalized 1 0" ;;
+    recount-clickhouse-late) echo "$group late 0 0"; echo "$group late 1 0" ;;
+    recount-clickhouse-participants) echo "$group participants 0 0" ;;
+esac
+`,
+	);
+	chmodSync(tool, 0o755);
+	for (const name of ["kafka-consumer-groups.sh", "kafka-get-offsets.sh"])
+		symlinkSync(tool, join(path, name));
+	const script = join(path, "initialize.sh");
+	writeFileSync(
+		script,
+		readFileSync(
+			join(import.meta.dir, "../kafka/initialize-clickhouse-offsets.sh"),
+			"utf8",
+		).replace("tool=/opt/kafka/bin", `tool='${path}'`),
+	);
+	for (const existing of [
+		"",
+		"recount-clickhouse",
+		"recount-clickhouse-late",
+		"recount-clickhouse-participants",
+	]) {
+		writeFileSync(log, "");
+		const child = Bun.spawn(["bash", script], {
+			env: {
+				...process.env,
+				MOCK_LOG: log,
+				MOCK_EXISTING_GROUP: existing,
+				RECOUNT_CONFIRM_EMPTY_CLICKHOUSE_GROUP: "recount-clickhouse",
+				RECOUNT_KAFKA_BOOTSTRAP: "synthetic:9092",
+				RECOUNT_NORMALIZED_TOPIC: "normalized",
+				RECOUNT_LATE_TOPIC: "late",
+				RECOUNT_NORMALIZED_PARTITIONS: "2",
+				RECOUNT_PARTICIPANT_TOPIC: "participants",
+				RECOUNT_PARTICIPANT_PARTITIONS: "1",
+			},
+			stdout: "ignore",
+			stderr: "pipe",
+		});
+		expect(await child.exited).toBe(existing ? 1 : 0);
+		const calls = readFileSync(log, "utf8");
+		expect(calls.match(/--reset-offsets/g) ?? []).toHaveLength(
+			existing ? 0 : 3,
+		);
+		if (!existing)
+			expect(calls).toContain(
+				"--group recount-clickhouse-participants --topic participants --reset-offsets --to-offset 0 --execute",
+			);
 	}
 });
 

@@ -37,6 +37,10 @@ pub struct Config {
     pub kafka_bootstrap: String,
     #[arg(long, env = "RECOUNT_RAW_TOPIC", default_value = recount_telemetry_schema::RAW_TOPIC, value_parser = nonblank)]
     pub raw_topic: String,
+    #[arg(long, env = "RECOUNT_PARTICIPANT_TOPIC", default_value = recount_telemetry_schema::execution::TOPIC, value_parser = nonblank)]
+    pub participant_topic: String,
+    #[arg(long, env = "RECOUNT_PARTICIPANT_PARTITIONS", default_value_t = 3, value_parser = clap::value_parser!(u32).range(1..=4096))]
+    pub participant_partitions: u32,
     #[arg(long, env = "RECOUNT_LIVE_TOPIC", default_value = "recount.metrics.live", value_parser = nonblank)]
     pub live_topic: String,
     #[arg(long, env = "RECOUNT_LIVE_PARTITIONS", default_value_t = 8, value_parser = clap::value_parser!(u32).range(1..=256))]
@@ -64,10 +68,18 @@ impl Config {
             .validation
             .limits()
             .map_err(|_| invalid("incoherent validation limits"))?;
-        if self.raw_topic == self.live_topic {
-            return Err(invalid("raw and Live topics must differ"));
+        if self.raw_topic == self.live_topic
+            || self.participant_topic == self.raw_topic
+            || self.participant_topic == self.live_topic
+        {
+            return Err(invalid("metric, participant and Live topics must differ"));
         }
         transport::body_fits(limits.decoded_bytes, self.raw_broker_max_bytes).map_err(invalid)?;
+        transport::body_fits(
+            recount_telemetry_schema::execution::MAX_ANALYTICAL_RECORD_BYTES,
+            self.raw_broker_max_bytes,
+        )
+        .map_err(invalid)?;
         if self
             .database_url
             .as_ref()

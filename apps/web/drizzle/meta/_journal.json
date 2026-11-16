@@ -169,6 +169,13 @@
       "when": 1794744214966,
       "tag": "0023_calculated_metrics",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794801123352,
+      "tag": "0024_execution_participants",
+      "breakpoints": true
     }
   ]
 }

@@ -343,6 +343,7 @@ export async function openSettingsSection(
 async function createWorkspace(
 	parallelIndex: number,
 	bundle: ProductionBundle | undefined,
+	environment: Record<string, string>,
 ) {
 	const timings: Record<string, number> = {};
 	async function measure<T>(name: string, action: () => Promise<T>) {
@@ -442,6 +443,7 @@ async function createWorkspace(
 					"RECOUNT_CLICKHOUSE_TEST_",
 					"RECOUNT_STORAGE_TEST_",
 					"RECOUNT_NORMALIZER_TEST_",
+					"RECOUNT_PARTICIPANT_TEST_",
 					"RECOUNT_RUNTIME_",
 					"RECOUNT_PIPELINE_",
 				].some((prefix) => key.startsWith(prefix))
@@ -463,6 +465,7 @@ async function createWorkspace(
 				detached: true,
 				env: {
 					...serverEnvironment,
+					...environment,
 					NODE_ENV: bundle ? "production" : "development",
 					DATABASE_URL: url.toString(),
 					NITRO_HOST: "127.0.0.1",
@@ -620,7 +623,10 @@ async function createWorkspace(
 }
 
 export const test = base.extend<
-	{ workspace: Awaited<ReturnType<typeof createWorkspace>> },
+	{
+		workspace: Awaited<ReturnType<typeof createWorkspace>>;
+		workspaceEnvironment: Record<string, string>;
+	},
 	{ productionBundle: ProductionBundle | undefined }
 >({
 	productionBundle: [
@@ -630,10 +636,16 @@ export const test = base.extend<
 		},
 		{ scope: "worker" },
 	],
-	workspace: async ({ productionBundle }, use, testInfo) => {
+	workspaceEnvironment: [{}, { option: true }],
+	workspace: async (
+		{ productionBundle, workspaceEnvironment },
+		use,
+		testInfo,
+	) => {
 		const workspace = await createWorkspace(
 			testInfo.parallelIndex,
 			productionBundle,
+			workspaceEnvironment,
 		);
 		try {
 			await use(workspace);

@@ -54,7 +54,9 @@ function discoveryStatements(database: string) {
 		.filter(Boolean);
 }
 
-export async function createPointFixture() {
+export async function createPointFixture(
+	options: { participants?: boolean } = {},
+) {
 	const url = process.env.RECOUNT_CLICKHOUSE_TEST_URL;
 	const executable = process.env.RECOUNT_CONTRACT_FIXTURE;
 	if (!url || !executable)
@@ -117,6 +119,25 @@ export async function createPointFixture() {
 		await admin.command({ query: `CREATE DATABASE ${name}` });
 		created = true;
 		await client.command({ query: pointTableStatement(columns) });
+		if (options.participants) {
+			const participantColumns = (
+				await output("--participant-columns")
+			).toString();
+			const ddl = readFileSync(
+				new URL(
+					"../../../../infra/clickhouse/participants.sql.in",
+					import.meta.url,
+				),
+				"utf8",
+			)
+				.split(";")[0]
+				.replace("__DATABASE__.", "")
+				.replace("__PARTICIPANT_COLUMNS__", participantColumns.trim());
+			await client.command({ query: ddl });
+			await client.command({
+				query: "SYSTEM STOP MERGES execution_participants",
+			});
+		}
 		// The real discovery DDL from the schema template, so tests exercise its views.
 		for (const statement of discoveryStatements(name))
 			await client.command({ query: statement });
@@ -146,6 +167,7 @@ export async function createPointFixture() {
 			"metric_points",
 			"metric_definitions",
 			"attribute_definitions",
+			...(options.participants ? ["execution_participants"] : []),
 		])
 			await admin.command({
 				query: `GRANT SELECT ON ${name}.${table} TO ${readerName}`,

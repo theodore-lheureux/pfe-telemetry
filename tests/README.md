@@ -64,6 +64,15 @@ The storage suite uses:
   `RECOUNT_CLICKHOUSE_TEST_PASSWORD`
 - `RECOUNT_CONTRACT_FIXTURE`
 
+The ingestion API's ignored `participants` integration target uses the storage
+allocation settings above plus `RECOUNT_PARTICIPANT_TEST_SCHEMA` naming the mounted
+current participant proto (normally `executions.proto`). It runs the actual claim
+RPC and Kafka publisher against a single participant topic, verifies native
+ClickHouse replay and committed offsets, and removes its own database and topic
+on success. Execution reader tests in `apps/web/tests/telemetry/executions.test.ts`
+use the shared ClickHouse fixture to check project predicates, latest revisions,
+retractions, key pagination and unchanged point/series identities.
+
 Storage cases send one bare point per Kafka record through `ProtobufSingle`;
 the shared fixture's multirow file output uses standard delimited `Protobuf`
 for HTTP/file interchange and round-trip verification. Cases create fresh topics,
@@ -194,7 +203,11 @@ Supply the `RECOUNT_PIPELINE_*` allocation settings required by the test, includ
 three packaged Rust images and an immutable ClickHouse restart identity. The test
 checks image executable hashes against the host artifacts, runs real Linux
 sampling through the ingestion API and normalizer, verifies both hosts through
-the authorized English/French browser, restarts ClickHouse and checks isolation.
+the node-context fixture reader and the English/French execution metadata page,
+restarts ClickHouse and checks isolation. Allocate
+`RECOUNT_PIPELINE_PARTICIPANT_TOPIC` and
+`RECOUNT_PIPELINE_PARTICIPANT_PARTITIONS` as well: ingestion readiness checks
+the participant topic even when this gate sends only metrics.
 Missing configuration or disabled restart fails this gate instead of skipping it.
 
 On a non-Linux host, build, lint and test Linux-only crates in the reused Linux

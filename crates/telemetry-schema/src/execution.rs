@@ -1,14 +1,11 @@
-//! Limits and transport names for the execution participant contract.
+//! Limits and transport names for execution participant claims.
 //! Admission and local delivery are implemented by their respective services.
 
 pub const CLAIM_RPC: &str = "/recount.telemetry.ExecutionParticipants/Claim";
-pub const RAW_TOPIC: &str = "recount.participants.raw";
-pub const NORMALIZED_TOPIC: &str = "recount.participants.normalized";
-pub const PROJECTOR_GROUP: &str = "recount-participants";
+pub const TOPIC: &str = "recount.participants";
 pub const CLICKHOUSE_GROUP: &str = "recount-clickhouse-participants";
 
 pub const MAX_CLAIM_BYTES: usize = 65_536;
-pub const MAX_RAW_RECORD_BYTES: usize = 69_632;
 pub const MAX_ANALYTICAL_RECORD_BYTES: usize = 73_728;
 pub const MAX_EXECUTION_KEY_BYTES: usize = 128;
 pub const MAX_NAME_BYTES: usize = 128;

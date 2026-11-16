@@ -4,6 +4,8 @@
 
 The [telemetry point contract](../../docs/telemetry-point-contract.md) defines current messages, identities, retry behavior and semantic limits. Standard OTLP can omit Linux metadata and optional batch headers. The Linux collector sends `recount-collection-profile: linux` and immutable batch identity; its root/local adapter does not grant from payload topology.
 
+The separate `recount.telemetry.ExecutionParticipants/Claim` RPC accepts one participant fact, using the same node token and admission semaphore. It enforces exact project/node/root scope, Linux local-kind grants and the [participant contract](../../docs/execution-participants.md), then publishes the final `AnalyticalParticipant` directly to `RECOUNT_PARTICIPANT_TOPIC` for native ClickHouse consumption. It acknowledges only confirmed Kafka publication. There is no participant normalizer or PostgreSQL execution write, and no execution attributes are added to points. Claims are uncompressed and capped at 64 KiB.
+
 ## Configuration
 
 `recount-ingestion-api --help` generates CLI flags, environment names and defaults from their owning types. Command-line values override environment settings and defaults. `RUST_LOG` uses the standard tracing filter. Service operation requires `RECOUNT_INGESTION_DATABASE_URL`; help hides its value.
@@ -19,7 +21,7 @@ Shared limits must match the normalizer. Raw envelope capacity includes trusted 
 
 The seven admission/normalization defaults belong to `telemetry-validation::validate::Limits`; both applications flatten the same `LimitArgs`. Topic budgets and derived client ranges use the shared transport validator. Ingestion checks only its raw-topic boundary and needs no normalized-topic privileges. See [deployment configuration ownership](../../infra/README.md#configuration-ownership) for coordinated overrides.
 
-The standard gRPC health endpoint reports liveness for `grpc.health.v1.Health`. Empty service and `opentelemetry.proto.collector.metrics.v1.MetricsService` report Kafka readiness, refreshed every five seconds, and require a node revocation list loaded within the last five minutes. Trace health is not serving.
+The standard gRPC health endpoint reports liveness for `grpc.health.v1.Health`. Empty service, `opentelemetry.proto.collector.metrics.v1.MetricsService` and `recount.telemetry.ExecutionParticipants` report readiness of the raw metric topic and the participant topic, refreshed every five seconds, and require a node revocation list loaded within the last five minutes. Trace health is not serving.
 
 ## Authority and admission
 

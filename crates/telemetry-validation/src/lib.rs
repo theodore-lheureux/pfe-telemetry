@@ -2,6 +2,7 @@ pub mod authority;
 pub mod catalogue;
 pub mod cli;
 pub mod delivery;
+pub mod execution;
 pub mod linux_adapter;
 pub mod metadata;
 pub mod policy;

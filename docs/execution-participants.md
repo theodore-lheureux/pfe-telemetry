@@ -1,8 +1,8 @@
 # Execution keys and participant facts
 
-An execution is `(project_id, execution_key)`. The first accepted claim creates its PostgreSQL record asynchronously; later claims join the same key. A key such as `run:2026-11-15-a` or `slurm:48213` needs no pre-registration. Reusing a key intentionally joins the existing execution, even after every participant has ended.
+An execution is `(project_id, execution_key)`, derived from participant facts in ClickHouse. The first claim introduces the key; later claims join it idempotently. A key such as `run:2026-11-15-a` or `slurm:48213` needs no pre-registration or PostgreSQL execution record. Reusing a key intentionally joins the existing execution, even after every participant has ended.
 
-Participant facts are separate from measurements. Neither OTLP points, analytical point columns, resource identities nor `series_id` gain an execution dimension. This replaces the one-source/interval recording model in [execution telemetry](execution-telemetry.md); that model remains implemented until Phase 2.
+Participant facts are separate from measurements. Neither OTLP points, analytical point columns, resource identities nor `series_id` gain an execution dimension. The [execution web model](execution-telemetry.md) uses project-scoped keys rather than source/interval recordings.
 
 ## Local launcher delivery
 
@@ -45,7 +45,7 @@ Provenance retains `origin` (`LAUNCHER`, `SCHEDULER_ADAPTER`, `ANCESTRY`), launc
 
 ## Collector → ingestion
 
-The unary RPC `/recount.telemetry.ExecutionParticipants/Claim` accepts one `ParticipantFact` and returns an empty `ClaimParticipantResponse` only after confirmed raw Kafka publication. This is a separate service next to OTLP, not execution attributes hidden in metrics. Use the existing node bearer token and endpoint. No compression is accepted initially.
+The unary RPC `/recount.telemetry.ExecutionParticipants/Claim` accepts one `ParticipantFact` and returns an empty `ClaimParticipantResponse` only after confirmed publication of its final `AnalyticalParticipant` to Kafka. This is a separate service next to OTLP, not execution attributes hidden in metrics. Use the existing node bearer token and endpoint. No compression is accepted initially.
 
 | Fields                                          | Required semantics                                                                                                                                                                                                                                  |
 | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -64,25 +64,27 @@ Identity fields (tenant, node, host, boot, execution key, participant, kind, sub
 
 ### Limits and authorization
 
-Limits are UTF-8 bytes and declared in [`execution.rs`](../crates/telemetry-schema/src/execution.rs): 65,536 per local/network claim, 69,632 per raw record and 73,728 per analytical record. Preflight all three before publication. Name ≤128 bytes; workload version ≤256; ≤32 parameters with keys 1–64 and values 0–1,024 bytes; namespace identifiers 1–128; cgroup path ≤4,096; adapter identifier ≤64. Names/version are nonempty when present, have no leading/trailing whitespace, and metadata strings contain no control characters. Parameter keys use ASCII `[A-Za-z0-9][A-Za-z0-9._-]*`, are unique and sorted bytewise. Adapter uses that same grammar. Empty parameter values are valid.
+Limits are UTF-8 bytes and declared in [`execution.rs`](../crates/telemetry-schema/src/execution.rs): 65,536 per local/network claim and 73,728 per final analytical record. Preflight both before publication. Name ≤128 bytes; workload version ≤256; ≤32 parameters with keys 1–64 and values 0–1,024 bytes; namespace identifiers 1–128; cgroup path ≤4,096; adapter identifier ≤64. Names/version are nonempty when present, have no leading/trailing whitespace, and metadata strings contain no control characters. Parameter keys use ASCII `[A-Za-z0-9][A-Za-z0-9._-]*`, are unique and sorted bytewise. Adapter uses that same grammar. Empty parameter values are valid.
 
 Process/cgroup namespace identifiers use the existing collector identifier grammar. Process PID fits positive Int32; start ticks may be zero. Cgroup paths start with `/`, are not `/`, and contain no empty, `.` or `..` component, trailing slash or control character. Cgroup incarnation and launcher references use canonical nonnil UUIDs. Unknown enum values, absent required messages, incompatible provenance, invalid times/identities and duplicate parameters fail validation. Membership facts forbid metadata; provenance fields irrelevant to their origin are rejected except the retained launcher reference on ancestry.
 
 Ingestion authenticates using the [existing node-token and revocation policy](collector-enrollment.md#ingestion-and-revocation), then requires exact equality with the token's project, node/source and host root. It requires the Linux adapter and process local-kind grant, plus the container local-kind grant when a cgroup is present. It derives trusted `SecurityScope`; caller fields never grant authority. Root, ancestry and parent identities all use the same enclosing host and boot. No synchronous execution lookup, PostgreSQL write or workload inference occurs on admission.
 
-Malformed claims return `INVALID_ARGUMENT`, foreign scope or missing grants `PERMISSION_DENIED`, invalid tokens `UNAUTHENTICATED`, and deterministic limits `RESOURCE_EXHAUSTED` without retry advice. None publish. Authority/broker outages return retryable `UNAVAILABLE`; an uncertain timeout retries the identical fact. Upload timing uses `last_seen` with the token's existing maximum age/skew; old facts outside that finite delivery window are explicitly rejected with `FAILED_PRECONDITION`, not retimed. End/exit must not exceed the ingestion clock plus token skew. Accepted replay validates the retained contract without refreshing credentials, revocation or upload age.
+Malformed claims return `INVALID_ARGUMENT`, foreign scope or missing grants `PERMISSION_DENIED`, invalid tokens `UNAUTHENTICATED`, and deterministic limits `RESOURCE_EXHAUSTED` without retry advice. None publish. Authority/broker outages return retryable `UNAVAILABLE`; an uncertain timeout retries the identical fact. Upload timing uses `last_seen` with the token's existing maximum age/skew; old facts outside that finite delivery window are explicitly rejected with `FAILED_PRECONDITION`, not retimed. End/exit must not exceed the ingestion clock plus token skew. Replaying already accepted Kafka records does not refresh credentials, revocation or upload age.
 
 ## Kafka and storage
 
-Use separate `recount.participants.raw` and `recount.participants.normalized` topics. Ingestion writes one bare `RawParticipantRecord` containing trusted scope, accepted record UUID, receipt time and the fact. Route by `TypedHash("recount.execution-route")`, with project ID and execution key as length-prefixed fields, using the existing fixed-count partition function. One key stays ordered in one partition; there is no cross-key order.
+Use one topic, `recount.participants`. After token-scope checks, ingestion resolves the existing process resource IDs and publishes one bare `AnalyticalParticipant`, including its accepted record UUID and receipt time. Route by `TypedHash("recount.execution-route")`, with project ID and execution key as length-prefixed fields, using the existing fixed-count partition function. One key stays ordered in one partition; there is no cross-key order.
 
-A participant mode of the normalizer consumes raw facts with group `recount-participants`. For each input it validates the retained record, upserts the PostgreSQL execution, then publishes one bare `AnalyticalParticipant` and waits for Kafka acknowledgement before advancing input progress. Failures halt that input; do not skip poison or reset checkpoints. A separate service credential permits only execution projection, not user or membership administration. Fresh groups require explicit bootstrap, as for point normalization.
+ClickHouse consumes that topic directly. There is no participant raw/normalized split, normalizer mode, application consumer group, PostgreSQL projection or projector credential. Admission already performs the validation and projection needed by storage, so another worker would duplicate that boundary without satisfying an additional acceptance check.
 
-PostgreSQL commit and Kafka output are not atomic. A crash can leave execution metadata visible before participants, or replay an upsert/output; both are safe. Kafka acceptance is not either store's visibility guarantee. Replaying retained raw facts preserves fact/revision identity and process resource IDs.
+The participant topic is trusted storage input: only ingestion may publish to it. Broker access is an operator boundary, not node authorization.
+
+Kafka acknowledgement confirms acceptance, not immediate queryability. Native replay preserves the stored fact/revision identity and process resource IDs. Only the ClickHouse group advances downstream progress; its strict source and non-aggregating materialized view store records before advancing offsets.
 
 ### ClickHouse participants
 
-`telemetry.execution_participants` uses the flat `AnalyticalParticipant` fields as typed columns: strings, UInt8 enums/boolean, UInt32 PID/UID/outcomes, UInt64 revisions/ticks/nanoseconds, nullable optional scalars, and Protobuf bytes for full provenance and metadata.
+`telemetry.execution_participants` uses the flat `AnalyticalParticipant` fields as typed columns: strings, UInt8 enums/boolean, UInt32 PID/UID/outcomes, UInt64 revisions/ticks/nanoseconds, nullable optional scalars and Protobuf bytes for full provenance. Metadata is queryable directly through nullable `execution_name`, nullable `workload_version` and an array of parameter key/value tuples.
 
 ```sql
 ENGINE = ReplacingMergeTree(revision)
@@ -96,16 +98,16 @@ Readers select the latest revision using bounded `FINAL` with tenant/key predica
 
 Query-time execution analytics resolves only nonretracted `PROCESS_MEMBERSHIP` rows to `(project, node/source, process_resource_id, interval)` and performs a semijoin against point resource/time. Overlapping facts must not multiply points. Unassociated processes stay observable. Participant lifecycle facts supply machine/owner/start/end/exit display, not invented workload measurements or aggregate distributed completion.
 
-### PostgreSQL execution
+### Execution reads
 
-Replace `app.execution` directly with UUID `id`, tenant-qualified project foreign key, `execution_key` (unique with project ID), `name`, nullable `workload_version`, `parameters` JSONB string object, `created_at`, nullable `created_by` web-user attribution and retained `created_by_node_id`. Remove source, host and recording interval columns. Do not foreign-key historical node attribution to a deletable node. Keep project-reader visibility from [application access](application-access.md).
+The web application lists keys from a bounded, project-predicated query over `execution_participants FINAL`. It filters retractions after selecting revisions, then groups by execution key. Lifecycle metadata comes from the earliest active lifecycle, ordered by `(first_seen_unix_nano, node_id, fact_id)`; absent names fall back to the key. Corrections and retractions can change the displayed metadata. Every project reader can read all executions in that project under [application access](application-access.md).
 
-The projector inserts with `ON CONFLICT (project_id, execution_key) DO NOTHING`, resolving organization from the canonical project in the same transaction. The first accepted record in that key's partition supplies initial metadata (default name = key, version absent, parameters `{}`); joins never overwrite it, even when later metadata differs. A database/project failure prevents checkpoint progress. Creation is eventual and requires no prior web record.
+Each private operation checks canonical project access and uses the existing analytics slot and SELECT-only ClickHouse client. Pages contain 50 keys in ascending key order, with one additional row to detect the next page. Queries cap physical rows, bytes, result size, memory and execution time; limit failures are errors, not empty or truncated successes.
 
-The browser lists these projected executions and removes the recording-create form/API. Machine claims do not impersonate web users: `created_by` is null; project admins may edit execution metadata under independently authorized, tenant-qualified operations. Owner UID remains participant provenance. Start/end/exit come from participants, not stored source/time selectors. No old-record conversion, dual readers or data backfill is provided. Generate one Drizzle migration for the new schema; recreate only explicitly allocated incompatible disposable test databases.
+Drop the old `app.execution` interval table in one Drizzle migration. There is no replacement PostgreSQL execution table or metadata editing API. Owner UID, node, start/end and exit remain on participant facts. No old-record conversion, dual readers or data backfill is provided.
 
 ## Implementation boundary and fixtures
 
-Ingestion owns validation, projection, storage and execution listings. The launcher owns local persistence; the collector owns cgroup/ancestry discovery, durable membership facts and claim export; query-time analytics resolves memberships. Runtime implementation follows this contract.
+Ingestion supplies validation, analytical projection, direct publication and execution listings. The launcher owns local persistence; the collector owns cgroup/ancestry discovery, durable membership facts and claim export; workload analytics consumes those facts at query time.
 
-Phase 2 fixtures cover two nodes joining one key, duplicate/out-of-order revisions and retractions, cgroup root/child membership, ancestry with reparenting, unassociated processes, same PID with different ticks/boot/namespace, explicit zero exit versus unknown, malformed/foreign project/node/root claims, and offline handoff/replay. Assert unchanged point bytes, process resource IDs and `series_id`; verify first-claim creation and stable metadata after joins. Use the reused backend with disposable database/topic/group names. Linux-only discovery/export checks run in the existing Linux build container.
+Fixtures cover two nodes joining one key, duplicate/out-of-order revisions and retractions, cgroup root/child membership, ancestry evidence, unassociated processes, PID reuse, explicit zero exit versus unknown, malformed/foreign project/node/root claims, native Kafka replay and bounded authorized execution reads. Assert unchanged point and process identities and `series_id`. Use the reused backend with disposable database/topic/group names. Launcher persistence and Linux discovery/export retain their separate integration checks.

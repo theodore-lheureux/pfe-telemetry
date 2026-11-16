@@ -2,21 +2,21 @@ import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { getDatabase } from "../db/client.server";
 import { createReceipt } from "../db/create-receipts-schema";
-import type { CreateExecutionInput } from "../executions/contracts";
 import type { CreateProjectInput } from "../organizations/contracts";
 import { OperationError } from "./operation-error";
 
 type Database = ReturnType<typeof getDatabase>;
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
-type CreateScope = { organizationId: string } & (
-	| { operation: "create-project"; projectId: null }
-	| { operation: "create-execution"; projectId: string }
-);
+type CreateScope = {
+	organizationId: string;
+	operation: "create-project";
+	projectId: null;
+};
 
 export function createInputHash(
 	scope: CreateScope,
 	actorId: string,
-	submission: CreateProjectInput | CreateExecutionInput,
+	submission: CreateProjectInput,
 ) {
 	const { requestId: _, ...semantic } = submission;
 	return createHash("sha256")
@@ -39,7 +39,7 @@ export function createOnce<Access, Result>(
 	input: {
 		actorId: string;
 		scope: CreateScope;
-		submission: CreateProjectInput | CreateExecutionInput;
+		submission: CreateProjectInput;
 		resourceId: string;
 		authorize: (tx: Transaction) => Promise<Access>;
 		create: (

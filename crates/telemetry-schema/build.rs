@@ -62,13 +62,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo::rerun-if-changed=proto/recount.proto");
     println!("cargo::rerun-if-changed=proto/executions.proto");
     let out = PathBuf::from(std::env::var("OUT_DIR")?);
-    prost_build::Config::new()
+    let mut prost = prost_build::Config::new();
+    prost
         .file_descriptor_set_path(out.join("recount.descriptor"))
-        .protoc_executable(protoc_bin_vendored::protoc_bin_path()?)
-        .compile_protos(
-            &["proto/recount.proto", "proto/executions.proto"],
-            &["proto"],
-        )?;
+        .protoc_executable(protoc_bin_vendored::protoc_bin_path()?);
+    tonic_prost_build::configure().compile_with_config(
+        prost,
+        &["proto/recount.proto", "proto/executions.proto"],
+        &["proto"],
+    )?;
     let descriptor =
         FileDescriptorSet::decode(fs::read(out.join("recount.descriptor"))?.as_slice())?;
     let messages: BTreeMap<_, _> = descriptor
@@ -80,18 +82,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(|m| (format!(".{}.{}", file.package(), m.name()), m.clone()))
         })
         .collect();
-    let columns = messages[".recount.telemetry.AnalyticalPoint"]
-        .field
-        .iter()
-        .map(|f| {
-            format!(
-                "    {} {}",
-                f.name(),
-                sql_type(".recount.telemetry.AnalyticalPoint", f, &messages)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(",\n");
-    fs::write(out.join("analytical-columns.sql"), columns)?;
+    for (message, file) in [
+        (
+            ".recount.telemetry.AnalyticalPoint",
+            "analytical-columns.sql",
+        ),
+        (
+            ".recount.telemetry.AnalyticalParticipant",
+            "participant-columns.sql",
+        ),
+    ] {
+        let columns = messages[message]
+            .field
+            .iter()
+            .map(|f| format!("    {} {}", f.name(), sql_type(message, f, &messages)))
+            .collect::<Vec<_>>()
+            .join(",\n");
+        fs::write(out.join(file), columns)?;
+    }
     Ok(())
 }

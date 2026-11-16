@@ -177,6 +177,8 @@ jobs:
       RECOUNT_LATE_TOPIC: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.pipeline.late
       RECOUNT_NORMALIZER_GROUP: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.pipeline.normalizer
       RECOUNT_STORAGE_TEST_ALLOW_CREATE: "1"
+      RECOUNT_PARTICIPANT_TEST_SCHEMA: executions.proto
+      RECOUNT_PARTICIPANT_TOPIC: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}.pipeline.participants
       RECOUNT_STORAGE_TEST_NAMESPACE: recount.ci.${{ github.run_id }}.${{ github.run_attempt }}
       RECOUNT_STORAGE_TEST_BROKER: 127.0.0.1:19092
       RECOUNT_STORAGE_TEST_INTERNAL_BROKER: kafka:9092
@@ -236,6 +238,8 @@ jobs:
         run: bun --no-env-file tests/ci/runtime-settings.ts
       - name: Native point fidelity, replay, poison, missing and expired checkpoints, fanout and sparse flush
         run: just --no-dotenv test-integration storage --release
+      - name: Participant Kafka and ClickHouse replay
+        run: cargo test --locked --release -p recount-ingestion-api --test participants -- --ignored --exact --nocapture participant_facts_replay_through_native_clickhouse
       - name: Real HTTP reader, exact values, cancellation, capacity and SELECT-only grants
         run: just --no-dotenv test-integration telemetry
       - name: Image-pinned schema and packaged application smoke assertions

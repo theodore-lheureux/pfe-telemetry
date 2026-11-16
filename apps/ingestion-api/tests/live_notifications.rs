@@ -87,12 +87,20 @@ async fn notifications_reference_confirmed_raw_records_and_live_failure_cannot_r
     };
     let sink = KafkaSink::new(
         &bootstrap,
-        &raw_topic,
-        1,
+        recount_ingestion_api::broker::Topic {
+            name: &raw_topic,
+            partitions: 1,
+        },
         4194304,
         6291456,
-        live_topic.clone(),
-        8,
+        recount_ingestion_api::broker::Topic {
+            name: &live_topic,
+            partitions: 8,
+        },
+        recount_ingestion_api::broker::Topic {
+            name: "unused.participants",
+            partitions: 1,
+        },
     )
     .unwrap();
     sink.publish(&raw, &body).await.unwrap();

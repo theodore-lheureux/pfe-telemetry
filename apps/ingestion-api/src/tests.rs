@@ -21,14 +21,26 @@ use tokio::{
 };
 use tonic::{Code, metadata::MetadataMap};
 mod live;
+mod participants;
 
 #[derive(Default)]
 struct TestSink {
     records: Mutex<Vec<RawRecord>>,
+    participants: Mutex<Vec<recount_telemetry_schema::wire::AnalyticalParticipant>>,
     fail: AtomicBool,
 }
 #[tonic::async_trait]
 impl broker::Sink for TestSink {
+    async fn publish_participant(
+        &self,
+        row: &recount_telemetry_schema::wire::AnalyticalParticipant,
+    ) -> Result<()> {
+        if self.fail.load(Ordering::SeqCst) {
+            return Err("unconfirmed".into());
+        }
+        self.participants.lock().unwrap().push(row.clone());
+        Ok(())
+    }
     async fn publish(&self, raw: &RawRecord, _body: &ExportMetricsServiceRequest) -> Result<()> {
         if self.fail.load(Ordering::SeqCst) {
             return Err("unconfirmed".into());

@@ -75,25 +75,31 @@ if (
 	throw new Error(
 		"Selected schema differs from the running image's pinned schema",
 	);
-/** A setting's values in schema order: the recent Kafka table's first, the late one's second. */
+/** Schema order is recent metrics, late metrics, then participants. */
 function schemaSettings(name: string) {
 	const matches = [
 		...schema.matchAll(
 			new RegExp(`^\\s*${name} = '([A-Za-z0-9_.-]+)',?$`, "gm"),
 		),
 	];
-	if (matches.length !== 2)
-		throw new Error(`Expected two pinned schema settings: ${name}`);
+	if (matches.length !== 3)
+		throw new Error(`Expected three pinned schema settings: ${name}`);
 	return matches.map((match) => match[1]);
 }
 const [nativeGroup] = schemaSettings("kafka_group_name");
-const [recentTopic, lateTopic] = schemaSettings("kafka_topic_list");
+const [recentTopic, lateTopic, participantTopic] =
+	schemaSettings("kafka_topic_list");
 if (
 	recentTopic !== topics.RECOUNT_NORMALIZED_TOPIC ||
-	lateTopic !== topics.RECOUNT_LATE_TOPIC
+	lateTopic !== topics.RECOUNT_LATE_TOPIC ||
+	participantTopic !== topics.RECOUNT_PARTICIPANT_TOPIC
 )
 	throw new Error("Schema bundle disagrees with the selected topic allocation");
-for (const key of ["RECOUNT_RAW_PARTITIONS", "RECOUNT_NORMALIZED_PARTITIONS"])
+for (const key of [
+	"RECOUNT_RAW_PARTITIONS",
+	"RECOUNT_NORMALIZED_PARTITIONS",
+	"RECOUNT_PARTICIPANT_PARTITIONS",
+])
 	if (!/^[1-9][0-9]*$/.test(String(topics[key])))
 		throw new Error("Expected positive selected partition counts");
 const settings: Record<string, string | undefined> = {
@@ -119,6 +125,10 @@ const settings: Record<string, string | undefined> = {
 	RECOUNT_PIPELINE_RAW_TOPIC: topics.RECOUNT_RAW_TOPIC,
 	RECOUNT_PIPELINE_NORMALIZED_TOPIC: topics.RECOUNT_NORMALIZED_TOPIC,
 	RECOUNT_PIPELINE_LATE_TOPIC: topics.RECOUNT_LATE_TOPIC,
+	RECOUNT_PIPELINE_PARTICIPANT_TOPIC: topics.RECOUNT_PARTICIPANT_TOPIC,
+	RECOUNT_PIPELINE_PARTICIPANT_PARTITIONS: String(
+		topics.RECOUNT_PARTICIPANT_PARTITIONS,
+	),
 	RECOUNT_PIPELINE_NORMALIZER_GROUP: process.env.RECOUNT_NORMALIZER_GROUP,
 	RECOUNT_PIPELINE_KAFKA_CONTAINER_ID: brokerId,
 	RECOUNT_PIPELINE_NATIVE_GROUP: nativeGroup,

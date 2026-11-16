@@ -134,17 +134,17 @@ Sign in at `/login`; `/` restores the last authorized project, or shows onboardi
 
 Routes use stable organization and project IDs, not editable names or slugs:
 
-| Route                                                                        | Purpose                                             |
-| ---------------------------------------------------------------------------- | --------------------------------------------------- |
-| `/organizations/new`                                                         | Organization onboarding                             |
-| `/organizations/$organizationId`                                             | Last authorized project, or project onboarding      |
-| `/organizations/$organizationId/projects/new`                                | Project onboarding for organization owners/admins   |
-| `/settings?section=SECTION&organizationId=ORG&projectId=PROJECT`             | Scoped account, organization and project settings   |
-| `/organizations/$organizationId/projects/$projectId/executions`              | Authorized execution list and recording creation    |
-| `/organizations/$organizationId/projects/$projectId/activity`                | Individual stored metric points                     |
-| `/organizations/$organizationId/projects/$projectId/activity/live`           | Accepted raw telemetry packets                      |
-| `/organizations/$organizationId/projects/$projectId/executions/$executionId` | Recorded source/host interval and node telemetry    |
-| `/invitations/$invitationId`                                                 | Explicit invitation review, acceptance or rejection |
+| Route                                                                         | Purpose                                             |
+| ----------------------------------------------------------------------------- | --------------------------------------------------- |
+| `/organizations/new`                                                          | Organization onboarding                             |
+| `/organizations/$organizationId`                                              | Last authorized project, or project onboarding      |
+| `/organizations/$organizationId/projects/new`                                 | Project onboarding for organization owners/admins   |
+| `/settings?section=SECTION&organizationId=ORG&projectId=PROJECT`              | Scoped account, organization and project settings   |
+| `/organizations/$organizationId/projects/$projectId/executions`               | Authorized list of collector-claimed execution keys |
+| `/organizations/$organizationId/projects/$projectId/activity`                 | Individual stored metric points                     |
+| `/organizations/$organizationId/projects/$projectId/activity/live`            | Accepted raw telemetry packets                      |
+| `/organizations/$organizationId/projects/$projectId/executions/$executionKey` | Read-only execution key and lifecycle metadata      |
+| `/invitations/$invitationId`                                                  | Explicit invitation review, acceptance or rejection |
 
 Organization and project selectors use searchable menus with selected-item checkmarks, organization roles and creation actions at the end of each list. Header plus buttons and list creation actions open the same top-aligned popup without navigating away. The project section's invitation action opens the shared organization invitation popup. Creating a resource preserves the current selection; choosing a different resource changes it explicitly.
 
@@ -160,7 +160,7 @@ bunx playwright install chromium
 TEST_DATABASE_URL=postgresql://recount:YOUR_TEST_PASSWORD@127.0.0.1:15439/recount bun run test:browser
 ```
 
-Browser tests create a unique disposable database per test, apply the committed Drizzle migrations and start a private server on port 3554 plus the worker's parallel index. Set `RECOUNT_BROWSER_PORT` to choose another base port; reserve consecutive ports when using multiple workers. Build first and set `RECOUNT_BROWSER_BUILT=true` to run Nitro's generated server instead of development mode; built tests do not use Vite preview. Global setup stages and validates one complete bundle per run. All test servers and server-function metadata lookups use that temporary bundle, so subsequent local web-watch rebuilds can replace `.output` without affecting the tests. Setup rejects missing, invalid or changing build inputs without retrying; teardown removes only the run-owned bundle. Each test closes its browser context before draining the application and attaches numeric setup/teardown timings as `workspace-timings`. Sign-in codes are captured in memory; invitation recovery cases use a failing loopback-only SMTP endpoint, never real delivery. The suite covers onboarding, forms, roles, mutation refresh, tenant switching, revocation, invitation decisions, one-time secrets and execution recordings. Artifacts are written under the operating system's temporary `opencode/recount/browser` directory, outside the repository. Use only a disposable PostgreSQL test account with database-creation permission.
+Browser tests create a unique disposable database per test, apply the committed Drizzle migrations and start a private server on port 3554 plus the worker's parallel index. Set `RECOUNT_BROWSER_PORT` to choose another base port; reserve consecutive ports when using multiple workers. Build first and set `RECOUNT_BROWSER_BUILT=true` to run Nitro's generated server instead of development mode; built tests do not use Vite preview. Global setup stages and validates one complete bundle per run. All test servers and server-function metadata lookups use that temporary bundle, so subsequent local web-watch rebuilds can replace `.output` without affecting the tests. Setup rejects missing, invalid or changing build inputs without retrying; teardown removes only the run-owned bundle. Each test closes its browser context before draining the application and attaches numeric setup/teardown timings as `workspace-timings`. Sign-in codes are captured in memory; invitation recovery cases use a failing loopback-only SMTP endpoint, never real delivery. The suite covers onboarding, forms, roles, mutation refresh, tenant switching, revocation, invitation decisions, one-time secrets and execution metadata. Artifacts are written under the operating system's temporary `opencode/recount/browser` directory, outside the repository. Use only a disposable PostgreSQL test account with database-creation permission.
 
 ## Activity
 
@@ -217,7 +217,7 @@ bun --bun run shadcn add input
 
 Use `TimeDisplay` from `components/time-display.tsx` for UI timestamps, with `full`, `compact` or `relative` presentation. Its keyboard-, touch- and hover-accessible popover compares the same instant in the device zone, selected project zone, UTC and Unix seconds, with per-value copying. The settings link opens that project's Customization page at the time-zone control. Without a selected project, project conversion and settings are omitted. The root provider resolves the device zone after hydration; the application shell supplies the authorized project context.
 
-`TimeDisplayRange` renders execution intervals without flattening interactive timestamps into translation strings. Telemetry's raw nanosecond values retain their original label and exact Unix precision; formatted calendar conversions use millisecond precision. Durations, editable time inputs, CSV output and email timestamps remain in their own formats. The main content box owns the desktop sidebar boundary; its left edge highlights for hover, drag and keyboard focus without a second sidebar border.
+Execution first/last-seen values use the shared timestamp display. Telemetry's raw nanosecond values retain their original label and exact Unix precision; formatted calendar conversions use millisecond precision. Durations, editable time inputs, CSV output and email timestamps remain in their own formats. The main content box owns the desktop sidebar boundary; its left edge highlights for hover, drag and keyboard focus without a second sidebar border.
 
 Recount uses the Tide Core light and dark tokens with system Helvetica fallbacks. The root shell reads `recount_theme` for SSR and renders `data-variant="core"` with `data-theme="tide"` or `"tide-dark"`. Footer controls retain localized labels and confirmation behavior; mode changes preserve active forms and one-time tokens. Brand assets and their clearspace guide are in `public/brand`.
 
@@ -229,4 +229,4 @@ Apply the committed Drizzle migrations for execution metadata, then configure th
 
 For daily iteration, run the Bun reader tests and standard Node Playwright runner on the host against the reused backend. Use explicitly allocated test credentials and isolated database/project namespaces. The separate Linux-container collector-to-browser gate requires host-built `recount-collector`, `recount-ingestion-api` and `recount-normalizer` Linux binaries matching Docker's architecture. It never invokes a container compiler or a direct storage writer.
 
-Follow the [execution gate configuration](../../docs/execution-telemetry.md#reader-configuration-and-checks) before enabling `RECOUNT_PIPELINE_TEST=true`. Allocate the topics, networks, native consumer and restricted database access explicitly. Any restart check must target only the allocated disposable ClickHouse container, never a shared service. When Playwright runs in Docker, its Docker CLI/socket and nested bind mounts must resolve to the same absolute host paths. The gate intercepts authentication email and cleans up only its own application containers and random database. Use a unique Playwright `--output` directory when other agents run browser tests.
+Follow the [runtime gate allocation](../../tests/README.md#coordinator-owned-runtime-and-recovery-gates) before selecting the pipeline configuration. Allocate the metric and participant topics, networks, native consumer and restricted database access explicitly. Any restart check must target only the allocated disposable ClickHouse container, never a shared service. When Playwright runs in Docker, its Docker CLI/socket and nested bind mounts must resolve to the same absolute host paths. The gate intercepts authentication email and cleans up only its own application containers and random database. Use a unique Playwright `--output` directory when other agents run browser tests.

@@ -1,42 +1,26 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { and, eq, ne, sql } from "drizzle-orm";
-import { v7 as uuidv7 } from "uuid";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
-import {
-	createReceipt,
-	execution,
-	member,
-	project,
-	projectMember,
-	user,
-} from "../../src/db/schema";
-import type { CreateExecutionInput } from "../../src/executions/contracts";
-import * as executionDomain from "../../src/executions/executions.server";
+import { createReceipt, member, project, user } from "../../src/db/schema";
 import { createInputHash, createOnce } from "../../src/lib/create-once.server";
 import type { OperationResult } from "../../src/lib/operation-result";
-import {
-	requireOrganization,
-	requireProject,
-} from "../../src/organizations/access.server";
+import { requireOrganization } from "../../src/organizations/access.server";
 import type { CreateProjectInput } from "../../src/organizations/contracts";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 
 import { trustedActor } from "../auth-actors";
-import { createTestNode } from "../collector-node";
 import { createTestDatabase } from "../database";
 import { gate } from "../gate";
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 let auth: ReturnType<typeof createAuth>;
 let organizations: ReturnType<typeof actorService>;
-let executions: ReturnType<typeof actorService>;
 const origin = "http://localhost:3063";
 const codes = new Map<string, string>();
 type Transaction = Parameters<Parameters<typeof database.db.transaction>[0]>[0];
-type Kind = "project" | "execution";
 
 function data<T>(result: OperationResult<T>): T {
 	if (result.error) throw new Error(result.error.message);
@@ -68,14 +52,13 @@ beforeAll(async () => {
 		},
 	);
 	organizations = actorService(auth);
-	executions = actorService(auth);
 });
 afterAll(async () => {
 	await auth?.emailDelivery.close();
 	await database?.close();
 });
 
-async function scenario(kind: Kind) {
+async function scenario() {
 	const owner = await actor();
 	const creator = await actor();
 	const organization = data(
@@ -90,7 +73,7 @@ async function scenario(kind: Kind) {
 		body: {
 			organizationId: organization.id,
 			userId: creator.id,
-			role: kind === "project" ? "admin" : "member",
+			role: "admin",
 		},
 	});
 	const base = data(
@@ -103,41 +86,18 @@ async function scenario(kind: Kind) {
 		),
 	);
 	const reference = { organizationId: organization.id, projectId: base.id };
-	if (kind === "execution")
-		data(
-			await organizations(owner.headers, (actor) =>
-				projectDomain.setProjectMember(database.db, actor, {
-					...reference,
-					memberId: membership.id,
-					role: "member",
-				}),
-			),
-		);
-	const { nodeId } = await createTestNode(database.db, reference);
 	const requestId = randomUUID();
 	const projectInput: CreateProjectInput = {
 		requestId,
 		organizationId: organization.id,
 		name: "Created",
 	};
-	const executionInput: CreateExecutionInput = {
-		...reference,
-		requestId,
-		name: "Created",
-		nodeId,
-		hostId: null,
-		startedAt: "2026-11-03T10:00:00.000Z",
-		endedAt: "2026-11-03T10:05:00.000Z",
-	};
-	const scope =
-		kind === "project"
-			? ({
-					operation: "create-project",
-					organizationId: organization.id,
-					projectId: null,
-				} as const)
-			: ({ operation: "create-execution", ...reference } as const);
-	const submission = kind === "project" ? projectInput : executionInput;
+	const scope = {
+		operation: "create-project",
+		organizationId: organization.id,
+		projectId: null,
+	} as const;
+	const submission = projectInput;
 	return {
 		owner,
 		creator,
@@ -147,64 +107,32 @@ async function scenario(kind: Kind) {
 		scope,
 		submission,
 		projectInput,
-		executionInput,
 		attempt: (
-			changes: Partial<CreateProjectInput & CreateExecutionInput> = {},
+			changes: Partial<CreateProjectInput> = {},
 			headers = creator.headers,
 		) =>
-			kind === "project"
-				? organizations(headers, (actor) =>
-						projectDomain.createProject(database.db, actor, {
-							...projectInput,
-							...changes,
-						}),
-					)
-				: executions(headers, (actor) =>
-						executionDomain.createExecution(database.db, actor, {
-							...executionInput,
-							...changes,
-						}),
-					),
+			organizations(headers, (actor) =>
+				projectDomain.createProject(database.db, actor, {
+					...projectInput,
+					...changes,
+				}),
+			),
 		async insertResource(tx: Transaction, id: string) {
-			if (kind === "project")
-				await tx.insert(project).values({
-					id,
-					organizationId: organization.id,
-					name: projectInput.name,
-					createdBy: creator.id,
-				});
-			else
-				await tx.insert(execution).values({
-					id,
-					...reference,
-					sourceId: nodeId,
-					hostId: null,
-					name: executionInput.name,
-					startedAt: new Date(executionInput.startedAt),
-					endedAt: new Date(executionInput.endedAt),
-					createdBy: creator.id,
-				});
+			await tx.insert(project).values({
+				id,
+				organizationId: organization.id,
+				name: projectInput.name,
+				createdBy: creator.id,
+			});
 		},
 		authorize: async (tx: Transaction) => {
-			if (kind === "project")
-				return requireOrganization(tx, creator, organization.id);
-			return requireProject(tx, creator, reference);
+			return requireOrganization(tx, creator, organization.id);
 		},
 		async revoke() {
-			if (kind === "project")
-				await database.db
-					.update(member)
-					.set({ role: "member" })
-					.where(eq(member.id, membership.id));
-			else
-				await database.db
-					.delete(projectMember)
-					.where(
-						and(
-							eq(projectMember.projectId, base.id),
-							eq(projectMember.memberId, membership.id),
-						),
-					);
+			await database.db
+				.update(member)
+				.set({ role: "member" })
+				.where(eq(member.id, membership.id));
 		},
 		async receipts() {
 			return database.db
@@ -218,25 +146,15 @@ async function scenario(kind: Kind) {
 				);
 		},
 		async resources() {
-			return kind === "project"
-				? database.db
-						.select({ id: project.id })
-						.from(project)
-						.where(
-							and(
-								eq(project.organizationId, organization.id),
-								ne(project.id, base.id),
-							),
-						)
-				: database.db
-						.select({ id: execution.id })
-						.from(execution)
-						.where(
-							and(
-								eq(execution.projectId, base.id),
-								eq(execution.createdBy, creator.id),
-							),
-						);
+			return database.db
+				.select({ id: project.id })
+				.from(project)
+				.where(
+					and(
+						eq(project.organizationId, organization.id),
+						ne(project.id, base.id),
+					),
+				);
 		},
 	};
 }
@@ -248,7 +166,7 @@ function created(reply: Reply) {
 }
 function id(reply: Reply) {
 	const entry = created(reply);
-	return "executionId" in entry ? entry.executionId : entry.id;
+	return entry.id;
 }
 async function receiptWait(blockerPid: number) {
 	const deadline = performance.now() + 5_000;
@@ -264,9 +182,10 @@ async function receiptWait(blockerPid: number) {
 	throw new Error("Expected a receipt arbitration lock wait");
 }
 
-for (const kind of ["project", "execution"] as const) {
+{
+	const kind = "project";
 	test(`${kind} creates deduplicate concurrent calls and replay current authorized summaries`, async () => {
-		const fixture = await scenario(kind);
+		const fixture = await scenario();
 		const replies = await Promise.all(
 			Array.from({ length: 6 }, () => fixture.attempt()),
 		);
@@ -274,49 +193,25 @@ for (const kind of ["project", "execution"] as const) {
 		expect(replies.map(id)).toEqual(Array(6).fill(savedId));
 		expect(await fixture.resources()).toEqual([{ id: savedId }]);
 		expect(await fixture.receipts()).toHaveLength(1);
-		if (kind === "project")
-			data(
-				await organizations(fixture.creator.headers, (actor) =>
-					projectDomain.updateProject(database.db, actor, {
-						organizationId: fixture.reference.organizationId,
-						projectId: savedId,
-						name: "Renamed",
-					}),
-				),
-			);
-		else
-			data(
-				await executions(fixture.creator.headers, (actor) =>
-					executionDomain.updateExecution(database.db, actor, {
-						...fixture.reference,
-						executionId: savedId,
-						name: "Renamed",
-					}),
-				),
-			);
+		data(
+			await organizations(fixture.creator.headers, (actor) =>
+				projectDomain.updateProject(database.db, actor, {
+					organizationId: fixture.reference.organizationId,
+					projectId: savedId,
+					name: "Renamed",
+				}),
+			),
+		);
 		// The first committed response may be lost; its retry must read, not create.
 		const replay = created(await fixture.attempt({ name: " Created " }));
 		expect(replay.name).toBe("Renamed");
-		if ("startedAt" in replay) {
-			expect(replay.startedAt).toBeInstanceOf(Date);
-			expect(replay.createdAt).toBeInstanceOf(Date);
-			expect(savedId[14]).toBe("7");
-		}
 		expect(await fixture.resources()).toHaveLength(1);
 	});
 
 	test(`${kind} receipts reject changed input and scope without exposing another actor's result`, async () => {
-		const fixture = await scenario(kind);
+		const fixture = await scenario();
 		const savedId = id(await fixture.attempt());
-		for (const change of kind === "project"
-			? [{ name: "Other" }]
-			: [
-					{ name: "Other" },
-					{ hostId: "Node-A" },
-					{ startedAt: "2026-11-03T10:01:00Z" },
-					{ endedAt: "2026-11-03T10:06:00Z" },
-					{ nodeId: randomUUID() },
-				]) {
+		for (const change of [{ name: "Other" }]) {
 			const rejected = await fixture.attempt(change);
 			expect(rejected).toMatchObject({
 				data: null,
@@ -351,59 +246,21 @@ for (const kind of ["project", "execution"] as const) {
 			data: null,
 			error: { reason: "REQUEST_ID_REUSED" },
 		});
-		if (kind === "execution")
-			await auth.api.updateMemberRole({
-				headers: fixture.owner.headers,
-				body: {
-					organizationId: fixture.reference.organizationId,
-					memberId: fixture.membership.id,
-					role: "admin",
-				},
-			});
-		const changedKind =
-			kind === "project"
-				? await executions(fixture.creator.headers, (actor) =>
-						executionDomain.createExecution(
-							database.db,
-							actor,
-							fixture.executionInput,
-						),
-					)
-				: await organizations(fixture.creator.headers, (actor) =>
-						projectDomain.createProject(
-							database.db,
-							actor,
-							fixture.projectInput,
-						),
-					);
-		expect(changedKind).toMatchObject({
-			data: null,
-			error: { code: "CONFLICT", reason: "REQUEST_ID_REUSED" },
-		});
 		const otherActor = await fixture.attempt(
 			{ name: "Other actor" },
 			fixture.owner.headers,
 		);
 		expect(id(otherActor)).not.toBe(savedId);
-		if (kind === "execution")
-			await auth.api.updateMemberRole({
-				headers: fixture.owner.headers,
-				body: {
-					organizationId: fixture.reference.organizationId,
-					memberId: fixture.membership.id,
-					role: "member",
-				},
-			});
 		await fixture.revoke();
 		expect(await fixture.attempt()).toMatchObject({
 			data: null,
-			error: { code: kind === "project" ? "FORBIDDEN" : "NOT_FOUND" },
+			error: { code: "FORBIDDEN" },
 		});
 	});
 
 	test(`${kind} resource failure rolls back its receipt and permits a later attempt`, async () => {
-		const fixture = await scenario(kind);
-		const candidate = kind === "project" ? randomUUID() : uuidv7();
+		const fixture = await scenario();
+		const candidate = randomUUID();
 		const failure = new Error("Fixture read failure after business insert");
 		await expect(
 			createOnce(database.db, {
@@ -426,8 +283,8 @@ for (const kind of ["project", "execution"] as const) {
 
 	for (const original of ["commit", "rollback"] as const) {
 		test(`${kind} denies revoked authority after a receipt wait becomes ${original === "commit" ? "a replay" : "the winning insert"}`, async () => {
-			const fixture = await scenario(kind);
-			const reserved = kind === "project" ? randomUUID() : uuidv7();
+			const fixture = await scenario();
+			const reserved = randomUUID();
 			const ready = gate();
 			const release = gate();
 			let blockerPid = 0;
@@ -473,7 +330,7 @@ for (const kind of ["project", "execution"] as const) {
 				expect(await blocker).toBe(original === "rollback" ? rollback : null);
 				expect(await waiting).toMatchObject({
 					data: null,
-					error: { code: kind === "project" ? "FORBIDDEN" : "NOT_FOUND" },
+					error: { code: "FORBIDDEN" },
 				});
 				expect(await fixture.receipts()).toHaveLength(
 					original === "rollback" ? 0 : 1,
@@ -490,11 +347,9 @@ for (const kind of ["project", "execution"] as const) {
 	}
 
 	test(`${kind} replay cannot recreate a deleted result or reuse a revoked session`, async () => {
-		const fixture = await scenario(kind);
+		const fixture = await scenario();
 		const savedId = id(await fixture.attempt());
-		if (kind === "project")
-			await database.db.delete(project).where(eq(project.id, savedId));
-		else await database.db.delete(execution).where(eq(execution.id, savedId));
+		await database.db.delete(project).where(eq(project.id, savedId));
 		expect(await fixture.attempt()).toMatchObject({
 			data: null,
 			error: { code: "NOT_FOUND" },
@@ -518,7 +373,7 @@ for (const kind of ["project", "execution"] as const) {
 }
 
 test("receipt constraints reject unsupported operations, hashes and cross-tenant project scopes", async () => {
-	const fixture = await scenario("project");
+	const fixture = await scenario();
 	const other = data(
 		await organizations(fixture.owner.headers, () =>
 			organizationDomain.createOrganization(auth, fixture.owner.headers, {

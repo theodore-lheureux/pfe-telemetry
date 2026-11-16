@@ -5,14 +5,21 @@ import { createReadStream } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
+import { createClient } from "@clickhouse/client";
 import { eq } from "drizzle-orm";
 import { actorService } from "../../src/auth/actor.server";
 import * as collectorDomain from "../../src/collectors/collectors.server";
 import { collectorNode } from "../../src/db/collectors-schema";
-import type { TelemetryResult } from "../../src/executions/contracts";
+import type {
+	ExecutionReference,
+	TelemetryResult,
+} from "../../src/executions/contracts";
 import * as executionDomain from "../../src/executions/executions.server";
+import { readTelemetry } from "../../src/executions/telemetry.server";
+import type { Actor } from "../../src/organizations/access.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
+import { executionParticipant } from "../execution-participant";
 
 import { data, expect, test } from "./fixtures";
 
@@ -71,12 +78,14 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 	const rawTopic = required("RECOUNT_PIPELINE_RAW_TOPIC");
 	const normalizedTopic = required("RECOUNT_PIPELINE_NORMALIZED_TOPIC");
 	const lateTopic = required("RECOUNT_PIPELINE_LATE_TOPIC");
+	const participantTopic = required("RECOUNT_PIPELINE_PARTICIPANT_TOPIC");
 	const group = required("RECOUNT_PIPELINE_NORMALIZER_GROUP");
 	const nativeGroup = required("RECOUNT_PIPELINE_NATIVE_GROUP");
 	const brokerId = required("RECOUNT_PIPELINE_KAFKA_CONTAINER_ID");
 	if (
-		new Set([rawTopic, normalizedTopic, lateTopic]).size !== 3 ||
-		[rawTopic, normalizedTopic, lateTopic].some(
+		new Set([rawTopic, normalizedTopic, lateTopic, participantTopic]).size !==
+			4 ||
+		[rawTopic, normalizedTopic, lateTopic, participantTopic].some(
 			(topic) =>
 				!/^[A-Za-z0-9_.-]{1,249}$/.test(topic) ||
 				[
@@ -85,6 +94,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 					"recount.metrics.raw",
 					"recount.metrics.normalized",
 					"recount.metrics.late",
+					"recount.participants",
 				].includes(topic),
 		) ||
 		group === "recount-normalizer" ||
@@ -117,6 +127,10 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 		RECOUNT_RAW_TOPIC: rawTopic,
 		RECOUNT_NORMALIZED_TOPIC: normalizedTopic,
 		RECOUNT_LATE_TOPIC: lateTopic,
+		RECOUNT_PARTICIPANT_TOPIC: participantTopic,
+		RECOUNT_PARTICIPANT_PARTITIONS: positive(
+			"RECOUNT_PIPELINE_PARTICIPANT_PARTITIONS",
+		),
 		RECOUNT_RAW_PARTITIONS: positive("RECOUNT_PIPELINE_RAW_PARTITIONS"),
 		RECOUNT_NORMALIZED_PARTITIONS: positive(
 			"RECOUNT_PIPELINE_NORMALIZED_PARTITIONS",
@@ -583,30 +597,75 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 			"collector-other",
 		);
 		const executions = actorService(workspace.auth);
+		// This gate checks node telemetry transport, not execution membership.
+		async function nodeContext(
+			db: typeof workspace.database.db,
+			actor: Actor,
+			input: ExecutionReference & { to?: string; nodeId: string },
+		) {
+			const entry = await executionDomain.getExecution(db, actor, input);
+			return readTelemetry({
+				projectId: entry.projectId,
+				sourceId: input.nodeId,
+				hostId: null,
+				from: startedAt,
+				to: input.to
+					? new Date(input.to)
+					: new Date(startedAt.getTime() + 300000),
+				buckets: 300,
+			});
+		}
+		let firstNodeId: string | undefined;
+		await expect
+			.poll(
+				async () => {
+					const [node] = await workspace.database.db
+						.select()
+						.from(collectorNode)
+						.where(eq(collectorNode.machineId, "pipeline-node"));
+					firstNodeId = node?.id;
+					return firstNodeId;
+				},
+				{ timeout: 30000 },
+			)
+			.toBeTruthy();
+		const seedExecution = async (nodeId: string, key: string, name: string) => {
+			const client = createClient({
+				url: required("RECOUNT_CLICKHOUSE_TEST_URL"),
+				username: required("RECOUNT_CLICKHOUSE_TEST_USER"),
+				password: required("RECOUNT_CLICKHOUSE_TEST_PASSWORD"),
+				database: "telemetry",
+			});
+			try {
+				await client.insert({
+					table: "execution_participants",
+					format: "JSONEachRow",
+					values: [
+						executionParticipant(project.id, key, {
+							nodeId,
+							name,
+							firstSeen: BigInt(startedAt.getTime()) * 1000000n,
+						}),
+					],
+				});
+			} finally {
+				await client.close();
+			}
+		};
+		await seedExecution(
+			firstNodeId as string,
+			`run:${suffix}`,
+			"Collector capture",
+		);
 		await page.goto(
 			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/executions`,
 		);
-		await page
-			.getByLabel("Execution name", { exact: true })
-			.fill("Collector capture");
-		await page
-			.getByLabel("Host ID (optional, exact match)")
-			.fill("pipeline-node");
-		await page
-			.getByLabel("Start (UTC ISO timestamp)")
-			.fill(startedAt.toISOString());
-		await page
-			.getByLabel("End (UTC ISO timestamp, exclusive)")
-			.fill(new Date(startedAt.getTime() + 300000).toISOString());
-		await page
-			.getByRole("button", { name: "Record execution", exact: true })
-			.click();
 		await expect(
-			page.getByRole("link", { name: "Open saved execution" }),
+			page.getByRole("link", { name: "Collector capture" }),
 		).toBeVisible();
 		await expect(
 			page.getByRole("button", { name: "Record execution", exact: true }),
-		).toBeDisabled();
+		).toHaveCount(0);
 		const listed = data(
 			await executions(owner.headers, (actor) =>
 				executionDomain.listExecutions(workspace.database.db, actor, reference),
@@ -614,7 +673,11 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 		);
 		expect(listed.executions).toHaveLength(1);
 		const entry = listed.executions[0];
-		const ref = { ...reference, executionId: entry.executionId };
+		const ref = {
+			...reference,
+			executionKey: entry.executionKey,
+			nodeId: firstNodeId as string,
+		};
 		let otherNodeId: string | undefined;
 		await expect
 			.poll(
@@ -629,18 +692,15 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 				{ timeout: 30000 },
 			)
 			.toBeTruthy();
-		const otherEntry = data(
-			await executions(owner.headers, (actor) =>
-				executionDomain.createExecution(workspace.database.db, actor, {
-					requestId: crypto.randomUUID(),
-					...reference,
-					name: "Other host capture",
-					nodeId: otherNodeId as string,
-					hostId: "other-node",
-					startedAt: startedAt.toISOString(),
-					endedAt: new Date(startedAt.getTime() + 300000).toISOString(),
-				}),
-			),
+		const otherEntry = {
+			...reference,
+			executionKey: `run:other-${suffix}`,
+			nodeId: otherNodeId as string,
+		};
+		await seedExecution(
+			otherNodeId as string,
+			otherEntry.executionKey,
+			"Other host capture",
 		);
 		await expect
 			.poll(
@@ -652,18 +712,10 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 							);
 					}
 					const response = await executions(owner.headers, (actor) =>
-						executionDomain.queryExecutionTelemetry(
-							workspace.database.db,
-							actor,
-							ref,
-						),
+						nodeContext(workspace.database.db, actor, ref),
 					);
 					const other = await executions(owner.headers, (actor) =>
-						executionDomain.queryExecutionTelemetry(
-							workspace.database.db,
-							actor,
-							otherEntry,
-						),
+						nodeContext(workspace.database.db, actor, otherEntry),
 					);
 					if (!response.data || !other.data) return false;
 					for (const [data, host] of [
@@ -729,18 +781,10 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 				async () => {
 					const results = await Promise.all([
 						executions(owner.headers, (actor) =>
-							executionDomain.queryExecutionTelemetry(
-								workspace.database.db,
-								actor,
-								ref,
-							),
+							nodeContext(workspace.database.db, actor, ref),
 						),
 						executions(owner.headers, (actor) =>
-							executionDomain.queryExecutionTelemetry(
-								workspace.database.db,
-								actor,
-								otherEntry,
-							),
+							nodeContext(workspace.database.db, actor, otherEntry),
 						),
 					]);
 					if (!results.every((result) => result.data)) return false;
@@ -770,24 +814,16 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 		const snapshot = async () => {
 			const results = await Promise.all([
 				executions(owner.headers, (actor) =>
-					executionDomain.queryExecutionTelemetry(
-						workspace.database.db,
-						actor,
-						{
-							...ref,
-							to: frozenEnd,
-						},
-					),
+					nodeContext(workspace.database.db, actor, {
+						...ref,
+						to: frozenEnd,
+					}),
 				),
 				executions(owner.headers, (actor) =>
-					executionDomain.queryExecutionTelemetry(
-						workspace.database.db,
-						actor,
-						{
-							...otherEntry,
-							to: frozenEnd,
-						},
-					),
+					nodeContext(workspace.database.db, actor, {
+						...otherEntry,
+						to: frozenEnd,
+					}),
 				),
 			]);
 			return results.every((result) => result.data?.series.length)
@@ -859,7 +895,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 				contentType: "application/json",
 			});
 		}
-		const href = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/executions/${entry.executionId}`;
+		const href = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/executions/${encodeURIComponent(entry.executionKey)}`;
 		for (const locale of ["en", "fr"] as const) {
 			await page
 				.context()
@@ -872,17 +908,10 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 				page.getByRole("heading", { name: "Collector capture" }),
 			).toBeVisible();
 			await expect(
-				page.locator("[data-continuity-segment] circle").first(),
-			).toBeVisible();
-			await expect(
-				page
-					.getByRole("columnheader", {
-						name:
-							locale === "en"
-								? "Sample timestamp (Unix nanoseconds)"
-								: "Horodatage de la mesure (nanosecondes Unix)",
-					})
-					.first(),
+				page.getByText(
+					locale === "en" ? "Execution key:" : "Clé d’exécution:",
+					{ exact: false },
+				),
 			).toBeVisible();
 			const html = await response?.text();
 			expect(html).toMatch(new RegExp(`<html\\b[^>]*\\blang="${locale}"`));
@@ -901,11 +930,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 		expect(
 			(
 				await executions(new Headers(), (actor) =>
-					executionDomain.queryExecutionTelemetry(
-						workspace.database.db,
-						actor,
-						ref,
-					),
+					nodeContext(workspace.database.db, actor, ref),
 				)
 			).error?.code,
 		).toBe("UNAUTHENTICATED");

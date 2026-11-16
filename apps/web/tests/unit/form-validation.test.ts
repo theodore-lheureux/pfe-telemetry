@@ -2,11 +2,11 @@ import { expect, test } from "bun:test";
 import { m } from "@recount/i18n/messages";
 import { paraglideMiddleware } from "@recount/i18n/server";
 import { parseMachineId } from "../../src/collectors/validation";
-import { parseTimestamp } from "../../src/executions/validation";
 import {
 	validationError,
 	validationMessages,
 } from "../../src/lib/form-validation";
+import { parseName } from "../../src/lib/input";
 
 test("structured schema and field errors display messages rather than object coercions", () => {
 	expect(
@@ -26,16 +26,14 @@ test("parser validators retain request-local English and French messages", async
 			}),
 			() =>
 				Response.json({
-					timestamp: validationError(() =>
-						parseTimestamp("2026-11-03T10:00:00.0001Z"),
-					),
+					name: validationError(() => parseName(" ")),
 					identifier: validationError(() =>
 						parseMachineId("recount.local.reserved"),
 					),
 				}),
 		);
 		expect(await response.json()).toEqual({
-			timestamp: m.error_invalid_range({}, { locale }),
+			name: m.error_name({}, { locale }),
 			identifier: m.error_identifier({}, { locale }),
 		});
 	}

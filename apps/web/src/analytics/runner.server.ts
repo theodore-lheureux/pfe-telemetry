@@ -42,7 +42,7 @@ const SETTINGS = {
 	do_not_merge_across_partitions_select_final: 1,
 } as const;
 /** Maps ClickHouse failures to operation errors; limits never yield partial results. */
-function analyticsError(error: unknown, signal?: AbortSignal): never {
+export function analyticsError(error: unknown, signal?: AbortSignal): never {
 	if (error instanceof OperationError || error instanceof InputError)
 		throw error;
 	if (signal?.aborted)

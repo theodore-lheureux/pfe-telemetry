@@ -9,7 +9,6 @@ const reasons = {
 	INVALID_TIME_RANGE: m.error_invalid_range,
 	INVALID_QUERY: m.error_invalid_query,
 	INVALID_CALCULATION: m.error_invalid_calculation,
-	INVALID_EXECUTION_WINDOW: m.error_execution_window,
 	INVALID_EXPIRY: m.error_expiry,
 	INVALID_NAME: m.error_name,
 	INVALID_PROJECT_SETTING: m.error_project_setting,

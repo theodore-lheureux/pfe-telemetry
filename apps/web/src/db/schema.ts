@@ -6,6 +6,5 @@ export * from "./collectors-schema";
 export * from "./create-receipts-schema";
 export * from "./dashboards-schema";
 export * from "./definitions-schema";
-export * from "./executions-schema";
 export * from "./insights-schema";
 export * from "./projects-schema";

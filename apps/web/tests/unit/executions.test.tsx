@@ -6,47 +6,47 @@ import {
 	ResourceCharts,
 } from "../../src/executions/resource-charts";
 import {
-	parseCreateExecution,
-	parseTelemetryInput,
-	parseTimestamp,
+	parseExecutionKey,
+	parseExecutionReference,
 } from "../../src/executions/validation";
+import { decodeCalendarTimestamp } from "../../src/lib/calendar";
 
 const reference = {
 	organizationId: "org",
 	projectId: "019a4790-d1da-7000-8000-000000000002",
-	executionId: "019a4790-d1da-7000-8000-000000000003",
+	executionKey: "slurm:48213",
 };
-test("validates calendar timestamps, fixed windows and bounded resolution", () => {
-	expect(parseTimestamp("2026-11-03T12:00:00+02:00")).toBe(
-		"2026-11-03T10:00:00.000Z",
+test("calendar decoding rejects malformed timestamps and execution references discard selectors", () => {
+	expect(decodeCalendarTimestamp("2026-11-03T12:00:00+02:00").time).toBe(
+		Date.UTC(2026, 10, 3, 10),
 	);
 	for (const value of [
-		"1969-12-31T23:59:59Z",
 		"2026-02-30T00:00:00Z",
 		"2026-11-03",
 		"2026-11-03T24:00:00Z",
 		"2026-11-03T00:00:00.000001Z",
-		"2101-01-01T00:00:00Z",
 	])
-		expect(() => parseTimestamp(value)).toThrow();
-	expect(() => parseTelemetryInput({ ...reference, buckets: 601 })).toThrow();
-	expect(() => parseTelemetryInput({ ...reference, buckets: 0.5 })).toThrow();
+		expect(decodeCalendarTimestamp(value).error).toBeTruthy();
 	expect(
-		parseTelemetryInput({
+		parseExecutionReference({
 			...reference,
 			sourceId: "foreign",
 			hostId: "other-resource",
 		}),
-	).toEqual({ ...reference, buckets: 300 });
-	const input = {
-		requestId: crypto.randomUUID(),
-		...reference,
-		credentialId: reference.executionId,
-		name: "Test",
-		startedAt: "2026-11-03T00:00:00Z",
-		endedAt: "2026-11-02T00:00:00Z",
-	};
-	expect(() => parseCreateExecution(input)).toThrow();
+	).toEqual(reference);
+});
+
+test("execution keys keep their case and reject malformed claims", () => {
+	expect(parseExecutionKey("run:Node-A/one")).toBe("run:Node-A/one");
+	for (const value of [
+		"",
+		"a".repeat(129),
+		"bad\nkey",
+		"run:key\n",
+		"é",
+		" run:key",
+	])
+		expect(() => parseExecutionKey(value)).toThrow();
 });
 
 test("floating-point table values retain round-trip digits", () => {

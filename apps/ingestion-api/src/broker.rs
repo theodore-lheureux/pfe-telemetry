@@ -9,13 +9,18 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord, Producer},
     util::Timeout,
 };
-use recount_telemetry_schema::{identity::raw_routing_key, wire::RawRecord};
-use recount_telemetry_validation::transport::body_fits;
+use recount_telemetry_schema::{
+    execution,
+    identity::{partition, raw_routing_key},
+    wire::{AnalyticalParticipant, RawRecord},
+};
+use recount_telemetry_validation::{execution::routing_key, transport::body_fits};
 use std::time::Duration;
 
 #[tonic::async_trait]
 pub trait Sink: Send + Sync {
     async fn publish(&self, raw: &RawRecord, body: &ExportMetricsServiceRequest) -> Result<()>;
+    async fn publish_participant(&self, row: &AnalyticalParticipant) -> Result<()>;
     async fn ready(&self) -> bool;
 }
 
@@ -27,19 +32,25 @@ pub struct KafkaSink {
     max_bytes: usize,
     broker_max_bytes: usize,
     live: LivePublisher,
+    participant_topic: String,
+    participant_partitions: u32,
+}
+
+pub struct Topic<'a> {
+    pub name: &'a str,
+    pub partitions: u32,
 }
 
 impl KafkaSink {
     pub fn new(
         bootstrap: &str,
-        topic: &str,
-        partitions: i32,
+        raw: Topic<'_>,
         max_bytes: usize,
         broker_max_bytes: usize,
-        live_topic: String,
-        live_partitions: u32,
+        live: Topic<'_>,
+        participants: Topic<'_>,
     ) -> Result<Self> {
-        if partitions <= 0 {
+        if raw.partitions == 0 || participants.partitions == 0 {
             return Err("raw partition count must be positive".into());
         }
         body_fits(max_bytes, broker_max_bytes)?;
@@ -64,17 +75,40 @@ impl KafkaSink {
         Ok(Self {
             producer,
             admin,
-            topic: topic.into(),
-            partitions,
+            topic: raw.name.into(),
+            partitions: raw.partitions as i32,
             max_bytes,
             broker_max_bytes,
-            live: LivePublisher::new(bootstrap, live_topic, live_partitions)?,
+            live: LivePublisher::new(bootstrap, live.name.into(), live.partitions)?,
+            participant_topic: participants.name.into(),
+            participant_partitions: participants.partitions,
         })
     }
 }
 
 #[tonic::async_trait]
 impl Sink for KafkaSink {
+    async fn publish_participant(&self, row: &AnalyticalParticipant) -> Result<()> {
+        let bytes = row.encode_to_vec();
+        if bytes.len() > execution::MAX_ANALYTICAL_RECORD_BYTES {
+            return Err("Participant byte limit exceeded".into());
+        }
+        let key = routing_key(&row.project_id, &row.execution_key);
+        self.producer
+            .send(
+                FutureRecord::to(&self.participant_topic)
+                    .key(&key)
+                    .payload(&bytes)
+                    .partition(
+                        partition(&key, self.participant_partitions)
+                            .ok_or("Invalid partition count")? as i32,
+                    ),
+                Timeout::After(Duration::from_millis(100)),
+            )
+            .await
+            .map_err(|_| "Kafka did not confirm participant publication")?;
+        Ok(())
+    }
     async fn publish(&self, raw: &RawRecord, body: &ExportMetricsServiceRequest) -> Result<()> {
         let bytes = raw.encode_to_vec();
         if bytes.len() > self.max_bytes {
@@ -96,7 +130,16 @@ impl Sink for KafkaSink {
         Ok(())
     }
     async fn ready(&self) -> bool {
-        let resources = [ResourceSpecifier::Topic(&self.topic)];
+        self.topic_ready(&self.topic, self.partitions).await
+            && self
+                .topic_ready(&self.participant_topic, self.participant_partitions as i32)
+                .await
+    }
+}
+
+impl KafkaSink {
+    async fn topic_ready(&self, topic: &str, partitions: i32) -> bool {
+        let resources = [ResourceSpecifier::Topic(topic)];
         let options = AdminOptions::new().request_timeout(Some(Duration::from_secs(2)));
         let config_matches = match tokio::time::timeout(
             Duration::from_secs(3),
@@ -119,8 +162,7 @@ impl Sink for KafkaSink {
             return false;
         }
         let producer = self.producer.clone();
-        let topic = self.topic.clone();
-        let partitions = self.partitions;
+        let topic = topic.to_owned();
         tokio::task::spawn_blocking(move || {
             producer
                 .client()

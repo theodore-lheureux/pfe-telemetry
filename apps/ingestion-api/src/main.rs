@@ -2,7 +2,7 @@ use clap::Parser;
 use recount_ingestion_api::{
     Result,
     auth::NodeTokens,
-    broker::{KafkaSink, Sink},
+    broker::{KafkaSink, Sink, Topic},
     config::{Command, Config},
 };
 use std::sync::Arc;
@@ -35,12 +35,20 @@ async fn serve(
     authority.spawn_revocation_poller();
     let sink = Arc::new(KafkaSink::new(
         &config.kafka_bootstrap,
-        &config.raw_topic,
-        config.raw_partitions,
+        Topic {
+            name: &config.raw_topic,
+            partitions: config.raw_partitions as u32,
+        },
         limits.decoded_bytes,
         config.raw_broker_max_bytes,
-        config.live_topic.clone(),
-        config.live_partitions,
+        Topic {
+            name: &config.live_topic,
+            partitions: config.live_partitions,
+        },
+        Topic {
+            name: &config.participant_topic,
+            partitions: config.participant_partitions,
+        },
     )?);
     if !sink.ready().await {
         return Err(

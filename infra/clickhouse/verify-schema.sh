@@ -8,4 +8,5 @@ sha256sum --check --status /usr/share/recount-schema/SHA256SUMS
 [ "$(cat kafka-receive-bytes)" = "${RECOUNT_KAFKA_RECEIVE_BYTES-$(cat default-kafka-receive-bytes)}" ]
 cmp native-transport.xml /etc/clickhouse-server/config.d/native-transport.xml
 cmp schemas/recount.proto /etc/clickhouse-server/format_schemas/recount.proto
+cmp schemas/executions.proto /etc/clickhouse-server/format_schemas/executions.proto
 clickhouse-client --version | grep -Fq '26.8.34.13'
