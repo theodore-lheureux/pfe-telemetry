@@ -81,12 +81,6 @@ resource "aws_launch_template" "collectors" {
       delete_on_termination = true
     }
   }
-  network_interfaces {
-    device_index                = 0
-    associate_public_ip_address = true
-    delete_on_termination       = true
-    security_groups             = [aws_security_group.collectors.id]
-  }
   dynamic "tag_specifications" {
     for_each = toset(["instance", "volume", "network-interface"])
     content {
@@ -111,8 +105,12 @@ resource "aws_launch_template" "collectors" {
 }
 
 resource "aws_instance" "collector" {
-  for_each  = { first = var.subnet_ids[0], second = var.subnet_ids[1] }
-  subnet_id = each.value
+  for_each = { first = var.subnet_ids[0], second = var.subnet_ids[1] }
+  # One template serves both subnets, so per-instance networking stays out of it:
+  # EC2 rejects template network interfaces combined with instance-level placement.
+  subnet_id                   = each.value
+  vpc_security_group_ids      = [aws_security_group.collectors.id]
+  associate_public_ip_address = true
   launch_template {
     id      = aws_launch_template.collectors.id
     version = tostring(aws_launch_template.collectors.latest_version)
