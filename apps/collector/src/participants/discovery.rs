@@ -111,6 +111,7 @@ impl Discovery {
         let mut reads = 0usize;
         let mut entries = 0usize;
         let mut capped = 0usize;
+        let mut candidates = Vec::new();
         if self.entries.is_none() {
             self.entries = fs::read_dir(&self.root).ok();
         }
@@ -149,16 +150,26 @@ impl Discovery {
             if self.cache.contains_key(&id) {
                 continue;
             }
+            candidates.push((id, stat.ppid));
+        }
+        // Proc-directory order can place children first, especially after PID wrap-around.
+        candidates.sort_by_key(|(id, _)| id.ticks);
+        for (id, parent_pid) in candidates {
             // No read takes place without space to retain its once-only decision.
             if self.cache.len() >= self.settings.max_processes {
                 capped += 1;
                 continue;
             }
+            let path = self.root.join(id.pid.to_string());
+            let Ok(process) = Process::new_with_root(path.clone()) else {
+                continue;
+            };
             reads += 1;
-            let observation = observe(&process, id, || {
-                fs::File::open(entry.path().join("environ"))
-                    .ok()
-                    .and_then(|file| environment::read(file, &self.settings.scheduler_variables))
+            let observation = self.observe(&process, id, parent_pid, || {
+                match fs::File::open(path.join("environ")) {
+                    Ok(file) => environment::read(file, &self.settings.scheduler_variables),
+                    Err(_) => Ok(None),
+                }
             });
             self.cache.insert(id, observation);
         }
@@ -181,26 +192,57 @@ impl Discovery {
             processes: self.cache.clone(),
         })
     }
-}
 
-fn observe(
-    process: &Process,
-    id: Incarnation,
-    read: impl FnOnce() -> Option<Label>,
-) -> Observation {
-    let label = read();
-    let uid = process.uid().ok();
-    let stable = process
-        .stat()
-        .is_ok_and(|current| current.pid == id.pid && current.starttime == id.ticks);
-    Observation {
-        label: label.filter(|_| stable),
-        uid: uid.filter(|_| stable),
-        verified: stable,
+    fn observe(
+        &self,
+        process: &Process,
+        id: Incarnation,
+        parent_pid: i32,
+        read: impl FnOnce() -> std::result::Result<Option<Label>, ()>,
+    ) -> Observation {
+        let decision = read();
+        let uid = process.uid().ok();
+        let label = match decision {
+            Ok(Some(label)) => Some(label),
+            Ok(None) => self.inherited_label(parent_pid, id, uid),
+            Err(()) => None,
+        };
+        let stable = process.stat().is_ok_and(|current| {
+            current.pid == id.pid && current.starttime == id.ticks && current.ppid == parent_pid
+        });
+        Observation {
+            label: label.filter(|_| stable),
+            uid: uid.filter(|_| stable),
+            verified: stable,
+        }
+    }
+
+    fn inherited_label(
+        &self,
+        parent_pid: i32,
+        child: Incarnation,
+        uid: Option<u32>,
+    ) -> Option<Label> {
+        let uid = uid?;
+        let parent = Process::new_with_root(self.root.join(parent_pid.to_string())).ok()?;
+        let stat = parent.stat().ok()?;
+        if stat.pid != parent_pid || stat.starttime > child.ticks || parent.uid().ok()? != uid {
+            return None;
+        }
+        let observation = self.cache.get(&Incarnation {
+            pid: parent_pid,
+            ticks: stat.starttime,
+        })?;
+        if !observation.verified || observation.uid != Some(uid) {
+            return None;
+        }
+        observation.label.clone()
     }
 }
 
 #[cfg(test)]
 mod budget_tests;
+#[cfg(test)]
+mod inheritance_tests;
 #[cfg(test)]
 mod tests;

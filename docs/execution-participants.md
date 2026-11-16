@@ -6,7 +6,7 @@ Participant facts are separate from measurements. Neither OTLP points, analytica
 
 ## Environment labels and privacy
 
-The root collector reads `/proc/<pid>/environ` once per process incarnation (PID plus raw start ticks within the boot and process namespace). Bound the read to 65,536 bytes, using at most one extra byte to detect overflow. Unreadable, truncated, oversized or malformed input is unknown, not a member. Cache that decision for the incarnation; do not retry environment reads on later scans. Verify the incarnation around the read so PID reuse cannot transfer a label.
+The root collector reads `/proc/<pid>/environ` once per process incarnation (PID plus raw start ticks within the boot and process namespace). Bound the read to 65,536 bytes, using at most one extra byte to detect overflow. Unreadable, truncated, oversized or malformed input supplies no direct label; the verified-parent fallback below may still associate the process. Otherwise the decision is unknown, not a member. Cache the final decision for the incarnation; do not retry environment reads on later scans. Verify the incarnation around the read so PID reuse cannot transfer a label.
 
 Extract only these explicit labels:
 
@@ -14,11 +14,13 @@ Extract only these explicit labels:
 - Optional `RECOUNT_EXECUTION_NAME` and `RECOUNT_EXECUTION_VERSION`: execution metadata.
 - Optional `RECOUNT_EXECUTION_PARAMETERS`: a JSON object of unique string keys and string values, subject to the parameter limits below. Reject duplicate keys, non-string values and invalid metadata.
 
-An explicit key takes precedence over scheduler discovery. If it is present but invalid, the process is unlabelled; do not silently fall back. Without it, configured scheduler variable names map to execution-key prefixes. The default mapping is `{"SLURM_JOB_ID": "slurm"}`, producing `slurm:<id>`. Operators may configure names such as `PBS_JOBID` or `LSB_JOBID`. Match configured names in bytewise order when several are present, and validate the complete resulting key without trimming or rewriting the value. An invalid selected value is unknown. Explicit metadata is used only with `RECOUNT_EXECUTION`, not scheduler-derived keys.
+An explicit key takes precedence over scheduler discovery. If an explicit label is present but invalid, the process is unlabelled; do not fall back to a scheduler or parent. This also applies to duplicate keys, invalid explicit metadata and malformed input containing an explicit key. Without it, configured scheduler variable names map to execution-key prefixes. The default mapping is `{"SLURM_JOB_ID": "slurm"}`, producing `slurm:<id>`. Operators may configure names such as `PBS_JOBID` or `LSB_JOBID`. Match configured names in bytewise order when several are present, and validate the complete resulting key without trimming or rewriting the value. An invalid selected value supplies no direct label. Explicit metadata is used only with `RECOUNT_EXECUTION`, not scheduler-derived keys.
 
 Discard every other variable immediately. Never store, log or transmit the raw environment or discarded variable names or values, including in errors, durable state, queues and diagnostics. Retain only the validated execution key, explicit metadata and matched variable name. Temporary read buffers are not durable state.
 
-The environment reflects labels supplied at exec; children normally inherit them. Processes that clear their environment are unlabelled. The collector does not reread a cached incarnation after exec or an environment change, and cannot recover processes that start and disappear between scans or during downtime. There is no retrospective launcher evidence.
+The environment reflects labels supplied at exec; children normally inherit them. Programs that rename their process title can overwrite the memory backing `/proc/<pid>/environ`. When no valid direct label is readable and no invalid explicit label forbids fallback, discovery may inherit a parent's cached label, metadata and matched variable name. The parent must already be labelled and verified in the decision cache. Read its current PID and start ticks, require an exact cached incarnation with start ticks no later than the child's, and require known, equal kernel UIDs for the child, current parent and cached parent. Equal ticks are valid because start-time resolution can place a parent and child in the same tick. Recheck the child's incarnation and parent PID after the lookup. A PID alone is never sufficient.
+
+Inheritance is part of the once-per-incarnation decision, not a later retry or ancestry search. New incarnations collected within a scan are decided in ascending start-tick order, independently of proc-directory enumeration order. A parent not yet labelled at the child's decision cannot supply a label later. The collector does not reread a cached incarnation after exec or an environment change, and cannot recover processes that start and disappear between scans or during downtime. There is no retrospective launcher evidence.
 
 A local user labels only their own processes through the environment they supply. A shared key is attribution, not a web identity or proof of job ownership. The collector obtains process identity and UID from the kernel, not environment variables; a label cannot target another PID or grant cross-project access. Root remains a trusted collection boundary.
 
@@ -26,7 +28,7 @@ A local user labels only their own processes through the environment they supply
 
 `recount run --execution <key> [--name <name>] [--version <version>] [--param k=v] -- cmd` validates inputs, sets these environment variables and replaces itself with `cmd` through Unix `exec()`. Parameters are serialized as a JSON object. Omitted name/version are removed and omitted parameters become `{}`, so a nested launch cannot inherit another execution's metadata. Unrelated environment variables and standard streams pass through unchanged.
 
-There is no claim directory, local claim protocol, cgroup creation, ancestry association, collector handoff or helper process. Command exit status and signals pass through by construction; the launcher does not observe or report them.
+There is no claim directory, local claim protocol, cgroup creation, collector handoff or helper process. Verified-parent inheritance belongs to collector discovery, not the launcher. Command exit status and signals pass through by construction; the launcher does not observe or report them.
 
 ## Identity and membership
 
@@ -37,13 +39,13 @@ There is no claim directory, local claim protocol, cgroup creation, ancestry ass
 | Participant | Node-scoped UUID for one nonempty period of labelled processes sharing `(node, execution key, boot)`.                                                                                       |
 | Fact        | Node-scoped UUID for one lifecycle or one labelled process incarnation. Each revision is a full replacement snapshot.                                                                       |
 
-Emit one `PROCESS_MEMBERSHIP` per labelled process incarnation, open while the process is alive and ended when it disappears. It requires a process subject, a fresh fact UUID distinct from the participant ID and no execution metadata. All labelled processes count independently, including inherited labels; no cgroup or ancestry evidence is involved.
+Emit one `PROCESS_MEMBERSHIP` per labelled process incarnation, open while the process is alive and ended when it disappears. It requires a process subject, a fresh fact UUID distinct from the participant ID and no execution metadata. All labelled processes count independently, including labels inherited through the environment or verified-parent fallback; no cgroup evidence is involved.
 
 Emit one `PARTICIPANT_LIFECYCLE` per `(node, execution key, boot)` while at least one labelled process is alive. Its `fact_id` equals `participant_id`, and its subject is absent: there is no distinguished root process. It opens with the first labelled process and ends when the last disappears. Reappearance after closure creates a new participant. Metadata, provenance and optional owner UID come from the first labelled process and remain fixed; owner UID does not describe every process in the participant. Membership facts retain each process's matched variable and observed UID. No exit status is collected; unknown is not success.
 
 Confirm initial lifecycle publication before uploading that participant's memberships. Ingestion does not require a synchronous parent lookup. Lifecycle facts never attribute node-wide measurements. Preserve identities across collector restart only with durable evidence; uncertain rediscovery gets fresh IDs rather than restarting an old revision sequence.
 
-Provenance contains only origin `ENVIRONMENT` and `environment_variable`, the matched name (`RECOUNT_EXECUTION` or a configured scheduler variable). Local numeric `owner_uid` is kernel evidence, not a Better Auth owner. An unknown owner remains absent, never invented as UID 0.
+Provenance contains only origin `ENVIRONMENT` and `environment_variable`, the matched name (`RECOUNT_EXECUTION` or a configured scheduler variable). Verified-parent inheritance retains the parent's matched variable name; the wire provenance does not distinguish a direct read from inheritance. Each membership still records the child's observed UID. Local numeric `owner_uid` is kernel evidence, not a Better Auth owner. An unknown owner remains absent, never invented as UID 0.
 
 Keep a global collector safety cap on tracked facts: skip new associations and log a bounded diagnostic when full, without logging environment contents or evicting live facts. Prune ended facts only after their final revision has been acknowledged and no queued retry depends on them. Keep the once-per-incarnation read decision while a process is alive, including unknown or cap-skipped processes.
 

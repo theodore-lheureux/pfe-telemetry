@@ -70,8 +70,13 @@ impl Drop for Fixture {
 }
 
 pub(super) fn stat(path: &std::path::Path, pid: i32, ticks: u64) {
+    stat_with_parent(path, pid, ticks, 0);
+}
+
+pub(super) fn stat_with_parent(path: &std::path::Path, pid: i32, ticks: u64, parent: i32) {
     let mut fields = vec!["0".to_owned(); 50];
     fields[0] = "S".into();
+    fields[1] = parent.to_string();
     fields[19] = ticks.to_string();
     std::fs::write(path, format!("{pid} (fixture) {}", fields.join(" "))).unwrap();
 }

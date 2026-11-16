@@ -17,14 +17,29 @@ pub(super) struct Label {
     pub metadata: Option<ExecutionMetadata>,
 }
 
-/// Errors deliberately carry no environment bytes, variable names or parser diagnostics.
-pub(super) fn read(reader: impl Read, schedulers: &BTreeMap<String, String>) -> Option<Label> {
+/// An invalid explicit label forbids fallback. Errors carry no environment contents.
+pub(super) fn read(
+    reader: impl Read,
+    schedulers: &BTreeMap<String, String>,
+) -> Result<Option<Label>, ()> {
     let mut bytes = Vec::new();
-    reader
+    let readable = reader
         .take((MAX_ENVIRONMENT_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
-        .ok()?;
-    parse(&bytes, schedulers)
+        .is_ok();
+    let label = if readable {
+        parse(&bytes, schedulers)
+    } else {
+        None
+    };
+    if label.is_none()
+        && bytes
+            .split(|&b| b == 0)
+            .any(|entry| entry.starts_with(b"RECOUNT_EXECUTION="))
+    {
+        return Err(());
+    }
+    Ok(label)
 }
 
 fn parse(bytes: &[u8], schedulers: &BTreeMap<String, String>) -> Option<Label> {

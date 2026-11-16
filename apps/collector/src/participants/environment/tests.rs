@@ -3,6 +3,8 @@ use crate::participants::settings::Settings;
 
 fn label(bytes: &[u8]) -> Option<Label> {
     read(bytes, &Settings::default().scheduler_variables)
+        .ok()
+        .flatten()
 }
 
 #[test]
@@ -19,7 +21,13 @@ fn explicit_precedence_and_invalid_keys_never_fall_back() {
         "-bad",
         &"x".repeat(129),
     ] {
-        assert!(label(format!("SLURM_JOB_ID=123\0RECOUNT_EXECUTION={key}\0").as_bytes()).is_none());
+        assert!(
+            read(
+                format!("SLURM_JOB_ID=123\0RECOUNT_EXECUTION={key}\0").as_bytes(),
+                &Settings::default().scheduler_variables
+            )
+            .is_err()
+        );
     }
 }
 
@@ -32,11 +40,15 @@ fn scheduler_mapping_is_bytewise_and_preserves_values() {
     ]);
     let bytes =
         b"SLURM_JOB_ID=123\0PBS_JOBID=482.server\0LSB_JOBID=ABC\0RECOUNT_EXECUTION_NAME=ignored\0";
-    let result = read(bytes.as_slice(), &settings).unwrap();
+    let result = read(bytes.as_slice(), &settings).unwrap().unwrap();
     assert_eq!(result.key, "lsf:ABC");
     assert_eq!(result.variable, "LSB_JOBID");
     assert!(result.metadata.is_none());
-    assert!(read(b"LSB_JOBID= bad\0SLURM_JOB_ID=123\0".as_slice(), &settings).is_none());
+    assert!(
+        read(b"LSB_JOBID= bad\0SLURM_JOB_ID=123\0".as_slice(), &settings)
+            .unwrap()
+            .is_none()
+    );
     let result = label(b"SLURM_JOB_ID=123\0").unwrap();
     assert_eq!(result.key, "slurm:123");
 }
@@ -116,13 +128,21 @@ fn malformed_truncated_oversized_and_unreadable_are_unknown() {
             ))
         }
     }
-    assert!(read(Denied, &Settings::default().scheduler_variables).is_none());
+    assert!(
+        read(Denied, &Settings::default().scheduler_variables)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[test]
 fn bounded_read_discards_unrelated_non_utf8_and_never_reads_beyond_limit_plus_one() {
     assert!(label(b"PRIVATE_SECRET=\xff\0RECOUNT_EXECUTION=run:1\0").is_some());
     let mut remaining = std::io::Cursor::new(vec![b'x'; MAX_ENVIRONMENT_BYTES * 2]);
-    assert!(read(&mut remaining, &Settings::default().scheduler_variables).is_none());
+    assert!(
+        read(&mut remaining, &Settings::default().scheduler_variables)
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(remaining.position(), (MAX_ENVIRONMENT_BYTES + 1) as u64);
 }

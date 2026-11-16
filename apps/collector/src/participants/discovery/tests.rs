@@ -2,6 +2,7 @@ use std::{
     fs,
     io::{BufRead, BufReader},
     process::{Child, Command, Stdio},
+    time::Duration,
 };
 
 use super::*;
@@ -82,13 +83,14 @@ fn identity_recheck_discards_a_label_if_pid_changes_during_read() {
     let fixture = Fixture::new();
     fixture.process(100, 1, b"RECOUNT_EXECUTION=run:1\0");
     let process = Process::new_with_root(fixture.proc_root().join("100")).unwrap();
-    let observation = observe(&process, Incarnation { pid: 100, ticks: 1 }, || {
-        fixture.process(100, 2, b"RECOUNT_EXECUTION=run:other\0");
-        environment::read(
-            b"RECOUNT_EXECUTION=run:other\0".as_slice(),
-            &fixture.settings.scheduler_variables,
-        )
-    });
+    let observation =
+        discovery(&fixture).observe(&process, Incarnation { pid: 100, ticks: 1 }, 0, || {
+            fixture.process(100, 2, b"RECOUNT_EXECUTION=run:other\0");
+            environment::read(
+                b"RECOUNT_EXECUTION=run:other\0".as_slice(),
+                &fixture.settings.scheduler_variables,
+            )
+        });
     assert!(observation.label.is_none());
     assert!(observation.uid.is_none());
     assert!(!observation.verified);
@@ -149,6 +151,19 @@ async fn inherited_environment_labels_parent_and_forked_child_with_independent_m
         root,
         child: pid.trim().parse().unwrap(),
     };
+    // The shell reports the forked PID before the child's exec has necessarily completed.
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !fs::read_to_string(format!("/proc/{}/comm", family.child))
+        .is_ok_and(|comm| comm == "sleep\n")
+        || !fs::read(format!("/proc/{}/environ", family.child)).is_ok_and(|bytes| {
+            bytes
+                .split(|&b| b == 0)
+                .any(|entry| entry == b"RECOUNT_EXECUTION=run:inherited")
+        })
+    {
+        assert!(Instant::now() < deadline, "Child exec did not become ready");
+        std::thread::sleep(Duration::from_millis(10));
+    }
     let mut discovery = Discovery::new(&fixture.scope, fixture.settings.clone(), &[]).unwrap();
     let mut scan = discovery.scan().unwrap();
     scan.processes
