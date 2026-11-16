@@ -33,6 +33,19 @@ TCP/22, current ICMP and egress rules. Fill `security_list_id` from inspection.
 Review the full real-account plan before apply: no other rule removal or
 instance/network replacement is acceptable. Deployment is disabled by default.
 
+The root also manages only the DNS-only A records `app.recount.cloud` and
+`ingest.recount.cloud`, both pointing at the inspected VM public IP. It looks up
+the active `recount.cloud` zone by name; no zone/account identifier is committed.
+The existing landing Worker, apex and other DNS records are outside this root.
+The Cloudflare provider is pinned to stable 5.29.0 with a committed lock file.
+
+Both plan/apply jobs reuse the existing repository-level
+`secrets.CLOUDFLARE_API_TOKEN`; no environment token is created. This root needs
+Zone:Read and DNS:Edit on `recount.cloud`. The provider token input is sensitive
+and public-log masking covers the token, runtime zone/account IDs and IPs.
+Report authorization failures rather than substituting another credential or
+changing the landing workflow.
+
 `ssh_source_cidrs` is separate from public HTTPS. Its default preserves the
 inspected public SSH rule; use approved operator CIDRs, or an empty set after
 verifying another management path. Storage and backups belong only in the
@@ -193,7 +206,8 @@ setup, credentials, IAM, TLS/ingress and storage/backups plan.
    filesystem before allowing any database startup.
    Keep defaults for topics, limits and ports. Create independent runtime roles
    for web and ingestion; do not give web the PostgreSQL bootstrap credential.
-   Configure real HTTPS origins, matching signing/public keys and SMTP privately.
+   The deployment overlay fixes `BETTER_AUTH_URL=https://app.recount.cloud`.
+   Configure matching signing/public keys and SMTP privately.
 4. Only for this explicitly approved new instance, load the bundle images and
    follow [explicit initialization](../README.md#initialize-an-isolated-current-schema-instance).
    Run native initialization helpers from an approved matching source checkout
@@ -214,9 +228,9 @@ setup, credentials, IAM, TLS/ingress and storage/backups plan.
    with `visudo -cf`, then install it root-owned mode-0440 under `/etc/sudoers.d/`.
    Keep `ocarun` out of the Docker group and never grant `NOPASSWD:ALL`.
    All receiver/config/release parent directories must be writable only by root.
-7. Configure the host proxy using `deploy/Caddyfile` or a verified equivalent.
-   Select web/collector names from an existing domain or `sslip.io`, then verify
-   Let's Encrypt TLS-ALPN-01 on 443. No port 80 is needed. Mount the approved
+7. Configure the host proxy using `deploy/Caddyfile`: it serves exactly
+   `app.recount.cloud` and `ingest.recount.cloud` using Let's Encrypt
+   TLS-ALPN-01 on 443. No port 80 is needed. Mount the approved
    data volume and confirm backup eligibility before initialization.
 
 Docker's existing `unless-stopped` policy restores initialized backend/application

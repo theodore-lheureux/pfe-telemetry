@@ -112,6 +112,18 @@ class RunCommandTests(unittest.TestCase):
 
 
 class ComposeTests(unittest.TestCase):
+    def test_caddy_serves_only_owned_domains_using_the_tls_alpn_challenge(self):
+        config = Path(__file__).resolve().parents[1] / "deploy" / "Caddyfile"
+        text = config.read_text()
+        sites = [
+            line.split()[0] for line in text.splitlines() if line.startswith("https://")
+        ]
+        self.assertEqual(
+            sites, ["https://app.recount.cloud", "https://ingest.recount.cloud"]
+        )
+        self.assertEqual(text.count("disable_http_challenge"), 2)
+        self.assertIn("auto_https disable_redirects", text)
+
     def test_release_images_keep_loopback_ports_and_private_role_networks(self):
         root = Path(__file__).resolve().parents[3]
         with tempfile.TemporaryDirectory() as directory:
@@ -147,6 +159,10 @@ class ComposeTests(unittest.TestCase):
                 env={"PATH": os.environ["PATH"]},
             )
         services = json.loads(result)["services"]
+        self.assertEqual(
+            services["web"]["environment"]["BETTER_AUTH_URL"],
+            "https://app.recount.cloud",
+        )
         for role in ("ingestion-api", "normalizer", "web", "live"):
             expected = 512 if role == "live" else 1024
             self.assertEqual(int(services[role]["mem_limit"]), expected * 1024 * 1024)

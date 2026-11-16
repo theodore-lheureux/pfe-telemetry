@@ -110,6 +110,11 @@ secrets too, not plain variables: public runner headers log variables before
 scripts can register masks. Use the same rule for instance/compartment IDs and
 `COLLECTORS_TFVARS_JSON`. Technical selections such as `OCI_INGESTION_ARCH`
 may remain variables.
+Oracle plan/apply additionally references the existing repository-level
+`CLOUDFLARE_API_TOKEN` secret already used by landing deployment. Do not create a
+new environment token or alter the landing workflow; only `app.recount.cloud`
+and `ingest.recount.cloud` are managed by this infrastructure root. Zone:Read and
+DNS:Edit on `recount.cloud` are required; stop and report permission failures.
 Only the OCI identity is also needed in `ingestion-deploy`. Do not upload owner
 sessions, bootstrap credentials, private keys or raw plans as artifacts.
 

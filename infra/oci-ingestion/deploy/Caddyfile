@@ -3,9 +3,10 @@
 	admin off
 }
 
-https://{$RECOUNT_WEB_HOST} {
+https://app.recount.cloud {
 	tls {
 		issuer acme {
+			ca https://acme-v02.api.letsencrypt.org/directory
 			disable_http_challenge
 		}
 	}
@@ -20,9 +21,10 @@ https://{$RECOUNT_WEB_HOST} {
 	}
 }
 
-https://{$RECOUNT_INGESTION_HOST} {
+https://ingest.recount.cloud {
 	tls {
 		issuer acme {
+			ca https://acme-v02.api.letsencrypt.org/directory
 			disable_http_challenge
 		}
 	}

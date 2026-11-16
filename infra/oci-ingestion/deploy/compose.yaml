@@ -26,6 +26,8 @@ services:
     memswap_limit: 1024m
   web:
     image: ${RECOUNT_WEB_IMAGE:?Select the release web image}
+    environment:
+      BETTER_AUTH_URL: https://app.recount.cloud
     mem_limit: 1024m
     memswap_limit: 1024m
   live:

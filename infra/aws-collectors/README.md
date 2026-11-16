@@ -12,6 +12,10 @@ natively; use a release built from the current code and approved by attestation.
 Keep `oracle_endpoint_verified` false until the actual Oracle check passes.
 Do not downgrade transport or add a proxy workaround.
 
+The endpoint defaults are `https://ingest.recount.cloud` for OTLP/gRPC and
+`https://app.recount.cloud` for enrollment. Both resolve directly to the Oracle
+VM through DNS-only records; Cloudflare does not proxy collector traffic.
+
 ## Resources and enrollment
 
 The Canonical public SSM parameter selects Ubuntu 24.04 ARM64, checked against

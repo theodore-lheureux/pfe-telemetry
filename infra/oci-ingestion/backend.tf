@@ -5,6 +5,10 @@ terraform {
       source  = "oracle/oci"
       version = "~> 9.13.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "= 5.29.0"
+    }
   }
   backend "s3" {
     key                  = "oci/ingestion/terraform.tfstate"

@@ -24,18 +24,18 @@ Paste the key, press Enter, then Ctrl-D. Configuration management can install th
 
 The [Linux collector configuration](../apps/collector/README.md#configuration) is authoritative for flags and environment variables. Each machine needs:
 
-- `RECOUNT_COLLECTOR_ENROLLMENT_URL`: the web application URL, for example `https://recount.example`.
+- `RECOUNT_COLLECTOR_ENROLLMENT_URL`: the web application URL, `https://app.recount.cloud` for the hosted stack.
 - `RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE`: the path of the private key file, not the key itself.
 - `RECOUNT_COLLECTOR_STATE_DIRECTORY`: a persistent private directory for the node identity.
-- `OTEL_EXPORTER_OTLP_ENDPOINT`: the [ingestion API's](../apps/ingestion-api/README.md) OTLP/gRPC endpoint, for example `https://ingestion.example`. The web application URL is not an ingestion endpoint.
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: the [ingestion API's](../apps/ingestion-api/README.md) OTLP/gRPC endpoint, `https://ingest.recount.cloud` for the hosted stack. The web application URL is not an ingestion endpoint.
 - A verified process namespace ID and visibility, as described in the collector README.
 
 ```sh
-RECOUNT_COLLECTOR_ENROLLMENT_URL=https://recount.example \
+RECOUNT_COLLECTOR_ENROLLMENT_URL=https://app.recount.cloud \
 RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=/etc/recount-collector/enrollment.key \
 RECOUNT_COLLECTOR_STATE_DIRECTORY=/var/lib/recount-collector/node \
 RECOUNT_COLLECTOR_QUEUE_DIRECTORY=/var/lib/recount-collector \
-OTEL_EXPORTER_OTLP_ENDPOINT=https://ingestion.example \
+OTEL_EXPORTER_OTLP_ENDPOINT=https://ingest.recount.cloud \
 RECOUNT_COLLECTOR_VISIBILITY=host \
 recount-collector
 ```

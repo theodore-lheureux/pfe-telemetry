@@ -33,7 +33,8 @@ variable "ssh_cidrs" {
 }
 
 variable "ingestion_endpoint" {
-  type = string
+  type    = string
+  default = "https://ingest.recount.cloud"
   validation {
     condition     = can(regex("^https://[A-Za-z0-9.-]+(:443)?/?$", var.ingestion_endpoint))
     error_message = "Use the verified Oracle HTTPS gRPC endpoint on port 443."
@@ -41,7 +42,8 @@ variable "ingestion_endpoint" {
 }
 
 variable "enrollment_url" {
-  type = string
+  type    = string
+  default = "https://app.recount.cloud"
   validation {
     condition     = can(regex("^https://[A-Za-z0-9.-]+(:443)?/?$", var.enrollment_url))
     error_message = "Use the HTTPS web application's enrollment origin."

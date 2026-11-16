@@ -14,8 +14,6 @@ variables {
   expected_account_id      = "123456789012"
   vpc_id                   = "vpc-synthetic"
   subnet_ids               = ["subnet-first", "subnet-second"]
-  ingestion_endpoint       = "https://ingestion.example.test"
-  enrollment_url           = "https://web.example.test"
   collector_release_url    = "https://github.com/example/recount/releases/download/ingestion-synthetic/recount-collector-arm64.tar.gz"
   collector_release_sha256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   oracle_endpoint_verified = true
@@ -23,6 +21,10 @@ variables {
 
 run "two_private_enrolled_arm_collectors" {
   command = plan
+  assert {
+    condition     = var.ingestion_endpoint == "https://ingest.recount.cloud" && var.enrollment_url == "https://app.recount.cloud"
+    error_message = "Use the owned public ingestion and application hostnames."
+  }
   assert {
     condition     = length(aws_instance.collector) == 2 && aws_launch_template.collectors.instance_type == "t4g.nano"
     error_message = "Allocate exactly two Graviton nano collectors."
@@ -60,7 +62,7 @@ run "oracle_must_be_live_first" {
 run "plaintext_ingestion_is_rejected" {
   command = plan
   variables {
-    ingestion_endpoint = "http://ingestion.example.test"
+    ingestion_endpoint = "http://ingest.recount.cloud"
   }
   expect_failures = [var.ingestion_endpoint]
 }

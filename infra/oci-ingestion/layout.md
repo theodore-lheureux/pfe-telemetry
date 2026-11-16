@@ -138,13 +138,13 @@ and application upstreams remain bound to host loopback; Live has no public
 port. Do not expose Kafka 9092/19092, PostgreSQL 5432/15432, ClickHouse
 8123/18123, gRPC 14317 or web 3000 through OCI rules.
 
-The proposed host-side [Caddy configuration](deploy/Caddyfile) terminates HTTPS
-on 443 for separate web and collector names, forwarding web HTTP/SSE to
+The host-side [Caddy configuration](deploy/Caddyfile) terminates HTTPS
+on 443 for `app.recount.cloud` and `ingest.recount.cloud`, forwarding web HTTP/SSE to
 loopback 3000 and gRPC over h2c to loopback 14317. Caddy obtains certificates
 through ACME TLS-ALPN-01 on **443 only**; HTTP challenge and redirects are
-disabled, so there is no port-80 rule. Use an existing domain, or separate web
-and ingestion names under the public-IP-derived `sslip.io` name. Verify DNS
-resolution and certificate-authority eligibility before production activation.
+disabled, so there is no port-80 rule. The root manages only those two DNS-only
+A records in the existing `recount.cloud` zone. The apex and landing Worker
+remain unchanged. Verify DNS resolution and certificate issuance before activation.
 The proxy replaces untrusted forwarding headers and streams SSE without
 buffering. Verify HTTP/2 collector health/acceptance, passkeys, client-IP
 handling and SSE through the real proxy before admitting users.

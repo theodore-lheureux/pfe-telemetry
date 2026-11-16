@@ -67,6 +67,38 @@ mock_provider "oci" {
   }
 }
 
+mock_provider "cloudflare" {
+  mock_data "cloudflare_zones" {
+    defaults = {
+      result = [{
+        id                    = "00000000000000000000000000000001"
+        name                  = "recount.cloud"
+        status                = "active"
+        type                  = "full"
+        account               = null
+        activated_on          = null
+        cname_suffix          = null
+        created_on            = null
+        development_mode      = 0
+        meta                  = null
+        modified_on           = null
+        name_servers          = []
+        original_dnshost      = null
+        original_name_servers = []
+        original_registrar    = null
+        owner                 = null
+        paused                = false
+        permissions           = []
+        plan                  = null
+        tenant                = null
+        tenant_unit           = null
+        vanity_name_servers   = []
+        verification_key      = null
+      }]
+    }
+  }
+}
+
 variables {
   instance_id    = "ocid1.instance.oc1.test"
   vnic_id        = "ocid1.vnic.oc1.test"
@@ -77,6 +109,10 @@ variables {
 
 run "reference_existing_vm" {
   command = plan
+  assert {
+    condition     = length(cloudflare_dns_record.ingestion) == 0
+    error_message = "Do not publish DNS while deployment is disabled."
+  }
   assert {
     condition     = length(oci_core_volume.data) == 0 && length(oci_core_security_list.ingestion) == 0 && length(oci_core_volume_backup_policy.data) == 0
     error_message = "Uninspected deployment resources must remain disabled by default."
@@ -181,4 +217,45 @@ run "enabled_rejects_unrelated_security_list" {
     security_list_id       = "ocid1.securitylist.oc1.unrelated"
   }
   expect_failures = [oci_core_security_list.ingestion]
+}
+
+run "owned_public_dns_records_only" {
+  command = plan
+  variables {
+    deployment_enabled     = true
+    storage_compartment_id = "ocid1.compartment.oc1.storage"
+    security_list_id       = "ocid1.securitylist.oc1.test"
+  }
+  assert {
+    condition     = toset(keys(cloudflare_dns_record.ingestion)) == toset(["app", "ingest"])
+    error_message = "Only the app and ingest records may be managed, never apex or landing records."
+  }
+  assert {
+    condition     = toset([for record in cloudflare_dns_record.ingestion : record.name]) == toset(["app.recount.cloud", "ingest.recount.cloud"])
+    error_message = "Public records must use the two owned hostnames."
+  }
+  assert {
+    condition = alltrue([
+      for record in cloudflare_dns_record.ingestion :
+      record.type == "A" && record.proxied == false &&
+      record.content == data.oci_core_vnic.ingestion.public_ip_address &&
+      record.zone_id == one(data.cloudflare_zones.recount[0].result[*].id) &&
+      record.ttl == 300
+    ])
+    error_message = "Both DNS-only A records must point directly at the VM in the zone found by name."
+  }
+}
+
+run "missing_zone_fails_closed" {
+  command = plan
+  variables {
+    deployment_enabled     = true
+    storage_compartment_id = "ocid1.compartment.oc1.storage"
+    security_list_id       = "ocid1.securitylist.oc1.test"
+  }
+  override_data {
+    target = data.cloudflare_zones.recount[0]
+    values = { result = [] }
+  }
+  expect_failures = [data.cloudflare_zones.recount]
 }

@@ -76,6 +76,8 @@ class PublicLogTests(unittest.TestCase):
         environ = {
             "AWS_ACCOUNT_ID": "123456789012",
             "AWS_STATE_BUCKET": "private-state-bucket",
+            "CLOUDFLARE_API_TOKEN": "synthetic-cloudflare-token",
+            "TF_VAR_cloudflare_api_token": "synthetic-terraform-cloudflare-token",
             "INGESTION_TFVARS_JSON": json.dumps(
                 {
                     "subnets": ["subnet-0123456789abcdef0"],
@@ -90,6 +92,8 @@ class PublicLogTests(unittest.TestCase):
         for value in [
             "123456789012",
             "private-state-bucket",
+            "synthetic-cloudflare-token",
+            "synthetic-terraform-cloudflare-token",
             "subnet-0123456789abcdef0",
             "ocid1.vnic.oc1.private",
             "owner+deployment@example.test",
