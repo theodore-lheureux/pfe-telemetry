@@ -13,6 +13,8 @@ StateDirectory=recount-collector
 StateDirectoryMode=0700
 RuntimeDirectory=recount-collector
 RuntimeDirectoryMode=0700
+# Another collector may still hold its node lock here.
+RuntimeDirectoryPreserve=yes
 EnvironmentFile=/etc/recount-collector/runtime.env
 Environment=RECOUNT_COLLECTOR_VISIBILITY=host
 Environment=RECOUNT_COLLECTOR_STATE_DIRECTORY=/var/lib/recount-collector/node
@@ -21,6 +23,7 @@ Environment=RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=/run/recount-collector/enrollm
 ExecStartPre=/usr/local/sbin/recount-collector-prepare
 ExecStart=/usr/local/bin/recount-collector
 ExecStartPost=/bin/sh -c 'while [ ! -f /var/lib/recount-collector/node/node.json ]; do sleep 2; done; rm -f /run/recount-collector/enrollment.key'
+ExecStopPost=/bin/rm -f /run/recount-collector/enrollment.key
 Restart=on-failure
 RestartSec=75
 TimeoutStartSec=180

@@ -9,21 +9,22 @@ description: Configure the Linux collector.
 
 Settings are read once at startup. Command-line flags override environment variables; run `recount-collector --help` for the flag names.
 
-| Variable                                  | Default                     | Meaning                                                              |
-| ----------------------------------------- | --------------------------- | -------------------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`             | `http://127.0.0.1:14317`    | Recount ingestion address.                                           |
-| `RECOUNT_COLLECTOR_ENROLLMENT_URL`        | Unset                       | Address of the Recount web app that enrolls the machine.             |
-| `RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE`   | Unset                       | Private file holding the enrollment key. Needed only to enroll.      |
-| `RECOUNT_COLLECTOR_STATE_DIRECTORY`       | `.state/collector`          | Private folder where the machine keeps its identity after enrolling. |
-| `RECOUNT_COLLECTOR_INTERVAL_MS`           | `1000`                      | Sampling period, from 100 to 60000 ms.                               |
-| `RECOUNT_COLLECTOR_HOST_ID`               | `/etc/machine-id`           | Machine identity used to enroll. Cloned machines need distinct IDs.  |
-| `RECOUNT_COLLECTOR_VISIBILITY`            | `restricted`                | Set to `host` only when the collector can see the host's processes.  |
-| `RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID`  | `host` with host visibility | Identity of the PID namespace. Required with restricted visibility.  |
-| `RECOUNT_COLLECTOR_QUEUE_DIRECTORY`       | `.state/collector-queue`    | Local folder for data waiting to be sent. One collector per folder.  |
-| `RECOUNT_COLLECTOR_QUEUE_MAX_BYTES`       | `67108864`                  | Maximum queued data, from 1 MiB to 1 GiB.                            |
-| `RECOUNT_COLLECTOR_QUEUE_MAX_BATCHES`     | `1024`                      | Maximum pending batches.                                             |
-| `RECOUNT_COLLECTOR_QUEUE_MAX_AGE_SECONDS` | `3600`                      | How long a batch can wait before it's dropped.                       |
-| `RUST_LOG`                                | `info`                      | Log level.                                                           |
+| Variable                                  | Default                     | Meaning                                                                                    |
+| ----------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------ |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`             | `http://127.0.0.1:14317`    | Recount ingestion address.                                                                 |
+| `RECOUNT_COLLECTOR_ENROLLMENT_URL`        | Unset                       | Address of the Recount web app that enrolls the machine.                                   |
+| `RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE`   | Unset                       | Private file holding the enrollment key. Needed only to enroll.                            |
+| `RECOUNT_COLLECTOR_STATE_DIRECTORY`       | `.state/collector`          | Private folder where the machine keeps its identity after enrolling.                       |
+| `RECOUNT_COLLECTOR_INTERVAL_MS`           | `1000`                      | Sampling period, from 100 to 60000 ms.                                                     |
+| `RECOUNT_COLLECTOR_HOST_ID`               | `/etc/machine-id`           | Machine identity used to enroll. Cloned machines need distinct IDs.                        |
+| `RECOUNT_COLLECTOR_VISIBILITY`            | `restricted`                | Set to `host` only when the collector can see the host's processes.                        |
+| `RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID`  | `host` with host visibility | Identity of the PID namespace. Required with restricted visibility.                        |
+| `RECOUNT_COLLECTOR_QUEUE_DIRECTORY`       | `.state/collector-queue`    | Local folder for data waiting to be sent. One collector per folder.                        |
+| `RECOUNT_COLLECTOR_LOCK_DIRECTORY`        | `/run/recount-collector`    | Private folder shared by every collector on the machine, so only one reports it at a time. |
+| `RECOUNT_COLLECTOR_QUEUE_MAX_BYTES`       | `67108864`                  | Maximum queued data, from 1 MiB to 1 GiB.                                                  |
+| `RECOUNT_COLLECTOR_QUEUE_MAX_BATCHES`     | `1024`                      | Maximum pending batches.                                                                   |
+| `RECOUNT_COLLECTOR_QUEUE_MAX_AGE_SECONDS` | `3600`                      | How long a batch can wait before it's dropped.                                             |
+| `RUST_LOG`                                | `info`                      | Log level.                                                                                 |
 
 Changing any setting requires a restart.
 

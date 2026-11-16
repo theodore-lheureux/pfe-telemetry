@@ -35,11 +35,12 @@ Indiquez au collecteur l’application Web de Recount, qui inscrit la machine, e
 export RECOUNT_COLLECTOR_ENROLLMENT_URL=https://votre-application-recount.example
 export RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=~/.config/recount/enrollment.key
 export RECOUNT_COLLECTOR_STATE_DIRECTORY=~/.local/state/recount
+export RECOUNT_COLLECTOR_LOCK_DIRECTORY=~/.local/state/recount/lock
 export OTEL_EXPORTER_OTLP_ENDPOINT=https://ca.ingest.recount.cloud
 recount-collector
 ```
 
-Utilisez comme adresse d’inscription celle où vous vous connectez. L’adresse d’ingestion indiquée est celle de Recount Cloud; si vous [hébergez Recount vous-même](/fr/docs/self-hosting/), utilisez la vôtre. Au premier démarrage, la machine s’inscrit d’elle-même et apparaît sous **Nœuds** dans la page Collecteurs.
+Utilisez comme adresse d’inscription celle où vous vous connectez. L’adresse d’ingestion indiquée est celle de Recount Cloud; si vous [hébergez Recount vous-même](/fr/docs/self-hosting/), utilisez la vôtre. Sans les droits root, le dossier de verrou ci-dessus remplace `/run/recount-collector`, utilisé par défaut. Un seul collecteur déclare une machine à la fois, à condition que tous les collecteurs de la machine s’exécutent sous le même utilisateur, ou tous en root, et utilisent le même dossier de verrou. Au premier démarrage, la machine s’inscrit d’elle-même et apparaît sous **Nœuds** dans la page Collecteurs.
 
 ## 5. Enregistrer une exécution
 

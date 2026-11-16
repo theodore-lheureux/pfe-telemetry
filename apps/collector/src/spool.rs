@@ -55,6 +55,26 @@ impl Batch {
     }
 }
 
+/// Creates a mode 0700 directory, or accepts an existing one only with that mode.
+pub(crate) fn private_directory(directory: &Path, name: &str) -> io::Result<()> {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(directory)?;
+    let metadata = fs::symlink_metadata(directory)?;
+    if !metadata.is_dir() {
+        return Err(io::Error::other(format!(
+            "{name} path must be a directory, not a symlink"
+        )));
+    }
+    if metadata.permissions().mode() & 0o777 != 0o700 {
+        return Err(io::Error::other(format!(
+            "{name} directory must have mode 0700; existing permissions were left unchanged"
+        )));
+    }
+    Ok(())
+}
+
 pub fn unix_nanos() -> Result<u64> {
     Ok(u64::try_from(
         SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
@@ -97,20 +117,7 @@ impl Spool {
         if max_bytes == 0 || max_batches == 0 {
             return Err(io::Error::other("Queue limits must be positive").into());
         }
-        fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(directory)?;
-        let metadata = fs::symlink_metadata(directory)?;
-        if !metadata.is_dir() {
-            return Err(io::Error::other("Queue path must be a directory, not a symlink").into());
-        }
-        if metadata.permissions().mode() & 0o777 != 0o700 {
-            return Err(io::Error::other(
-                "Queue directory must have mode 0700; existing permissions were left unchanged",
-            )
-            .into());
-        }
+        private_directory(directory, "Queue")?;
         let lock = OpenOptions::new()
             .read(true)
             .write(true)

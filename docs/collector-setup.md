@@ -40,6 +40,8 @@ RECOUNT_COLLECTOR_VISIBILITY=host \
 recount-collector
 ```
 
+Run the collector as root, or as a systemd service with `RuntimeDirectory=recount-collector` and `RuntimeDirectoryPreserve=yes`, so it can use the default lock directory `/run/recount-collector`. Only one collector reports a machine at a time, provided all collectors on it run as the same user, or all as root, and share the lock directory: a second one for the same host ID waits up to 30 seconds for the first to stop, then exits. [One collection run per host](../apps/collector/README.md#one-collection-run-per-host) describes the lock.
+
 On first start the collector enrolls and appears in the **Nodes** table with its hostname and machine ID. Later starts reuse the stored identity, so the key file can be removed once the node is listed.
 
 HTTPS OTLP endpoints use rustls with system and WebPKI trust roots to verify the server certificate and hostname. Verification cannot be disabled. A public endpoint can use Caddy with a Let's Encrypt certificate to terminate TLS and proxy gRPC over HTTP/2 to the ingestion API. Plaintext `http://` endpoints remain available for local lab use on loopback or trusted private networks. Follow the [stack guide](../infra/README.md) for initialization, schema artifacts and endpoint publication.

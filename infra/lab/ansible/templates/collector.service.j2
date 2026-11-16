@@ -18,6 +18,10 @@ Environment=RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID=host
 ExecStart=/usr/local/bin/recount-collector
 StateDirectory={{ recount_collector_queue_name }}
 StateDirectoryMode=0700
+RuntimeDirectory=recount-collector
+RuntimeDirectoryMode=0700
+# Another collector may still hold its node lock here.
+RuntimeDirectoryPreserve=yes
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
