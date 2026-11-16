@@ -1,0 +1,164 @@
+syntax = "proto3";
+package recount.telemetry;
+
+import "recount.proto";
+
+message ExecutionParameter { string key = 1; string value = 2; }
+message ExecutionMetadata {
+  optional string name = 1;
+  optional string workload_version = 2;
+  repeated ExecutionParameter parameters = 3;
+}
+
+// Boot and host are supplied by the enclosing claim.
+message ProcessIncarnation {
+  string namespace_id = 1;
+  uint32 pid = 2;
+  uint64 start_time_ticks = 3;
+}
+message CgroupIncarnation {
+  string namespace_id = 1;
+  string path = 2;
+  uint64 inode = 3;
+  // A persisted UUID distinguishes deletion/recreation and uncertain rediscovery.
+  string incarnation_id = 4;
+}
+message ParticipantSubject {
+  ProcessIncarnation process = 1;
+  CgroupIncarnation cgroup = 2;
+}
+message ProcessExit {
+  uint64 time_unix_nano = 1;
+  oneof outcome {
+    uint32 code = 2;
+    uint32 signal = 3;
+  }
+}
+
+// Namespace identities are applied by the collector, never supplied by a launcher.
+message LocalProcessIncarnation {
+  uint32 pid = 1;
+  uint64 start_time_ticks = 2;
+}
+message LocalParticipantSubject {
+  LocalProcessIncarnation process = 1;
+  // The collector reads actual placement from procfs and verifies every member's
+  // UID. A launcher supplies no cgroup identity or namespace.
+  bool dedicated_cgroup = 2;
+}
+
+// One atomically replaced, durable local spool snapshot; not an ingestion request.
+// First ownership uses claim_id as participant_id. Recovery after lost collector
+// state allocates fresh participant/fact IDs, retaining launcher_claim_id.
+// An already-exited root first discovered offline supplies lifecycle only,
+// without retrospective cgroup discovery or process membership.
+message LocalExecutionClaim {
+  string claim_id = 1;
+  uint64 revision = 2;
+  string execution_key = 3;
+  string boot_id = 4;
+  LocalParticipantSubject subject = 5;
+  uint32 owner_uid = 6;
+  ExecutionMetadata metadata = 7;
+  uint64 first_seen_unix_nano = 8;
+  uint64 last_seen_unix_nano = 9;
+  // Exclusive root-process end, not the end of an observed cgroup lifecycle.
+  optional uint64 ended_unix_nano = 10;
+  // The launched root's exit does not imply that its cgroup is empty.
+  ProcessExit exit = 11;
+}
+
+enum ParticipantFactKind {
+  PARTICIPANT_FACT_UNKNOWN = 0;
+  PARTICIPANT_LIFECYCLE = 1;
+  PROCESS_MEMBERSHIP = 2;
+}
+enum ParticipantOrigin {
+  PARTICIPANT_ORIGIN_UNKNOWN = 0;
+  LAUNCHER = 1;
+  SCHEDULER_ADAPTER = 2;
+  ANCESTRY = 3;
+}
+message ParticipantProvenance {
+  ParticipantOrigin origin = 1;
+  optional string launcher_claim_id = 2;
+  optional string adapter = 3;
+  // Ancestry records verified incarnations, never parent PID alone.
+  ProcessIncarnation ancestry_root = 4;
+  ProcessIncarnation parent = 5;
+}
+
+// Complete replacement snapshot. Identity and revision rules are in
+// docs/execution-participants.md; absent exit/end means unknown, not success.
+message ParticipantFact {
+  string project_id = 1;
+  string node_id = 2;
+  string host_id = 3;
+  string boot_id = 4;
+  string execution_key = 5;
+  string participant_id = 6;
+  string fact_id = 7;
+  uint64 revision = 8;
+  ParticipantFactKind kind = 9;
+  ParticipantSubject subject = 10;
+  ParticipantProvenance provenance = 11;
+  optional uint32 owner_uid = 12;
+  uint64 first_seen_unix_nano = 13;
+  uint64 last_seen_unix_nano = 14;
+  optional uint64 ended_unix_nano = 15;
+  ProcessExit exit = 16;
+  ExecutionMetadata metadata = 17;
+  bool retracted = 18;
+}
+message ClaimParticipantResponse {}
+service ExecutionParticipants {
+  rpc Claim(ParticipantFact) returns (ClaimParticipantResponse);
+}
+
+// Trusted admission context is retained for replay without reauthorization.
+message RawParticipantRecord {
+  SecurityScope security = 1;
+  string record_id = 2;
+  uint64 received_unix_nano = 3;
+  ParticipantFact fact = 4;
+}
+
+// One bare record per normalized Kafka message (ClickHouse ProtobufSingle).
+// Optional scalar fields map to Nullable columns; structured evidence stays
+// available as Protobuf bytes without imposing nested optional SQL tuples.
+message AnalyticalParticipant {
+  string project_id = 1;
+  string node_id = 2;
+  string host_id = 3;
+  string boot_id = 4;
+  string execution_key = 5;
+  string participant_id = 6;
+  string fact_id = 7;
+  uint64 revision = 8;
+  ParticipantFactKind kind = 9;
+  optional string process_resource_id = 10;
+  optional string process_namespace_id = 11;
+  optional uint32 process_pid = 12;
+  optional uint64 process_start_time_ticks = 13;
+  optional string cgroup_incarnation_id = 14;
+  optional string cgroup_namespace_id = 15;
+  optional string cgroup_path = 16;
+  optional uint64 cgroup_inode = 17;
+  ParticipantOrigin origin = 18;
+  optional string launcher_claim_id = 19;
+  optional string adapter = 20;
+  optional string ancestry_root_resource_id = 21;
+  optional string parent_resource_id = 22;
+  optional uint32 owner_uid = 23;
+  uint64 first_seen_unix_nano = 24;
+  uint64 last_seen_unix_nano = 25;
+  optional uint64 ended_unix_nano = 26;
+  optional uint64 exit_unix_nano = 27;
+  optional uint32 exit_code = 28;
+  optional uint32 exit_signal = 29;
+  bool retracted = 30;
+  bytes provenance = 31;
+  bytes metadata = 32;
+  string record_id = 33;
+  uint64 received_unix_nano = 34;
+}
