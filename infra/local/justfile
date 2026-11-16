@@ -22,7 +22,7 @@ init service:
 
 data-identity service:
     bun --no-env-file data.ts inspect "$1"
-    docker compose run --rm --no-deps --entrypoint /bin/sh "$1" /etc/recount/data-entrypoint.sh "$1" --identity
+    docker compose run --rm -T --no-deps --entrypoint /bin/sh "$1" /etc/recount/data-entrypoint.sh "$1" --identity
 
 # Reuse unchanged backends; apply declared changes. No builds, topic creation or offset seeds.
 up:

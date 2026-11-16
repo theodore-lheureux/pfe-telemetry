@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fromCrossJSON, toJSONAsync } from "seroval";
 import { actorService } from "../../apps/web/src/auth/actor.server";
 import { createAuth } from "../../apps/web/src/auth/create-auth.server";
-import type { ExecutionSummary } from "../../apps/web/src/executions/contracts";
+import type { ExecutionDetail } from "../../apps/web/src/executions/contracts";
 import type { OperationResult } from "../../apps/web/src/lib/operation-result";
 import * as organizations from "../../apps/web/src/organizations/organizations.server";
 import * as projects from "../../apps/web/src/organizations/projects.server";
@@ -238,6 +238,7 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 	const telemetrySockets = new Set<Socket>();
 	let telemetryQueries = 0;
 	let executionRows: Record<string, unknown>[] = [];
+	let executionFacts: Record<string, unknown>[] = [];
 	const telemetry = createServer((request, response) => {
 		let query = "";
 		request.on("data", (chunk) => {
@@ -249,13 +250,15 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 				request.url ?? "/",
 				"http://fixture.invalid",
 			).searchParams.get("param_project");
-			const rows = executionRows.filter((row) => row.project === project);
+			let rows: Record<string, unknown>[] = [];
+			if (query.includes("execution_participants")) {
+				const source = query.includes("fact_id AS factId")
+					? executionFacts
+					: executionRows;
+				rows = source.filter((row) => row.project === project);
+			}
 			response.writeHead(200, { "Content-Type": "application/json" });
-			response.end(
-				query.includes("execution_participants")
-					? rows.map((row) => `${JSON.stringify(row)}\n`).join("")
-					: "",
-			);
+			response.end(rows.map((row) => `${JSON.stringify(row)}\n`).join(""));
 		});
 	});
 	telemetry.keepAliveTimeout = 60_000;
@@ -420,12 +423,31 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 				parameters: [],
 				nodeCount: 1,
 				participantCount: 1,
+				environmentVariables: ["RECOUNT_EXECUTION"],
 				firstSeenNs: (
 					BigInt(Date.parse("2026-11-03T10:00:00Z")) * 1000000n
 				).toString(),
 				lastSeenNs: (
 					BigInt(Date.parse("2026-11-03T11:00:00Z")) * 1000000n
 				).toString(),
+			},
+		];
+		executionFacts = [
+			{
+				project: project.id,
+				nodeId: randomUUID(),
+				participantId: randomUUID(),
+				factId: randomUUID(),
+				kind: 1,
+				processResourceId: null,
+				namespaceId: null,
+				pid: null,
+				startTimeTicks: null,
+				ownerUid: null,
+				environmentVariable: "RECOUNT_EXECUTION",
+				firstSeenNs: executionRows[0].firstSeenNs,
+				lastSeenNs: executionRows[0].lastSeenNs,
+				endedNs: null,
 			},
 		];
 		async function rpc<T>(operation: string, input: unknown): Promise<T> {
@@ -449,12 +471,18 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 			if (result.error) throw result.error;
 			return data(result.result);
 		}
-		const result = await rpc<ExecutionSummary>("getExecution", {
+		const result = await rpc<ExecutionDetail>("getExecution", {
 			...reference,
 			executionKey,
 		});
 		expect(result.firstSeen).toBeInstanceOf(Date);
 		expect(result.firstSeen.toISOString()).toBe("2026-11-03T10:00:00.000Z");
+		expect(result.facts).toHaveLength(1);
+		expect(result.facts[0].firstSeen).toBeInstanceOf(Date);
+		expect(result.facts[0].firstSeen).toEqual(result.firstSeen);
+		expect(result.facts[0].lastSeen).toEqual(result.lastSeen);
+		expect(result.facts[0].ended).toBeNull();
+		expect(telemetryQueries).toBe(2);
 		const anonymous = await fetch(`${origin}/settings?section=user`, {
 			redirect: "manual",
 		});
@@ -488,7 +516,7 @@ test("generated Bun output preserves private localized SSR, static assets, Date 
 			...reference,
 			metric: "recount.node.cpu.time",
 		});
-		expect(telemetryQueries).toBe(2);
+		expect(telemetryQueries).toBe(3);
 		expect(telemetrySockets.size).toBeGreaterThan(0);
 		const telemetryOpenedAt = performance.now();
 		child.kill("SIGTERM");

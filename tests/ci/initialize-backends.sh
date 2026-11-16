@@ -10,7 +10,8 @@ existing=$(docker compose ps --all --quiet)
 initialize() {
     local role=$1 key identity
     just --no-dotenv local init "$role"
-    identity=$(just --no-dotenv --quiet local data-identity "$role")
+    # Just's --quiet also suppresses command stdout, including the identity.
+    identity=$(just --no-dotenv local data-identity "$role")
     [[ $identity =~ ^[A-Za-z0-9_-]+$ ]] || { echo 'Initializer did not establish one concrete identity' >&2; exit 1; }
     key="RECOUNT_${role^^}_DATA_ID"
     export "$key=$identity"

@@ -114,6 +114,7 @@ async function initialize() {
 	const identity = compose([
 		"run",
 		"--rm",
+		"-T",
 		"--no-deps",
 		"--entrypoint",
 		"/bin/sh",

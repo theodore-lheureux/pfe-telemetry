@@ -241,6 +241,70 @@ if (process.env.MOCK_CASE === "topics-failed" && args.includes("kafka-topics") &
 	expect(readiness).toMatch(/(?:--host[= ]|-h )127\.0\.0\.1\b/);
 });
 
+test("data identity inspection returns one machine-readable line without starting backends", async () => {
+	const path = directory();
+	const log = join(path, "calls.jsonl");
+	writeFileSync(
+		join(path, "docker"),
+		`#!/bin/sh\nexec '${process.execPath}' --no-env-file '${join(path, "docker.ts")}' "$@"\n`,
+	);
+	chmodSync(join(path, "docker"), 0o755);
+	writeFileSync(
+		join(path, "docker.ts"),
+		`
+import { appendFileSync } from "node:fs";
+const args = process.argv.slice(2);
+appendFileSync(process.env.MOCK_LOG!, JSON.stringify(args) + "\\n");
+if (args[0] === "compose" && args[1] === "config") console.log(process.env.MOCK_CONFIG);
+else if (args[0] === "volume" && args[1] === "inspect") process.exit(0);
+else if (args.includes("--identity")) process.stdout.write("synthetic-cluster" + (args.includes("-T") ? "\\n" : "\\r\\n"));
+else process.exit(17);
+`,
+	);
+	const child = Bun.spawn(
+		["just", "--no-dotenv", "local", "data-identity", "kafka"],
+		{
+			cwd: new URL("../../", import.meta.url).pathname,
+			env: {
+				...process.env,
+				PATH: `${path}:${process.env.PATH}`,
+				MOCK_LOG: log,
+				MOCK_CONFIG: JSON.stringify(config("data")),
+			},
+			stdout: "pipe",
+			stderr: "pipe",
+		},
+	);
+	const [status, output, errors] = await Promise.all([
+		child.exited,
+		new Response(child.stdout).text(),
+		new Response(child.stderr).text(),
+	]);
+	expect(status, errors).toBe(0);
+	expect(output).toBe("synthetic-cluster\n");
+	const calls: string[][] = readFileSync(log, "utf8")
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line));
+	expect(calls).toEqual([
+		["compose", "config", "--format", "json"],
+		["volume", "inspect", "recount-safety-test-data"],
+		[
+			"compose",
+			"run",
+			"--rm",
+			"-T",
+			"--no-deps",
+			"--entrypoint",
+			"/bin/sh",
+			"kafka",
+			"/etc/recount/data-entrypoint.sh",
+			"kafka",
+			"--identity",
+		],
+	]);
+});
+
 test("finite initialization stops only its owned one-off and never retries partial state", async () => {
 	const path = directory();
 	const log = join(path, "calls.jsonl");
