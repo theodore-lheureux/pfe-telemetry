@@ -172,6 +172,10 @@ resource "aws_iam_policy" "collectors_cd" {
         Resource = "${local.collector_ec2}:security-group/*", Condition = local.collector_owned
       },
       {
+        Sid      = "LaunchFromOwnedTemplate", Effect = "Allow", Action = ["ec2:RunInstances"]
+        Resource = "${local.collector_ec2}:launch-template/*", Condition = local.collector_owned
+      },
+      {
         Sid      = "LaunchTaggedNano", Effect = "Allow", Action = ["ec2:RunInstances"]
         Resource = "${local.collector_ec2}:instance/*"
         Condition = { StringEquals = merge(local.collector_create.StringEquals, {
