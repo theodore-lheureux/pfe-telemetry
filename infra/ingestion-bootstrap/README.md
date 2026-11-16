@@ -47,8 +47,19 @@ This tenancy requires an owner-selected `cd_email`; do not invent an address.
 
 The root creates a dedicated `recount-ingestion-data` compartment. Volume and
 backup management is granted only there; the VM remains in its original
-compartment. Root-compartment attachment management is conditioned on that VM.
-Selected security-list changes and Run Command are also target-conditioned.
+compartment. Core instance-attach and security-list-update permissions use the
+existing resources' `Oracle-Tags.CreatedOn` markers through
+`target.resource.tag`, not unsupported Core ID predicates. The markers are read
+from the selected resource IDs; verify uniqueness before rebinding targets and
+never copy these authorization markers to another resource. Missing or invalid
+markers fail closed, and duplicate security-list markers block bootstrap.
+
+Attachment objects do not exist yet and cannot carry target tags at creation.
+The additional root-compartment grant therefore permits only
+`VOLUME_ATTACHMENT_CREATE` during `AttachVolume`, with no detach/delete grant.
+The API must also authorize the marked VM and a project-compartment volume.
+This follows Oracle's [tag-based attach requirements](https://docs.oracle.com/en-us/iaas/Content/Tagging/Tasks/managingaccesswithtags.htm#block-volume-service-limitations).
+No VM or network resource needs retagging. Run Command remains exact-VM-conditioned.
 The principal has read-only inventory access in the VM's compartment, but no
 unconditional root-compartment storage management, IAM or object-storage access.
 Release downloads are public.
@@ -64,8 +75,12 @@ root-compartment data-volume listing was denied in a live negative check.
 **Validate target-condition support with real requests.** The OCI
 reference does not establish all instance/security-list target variables for
 these operations. Unsupported conditions fail closed, but a successful policy
-creation alone does not prove authorization. Attachment-condition verification
-requires the first CD-created data volume and remains an explicit apply gate.
+creation alone does not prove authorization. The first CD apply returned 404
+for both `AttachVolume` and `UpdateSecurityList` with the former ID predicates.
+Audit and read-only CD-identity planning confirmed the partial state: existing
+storage/backups/DNS are preserved, and only the missing attachment and HTTPS rule
+remain to apply. The corrected policy uses documented tag/operation conditions;
+verify the write operations in a fresh approved CD apply, never a local ingestion apply.
 Never remove
 conditions or broaden to all instances/security lists to make deployment work.
 If OCI cannot express that boundary, stop for a design decision.

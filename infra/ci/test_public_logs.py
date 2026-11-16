@@ -219,6 +219,78 @@ class PublicLogTests(unittest.TestCase):
         self.assertNotIn("aabbccddaabbccddaabbccddaabbccdd", visible)
         self.assertNotIn("example.test", visible)
 
+    def test_failed_apply_emits_useful_redacted_diagnostics(self):
+        diagnostic = {
+            "type": "diagnostic",
+            "diagnostic": {
+                "severity": "error",
+                "summary": "404-NotAuthorizedOrNotFound",
+                "address": "oci_core_volume_attachment.data[0]",
+                "detail": (
+                    "AttachVolume denied for ocid1.instance.oc1.private; "
+                    "account=123456789012; actor=owner@example.test; "
+                    "key=synthetic-access-key; zone=aabbccddaabbccddaabbccddaabbccdd; "
+                    "origin=192.0.2.10"
+                ),
+            },
+        }
+        output = io.StringIO()
+        with (
+            patch.object(public_logs.subprocess, "run") as process,
+            contextlib.redirect_stdout(output),
+        ):
+            process.return_value.returncode = 1
+            process.return_value.stdout = (
+                event_stream("apply") + "\n" + json.dumps(diagnostic)
+            )
+            result = public_logs.run_tofu(
+                "infra/oci-ingestion",
+                "apply",
+                {"AWS_ACCESS_KEY_ID": "synthetic-access-key"},
+            )
+        self.assertEqual(result, 1)
+        visible = "\n".join(
+            line
+            for line in output.getvalue().splitlines()
+            if not line.startswith("::add-mask::")
+        )
+        self.assertIn("404-NotAuthorizedOrNotFound", visible)
+        self.assertIn("AttachVolume denied", visible)
+        self.assertIn("oci_core_volume_attachment.data[0]", visible)
+        for private in (
+            "ocid1.instance.oc1.private",
+            "123456789012",
+            "owner@example.test",
+            "synthetic-access-key",
+            "aabbccddaabbccddaabbccddaabbccdd",
+            "192.0.2.10",
+        ):
+            self.assertNotIn(private, visible)
+        self.assertNotIn('"outputs"', visible)
+
+    def test_plain_apply_failure_also_keeps_diagnostics_and_masks_private_values(self):
+        output = io.StringIO()
+        with (
+            patch.object(public_logs.subprocess, "run") as process,
+            contextlib.redirect_stdout(output),
+        ):
+            process.return_value.returncode = 1
+            process.return_value.stdout = (
+                "Error acquiring the state lock for private-state-bucket"
+            )
+            public_logs.run_tofu(
+                "infra/oci-ingestion",
+                "apply",
+                {"AWS_STATE_BUCKET": "private-state-bucket"},
+            )
+        visible = "\n".join(
+            line
+            for line in output.getvalue().splitlines()
+            if not line.startswith("::add-mask::")
+        )
+        self.assertIn("Error acquiring the state lock", visible)
+        self.assertNotIn("private-state-bucket", visible)
+
     def test_configured_collectors_emit_true_and_write_only_private_tfvars(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "outputs"

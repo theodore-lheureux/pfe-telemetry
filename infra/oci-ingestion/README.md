@@ -11,8 +11,11 @@ policy have been applied, native S3 locking verified with that identity, and
 approval-gated GitHub environments configured. OCI bootstrap created the CD user,
 API key, group, scoped policies, agent permissions and project compartment.
 Live storage grants were narrowed
-and confirmed with `oci iam policy get`. VM/data-volume/ingress, certificates
-and application changes have not been applied. No workflow was pushed or dispatched.
+and confirmed with `oci iam policy get`. The first approved CD apply created
+the data volume, backup policy/assignment and DNS records, but attachment and
+security-list update failed with authorization errors. The bootstrap policy has
+been corrected; a fresh approved CD apply is required to finish those changes.
+Certificates and application deployment remain pending.
 Trusted host-key verification and read-only guest inspection are complete;
 connection details remain ignored. The host has no Docker, Bun or Caddy yet,
 and its firewall still rejects HTTPS.
@@ -50,9 +53,16 @@ changing the landing workflow.
 inspected public SSH rule; use approved operator CIDRs, or an empty set after
 verifying another management path. Storage and backups belong only in the
 project `storage_compartment_id`; the VM remains in its existing compartment.
-Confirm attachment-condition authorization during the first approved CD storage
-apply; it needs an actual project volume and remains unverified. Stop on denial
-rather than broadening root-compartment grants.
+Core write authorization uses supported resource-tag conditions on the selected
+VM and security list. Confirm the corrected permissions in the fresh CD apply;
+do not broaden root-compartment grants on failure.
+
+After a partial apply, never reuse the old saved plan or reset state. Generate
+a new plan against the existing remote state. The targeted read-only recovery
+plan showed only the missing attachment and security-list update; storage,
+backup and DNS resources must remain preserved. Review the full fresh CD plan
+before approving it. A closed TCP/443 does not distinguish a missing OCI rule
+from the host firewall or absent Caddy.
 
 CD copies `adoption.tf.example` to ignored `adoption.tf` before planning the
 existing security-list import. OpenTofu 1.13.9 crashes when mocked providers
@@ -140,7 +150,8 @@ The repository's Actions logs are public. Cloud identifiers and tfvars JSON are
 environment secrets so runner headers are masked from the first step. The
 shared public-log helper additionally masks nested values and email-shaped
 strings, buffers the full `-no-color` plan, and prints it only after redacting
-runtime identifiers and emails. Apply logs use a limited JSON summary.
+runtime identifiers and emails. Apply logs use a limited JSON summary and emit
+redacted provider error summaries/details when an operation fails.
 Imported Oracle provenance tags
 remain ignored by lifecycle configuration, but state and full plans still
 contain them; only the encrypted plan artifact is uploaded. Existing published

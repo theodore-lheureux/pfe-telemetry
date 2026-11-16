@@ -9,6 +9,9 @@ from collections import Counter
 from pathlib import Path
 
 IDENTIFIERS = (
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SESSION_TOKEN",
     "AWS_ACCOUNT_ID",
     "AWS_STATE_BUCKET",
     "OCI_TENANCY_ID",
@@ -18,6 +21,8 @@ IDENTIFIERS = (
     "OCI_COMPARTMENT_ID",
     "CLOUDFLARE_API_TOKEN",
     "TF_VAR_cloudflare_api_token",
+    "OCI_API_PRIVATE_KEY",
+    "PLAN_ENCRYPTION_KEY",
 )
 CONFIGURATIONS = ("INGESTION_TFVARS_JSON", "COLLECTORS_TFVARS_JSON")
 PRIVATE_PATTERNS = (
@@ -148,6 +153,29 @@ def summary(output, operation):
     return lines
 
 
+def error_diagnostics(output, values):
+    errors = []
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict) or event.get("type") != "diagnostic":
+            continue
+        diagnostic = event.get("diagnostic", {})
+        if not isinstance(diagnostic, dict):
+            continue
+        if diagnostic.get("severity") != "error":
+            continue
+        text = f"Error: {diagnostic.get('summary', 'OpenTofu apply failed')}"
+        if diagnostic.get("address"):
+            text += f"\n  with {diagnostic['address']}"
+        if diagnostic.get("detail"):
+            text += f"\n{diagnostic['detail']}"
+        errors.append(text)
+    return redact("\n\n".join(errors) if errors else output, values)
+
+
 def run_tofu(root, operation, environ):
     mask(environ)
     command = [
@@ -176,9 +204,8 @@ def run_tofu(root, operation, environ):
         print(redact(result.stdout, values), end="", flush=True)
         return result.returncode
     if result.returncode:
-        print(
-            f"::error::OpenTofu {operation} failed; raw diagnostics withheld from public logs."
-        )
+        print(f"::error::OpenTofu {operation} failed; redacted diagnostics follow.")
+        print(error_diagnostics(result.stdout, values), flush=True)
         return result.returncode
     for line in summary(result.stdout, operation):
         print(line)
