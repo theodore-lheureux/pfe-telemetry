@@ -46,8 +46,19 @@ const BAND = "~band";
  * Splits each current series into a solid part and a dashed tail for a bucket that is
  * still filling, so a partial value does not read as a real drop.
  */
-function chartRows(series: ChartSeries[], bucketMs: number, now: number) {
+function chartRows(
+	series: ChartSeries[],
+	bucketMs: number,
+	now: number,
+	logScale: boolean,
+) {
 	const rows = new Map<number, Record<string, number | null>>();
+	// A log axis cannot place zero or negative values, and one such value blanks the
+	// whole chart, so they become gaps.
+	const plottable = (value: number | null | undefined) =>
+		value === undefined || value === null || (logScale && value <= 0)
+			? null
+			: value;
 	for (const entry of series) {
 		const points = entry.points.filter((point) => point.value !== null);
 		const last = points.at(-1);
@@ -60,7 +71,8 @@ function chartRows(series: ChartSeries[], bucketMs: number, now: number) {
 			const row: Record<string, unknown> = rows.get(point.bucketMs) ?? {
 				bucketMs: point.bucketMs,
 			};
-			row[entry.key] = partial && point === last ? null : (point.value ?? null);
+			row[entry.key] =
+				partial && point === last ? null : plottable(point.value);
 			// A range area reads its lower and upper bound from one pair.
 			if (
 				point.low !== undefined &&
@@ -76,7 +88,7 @@ function chartRows(series: ChartSeries[], bucketMs: number, now: number) {
 			for (const point of [previous, last])
 				if (point) {
 					const row = rows.get(point.bucketMs);
-					if (row) row[`${entry.key}${TAIL}`] = point.value;
+					if (row) row[`${entry.key}${TAIL}`] = plottable(point.value);
 				}
 		}
 	}
@@ -157,6 +169,7 @@ function TooltipCard({
 }
 
 export type ChartType = "auto" | "line" | "area" | "bar" | "stacked";
+const MAX_VALUE_LABELS = 16;
 
 export function TimeseriesChart({
 	series,
@@ -292,8 +305,8 @@ export function TimeseriesChart({
 	}, [series, trend, movingAverage, bucketSeconds, now]);
 	const drawn = useMemo(() => [...series, ...overlays], [series, overlays]);
 	const rows = useMemo(
-		() => chartRows(drawn, bucketSeconds * 1000, now),
-		[drawn, bucketSeconds, now],
+		() => chartRows(drawn, bucketSeconds * 1000, now, logScale),
+		[drawn, bucketSeconds, now, logScale],
 	);
 	const curve = smooth ? "monotone" : "linear";
 	// A single current series gets a soft area; several stay lines so fills never overlap.
@@ -315,17 +328,21 @@ export function TimeseriesChart({
 			{ label: entry.label, color: entry.color },
 		]),
 	) satisfies ChartConfig;
+	// Labels every few buckets on long ranges, so neighbouring labels never overlap.
+	const labelEvery = Math.max(1, Math.ceil(rows.length / MAX_VALUE_LABELS));
 	// One mark per series: comparisons are dashed lines, the rest follow the chart type.
 	const values = (entry: ChartSeries) =>
 		showValues && (
 			<LabelList
-				dataKey={entry.key}
+				valueAccessor={(label, index) => {
+					const value = (label.payload as Record<string, unknown>)[entry.key];
+					return index % labelEvery === 0 && typeof value === "number"
+						? format(value)
+						: "";
+				}}
 				position="top"
 				fontSize={10}
 				fill="var(--muted-foreground)"
-				formatter={(value: unknown) =>
-					typeof value === "number" ? format(value) : ""
-				}
 			/>
 		);
 	const mark = (entry: ChartSeries) => {
@@ -429,6 +446,9 @@ export function TimeseriesChart({
 			>
 				<ComposedChart
 					data={rows}
+					// Side-by-side bars keep most of a narrow bucket instead of spending it on gaps.
+					barGap={1}
+					barCategoryGap="8%"
 					margin={{
 						left: yLabel ? 16 : 4,
 						right: 12,
@@ -553,6 +573,7 @@ export function TimeseriesChart({
 						/>
 					)}
 					<Tooltip
+						isAnimationActive={false}
 						cursor={{ stroke: "var(--border)", strokeWidth: 1 }}
 						content={(props) => (
 							<TooltipCard
@@ -642,10 +663,16 @@ export function Sparkline({
 	points,
 	bucketSeconds,
 	color = "var(--viz-1)",
+	type = "area",
+	smooth = false,
+	beginAtZero = false,
 }: {
 	points: ChartPoint[];
 	bucketSeconds: number;
 	color?: string;
+	type?: "line" | "area" | "bar";
+	smooth?: boolean;
+	beginAtZero?: boolean;
 }) {
 	const gradient = useId().replace(/:/g, "");
 	const now = Date.now();
@@ -655,13 +682,14 @@ export function Sparkline({
 				[{ key: "value", label: "", color, points }],
 				bucketSeconds * 1000,
 				now,
+				false,
 			),
 		[points, bucketSeconds, color, now],
 	);
 	return (
 		<ChartContainer
 			config={{ value: { color } }}
-			className="aspect-auto h-12 w-full"
+			className="aspect-auto h-full w-full"
 			aria-hidden="true"
 		>
 			<ComposedChart
@@ -674,25 +702,39 @@ export function Sparkline({
 						<stop offset="100%" stopColor={color} stopOpacity={0} />
 					</linearGradient>
 				</defs>
-				<YAxis hide domain={["dataMin", "dataMax"]} />
-				<Area
-					dataKey="value"
-					type="linear"
-					stroke={color}
-					strokeWidth={1.5}
-					fill={`url(#${gradient})`}
-					dot={false}
-					isAnimationActive={false}
-				/>
-				<Line
-					dataKey={`value${TAIL}`}
-					type="linear"
-					stroke={color}
-					strokeWidth={1.5}
-					strokeDasharray="3 3"
-					dot={false}
-					isAnimationActive={false}
-				/>
+				<YAxis hide domain={[beginAtZero ? 0 : "dataMin", "dataMax"]} />
+				{type === "bar" ? (
+					<>
+						<Bar dataKey="value" fill={color} isAnimationActive={false} />
+						<Bar
+							dataKey={`value${TAIL}`}
+							fill={color}
+							fillOpacity={0.4}
+							isAnimationActive={false}
+						/>
+					</>
+				) : (
+					<>
+						<Area
+							dataKey="value"
+							type={smooth ? "monotone" : "linear"}
+							stroke={color}
+							strokeWidth={1.5}
+							fill={type === "area" ? `url(#${gradient})` : "none"}
+							dot={false}
+							isAnimationActive={false}
+						/>
+						<Line
+							dataKey={`value${TAIL}`}
+							type={smooth ? "monotone" : "linear"}
+							stroke={color}
+							strokeWidth={1.5}
+							strokeDasharray="3 3"
+							dot={false}
+							isAnimationActive={false}
+						/>
+					</>
+				)}
 			</ComposedChart>
 		</ChartContainer>
 	);

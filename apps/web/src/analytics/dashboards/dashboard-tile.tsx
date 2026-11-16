@@ -162,6 +162,7 @@ export function DashboardTileCard({
 	}, [result.data, draft, nodeNames]);
 	const refresh = () => setRefreshed(new Date());
 	const color = tile.options.color;
+	const flush = draft.display.type === "stat" || draft.display.type === "table";
 	return (
 		<article
 			ref={element}
@@ -182,17 +183,19 @@ export function DashboardTileCard({
 				{...header}
 				className={cn(
 					"group/header flex items-start gap-1 px-3 pt-3 pb-2",
+					flush && "border-b",
 					header?.className,
 				)}
 			>
 				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 					<div className="flex min-w-0 items-center gap-1">
-						<h3 id={`${id}-title`} className="truncate text-sm font-medium">
+						{/* The link truncates itself so the heading does not clip its focus outline. */}
+						<h3 id={`${id}-title`} className="min-w-0 text-sm font-medium">
 							<Link
 								to="/organizations/$organizationId/projects/$projectId/explore"
 								params={reference}
 								search={{ insight: tile.insight.id }}
-								className="hover:underline"
+								className="block truncate rounded-sm hover:underline"
 							>
 								{tile.insight.name}
 							</Link>
@@ -256,14 +259,18 @@ export function DashboardTileCard({
 					node: () => element.current,
 				})}
 			</header>
-			<div className="flex min-h-0 flex-1 flex-col gap-1 px-3 pb-3">
+			<div
+				className={cn(
+					"flex min-h-0 flex-1 flex-col gap-1",
+					!flush && "px-3 pb-3",
+				)}
+			>
 				<TileBody
 					draft={draft}
 					ready={query !== null}
 					error={result.error}
 					data={result.data}
 					view={view}
-					fetching={fetching}
 					hydrated={hydrated}
 					near={near !== false}
 					onZoom={onZoom}
@@ -280,7 +287,6 @@ function TileBody({
 	error,
 	data,
 	view,
-	fetching,
 	hydrated,
 	near,
 	onZoom,
@@ -290,7 +296,6 @@ function TileBody({
 	error: Error | null;
 	data: QueryResult | undefined;
 	view: SeriesView | undefined;
-	fetching: boolean;
 	hydrated: boolean;
 	near: boolean;
 	onZoom: (from: Date, to: Date) => void;
@@ -324,14 +329,13 @@ function TileBody({
 	if (!near) return <div className="h-full w-full" aria-hidden="true" />;
 	if (draft.display.type === "table" && !view.empty)
 		return (
-			<div className="min-h-0 flex-1 overflow-auto">
-				<InsightTable
-					result={data}
-					view={view}
-					hydrated={hydrated}
-					onHover={() => {}}
-				/>
-			</div>
+			<InsightTable
+				embedded
+				result={data}
+				view={view}
+				hydrated={hydrated}
+				onHover={() => {}}
+			/>
 		);
 	return (
 		<div className="min-h-0 flex-1 overflow-auto">
@@ -340,7 +344,6 @@ function TileBody({
 				view={view}
 				display={draft.display}
 				hydrated={hydrated}
-				fetching={fetching}
 				highlight={null}
 				onZoom={onZoom}
 				height="h-full"

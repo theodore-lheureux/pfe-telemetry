@@ -1,23 +1,16 @@
 import { m } from "@recount/i18n/messages";
-import { cn } from "cn";
 import { ChartNoAxesColumnIcon } from "lucide-react";
 import { Skeleton } from "../../components/ui/skeleton";
 import { IconEmptyState } from "../../components/workspace";
 import { type ChartSeries, TimeseriesChart } from "../charts";
 import type { QueryResult, SeriesResult } from "../contracts";
 import { ComputedAt, RefreshButton } from "../refresh-status";
-import { StatCard } from "../stat-card";
 import type { Display } from "./draft";
 import { bucketGrid, offlineBands, onGrid, online } from "./grid";
 import { type FormulaNames, plottedTitle } from "./labels";
+import { NumberResults } from "./number-results";
 import { PercentileWarning } from "./percentile-warning";
-import {
-	CHART_SERIES,
-	identity,
-	lineId,
-	type SeriesView,
-	stats,
-} from "./series-view";
+import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
 
 /** Why a series has no value in a bucket: its node, or any node when not grouped by node. */
 function gapReason(
@@ -83,7 +76,6 @@ export function InsightChart({
 				view={view}
 				display={display}
 				hydrated={hydrated}
-				fetching={fetching}
 				onZoom={onZoom}
 				highlight={highlight}
 			/>
@@ -103,7 +95,6 @@ export function ChartBody({
 	view,
 	display,
 	hydrated,
-	fetching,
 	onZoom,
 	highlight,
 	height = "h-72",
@@ -113,7 +104,6 @@ export function ChartBody({
 	view: SeriesView;
 	display: Display;
 	hydrated: boolean;
-	fetching: boolean;
 	onZoom?: (from: Date, to: Date) => void;
 	highlight: string | null;
 	/** The chart's height class; `h-full` fills a sized parent. */
@@ -152,28 +142,14 @@ export function ChartBody({
 		);
 	if (display.type === "stat")
 		return (
-			// Columns follow the space available, so a narrow tile stacks its cards.
-			<div
-				className={cn(
-					"grid gap-3",
-					fill
-						? "grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]"
-						: "grid-cols-[repeat(auto-fill,minmax(12rem,1fr))]",
-				)}
-			>
-				{view.charted.map((series) => (
-					<StatCard
-						key={identity(series)}
-						loading={fetching}
-						title={view.label(series)}
-						value={view.format(series)(stats(series).latest)}
-						points={pointsOf(series)}
-						bucketSeconds={bucketSeconds}
-						color={view.color(series)}
-						hydrated={hydrated}
-					/>
-				))}
-			</div>
+			<NumberResults
+				view={view}
+				display={display}
+				pointsOf={pointsOf}
+				bucketSeconds={bucketSeconds}
+				compact={fill}
+				height={height}
+			/>
 		);
 	const charting = view.visible.filter((series) => view.color(series));
 	const chartSeries: ChartSeries[] = charting.map((series, index) => ({

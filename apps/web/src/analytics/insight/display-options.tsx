@@ -25,8 +25,15 @@ import {
 	type LegendPosition,
 	MAX_AXIS_LABEL,
 	MAX_MOVING_AVERAGE,
+	MAX_UNIT_AFFIX,
 } from "./draft";
-import { DISPLAY_LABEL, UNIT_LABEL } from "./labels";
+import {
+	CUSTOM_UNITS,
+	DISPLAY_LABEL,
+	FORMAT_UNITS,
+	UNIT_LABEL,
+} from "./labels";
+import { NumberDisplayOptions } from "./number-display-options";
 
 const SECTION =
 	"text-xs font-medium tracking-wide text-muted-foreground uppercase";
@@ -61,8 +68,11 @@ function CommitInput({
 	className,
 	parse,
 	onCommit,
+	"aria-label": ariaLabel,
 }: {
 	id: string;
+	/** Names a field that has no visible label. */
+	"aria-label"?: string;
 	value: string;
 	placeholder: string;
 	type?: "text" | "number";
@@ -87,6 +97,7 @@ function CommitInput({
 	return (
 		<Input
 			id={id}
+			aria-label={ariaLabel}
 			type={type}
 			value={text}
 			placeholder={placeholder}
@@ -127,6 +138,8 @@ export function spreadUnavailable(draft: InsightDraft): string | null {
 
 const label = (text: string) =>
 	text.length <= MAX_AXIS_LABEL ? { value: text || undefined } : null;
+const affix = (text: string) =>
+	text.length <= MAX_UNIT_AFFIX ? { value: text || undefined } : null;
 const number = (text: string) => {
 	if (!text) return { value: undefined };
 	const value = Number(text);
@@ -219,6 +232,13 @@ export function DisplayOptions({
 					)}
 				</TabsList>
 				<TabsContent value="general" className="flex flex-col gap-3 pt-2">
+					{display.type === "stat" && (
+						<NumberDisplayOptions
+							display={display}
+							disabled={disabled}
+							onChange={onChange}
+						/>
+					)}
 					{overTime && (
 						<>
 							<Row id={`${id}-values`} label={m.display_show_values()}>
@@ -269,16 +289,41 @@ export function DisplayOptions({
 							value={display.unit}
 							disabled={disabled}
 							className="w-full"
-							onChange={(event) =>
-								set("unit", event.target.value as DisplayUnit)
-							}
+							onChange={(event) => {
+								const unit = event.target.value as DisplayUnit;
+								const { unitAffix, ...rest } = display;
+								onChange(
+									CUSTOM_UNITS.includes(unit)
+										? { ...display, unit }
+										: { ...rest, unit },
+								);
+							}}
 						>
-							{(Object.keys(UNIT_LABEL) as DisplayUnit[]).map((unit) => (
+							{FORMAT_UNITS.map((unit) => (
+								<NativeSelectOption key={unit} value={unit}>
+									{UNIT_LABEL[unit]()}
+								</NativeSelectOption>
+							))}
+							<hr />
+							{CUSTOM_UNITS.map((unit) => (
 								<NativeSelectOption key={unit} value={unit}>
 									{UNIT_LABEL[unit]()}
 								</NativeSelectOption>
 							))}
 						</NativeSelect>
+						{CUSTOM_UNITS.includes(display.unit) && (
+							<CommitInput
+								id={`${id}-unit-affix`}
+								aria-label={UNIT_LABEL[display.unit]()}
+								value={display.unitAffix ?? ""}
+								placeholder={m.insight_unit_affix_placeholder()}
+								disabled={disabled}
+								parse={affix}
+								onCommit={(value) =>
+									set("unitAffix", value as string | undefined)
+								}
+							/>
+						)}
 					</div>
 				</TabsContent>
 				{overTime && (

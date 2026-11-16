@@ -1,16 +1,20 @@
 import { m } from "@recount/i18n/messages";
+import { type SortingState, useTable } from "@tanstack/react-table";
 import { DownloadIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { DataTable } from "../../components/data-table";
 import { Button } from "../../components/ui/button";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "../../components/ui/table";
+import { cn } from "../../lib/utils";
 import type { QueryResult, SeriesResult } from "../contracts";
-import { lineId, type SeriesView, stats } from "./series-view";
+import {
+	type InsightTableMeta,
+	insightTableFeatures,
+	insightTablePrecision,
+	insightTableRows,
+	insightTimeseriesColumns,
+	insightTotalColumns,
+} from "./insight-table-columns";
+import { lineId, type SeriesView } from "./series-view";
 
 function exportCsv(
 	series: SeriesResult[],
@@ -37,97 +41,69 @@ function exportCsv(
 	URL.revokeObjectURL(url);
 }
 
-const TIMESERIES_COLUMNS = [
-	m.insight_calc_last,
-	m.insight_calc_avg,
-	m.insight_calc_min,
-	m.insight_calc_max,
-	m.insight_stat_p95,
-	m.insight_stat_p99,
-];
-
 /** Latest, average, minimum, maximum and percentiles per visible series, with CSV export. */
 export function InsightTable({
 	result,
 	view,
 	hydrated,
 	onHover,
+	embedded = false,
 }: {
 	result: QueryResult;
 	view: SeriesView;
 	hydrated: boolean;
+	/** A dashboard tile already supplies the frame, title and export menu. */
+	embedded?: boolean;
 	/** The line under the pointer, so the chart can emphasize it. */
 	onHover: (line: string | null) => void;
 }) {
-	// A table-shaped result holds one value per series for the whole range.
-	const total = result.shape === "table";
-	const columns = total ? [m.insight_total] : TIMESERIES_COLUMNS;
-	const values = (series: SeriesResult) => {
-		const { latest, average, min, max, p95, p99 } = stats(series);
-		return total ? [latest] : [latest, average, min, max, p95, p99];
-	};
+	const [sorting, setSorting] = useState<SortingState>([]);
+	const columns =
+		result.shape === "table" ? insightTotalColumns : insightTimeseriesColumns;
+	const visibleSorting = useMemo(
+		() =>
+			sorting.filter((entry) =>
+				columns.some((column) => column.id === entry.id),
+			),
+		[sorting, columns],
+	);
+	const rows = useMemo(() => insightTableRows(view), [view]);
+	const precision = useMemo(
+		() => insightTablePrecision(rows, view),
+		[rows, view],
+	);
+	const meta: InsightTableMeta = { view, embedded, precision };
+	const table = useTable({
+		features: insightTableFeatures,
+		data: rows,
+		columns,
+		meta,
+		getRowId: (row) => lineId(row.series),
+		state: { sorting: visibleSorting },
+		onSortingChange: setSorting,
+	});
 	return (
-		<div className="flex flex-col gap-3">
-			<div className="flex items-center justify-between gap-2">
-				<h2 className="text-sm font-semibold">{m.insight_results()}</h2>
-				<Button
-					variant="outline"
-					size="sm"
-					disabled={!hydrated || view.empty}
-					onClick={() => exportCsv(view.visible, view.label)}
-				>
-					<DownloadIcon aria-hidden="true" />
-					{m.insight_export()}
-				</Button>
-			</div>
-			<div className="rounded-md border bg-card">
-				<Table aria-label={m.insight_results()}>
-					<TableHeader>
-						<TableRow>
-							<TableHead>{m.insight_series()}</TableHead>
-							{columns.map((column) => (
-								<TableHead key={column()} className="text-right">
-									{column()}
-								</TableHead>
-							))}
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{view.visible.map((series) => (
-							<TableRow
-								key={lineId(series)}
-								onMouseEnter={() => onHover(lineId(series))}
-								onMouseLeave={() => onHover(null)}
-							>
-								<TableCell>
-									<span className="flex items-center gap-2">
-										<span
-											aria-hidden="true"
-											className="size-2.5 shrink-0 rounded-full"
-											style={{
-												background:
-													view.color(series) ?? "var(--muted-foreground)",
-												opacity: series.comparison ? 0.45 : 1,
-											}}
-										/>
-										<span className="truncate">{view.label(series)}</span>
-									</span>
-								</TableCell>
-								{values(series).map((value, index) => (
-									<TableCell
-										// Columns are fixed per shape, so position is their identity.
-										// biome-ignore lint/suspicious/noArrayIndexKey: see above.
-										key={index}
-										className="text-right font-mono tabular-nums"
-									>
-										{view.format(series)(value)}
-									</TableCell>
-								))}
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
-			</div>
+		<div className={cn("flex min-h-0 flex-col", embedded ? "h-full" : "gap-3")}>
+			{!embedded && (
+				<div className="flex items-center justify-between gap-2">
+					<h2 className="text-sm font-semibold">{m.insight_results()}</h2>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={!hydrated || view.empty}
+						onClick={() => exportCsv(view.visible, view.label)}
+					>
+						<DownloadIcon aria-hidden="true" />
+						{m.insight_export()}
+					</Button>
+				</div>
+			)}
+			<DataTable
+				table={table}
+				label={m.insight_results()}
+				embedded={embedded}
+				onRowHover={(row) => onHover(row ? lineId(row.series) : null)}
+			/>
 		</div>
 	);
 }

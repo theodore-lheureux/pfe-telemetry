@@ -56,7 +56,59 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 		await expect(
 			page.getByRole("heading", { name: "No saved insights yet" }),
 		).toBeVisible();
-		await page.getByRole("link", { name: "Open Explore", exact: true }).click();
+		await page
+			.getByRole("button", { name: "New insight", exact: true })
+			.click();
+		const chooser = page.getByRole("dialog", {
+			name: "New insight",
+			exact: true,
+		});
+		await expect(chooser.getByRole("link")).toHaveCount(6);
+		await chooser.getByRole("link", { name: "Number", exact: true }).click();
+		await expect(
+			page.getByRole("combobox", { name: "Chart type", exact: true }),
+		).toHaveText("Number");
+		await expect(
+			page.getByRole("button", { name: "Add series", exact: true }),
+		).toHaveCount(0);
+		await page.getByLabel("Formula mode", { exact: true }).click();
+		await expect(
+			page.getByRole("button", { name: "Add formula", exact: true }),
+		).toHaveCount(0);
+		await page.getByRole("button", { name: "Add series", exact: true }).click();
+		await expect(
+			page.getByRole("combobox", { name: "Choose a metric", exact: true }),
+		).toHaveCount(2);
+		await page.getByLabel("Formula mode", { exact: true }).click();
+		await expect(
+			page.getByRole("combobox", { name: "Choose a metric", exact: true }),
+		).toHaveCount(1);
+		await expect(page.getByLabel("Insight name", { exact: true })).toHaveValue(
+			"",
+		);
+		await expect(page.getByRole("button", { name: /^Breakdown:/ })).toHaveCount(
+			0,
+		);
+		await page.getByRole("button", { name: "Options", exact: true }).click();
+		await page
+			.getByRole("combobox", { name: "Background chart", exact: true })
+			.click();
+		await page.getByRole("option", { name: "Bar chart", exact: true }).click();
+		await page
+			.getByRole("switch", { name: "Show background chart", exact: true })
+			.click();
+		await page.reload();
+		await page.getByRole("button", { name: "Options", exact: true }).click();
+		await expect(
+			page.getByRole("switch", { name: "Show background chart", exact: true }),
+		).not.toBeChecked();
+		await page.goto(insights);
+		await page
+			.getByRole("button", { name: "New insight", exact: true })
+			.click();
+		await chooser
+			.getByRole("link", { name: "Line chart", exact: true })
+			.click();
 
 		// A new insight from a calculated metric is named after what it plots until
 		// it is given a name and description in the title.

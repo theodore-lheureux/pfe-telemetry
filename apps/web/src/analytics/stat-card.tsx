@@ -5,7 +5,7 @@ import { Skeleton } from "../components/ui/skeleton";
 import { type ChartPoint, Sparkline } from "./charts";
 
 /**
- * A headline value with a sparkline, shared by the overview and stat insights.
+ * A headline value with a sparkline for the fleet overview.
  * With `onSelect` it is a toggle button that picks what a larger chart shows.
  */
 export function StatCard({
@@ -22,6 +22,7 @@ export function StatCard({
 	onSelect,
 	loading,
 	pending,
+	fill = false,
 }: {
 	title: string;
 	value: string;
@@ -38,6 +39,8 @@ export function StatCard({
 	loading?: boolean;
 	/** No value yet: placeholders stand in for the value, detail and sparkline. */
 	pending?: boolean;
+	/** Stretches to its parent's height, giving the sparkline the extra space. */
+	fill?: boolean;
 }) {
 	const body = (
 		<>
@@ -63,7 +66,7 @@ export function StatCard({
 					</>
 				)}
 			</div>
-			<div className="mt-2 h-12">
+			<div className={cn("mt-2", fill ? "min-h-12 flex-1" : "h-12")}>
 				{pending && <Skeleton className="mx-4 h-9" />}
 				{hydrated && !pending && (
 					<Sparkline
@@ -75,8 +78,10 @@ export function StatCard({
 			</div>
 		</>
 	);
-	const frame =
-		"relative flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card text-left";
+	const frame = cn(
+		"relative flex min-w-0 flex-col overflow-hidden rounded-lg border bg-card text-left",
+		fill && "h-full",
+	);
 	if (!onSelect) return <div className={frame}>{body}</div>;
 	return (
 		<button

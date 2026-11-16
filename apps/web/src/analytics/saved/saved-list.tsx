@@ -21,6 +21,7 @@ import { DISPLAY_ICON, DISPLAY_LABEL } from "../insight/labels";
 import type { InsightPerson, SavedInsight } from "../saved-insights";
 import { FacetFilter } from "./facet-filter";
 import { useInsightActions } from "./insight-actions";
+import { NewInsightPicker } from "./new-insight-picker";
 import {
 	type SavedRow,
 	type SavedTableMeta,
@@ -105,7 +106,10 @@ export function SavedInsights({
 	if (insights.length === 0)
 		return (
 			<section className="flex min-w-0 flex-col gap-5">
-				<AnalyticsHeader section="insights" />
+				<AnalyticsHeader
+					section="insights"
+					actions={canWrite && <NewInsightPicker reference={reference} />}
+				/>
 				<IconEmptyState
 					icon={<BookmarkIcon aria-hidden="true" />}
 					title={m.saved_empty()}
@@ -145,7 +149,10 @@ export function SavedInsights({
 
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
-			<AnalyticsHeader section="insights" />
+			<AnalyticsHeader
+				section="insights"
+				actions={canWrite && <NewInsightPicker reference={reference} />}
+			/>
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				<SearchField
 					label={m.saved_search()}
