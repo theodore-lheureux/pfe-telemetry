@@ -36,6 +36,7 @@ provision *nodes:
 
 # Install the prebuilt collector for each VM architecture.
 collectors *args:
+    bun run --cwd ../.. i18n:compile
     uv run --project ../.. --locked ansible-playbook ansible/collector.yml "$@"
 
 # Opt-in scheduler setup; does not provision collectors or restart monitoring.

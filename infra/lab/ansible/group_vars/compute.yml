@@ -3,6 +3,8 @@ ansible_python_interpreter: /usr/bin/python3
 ansible_ssh_host_key_checking: false
 ansible_ssh_common_args: -o UserKnownHostsFile=/dev/null
 
+recount_slurm_version: 25.11.2-1ubuntu2
+
 recount_prerequisites:
   - ca-certificates
   - python3

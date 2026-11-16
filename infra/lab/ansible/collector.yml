@@ -22,6 +22,16 @@
     recount_demo_project_name: Local VMs
     recount_demo_env_file: "{{ playbook_dir }}/../../../apps/web/.env"
   pre_tasks:
+    - name: Validate collector configuration
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.system == 'Linux'
+          - recount_collector_state != 'started' or recount_collector_binary is defined
+          - recount_collector_state in ['started', 'stopped']
+          - recount_collector_interval_ms | int >= 100
+          - recount_collector_interval_ms | int <= 60000
+          - recount_collector_queue_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
+
     - name: Validate the prebuilt collector architecture
       ansible.builtin.assert:
         that:
@@ -60,16 +70,6 @@
       run_once: true
       when: recount_collector_state == 'started'
 
-    - name: Compile the shared application catalogs
-      ansible.builtin.command:
-        argv: [bun, run, i18n:compile]
-        chdir: "{{ playbook_dir }}/../../.."
-      delegate_to: localhost
-      become: false
-      run_once: true
-      changed_when: false
-      when: recount_collector_state == 'started'
-
     - name: Provision the local demo account, organization and enrollment key
       ansible.builtin.command:
         argv:
@@ -97,16 +97,6 @@
       no_log: true
       when: recount_collector_state == 'started'
   tasks:
-    - name: Validate collector configuration
-      ansible.builtin.assert:
-        that:
-          - ansible_facts.system == 'Linux'
-          - recount_collector_state != 'started' or recount_collector_binary is defined
-          - recount_collector_state in ['started', 'stopped']
-          - recount_collector_interval_ms | int >= 100
-          - recount_collector_interval_ms | int <= 60000
-          - recount_collector_queue_name is match('^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
-
     - name: Create the private collector configuration directory
       ansible.builtin.file:
         path: /etc/recount-collector

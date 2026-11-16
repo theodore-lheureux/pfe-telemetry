@@ -3,8 +3,6 @@
   hosts: compute
   any_errors_fatal: true
   gather_facts: false
-  vars_files:
-    - roles/slurm/defaults/main.yml
   tasks:
     - name: Require both lab nodes
       ansible.builtin.assert:

@@ -116,6 +116,7 @@
           async: "{{ recount_duration | int + 60 }}"
           poll: 0
           register: recount_job
+          changed_when: true
 
         - name: Wait for workload completion
           ansible.builtin.async_status:
