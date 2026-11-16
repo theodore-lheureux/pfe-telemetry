@@ -1,0 +1,6 @@
+# CD activates this file before planning. OpenTofu mocked providers cannot import.
+import {
+  for_each = var.deployment_enabled ? toset([var.security_list_id]) : toset([])
+  to       = oci_core_security_list.ingestion[0]
+  id       = each.value
+}

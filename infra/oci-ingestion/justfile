@@ -1,0 +1,35 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+# Local credentials only; mock tests and Compose rendering never contact cloud APIs.
+check:
+    tofu -chdir=../ingestion-bootstrap/aws fmt -check -recursive
+    tofu -chdir=../ingestion-bootstrap/oci fmt -check -recursive
+    tofu -chdir=../state-backend fmt -check -recursive
+    tofu -chdir=. fmt -check -recursive
+    tofu fmt -check - < adoption.tf.example
+    tofu -chdir=../state-backend init -backend=false -input=false
+    tofu -chdir=. init -backend=false -input=false
+    tofu -chdir=../ingestion-bootstrap/aws init -backend=false -input=false
+    tofu -chdir=../ingestion-bootstrap/oci init -backend=false -input=false
+    tofu -chdir=../state-backend validate
+    tofu -chdir=. validate
+    tofu -chdir=../ingestion-bootstrap/aws validate
+    tofu -chdir=../ingestion-bootstrap/oci validate
+    tofu -chdir=../state-backend test
+    tofu -chdir=. test
+    tofu -chdir=../ingestion-bootstrap/aws test
+    tofu -chdir=../ingestion-bootstrap/oci test
+    cd ../.. && python3 -m unittest discover -s infra/oci-ingestion/ci -p 'test_*.py'
+    shellcheck deploy/*.sh
+    cd ../.. && actionlint .github/workflows/ingestion-*.yml
+    cd ../.. && uvx zizmor==1.32.0 --offline .github/workflows/ingestion-*.yml .github/actions/ingestion-infra-setup/action.yml
+
+# Read-only local inspection only. Infrastructure changes run through GitHub CD.
+plan:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    test ! -e adoption.tf
+    cp adoption.tf.example adoption.tf
+    trap 'rm -f adoption.tf' EXIT
+    tofu -chdir=../state-backend plan -lock=false -input=false
+    tofu -chdir=. plan -lock=false -input=false

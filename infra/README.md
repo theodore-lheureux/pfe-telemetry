@@ -4,6 +4,12 @@ The [backend Compose file](local/compose.yaml) runs reusable PostgreSQL, Kafka a
 
 Each acknowledgement is a separate at-least-once boundary. Analytical visibility can be partial and delayed. Read [the point contract](../docs/telemetry-point-contract.md) for identity, fidelity, authorization and replay rules.
 
+The [Oracle deployment](oci-ingestion/README.md) reuses this topology on the
+existing VM with shared [S3 state](state-backend/README.md) and native GitHub
+Actions builds. Its [layout decision](oci-ingestion/layout.md) records inspected
+resources and deployment limits. Host setup and release activation require
+explicit approval; local recipes do not deploy to Oracle.
+
 ## Native development loop
 
 Keep one initialized PostgreSQL/Kafka/ClickHouse Compose instance running across development and browser-test runs. Use host Node for Playwright, native Bun for the web application, and native ingestion API/normalizer processes where supported. The collector's Linux sampling paths run in a reused Linux container or an existing VM. Isolate test data with disposable databases, projects and topic/group namespaces; do not rebuild infrastructure for every test.

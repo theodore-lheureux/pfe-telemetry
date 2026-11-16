@@ -1,0 +1,1 @@
+ocarun ALL=(root) NOPASSWD: /usr/local/sbin/recount-release *

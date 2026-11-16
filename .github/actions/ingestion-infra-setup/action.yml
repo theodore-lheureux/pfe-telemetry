@@ -1,0 +1,29 @@
+name: Configure ingestion infrastructure
+description: Initialize only the OCI ingestion root with scoped CI credentials.
+runs:
+  using: composite
+  steps:
+    - uses: opentofu/setup-opentofu@e95ccdd20623115bfd7d47df14a3250d6066a9d0 # v1.0.7
+      with:
+        tofu_version: 1.13.9
+        tofu_wrapper: false
+    - name: Configure the dedicated OCI identity
+      shell: bash
+      run: python3 infra/oci-ingestion/ci/credentials.py
+    - name: Select reviewed infrastructure identifiers
+      shell: bash
+      run: |
+        umask 077
+        python3 - <<'PY'
+        import json, os
+        from pathlib import Path
+        values = json.loads(os.environ["INGESTION_TFVARS_JSON"])
+        values["oci_auth"] = "APIKey"
+        values["oci_profile"] = "recount-deploy"
+        Path("infra/oci-ingestion/terraform.tfvars.json").write_text(json.dumps(values))
+        PY
+        cp infra/oci-ingestion/adoption.tf.example infra/oci-ingestion/adoption.tf
+        tofu -chdir=infra/oci-ingestion init -input=false -lockfile=readonly \
+          -backend-config="bucket=$AWS_STATE_BUCKET" \
+          -backend-config=region=us-east-2 \
+          -backend-config="allowed_account_ids=[\"$AWS_ACCOUNT_ID\"]"

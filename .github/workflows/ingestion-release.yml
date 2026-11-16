@@ -1,0 +1,112 @@
+name: Build ingestion release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingestion-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      LEFTHOOK: "0"
+      CARGO_INCREMENTAL: "0"
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
+      ARCH: ${{ matrix.arch }}
+      RELEASE: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+        with:
+          just-version: "1.58.0"
+      - run: rustup show active-toolchain
+      - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
+      - name: Compile on the native Linux host
+        run: |
+          bun run --filter @recount/web build
+          mkdir -p .state
+          cargo build --locked --release --workspace --bins --examples --message-format=json > .state/build.jsonl
+          bun --no-env-file tests/ci/stage-artifacts.ts "$ARCH" .state/build.jsonl
+          cargo run --locked --release -p recount-telemetry-validation --example recount-schema-export -- \
+            --source-root . --output .state/release-schema --bootstrap kafka:9092
+      - name: Package and check prebuilt binaries
+        run: |
+          just --no-dotenv local package "$ARCH" ingestion-api normalizer web
+          docker build --platform "linux/$ARCH" --file infra/clickhouse/Dockerfile \
+            --tag "recount-clickhouse:$RELEASE" .state/release-schema
+          docker run --rm --network none recount-ingestion-api:local --help
+          docker run --rm --network none recount-normalizer:local --help
+          bash infra/oci-ingestion/deploy/package.sh "$ARCH" "$RELEASE"
+          tar -czf ".state/recount-collector-$ARCH.tar.gz" -C ".state/artifacts/$ARCH/bin" recount-collector
+          (cd .state && sha256sum "recount-collector-$ARCH.tar.gz" > "recount-collector-$ARCH.tar.gz.sha256")
+      - name: Attest final native runtime and collector archives
+        uses: actions/attest-build-provenance@e4d4f7c39adfa4c260fb5c147f0622000aa14b99 # v4.0.0
+        with:
+          subject-path: |
+            .state/recount-ingestion-${{ matrix.arch }}.tar.gz
+            .state/recount-collector-${{ matrix.arch }}.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ingestion-${{ matrix.arch }}
+          path: |
+            .state/recount-ingestion-${{ matrix.arch }}.tar.gz
+            .state/recount-ingestion-${{ matrix.arch }}.tar.gz.sha256
+            .state/recount-collector-${{ matrix.arch }}.tar.gz
+            .state/recount-collector-${{ matrix.arch }}.tar.gz.sha256
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    environment: ingestion-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: ingestion-*
+          merge-multiple: true
+          path: assets
+      - name: Publish only this run's build outputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          cd assets
+          sha256sum --check recount-*.sha256
+          gh release create "ingestion-$RELEASE" --target "$COMMIT" \
+            --latest=false --prerelease \
+            --title "Ingestion $RELEASE" --notes "Native Linux arm64 and amd64 runtime bundles." \
+            recount-ingestion-*.tar.gz recount-ingestion-*.tar.gz.sha256 \
+            recount-collector-*.tar.gz recount-collector-*.tar.gz.sha256

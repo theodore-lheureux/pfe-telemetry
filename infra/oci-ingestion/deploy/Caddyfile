@@ -1,0 +1,30 @@
+{
+	auto_https disable_redirects
+	admin off
+}
+
+https://{$RECOUNT_WEB_HOST} {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+	reverse_proxy 127.0.0.1:3000 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto https
+		header_up -X-Real-IP
+		header_up -CF-Connecting-IP
+		header_up -True-Client-IP
+		header_up -Forwarded
+		flush_interval -1
+	}
+}
+
+https://{$RECOUNT_INGESTION_HOST} {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+	reverse_proxy h2c://127.0.0.1:14317
+}

@@ -1,0 +1,66 @@
+name: Deploy ingestion release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release identifier (commit-run-attempt, without ingestion-)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingestion-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    environment: ingestion-deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      attestations: read
+    env:
+      RELEASE: ${{ inputs.release }}
+      ARCH: ${{ vars.OCI_INGESTION_ARCH }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.23"
+      - run: uv tool install oci-cli==3.96.2
+      - name: Verify native build provenance before authorizing root execution
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [[ $RELEASE =~ ^[a-f0-9]{40}-[0-9]+-[0-9]+$ && $ARCH =~ ^(arm64|amd64)$ ]]
+          [[ $(gh api "repos/$GH_REPO" --jq .private) == false ]]
+          gh release download "ingestion-$RELEASE" --dir assets --pattern "recount-ingestion-$ARCH.tar.gz"
+          archive="assets/recount-ingestion-$ARCH.tar.gz"
+          gh attestation verify "$archive" --repo "$GH_REPO" \
+            --signer-workflow "$GH_REPO/.github/workflows/ingestion-release.yml" \
+            --source-ref refs/heads/main --source-digest "${RELEASE%%-*}" \
+            --deny-self-hosted-runners
+          (cd assets && sha256sum "recount-ingestion-$ARCH.tar.gz" > "recount-ingestion-$ARCH.tar.gz.sha256")
+      - name: Materialize the scoped OCI deployment identity
+        env:
+          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
+          OCI_API_KEY_FINGERPRINT: ${{ vars.OCI_API_KEY_FINGERPRINT }}
+          OCI_USER_ID: ${{ vars.OCI_USER_ID }}
+          OCI_TENANCY_ID: ${{ vars.OCI_TENANCY_ID }}
+        run: python3 infra/oci-ingestion/ci/credentials.py
+      - name: Activate the release through OCI Run Command
+        env:
+          OCI_INSTANCE_ID: ${{ vars.OCI_INSTANCE_ID }}
+          OCI_COMPARTMENT_ID: ${{ vars.OCI_COMPARTMENT_ID }}
+        run: python3 infra/oci-ingestion/ci/run-command.py
+      - name: Remove this runner's deployment credential files
+        if: always()
+        run: rm -f "$HOME/.oci/config" "$HOME/.oci/deployment.pem"

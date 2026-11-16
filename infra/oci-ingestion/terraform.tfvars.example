@@ -1,0 +1,6 @@
+instance_id                = "ocid1.instance.oc1.ca-montreal-1.REPLACE"
+vnic_id                    = "ocid1.vnic.oc1.ca-montreal-1.REPLACE"
+subnet_id                  = "ocid1.subnet.oc1.ca-montreal-1.REPLACE"
+vcn_id                     = "ocid1.vcn.oc1.ca-montreal-1.REPLACE"
+boot_volume_id             = "ocid1.bootvolume.oc1.ca-montreal-1.REPLACE"
+network_security_group_ids = []

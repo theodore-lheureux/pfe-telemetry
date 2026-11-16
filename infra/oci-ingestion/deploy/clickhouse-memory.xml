@@ -1,0 +1,3 @@
+<clickhouse>
+  <max_server_memory_usage replace="replace">6442450944</max_server_memory_usage>
+</clickhouse>

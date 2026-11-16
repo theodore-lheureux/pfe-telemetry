@@ -1,0 +1,32 @@
+services:
+  postgres:
+    mem_limit: 1024m
+    memswap_limit: 1024m
+  kafka:
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    environment:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+  clickhouse:
+    mem_limit: 8192m
+    memswap_limit: 8192m
+    volumes:
+      - type: bind
+        source: ../oci-ingestion/deploy/clickhouse-memory.xml
+        target: /etc/clickhouse-server/config.d/zz-deployment-memory.xml
+        read_only: true
+        bind: { create_host_path: false }
+  ingestion-api:
+    image: ${RECOUNT_INGESTION_IMAGE:?Select the release ingestion image}
+    mem_limit: 1024m
+    memswap_limit: 1024m
+  normalizer:
+    image: ${RECOUNT_NORMALIZER_IMAGE:?Select the release normalizer image}
+    mem_limit: 1024m
+    memswap_limit: 1024m
+  web:
+    image: ${RECOUNT_WEB_IMAGE:?Select the release web image}
+    mem_limit: 1024m
+    memswap_limit: 1024m
+  live:
+    image: ${RECOUNT_WEB_IMAGE:?Select the release web image}
