@@ -2,7 +2,7 @@
 
 Two `t4g.nano` collectors run in existing public Ohio subnets. State uses
 `aws/collectors/terraform.tfstate` in the existing S3 bucket with native locking.
-No collector VM has been applied.
+Cloud resources are applied through CD; Ansible installs and configures the collectors.
 
 ## Deployment gates
 
@@ -129,6 +129,13 @@ The dynamic inventory selects only running Ohio instances tagged
 Allow time for their SSM agents to register. Run again to verify `changed=0`,
 then verify both node identities and recent project points through the production
 application/ClickHouse. A service's active state alone does not prove delivery.
+
+SSM's `Online` heartbeat does not prove that a session can execute commands.
+Agent startup or self-updates can interrupt sessions; the playbook waits up to
+ten minutes for a working connection before gathering facts. If an agent remains
+unresponsive, inspect its update status and cancel only identified stale commands.
+An operator-approved reboot of that instance preserves its identity and queue;
+do not recreate the VM or reset collector state. Rerun the playbook after recovery.
 
 ## CD and identity
 

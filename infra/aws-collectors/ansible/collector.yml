@@ -1,8 +1,7 @@
 - name: Install the approved collector release through Systems Manager
   hosts: recount_collectors
   become: true
-  gather_facts: true
-  gather_subset: ["!all", min]
+  gather_facts: false
   vars:
     ansible_connection: amazon.aws.aws_ssm
     ansible_aws_ssm_region: us-east-2
@@ -12,6 +11,15 @@
     recount_collector_enrollment_url: https://app.recount.cloud
     recount_enrollment_parameter: /recount/collectors/enrollment
   pre_tasks:
+    - name: Wait for an operational SSM connection before gathering facts
+      ansible.builtin.wait_for_connection:
+        timeout: 600
+        sleep: 15
+
+    - name: Gather minimal collector host facts
+      ansible.builtin.setup:
+        gather_subset: ["!all", min]
+
     - name: Require exactly the approved ARM64 Ubuntu collectors
       ansible.builtin.assert:
         that:
