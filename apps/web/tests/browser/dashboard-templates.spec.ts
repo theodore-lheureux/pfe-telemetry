@@ -107,9 +107,24 @@ for (const locale of ["en", "fr"] as const) {
 		await dialog
 			.getByRole("button", { name: m.saved_save({}, options), exact: true })
 			.click();
-		await expect(
-			page.getByRole("heading", { name: "Fleet health", exact: true }),
-		).toBeVisible();
+		const heading = page.getByRole("heading", {
+			name: "Fleet health",
+			exact: true,
+		});
+		await expect(heading).toBeVisible();
+		const widths = locale === "fr" ? [320, 390] : [320, 390, 1440];
+		for (const width of widths) {
+			await page.setViewportSize({
+				width,
+				height: locale === "fr" ? 844 : 1000,
+			});
+			await expect(heading).toBeVisible();
+			expect(
+				await page.evaluate(
+					() => document.documentElement.scrollWidth <= window.innerWidth,
+				),
+			).toBe(true);
+		}
 		const createdId = new URL(page.url()).pathname.split("/").at(-1) as string;
 		const created = data(
 			await workspace.operations(actor.headers, (current) =>

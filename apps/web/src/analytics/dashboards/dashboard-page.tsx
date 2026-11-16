@@ -392,7 +392,7 @@ export function DashboardPage({
 	});
 
 	const heading = (
-		<div className="flex min-w-0 flex-1 items-center gap-2">
+		<div className="flex min-w-0 flex-auto items-center gap-2">
 			<Button asChild variant="ghost" size="icon-sm">
 				<Link to={LIST} params={reference} aria-label={m.dashboard_back()}>
 					<ArrowLeftIcon aria-hidden="true" />
