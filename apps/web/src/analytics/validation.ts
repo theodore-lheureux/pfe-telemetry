@@ -36,6 +36,7 @@ import { parseAttributeField } from "./fields";
 import { FormulaError, parseFormula } from "./formula";
 
 const CORE_FIELDS: readonly CoreField[] = [
+	"execution",
 	"node",
 	"host",
 	"resource.id",
@@ -366,7 +367,10 @@ export function parseAttributeValuesInput(
 	value: unknown,
 ): AttributeValuesInput {
 	const field = record(value, "request").field;
-	if (typeof field !== "string" || !parseAttributeField(field))
+	if (
+		typeof field !== "string" ||
+		(field !== "execution" && !parseAttributeField(field))
+	)
 		throw new InputError("INVALID_QUERY", "Invalid attribute field");
 	return { ...parseMetricAttributesInput(value), field };
 }

@@ -4,6 +4,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { TimeDisplay } from "@/components/time-display";
 import { PageHeading } from "@/components/workspace";
 import { getExecution } from "@/executions/execution.functions";
+import { ExecutionParticipants } from "@/executions/execution-participants";
 import { parseExecutionReference } from "@/executions/validation";
 import { routeData } from "@/organizations/route-data";
 
@@ -74,6 +75,7 @@ function Execution() {
 			<p>
 				{m.execution_last_seen()}: <TimeDisplay value={entry.lastSeen} />
 			</p>
+			<ExecutionParticipants facts={entry.facts} />
 		</>
 	);
 }

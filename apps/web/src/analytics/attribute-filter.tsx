@@ -23,7 +23,8 @@ import { AttributeList } from "./attribute-list";
 import { useAttributeValues, type ValueSource } from "./catalog";
 import type { AttributeDefinition, Filter, FilterOperator } from "./contracts";
 import { DefinitionChoice } from "./definition-choice";
-import { attributeField } from "./fields";
+import { parseAttributeField } from "./fields";
+import { groupFieldLabel } from "./group-by-picker";
 import { PICKER_CONTENT_CLASS } from "./picker-command";
 
 type Operator = Extract<FilterOperator, "eq" | "neq" | "exists" | "not_exists">;
@@ -60,7 +61,7 @@ export function AttributeFilter({
 }) {
 	const id = useId();
 	const [open, setOpen] = useState(false),
-		[field, setField] = useState<AttributeDefinition | null>(null),
+		[field, setField] = useState<string | null>(null),
 		[operator, setOperator] = useState<Operator>("eq"),
 		[value, setValue] = useState("");
 	const reset = () => {
@@ -69,7 +70,8 @@ export function AttributeFilter({
 		setValue("");
 	};
 	const needsValue = operator === "eq" || operator === "neq";
-	const chosen = field && attributeField(field.scope, field.key);
+	const chosen = field;
+	const attribute = field && parseAttributeField(field);
 	const suggestions = useAttributeValues(
 		values,
 		open && needsValue ? chosen : null,
@@ -141,7 +143,11 @@ export function AttributeFilter({
 								<ArrowLeftIcon aria-hidden="true" />
 							</Button>
 							<div className="flex min-w-0 flex-1 items-center gap-2">
-								<DefinitionChoice kind="attribute" name={field.key} />
+								{attribute ? (
+									<DefinitionChoice kind="attribute" name={attribute.key} />
+								) : (
+									<span>{groupFieldLabel(field)}</span>
+								)}
 							</div>
 						</div>
 						<div className="flex flex-col gap-1.5">
@@ -180,7 +186,8 @@ export function AttributeFilter({
 					<AttributeList
 						attributes={attributes}
 						loading={loading}
-						onSelect={(_, attribute) => attribute && setField(attribute)}
+						options={[{ value: "execution", label: m.execution_field() }]}
+						onSelect={setField}
 					/>
 				)}
 			</PopoverContent>

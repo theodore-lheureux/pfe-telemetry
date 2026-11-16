@@ -13,6 +13,24 @@ export interface ExecutionSummary extends ExecutionReference {
 	firstSeen: Date;
 	lastSeen: Date;
 }
+export interface ExecutionFact {
+	nodeId: string;
+	participantId: string;
+	factId: string;
+	kind: 1 | 2;
+	processResourceId: string | null;
+	namespaceId: string | null;
+	pid: number | null;
+	startTimeTicks: string | null;
+	ownerUid: number | null;
+	environmentVariable: string;
+	firstSeen: Date;
+	lastSeen: Date;
+	ended: Date | null;
+}
+export interface ExecutionDetail extends ExecutionSummary {
+	facts: ExecutionFact[];
+}
 export interface TelemetryPoint {
 	bucketMs: number;
 	timeNs: string;

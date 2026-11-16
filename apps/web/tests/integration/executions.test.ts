@@ -3,7 +3,10 @@ import { randomUUID } from "node:crypto";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
 import * as executions from "../../src/executions/executions.server";
-import type { readExecutions } from "../../src/executions/participants.server";
+import type {
+	readExecutionFacts,
+	readExecutions,
+} from "../../src/executions/participants.server";
 import type { OperationResult } from "../../src/lib/operation-result";
 import * as organizations from "../../src/organizations/organizations.server";
 import * as projects from "../../src/organizations/projects.server";
@@ -102,6 +105,13 @@ async function scenario() {
 			return [];
 		return [entry];
 	};
+	let factReads = 0;
+	const readFacts: typeof readExecutionFacts = async (projectId, key) => {
+		factReads++;
+		expect(projectId).toBe(project.id);
+		expect(key).toBe(entry.executionKey);
+		return [];
+	};
 	return {
 		owner,
 		viewer,
@@ -110,7 +120,9 @@ async function scenario() {
 		membership,
 		entry,
 		read,
+		readFacts,
 		reads: () => reads,
+		factReads: () => factReads,
 	};
 }
 test("execution reads require canonical project access before any ClickHouse read", async () => {
@@ -120,7 +132,14 @@ test("execution reads require canonical project access before any ClickHouse rea
 		expect(
 			data(
 				await requests(reader.headers, (actor) =>
-					executions.getExecution(database.db, actor, ref, undefined, f.read),
+					executions.getExecution(
+						database.db,
+						actor,
+						ref,
+						undefined,
+						f.read,
+						f.readFacts,
+					),
 				),
 			),
 		).toMatchObject(f.entry);
@@ -139,13 +158,21 @@ test("execution reads require canonical project access before any ClickHouse rea
 		).toHaveLength(1);
 	}
 	const before = f.reads();
+	const factsBefore = f.factReads();
 	for (const headers of [f.outsider.headers, new Headers()]) {
 		const expected =
 			headers === f.outsider.headers ? "NOT_FOUND" : "UNAUTHENTICATED";
 		expect(
 			(
 				await requests(headers, (actor) =>
-					executions.getExecution(database.db, actor, ref, undefined, f.read),
+					executions.getExecution(
+						database.db,
+						actor,
+						ref,
+						undefined,
+						f.read,
+						f.readFacts,
+					),
 				)
 			).error?.code,
 		).toBe(expected);
@@ -164,6 +191,7 @@ test("execution reads require canonical project access before any ClickHouse rea
 		).toBe(expected);
 	}
 	expect(f.reads()).toBe(before);
+	expect(f.factReads()).toBe(factsBefore);
 	expect(
 		(
 			await requests(f.owner.headers, (actor) =>
@@ -173,6 +201,7 @@ test("execution reads require canonical project access before any ClickHouse rea
 					{ ...ref, executionKey: "missing" },
 					undefined,
 					f.read,
+					f.readFacts,
 				),
 			)
 		).error?.code,
@@ -189,11 +218,19 @@ test("execution reads require canonical project access before any ClickHouse rea
 	expect(
 		(
 			await requests(f.viewer.headers, (actor) =>
-				executions.getExecution(database.db, actor, ref, undefined, f.read),
+				executions.getExecution(
+					database.db,
+					actor,
+					ref,
+					undefined,
+					f.read,
+					f.readFacts,
+				),
 			)
 		).error?.code,
 	).toBe("NOT_FOUND");
 	expect(f.reads()).toBe(after);
+	expect(f.factReads()).toBe(factsBefore);
 	expect(
 		(
 			await database.pool.query(

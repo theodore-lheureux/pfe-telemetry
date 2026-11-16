@@ -92,12 +92,13 @@ export async function createPointFixture(
 	});
 	let created = false;
 	let readerCreated = false;
-	const reader = createClient({
+	const readerConfig = {
 		...config,
 		database: name,
 		username: readerName,
 		password: readerPassword,
-	});
+	};
+	const reader = createClient(readerConfig);
 	async function close() {
 		try {
 			await Promise.all([reader.close(), client.close()]);
@@ -175,6 +176,7 @@ export async function createPointFixture(
 		return {
 			client,
 			reader,
+			readerConfig,
 			createConnection(options: { username: string; password: string }) {
 				return createClient({ ...config, database: name, ...options });
 			},

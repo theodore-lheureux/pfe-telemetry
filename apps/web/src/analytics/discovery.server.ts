@@ -1,4 +1,5 @@
 import type { ClickHouseClient } from "@clickhouse/client";
+import { readExecutions } from "../executions/participants.server";
 import { compileFields } from "./compile.server";
 import type { AttributeDefinition, MetricDefinition } from "./contracts";
 import { metricBehavior } from "./validation";
@@ -278,6 +279,10 @@ export async function listAttributeValues(
 	signal?: AbortSignal,
 	now = Date.now(),
 ): Promise<string[]> {
+	if (field === "execution")
+		return (await readExecutions(projectId, {}, signal, connection)).map(
+			(entry) => entry.executionKey,
+		);
 	const {
 		expressions: [value],
 		params,

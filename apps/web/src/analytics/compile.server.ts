@@ -5,6 +5,7 @@ import {
 	INTERVALS,
 	type Measure,
 } from "./contracts";
+import { executionPointSource } from "./execution-source.server";
 import { type ParsedField, parseField } from "./validation";
 
 const NS_PER_MS = 1_000_000n;
@@ -55,6 +56,8 @@ class Params {
 function fieldExpression(field: ParsedField, params: Params) {
 	if (field.type === "core") {
 		switch (field.name) {
+			case "execution":
+				return "execution_keys";
 			case "node":
 				return "source_id";
 			case "host":
@@ -80,6 +83,20 @@ function fieldExpression(field: ParsedField, params: Params) {
 }
 
 function filterExpression(filter: Filter, params: Params) {
+	if (filter.field === "execution") {
+		switch (filter.op) {
+			case "exists":
+				return "notEmpty(execution_keys)";
+			case "not_exists":
+				return "empty(execution_keys)";
+			case "eq":
+			case "in":
+				return `hasAny(execution_keys, ${params.bind(filter.values ?? [], "Array(String)")})`;
+			case "neq":
+			case "not_in":
+				return `NOT hasAny(execution_keys, ${params.bind(filter.values ?? [], "Array(String)")})`;
+		}
+	}
 	const expression = fieldExpression(parseField(filter.field), params);
 	switch (filter.op) {
 		case "exists":
@@ -147,7 +164,7 @@ function perSeries(
 	return `diffs AS (
   SELECT ${keys}, v - lagInFrame(v) OVER w AS d, row_number() OVER w AS n
   FROM base WHERE v IS NOT NULL
-  WINDOW w AS (PARTITION BY stream ORDER BY t, sample_id
+  WINDOW w AS (PARTITION BY stream${groups ? `, ${groups}` : ""} ORDER BY t, sample_id
     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
 ),
 per_series AS (
@@ -169,6 +186,21 @@ export interface CompiledQuery {
 	groupColumns: string[];
 }
 
+function executionGroup(filters: Filter[], params: Params) {
+	const selected = filters
+		.filter(
+			(filter) =>
+				filter.field === "execution" &&
+				(filter.op === "eq" || filter.op === "in"),
+		)
+		.flatMap((filter) => filter.values ?? []);
+	// Point filters remain conjunctive; the breakdown shows their selected keys.
+	const keys = selected.length
+		? `arrayFilter(k -> has(${params.bind([...new Set(selected)], "Array(String)")}, k), execution_keys)`
+		: "execution_keys";
+	return `arrayJoin(if(empty(${keys}), [NULL], arrayMap(k -> toNullable(k), ${keys})))`;
+}
+
 /** One measure's rows: its CTEs and final selection. */
 function measureSelect(
 	query: AnalyticsQuery,
@@ -177,16 +209,23 @@ function measureSelect(
 	params: Params,
 ) {
 	const groupBy = query.groupBy ?? [];
+	const allFilters = [...(query.filters ?? []), ...(measure.filters ?? [])];
+	const usesExecution =
+		groupBy.includes("execution") ||
+		allFilters.some((filter) => filter.field === "execution");
+	// series_id is a ClickHouse ALIAS, omitted by SELECT *.
+	const points = `SELECT *, series_id FROM metric_points FINAL
+  WHERE project_id = {project:String}
+    AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}
+    AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}`;
 	const groupColumns = groupBy.map((_, column) => `g${column}`);
 	const groupSelect = groupBy
 		.map(
 			(field, column) =>
-				`${fieldExpression(parseField(field), params)} AS ${groupColumns[column]}`,
+				`${field === "execution" ? executionGroup(allFilters, params) : fieldExpression(parseField(field), params)} AS ${groupColumns[column]}`,
 		)
 		.join(",\n    ");
-	const filters = [...(query.filters ?? []), ...(measure.filters ?? [])].map(
-		(filter) => filterExpression(filter, params),
-	);
+	const filters = allFilters.map((filter) => filterExpression(filter, params));
 	// Timeseries buckets align to the interval; a table result is one bucket.
 	const bucket =
 		query.shape === "timeseries"
@@ -214,7 +253,7 @@ FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
   SELECT series_id AS series, stream_id AS stream,
     ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_nano AS t, sample_id,
     ${bucket} AS bucket, ${VALUE} AS v
-  FROM metric_points FINAL
+  FROM ${usesExecution ? executionPointSource(points) : "metric_points FINAL"}
   WHERE project_id = {project:String}
     AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}
     AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}

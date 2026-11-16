@@ -21,20 +21,20 @@ Status: accepted design for [PFE-74](https://linear.app/pfe-telemetry/issue/PFE-
 
 `points` presents one row per stored metric point, with duplicates removed as the current reader does. Fields have stable names, types and units, independent of physical columns:
 
-| Field                                                    | Type                 | Source                                                   |
-| -------------------------------------------------------- | -------------------- | -------------------------------------------------------- |
-| `time`                                                   | timestamp (ns)       | `time_unix_nano`                                         |
-| `node`                                                   | node reference       | `source_id`, resolved to the collector node for display  |
-| `resource.id`, `resource.kind`                           | string, enum         | `resource_id`, `resource_kind`                           |
-| `host`                                                   | string               | `host_id`                                                |
-| `metric.name`, `metric.kind`, `metric.unit`              | string, enum, string | `metric_name`, `metric_kind`, `unit`                     |
-| `metric.temporality`, `metric.monotonic`                 | enum, boolean        | `temporality`, `monotonic`                               |
-| `value`                                                  | number               | `int_value` or `double_value`, keeping integer precision |
-| `count`, `sum`, `min`, `max`                             | number               | Histogram and summary fields                             |
-| `resource.attributes["key"]`                             | typed value          | `resource_attributes`, matched by path                   |
-| `scope.name`, `scope.version`, `scope.attributes["key"]` | string, typed value  | Instrumentation scope fields                             |
-| `attributes["key"]`                                      | typed value          | `point_attributes`                                       |
-| `execution`                                              | execution reference  | Resource attribute `recount.execution.id` (planned)      |
+| Field                                                    | Type                   | Source                                                              |
+| -------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------- |
+| `time`                                                   | timestamp (ns)         | `time_unix_nano`                                                    |
+| `node`                                                   | node reference         | `source_id`, resolved to the collector node for display             |
+| `resource.id`, `resource.kind`                           | string, enum           | `resource_id`, `resource_kind`                                      |
+| `host`                                                   | string                 | `host_id`                                                           |
+| `metric.name`, `metric.kind`, `metric.unit`              | string, enum, string   | `metric_name`, `metric_kind`, `unit`                                |
+| `metric.temporality`, `metric.monotonic`                 | enum, boolean          | `temporality`, `monotonic`                                          |
+| `value`                                                  | number                 | `int_value` or `double_value`, keeping integer precision            |
+| `count`, `sum`, `min`, `max`                             | number                 | Histogram and summary fields                                        |
+| `resource.attributes["key"]`                             | typed value            | `resource_attributes`, matched by path                              |
+| `scope.name`, `scope.version`, `scope.attributes["key"]` | string, typed value    | Instrumentation scope fields                                        |
+| `attributes["key"]`                                      | typed value            | `point_attributes`                                                  |
+| `execution`                                              | project-scoped key set | Latest nonretracted process memberships in `execution_participants` |
 
 Attribute fields keep their observed types: comparing `attributes["cpu.mode"] = "user"` only matches string values. A key with conflicting types is reported by discovery rather than coerced.
 
@@ -117,10 +117,17 @@ Both aggregate continuously, so discovery adds no write path to ingestion and no
 
 ## Executions
 
-Process points belonging to an execution carry the resource attribute `recount.execution.id`, set by the collector (see the planned execution model). Execution features are then ordinary queries:
+The `execution` field resolves [participant facts](execution-participants.md) at query time. Neither points nor `series_id` change when a participant joins late, corrects its interval or retracts a fact. Organization/project access is checked before reading ClickHouse. Both point reads and participant `FINAL` reads start with the authorized project predicate; corrected times and retractions are filtered only after selecting revisions. The existing physical row, byte, memory, deadline and result limits apply to the whole query.
+
+Only nonretracted `PROCESS_MEMBERSHIP` facts match a process resource on the same node, within `[first_seen, last_seen]` when open or `[first_seen, ended)` when closed. An unknown end never extends membership to the query time. Lifecycle facts supply display metadata and explicit per-participant ends, not node-wide measurements or distributed completion.
+
+Execution filters are set tests: `eq`/`in` match any selected key, `neq`/`not_in` exclude points matching any selected key, and `exists`/`not_exists` test whether a point has a membership. Overlapping facts cannot multiply points. Grouping emits a point once per distinct execution key, or in the null group if unassociated. With positive execution filters, the breakdown shows only selected keys. A process associated with several executions can contribute to each execution group, so those groups need not sum to the ungrouped total.
+
+Insights, dashboard overrides and Activity Explorer expose execution through the shared field and value pickers:
 
 - **Usage:** `filters: execution = X`, grouped by node or combined.
-- **Node and cluster context:** the same measures without the execution filter, restricted to the execution's nodes or the whole project.
+- **Remaining process load:** a second measure with `execution != X`, grouped by `node`. Apply the same node filter to both measures to restrict the comparison to selected nodes.
+- **Node-wide context:** use a node metric as measure B and execution-filtered process usage as measure A, grouped by the same node field. For compatible units and calculations, `B - A` shows the remaining node load. A lifecycle does not attribute a node's entire CPU or memory to an execution.
 - **Totals and comparison:** `table` queries over each execution's range.
 
 ## Alternatives considered

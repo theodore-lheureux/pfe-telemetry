@@ -37,6 +37,7 @@ function reason(run: () => unknown) {
 
 test("fields are core names or unambiguous attribute lookups", () => {
 	expect(parseField("node")).toEqual({ type: "core", name: "node" });
+	expect(parseField("execution")).toEqual({ type: "core", name: "execution" });
 	expect(parseField('resource.attributes["host.name"]')).toEqual({
 		type: "attribute",
 		scope: "resource",
@@ -53,6 +54,13 @@ test("fields are core names or unambiguous attribute lookups", () => {
 });
 
 test("queries are bounded and structurally valid before reaching ClickHouse", () => {
+	expect(
+		parseQuery({
+			...base,
+			groupBy: ["execution"],
+			filters: [{ field: "execution", op: "eq", values: ["run:Node-A/one"] }],
+		}).filters,
+	).toEqual([{ field: "execution", op: "eq", values: ["run:Node-A/one"] }]);
 	expect(parseQuery(base).measures[0].filters).toEqual([]);
 	expect(
 		reason(() =>

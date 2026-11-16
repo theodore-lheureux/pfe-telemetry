@@ -48,6 +48,7 @@ export type CompareUnit = (typeof COMPARE_UNITS)[number];
 /** Core fields, or attribute lookups such as `attributes["cpu.mode"]`. */
 export type FieldName = string;
 export type CoreField =
+	| "execution"
 	| "node"
 	| "host"
 	| "resource.id"

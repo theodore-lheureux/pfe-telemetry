@@ -47,9 +47,43 @@ const test = base.extend<{ executionRows: Row[] }>({
 						row.executionKey > (params.get("param_after") ?? ""),
 				);
 				response.writeHead(200, { "Content-Type": "application/json" });
+				let output: object[] = rows;
+				if (query.includes("AS participantId"))
+					output = rows.flatMap((row) => [
+						{
+							nodeId: "compute-a",
+							participantId: "participant-a",
+							factId: "participant-a",
+							kind: 1,
+							processResourceId: null,
+							namespaceId: null,
+							pid: null,
+							startTimeTicks: null,
+							ownerUid: 1000,
+							environmentVariable: "RECOUNT_EXECUTION",
+							firstSeenNs: row.firstSeenNs,
+							lastSeenNs: row.lastSeenNs,
+							endedNs: "1793700002000000000",
+						},
+						{
+							nodeId: "compute-a",
+							participantId: "participant-a",
+							factId: "membership-a",
+							kind: 2,
+							processResourceId: "process-resource-a",
+							namespaceId: "pidns:1",
+							pid: 42,
+							startTimeTicks: "100",
+							ownerUid: 0,
+							environmentVariable: "RECOUNT_EXECUTION",
+							firstSeenNs: row.firstSeenNs,
+							lastSeenNs: row.lastSeenNs,
+							endedNs: null,
+						},
+					]);
 				response.end(
 					query.includes("execution_participants")
-						? rows.map((row) => `${JSON.stringify(row)}\n`).join("")
+						? output.map((row) => `${JSON.stringify(row)}\n`).join("")
 						: "",
 				);
 			});
@@ -131,6 +165,24 @@ for (const locale of ["en", "fr"] as const) {
 		).toBeVisible();
 		await expect(page.getByText("run:Node-A/one")).toBeVisible();
 		await expect(page.getByText("<node>", { exact: true })).toBeVisible();
+		await expect(
+			page.getByRole("heading", {
+				name: m.execution_memberships({}, { locale }),
+			}),
+		).toBeVisible();
+		await expect(page.getByText("compute-a", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText("process-resource-a", { exact: true }),
+		).toBeVisible();
+		await expect(
+			page.getByText(m.execution_interval_end({}, { locale }), { exact: true }),
+		).toHaveCount(2);
+		await expect(
+			page.locator('time[datetime="2026-11-03T10:00:02.000Z"]'),
+		).toBeVisible();
+		await expect(
+			page.getByText(m.execution_end_unknown({}, { locale }), { exact: true }),
+		).toBeVisible();
 		await expect(
 			page.getByRole("button", {
 				name: m.record_execution({}, { locale }),

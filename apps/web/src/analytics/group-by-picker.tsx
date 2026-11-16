@@ -16,6 +16,7 @@ import { attributeLabel } from "./metric-names";
 import { PICKER_CONTENT_CLASS } from "./picker-command";
 
 const CORE_GROUP_LABEL: Record<string, () => string> = {
+	execution: m.execution_field,
 	node: m.insight_group_node,
 	host: m.insight_group_host,
 	"resource.id": m.insight_group_resource,
@@ -91,7 +92,10 @@ export function GroupByPicker({
 				<AttributeList
 					attributes={attributes}
 					loading={loading}
-					options={choices}
+					options={[
+						...choices,
+						{ value: "execution", label: m.execution_field() },
+					]}
 					selected={value}
 					onSelect={(next) => {
 						onChange(next);

@@ -4,8 +4,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { OPERATOR_LABEL } from "./attribute-filter";
 import type { Filter } from "./contracts";
-import { parseAttributeField } from "./fields";
-import { attributeLabel } from "./metric-names";
+import { groupFieldLabel } from "./group-by-picker";
 
 export function filterKey(filter: Filter) {
 	return JSON.stringify([filter.field, filter.op, filter.values ?? []]);
@@ -19,9 +18,7 @@ export function withFilter(filters: Filter[], filter: Filter) {
 }
 
 export function filterText(filter: Filter) {
-	const name = attributeLabel(
-		parseAttributeField(filter.field)?.key ?? filter.field,
-	);
+	const name = groupFieldLabel(filter.field);
 	if (filter.op === "exists" || filter.op === "not_exists")
 		return `${name} ${OPERATOR_LABEL[filter.op]()}`;
 	return `${name} ${filter.op === "eq" || filter.op === "in" ? "=" : "≠"} ${filter.values?.join(", ") ?? ""}`;

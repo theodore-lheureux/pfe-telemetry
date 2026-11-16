@@ -3,8 +3,12 @@ import type { getDatabase } from "../db/client.server";
 import { OperationError } from "../lib/operation-error";
 import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
-import type { ExecutionReference, ExecutionSummary } from "./contracts";
-import { readExecutions } from "./participants.server";
+import type {
+	ExecutionDetail,
+	ExecutionReference,
+	ExecutionSummary,
+} from "./contracts";
+import { readExecutionFacts, readExecutions } from "./participants.server";
 
 type Database = ReturnType<typeof getDatabase>;
 export async function listExecutions(
@@ -38,14 +42,17 @@ export async function getExecution(
 	input: ExecutionReference,
 	signal?: AbortSignal,
 	read: typeof readExecutions = readExecutions,
-): Promise<ExecutionSummary> {
+	readFacts: typeof readExecutionFacts = readExecutionFacts,
+): Promise<ExecutionDetail> {
 	await requireProject(database, actor, input);
-	const [entry] = await withAnalyticsSlot(
-		database,
-		input.organizationId,
-		signal,
-		() => read(input.projectId, { executionKey: input.executionKey }, signal),
-	);
-	if (!entry) throw new OperationError("NOT_FOUND", "Execution not found");
-	return { ...input, ...entry };
+	return withAnalyticsSlot(database, input.organizationId, signal, async () => {
+		const [entry] = await read(
+			input.projectId,
+			{ executionKey: input.executionKey },
+			signal,
+		);
+		if (!entry) throw new OperationError("NOT_FOUND", "Execution not found");
+		const facts = await readFacts(input.projectId, input.executionKey, signal);
+		return { ...input, ...entry, facts };
+	});
 }

@@ -4,6 +4,7 @@ import {
 	TupleParam,
 } from "@clickhouse/client";
 import { compileFields, compileFilters } from "../analytics/compile.server";
+import { executionPointSource } from "../analytics/execution-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
 import { activityNode, decodeLineage, nanosecondsDate } from "./codec.server";
@@ -100,9 +101,12 @@ interface Key {
 // Points are sorted by series, so the newest points of a window are found by sorting
 // only their narrow key columns. Without FINAL, a resent point can appear more than once
 // until merges remove its copies.
-function keyQuery(conditions: string[]) {
+function keyQuery(conditions: string[], execution: boolean) {
+	const points = `SELECT * FROM metric_points WHERE project_id={project:String}
+AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
+AND time_unix_nano>={lower:UInt64} AND time_unix_nano<={cursorTime:UInt64}`;
 	return `SELECT toString(time_unix_nano) AS timeNs,hex(sample_id) AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,event_day AS day
-FROM metric_points WHERE project_id={project:String} AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
+FROM ${execution ? executionPointSource(points) : "metric_points"} WHERE project_id={project:String} AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
 AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String}))${conditions.map((condition) => `\nAND ${condition}`).join("")}
 ORDER BY time_unix_nano DESC,sample_id DESC LIMIT {limit:UInt32}`;
 }
@@ -243,10 +247,15 @@ export async function readPoints(
 		...filters.params,
 		...(input.metric === undefined ? {} : { metric: input.metric }),
 		project: input.projectId,
+		from: (BigInt(from.getTime()) * NS_PER_MS).toString(),
+		to: (BigInt(to.getTime()) * NS_PER_MS).toString(),
 	};
 	const fromNs = BigInt(from.getTime()) * NS_PER_MS;
 	const search = await searchKeys(
-		keyQuery(conditions),
+		keyQuery(
+			conditions,
+			(input.filters ?? []).some((filter) => filter.field === "execution"),
+		),
 		params,
 		fromNs,
 		input.cursor
