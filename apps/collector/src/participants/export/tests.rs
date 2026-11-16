@@ -85,7 +85,7 @@ async fn lost_ack_replays_exact_fact_after_restart_before_membership_upload() {
     let stub = Stub::default();
     stub.0.lock().unwrap().failures.push(Code::Unavailable);
     let (endpoint, stop) = server(stub.clone()).await;
-    let mut client = Client::new(endpoint);
+    let mut client = Client::new(endpoint.clone());
     let pending = store.front().await.unwrap().unwrap();
     let lifecycle = ParticipantFact::decode(pending.payload.as_slice()).unwrap();
     assert_eq!(
@@ -102,30 +102,42 @@ async fn lost_ack_replays_exact_fact_after_restart_before_membership_upload() {
     let mut store = fixture.open().await;
     let retry = store.front().await.unwrap().unwrap();
     assert_eq!(retry.payload, pending.payload);
-    client
-        .claim(&retry.payload, "Bearer node-token".parse().unwrap())
-        .await
-        .unwrap();
-    store.accept(&retry).await.unwrap();
-    let member = store.front().await.unwrap().unwrap();
-    assert_eq!(
-        ParticipantFact::decode(member.payload.as_slice())
-            .unwrap()
-            .kind,
-        ParticipantFactKind::ProcessMembership as i32
-    );
-    client
-        .claim(&member.payload, "Bearer node-token".parse().unwrap())
-        .await
-        .unwrap();
-    store.accept(&member).await.unwrap();
+    drop(client);
+    stub.0.lock().unwrap().failures.push(Code::Unavailable);
+    let shared = Arc::new(tokio::sync::Mutex::new(store));
+    let (_token, tokens) = watch::channel(Some("Bearer node-token".parse().unwrap()));
+    let (_stop, stopped) = watch::channel(false);
+    tokio::time::timeout(
+        Duration::from_secs(10),
+        super::run(
+            Client::new(endpoint),
+            shared.clone(),
+            crate::enrollment::Authorization::new(tokens, Arc::new(Notify::new())),
+            true,
+            16,
+            Arc::new(Notify::new()),
+            stopped,
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     {
         let state = stub.0.lock().unwrap();
-        assert_eq!(state.received.len(), 3);
-        assert_eq!(state.received[0], state.received[1]);
-        assert_eq!(state.received[0], pending.payload);
+        assert_eq!(state.received.len(), 4);
+        assert!(
+            state.received[..3]
+                .iter()
+                .all(|bytes| bytes == &pending.payload)
+        );
+        let member = ParticipantFact::decode(state.received[3].as_slice()).unwrap();
+        assert_eq!(member.kind, ParticipantFactKind::ProcessMembership as i32);
+        assert_eq!(member.participant_id, lifecycle.participant_id);
+        assert_eq!(member.revision, 1);
     }
+    let mut store = Arc::try_unwrap(shared).ok().unwrap().into_inner();
     assert!(store.front().await.unwrap().is_none());
+    assert_eq!(store.facts().await.unwrap().len(), 2);
     store.close().await.unwrap();
     let _ = stop.send(());
 }

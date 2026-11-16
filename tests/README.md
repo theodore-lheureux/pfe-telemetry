@@ -19,6 +19,9 @@ packages, integration targets and test names directly. Live Rust tests are
 ignored in ordinary runs and require explicit selection and allocation settings.
 An ignored test is not evidence that its live boundary passed.
 
+The [identity and interruption evaluation](../docs/identity-interruption-evaluation.md)
+records focused scenarios, reproduction commands and their limits.
+
 | Boundary                                                     | Command                                                                                                                                           | Required allocation                                                                                                                      |
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Application database, auth and shipped ingestion grants      | `bun --no-env-file test --timeout 30000 apps/web/tests/integration`                                                                               | `TEST_DATABASE_URL`, an administrator URL permitting disposable databases and scoped roles; host `psql` for the shipped provisioning SQL |

@@ -313,6 +313,54 @@ async fn participant_facts_replay_through_native_clickhouse() {
     assert!(row.process_resource_id.is_none());
     assert_eq!(row.environment_variable, "SLURM_JOB_ID");
     assert_eq!(sql(&format!("SELECT countIf(kind=1 AND isNull(process_resource_id)),countIf(environment_variable='SLURM_JOB_ID') FROM {database}.execution_participants FINAL")).trim(), "2\t3");
+    let before = sql(&format!(
+        "SELECT fact_id,revision,ifNull(process_resource_id,''),retracted FROM {database}.execution_participants FINAL ORDER BY node_id,fact_id"
+    ));
+    sql(&format!("DETACH TABLE {database}.participants_kafka SYNC"));
+    let mut resumed = facts[0].0.clone();
+    resumed.revision = 2;
+    resumed.last_seen_unix_nano += 1;
+    for fact in [&resumed, &facts[3].0] {
+        let mut request = Request::new(fact.clone());
+        request
+            .metadata_mut()
+            .insert("authorization", "Bearer first".parse().unwrap());
+        client.claim(request).await.unwrap();
+    }
+    assert_eq!(
+        sql(&format!(
+            "SELECT fact_id,revision,ifNull(process_resource_id,''),retracted FROM {database}.execution_participants FINAL ORDER BY node_id,fact_id"
+        )),
+        before,
+        "detached consumer changed stored facts"
+    );
+    assert_eq!(
+        observer
+            .committed_offsets(offsets.clone(), Duration::from_secs(3))
+            .unwrap()
+            .find_partition(&topic, 0)
+            .unwrap()
+            .offset(),
+        Offset::Offset(12),
+        "stopped consumer acknowledged pending facts"
+    );
+    sql(&format!("ATTACH TABLE {database}.participants_kafka"));
+    until(|| {
+        observer
+            .committed_offsets(offsets.clone(), Duration::from_secs(3))
+            .unwrap()
+            .find_partition(&topic, 0)
+            .unwrap()
+            .offset()
+            == Offset::Offset(14)
+    })
+    .await;
+    assert_eq!(sql(&format!(
+        "SELECT count(),countIf(NOT retracted),countIf(kind=1 AND revision=2),countIf(kind=2 AND revision=2 AND retracted) FROM {database}.execution_participants FINAL"
+    )).trim(), "3\t2\t1\t1");
+    assert_eq!(sql(&format!(
+        "SELECT ifNull(process_resource_id,'') FROM {database}.execution_participants FINAL WHERE kind=2"
+    )).trim(), cases::analytical(cases::child()).process_resource_id.unwrap());
     drop(client);
     stop.send(()).unwrap();
     server.await.unwrap();

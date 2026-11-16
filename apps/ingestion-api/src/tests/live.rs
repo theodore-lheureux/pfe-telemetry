@@ -1,4 +1,7 @@
 use super::*;
+use recount_telemetry_schema::wire::{
+    ParticipantFact, execution_participants_client::ExecutionParticipantsClient,
+};
 use std::path::PathBuf;
 
 struct Database {
@@ -112,6 +115,19 @@ fn batch(token: &str, created: u64) -> Request<ExportMetricsServiceRequest> {
     req
 }
 
+fn participant(token: &str, db: &Database) -> Request<ParticipantFact> {
+    let mut fact = super::participants::cases::lifecycle();
+    fact.project_id = db.project.to_string();
+    fact.node_id = db.node.to_string();
+    fact.first_seen_unix_nano = unix_nanos().unwrap() - 1000;
+    fact.last_seen_unix_nano = fact.first_seen_unix_nano;
+    let mut request = Request::new(fact);
+    request
+        .metadata_mut()
+        .insert("authorization", format!("Bearer {token}").parse().unwrap());
+    request
+}
+
 fn linux_process(token: &str, created: u64) -> Request<ExportMetricsServiceRequest> {
     let mut metrics = body();
     let metric = &mut metrics.resource_metrics[0].scope_metrics[0].metrics[0];
@@ -198,7 +214,11 @@ async fn signed_node_tokens_revocation_bindings_and_outage_are_live() {
     let public = URL_SAFE_NO_PAD.encode(signing().verifying_key().as_bytes());
     let tokens = Arc::new(auth::NodeTokens::new(&db.reader_url, &[public]).unwrap());
     let sink = Arc::new(TestSink::default());
-    let (mut client, _, stop, task) = server(tokens.clone(), sink.clone(), Limits::default()).await;
+    let (mut client, endpoint, stop, task) =
+        server(tokens.clone(), sink.clone(), Limits::default()).await;
+    let mut claims = ExecutionParticipantsClient::connect(endpoint)
+        .await
+        .unwrap();
     let current = token(&db, db.node, serde_json::json!({}));
     let created = unix_nanos().unwrap();
     // Fail closed until the first revocation list loads.
@@ -213,6 +233,21 @@ async fn signed_node_tokens_revocation_bindings_and_outage_are_live() {
     );
     assert!(tokens.refresh_revocations().await);
     assert!(tokens.ready().await);
+    claims.claim(participant(&current, &db)).await.unwrap();
+    for field in ["project", "node", "host"] {
+        let mut request = participant(&current, &db);
+        match field {
+            "project" => request.get_mut().project_id = Uuid::now_v7().to_string(),
+            "node" => request.get_mut().node_id = db.other_node.to_string(),
+            _ => request.get_mut().host_id = "other".into(),
+        }
+        assert_eq!(
+            claims.claim(request).await.unwrap_err().code(),
+            Code::PermissionDenied,
+            "{field}"
+        );
+    }
+    assert_eq!(sink.participants.lock().unwrap().len(), 1);
     let mut first = batch(&current, created);
     first
         .metadata_mut()
@@ -267,6 +302,15 @@ async fn signed_node_tokens_revocation_bindings_and_outage_are_live() {
     );
     let expired = token(&db, db.node, serde_json::json!({ "iat": 1, "exp": 2 }));
     assert_eq!(
+        claims
+            .claim(participant(&expired, &db))
+            .await
+            .unwrap_err()
+            .code(),
+        Code::Unauthenticated
+    );
+    assert_eq!(sink.participants.lock().unwrap().len(), 1);
+    assert_eq!(
         client
             .export(authorized(&expired, body()))
             .await
@@ -282,6 +326,15 @@ async fn signed_node_tokens_revocation_bindings_and_outage_are_live() {
         .await
         .unwrap();
     assert!(tokens.refresh_revocations().await);
+    assert_eq!(
+        claims
+            .claim(participant(&current, &db))
+            .await
+            .unwrap_err()
+            .code(),
+        Code::Unauthenticated
+    );
+    assert_eq!(sink.participants.lock().unwrap().len(), 1);
     assert_eq!(
         client
             .export(authorized(&current, body()))

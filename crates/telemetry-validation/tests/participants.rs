@@ -25,6 +25,23 @@ fn participant_projection_keeps_pid_incarnations_nodes_children_and_replay_separ
         row.process_resource_id,
         cases::analytical(reused).process_resource_id
     );
+    let mut rebooted = child.clone();
+    rebooted.boot_id = "11234567-89ab-cdef-0123-456789abcdef".into();
+    let mut namespaced = child.clone();
+    namespaced
+        .subject
+        .as_mut()
+        .unwrap()
+        .process
+        .as_mut()
+        .unwrap()
+        .namespace_id = "pidns:2".into();
+    for changed in [rebooted, namespaced] {
+        assert_ne!(
+            row.process_resource_id,
+            cases::analytical(changed).process_resource_id
+        );
+    }
     let mut other = child.clone();
     other.node_id = "019a4790-d1da-7000-8000-000000000007".into();
     other.host_id = "node2".into();

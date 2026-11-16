@@ -1,6 +1,6 @@
 #[path = "../../../../tests/fixtures/telemetry/participants.rs"]
 #[allow(dead_code)]
-mod cases;
+pub(super) mod cases;
 use super::*;
 use recount_telemetry_schema::wire::execution_participants_client::ExecutionParticipantsClient;
 
@@ -52,17 +52,29 @@ async fn claims_require_own_project_node_root_and_grants_before_confirmed_public
             .insert("authorization", "Bearer test".parse().unwrap());
         request
     };
-    for field in ["project", "node", "host", "malformed"] {
+    for field in [
+        "project",
+        "node",
+        "host",
+        "malformed",
+        "revision",
+        "kind",
+        "provenance",
+        "times",
+    ] {
         let mut bad = fact.clone();
-        let code = if field == "malformed" {
-            Code::InvalidArgument
-        } else {
-            Code::PermissionDenied
+        let code = match field {
+            "project" | "node" | "host" => Code::PermissionDenied,
+            _ => Code::InvalidArgument,
         };
         match field {
             "project" => bad.project_id = cases::CHILD.into(),
             "node" => bad.node_id = cases::CHILD.into(),
             "host" => bad.host_id = "other".into(),
+            "revision" => bad.revision = 0,
+            "kind" => bad.kind = 99,
+            "provenance" => bad.provenance = None,
+            "times" => bad.first_seen_unix_nano = bad.last_seen_unix_nano + 1,
             _ => bad.execution_key = "".into(),
         }
         assert_eq!(client.claim(request(bad)).await.unwrap_err().code(), code);

@@ -5,6 +5,8 @@ import * as organizations from "../../src/organizations/organizations.server";
 import * as projects from "../../src/organizations/projects.server";
 import { test as base, data, expect } from "./fixtures";
 
+const liveSecret = "execution-live-fixture-secret-only";
+
 interface Row {
 	project: string;
 	executionKey: string;
@@ -13,6 +15,7 @@ interface Row {
 	parameters: [string, string][];
 	nodeCount: number;
 	participantCount: number;
+	environmentVariables: string[];
 	firstSeenNs: string;
 	lastSeenNs: string;
 }
@@ -23,6 +26,12 @@ const test = base.extend<{ executionRows: Row[] }>({
 	},
 	workspaceEnvironment: async ({ executionRows }, use) => {
 		const server = createServer((request, response) => {
+			if (request.url?.startsWith("/stream?")) {
+				expect(request.headers.authorization).toBe(`Bearer ${liveSecret}`);
+				response.writeHead(200, { "Content-Type": "text/event-stream" });
+				response.end("event: heartbeat\ndata: {}\n\n");
+				return;
+			}
 			let query = "";
 			request.on("data", (chunk) => {
 				query += chunk.toString();
@@ -54,6 +63,8 @@ const test = base.extend<{ executionRows: Row[] }>({
 			await use({
 				RECOUNT_CLICKHOUSE_URL: `http://127.0.0.1:${address.port}`,
 				RECOUNT_CLICKHOUSE_READER_PASSWORD: "fixture",
+				RECOUNT_LIVE_GATEWAY_URL: `http://127.0.0.1:${address.port}`,
+				RECOUNT_LIVE_GATEWAY_SECRET: liveSecret,
 			});
 		} finally {
 			server.closeAllConnections();
@@ -107,6 +118,7 @@ for (const locale of ["en", "fr"] as const) {
 			parameters: [["label", "<node>"]],
 			nodeCount: 2,
 			participantCount: 2,
+			environmentVariables: ["RECOUNT_EXECUTION"],
 			firstSeenNs: "1793700000000000000",
 			lastSeenNs: "1793700001000000000",
 		});
@@ -146,3 +158,142 @@ for (const locale of ["en", "fr"] as const) {
 		await expect(page.getByText("run:Node-A/one")).toHaveCount(0);
 	});
 }
+
+test("two project readers and an organization operator use isolated execution pages, RPCs and live channels", async ({
+	page,
+	workspace,
+	executionRows,
+}) => {
+	const operatorEmail = "operator@example.invalid";
+	const operator = await workspace.signIn(page, operatorEmail);
+	const organization = data(
+		await workspace.operations(operator.headers, () =>
+			organizations.createOrganization(workspace.auth, operator.headers, {
+				name: "Execution access",
+				slug: "execution-access",
+			}),
+		),
+	);
+	const allocations = [];
+	for (const name of ["Alpha", "Beta"]) {
+		const project = data(
+			await workspace.operations(operator.headers, (actor) =>
+				projects.createProject(workspace.database.db, actor, {
+					requestId: crypto.randomUUID(),
+					organizationId: organization.id,
+					name,
+				}),
+			),
+		);
+		const email = `${name.toLowerCase()}@example.invalid`;
+		const reader = await workspace.signIn(page, email);
+		const membership = await workspace.auth.api.addMember({
+			body: {
+				organizationId: organization.id,
+				userId: reader.userId,
+				role: "member",
+			},
+		});
+		data(
+			await workspace.operations(operator.headers, (actor) =>
+				projects.setProjectMember(workspace.database.db, actor, {
+					organizationId: organization.id,
+					projectId: project.id,
+					memberId: membership.id,
+					role: "viewer",
+				}),
+			),
+		);
+		executionRows.push({
+			project: project.id,
+			executionKey: "run:shared",
+			name: `${name} private workload`,
+			workloadVersion: null,
+			parameters: [],
+			nodeCount: 1,
+			participantCount: 1,
+			environmentVariables: ["RECOUNT_EXECUTION"],
+			firstSeenNs: "1793700000000000000",
+			lastSeenNs: "1793700001000000000",
+		});
+		allocations.push({
+			email,
+			projectId: project.id,
+			name: `${name} private workload`,
+			url: `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/executions`,
+			rpc: "",
+		});
+	}
+	await workspace.signIn(page, operatorEmail);
+	for (const allocation of allocations) {
+		await page.goto(allocation.url);
+		await expect(
+			page.getByRole("button", {
+				name: "Switch project, organization or account",
+				exact: true,
+			}),
+		).toBeEnabled();
+		const path = await workspace.serverFunctionPath(
+			page,
+			"../executions/execution.functions",
+			"getExecution",
+		);
+		const rpc = page.waitForRequest((request) =>
+			request.url().startsWith(new URL(path, workspace.origin).href),
+		);
+		await page
+			.getByRole("link", { name: allocation.name, exact: true })
+			.dispatchEvent("click", { button: 0 });
+		allocation.rpc = (await rpc).url();
+		await expect(
+			page.getByRole("heading", { name: allocation.name, exact: true }),
+		).toBeVisible();
+	}
+	for (const email of [operatorEmail, ...allocations.map((a) => a.email)]) {
+		await workspace.signIn(page, email);
+		for (const allocation of allocations) {
+			const allowed = email === operatorEmail || email === allocation.email;
+			const response = await page.goto(`${allocation.url}/run%3Ashared`);
+			expect(response?.status()).toBe(allowed ? 200 : 404);
+			if (allowed) {
+				await expect(
+					page.getByRole("heading", { name: allocation.name, exact: true }),
+				).toBeVisible();
+			} else {
+				await expect(
+					page.getByText(allocation.name, { exact: true }),
+				).toHaveCount(0);
+			}
+			const direct = await page.request.get(allocation.rpc, {
+				headers: {
+					"x-tsr-serverFn": "true",
+					accept: "application/json",
+					origin: workspace.origin,
+					"sec-fetch-site": "same-origin",
+				},
+			});
+			const body = await direct.text();
+			if (allowed) {
+				expect(body).toContain(allocation.name);
+			} else {
+				expect(body).toContain("NOT_FOUND");
+				expect(body).not.toContain(allocation.name);
+			}
+			const live = await page.request.get(
+				`${workspace.origin}/api/activity/live?${new URLSearchParams({
+					organizationId: organization.id,
+					projectId: allocation.projectId,
+				})}`,
+			);
+			expect(live.headers()["content-type"]).toContain("text/event-stream");
+			const events = await live.text();
+			if (allowed) {
+				expect(events).toContain("event: heartbeat");
+				expect(events).not.toContain("event: failure");
+			} else {
+				expect(events).toContain('"code":"NOT_FOUND"');
+				expect(events).not.toContain("event: heartbeat");
+			}
+		}
+	}
+});

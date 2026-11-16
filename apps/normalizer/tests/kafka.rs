@@ -394,9 +394,43 @@ async fn real_kafka_bootstrap_replay_rebalance_and_global_handler_poison() {
     committed(&observer, &env.raw, 0, delivery.offset + 1).await;
     drop(process);
 
+    let mut queued = raw.clone();
+    queued.batch.as_mut().unwrap().client_id = "queued-during-restart".into();
+    let queued_body = queued.encode_to_vec();
+    let queued_key = identity::raw_routing_key(&queued).unwrap();
+    let delivery = producer
+        .send(
+            FutureRecord::to(&env.raw)
+                .partition(0)
+                .key(&queued_key)
+                .payload(&queued_body),
+            Timeout::After(Duration::from_secs(1)),
+        )
+        .await
+        .unwrap();
+    let queued_expected: BTreeMap<_, _> = recount_normalizer::prepare(
+        &queued_body,
+        Some(&queued_key),
+        3,
+        recount_telemetry_validation::validate::Limits::default(),
+    )
+    .unwrap()
+    .into_iter()
+    .map(|record| {
+        let point = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
+        assert!(!original.contains_key(&point.sample_id));
+        (point.sample_id.clone(), point)
+    })
+    .collect();
+    let mut process = env.start();
+    assert_eq!(
+        collect(&reader, queued_expected.len(), "backlog after restart").await,
+        queued_expected
+    );
+    committed(&observer, &env.raw, 0, delivery.offset + 1).await;
+
     // Immutable input replay after a process crash produces identical row IDs,
     // event partitions and values despite a different raw Kafka offset.
-    let mut process = env.start();
     let delivery = producer
         .send(
             FutureRecord::to(&env.raw)
