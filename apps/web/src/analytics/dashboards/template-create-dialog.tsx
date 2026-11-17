@@ -105,13 +105,6 @@ export function TemplateCreateDialog({
 					mutation.clearMessage();
 				}}
 			/>
-			{!projects.isError && !projects.data?.length && (
-				<p className="text-sm text-muted-foreground">
-					{projects.isPending
-						? m.dashboard_templates_project_loading()
-						: m.dashboard_templates_project_empty()}
-				</p>
-			)}
 			{failed && (
 				<div role="alert" className="flex items-center gap-2 text-sm">
 					{m.dashboard_templates_load_error()}
@@ -139,6 +132,9 @@ export function TemplateCreateDialog({
 					<Label htmlFor={`${id}-node`}>
 						{m.dashboard_templates_node_variable()}
 					</Label>
+					<p className="text-xs text-muted-foreground">
+						{m.dashboard_templates_node_variable_help()}
+					</p>
 					<Select
 						value={node}
 						disabled={mutation.disabled || !catalog.data}

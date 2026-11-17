@@ -75,8 +75,7 @@ for (const locale of ["en", "fr"] as const) {
 		});
 		await expect(
 			dialog.getByRole("radio", {
-				name: m.dashboard_templates_blank({}, options),
-				exact: true,
+				name: new RegExp(`^${m.dashboard_templates_blank({}, options)}`),
 			}),
 		).toHaveAttribute("aria-checked", "true");
 		await dialog
@@ -218,8 +217,7 @@ for (const locale of ["en", "fr"] as const) {
 		});
 		await dialog
 			.getByRole("radio", {
-				name: m.dashboard_templates_blank({}, options),
-				exact: true,
+				name: new RegExp(`^${m.dashboard_templates_blank({}, options)}`),
 			})
 			.click();
 		await expect(

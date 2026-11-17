@@ -1,5 +1,5 @@
 import { m } from "@recount/i18n/messages";
-import { Card, CardContent } from "../../components/ui/card";
+import { TriangleAlertIcon } from "lucide-react";
 import { cn } from "../../lib/utils";
 import type { MetricDefinition } from "../contracts";
 import {
@@ -8,14 +8,14 @@ import {
 	templateCoverage,
 } from "../dashboard-templates";
 import { decodeDraft } from "../insight/draft";
-import { DISPLAY_LABEL } from "../insight/labels";
+import { DISPLAY_ICON, DISPLAY_LABEL } from "../insight/labels";
 import {
 	TILE_COLUMN_CLASS,
 	TILE_HEIGHT_CLASS,
 	TILE_WIDTH_CLASS,
 } from "./dashboard-tile";
 
-/** A query-free preview of the actual saved layout and metric requirements. */
+/** A small, query-free map of the layout the template creates. */
 export function TemplatePreview({
 	template,
 	metrics,
@@ -24,49 +24,56 @@ export function TemplatePreview({
 	metrics?: MetricDefinition[];
 }) {
 	const coverage = metrics && templateCoverage(template, metrics);
+	const tiles = previewDashboard(template).tiles;
+	const missing = coverage
+		? tiles.filter((_, index) => !coverage.available[index])
+		: [];
 	return (
 		<section
 			aria-label={m.dashboard_templates_preview()}
 			className="flex flex-col gap-2"
 		>
-			<p className="text-sm text-muted-foreground">
-				{m.dashboard_templates_preview_description()}
-			</p>
-			{coverage && (
-				<p className="text-sm">{m.dashboard_template_coverage(coverage)}</p>
-			)}
-			<div className="grid grid-flow-row-dense auto-rows-[minmax(3rem,auto)] grid-cols-1 gap-2 lg:grid-cols-12">
-				{previewDashboard(template).tiles.map((tile, index) => {
-					const draft = decodeDraft(tile.insight.draft);
+			<h3 className="text-sm font-medium">{m.dashboard_templates_preview()}</h3>
+			<div className="grid grid-flow-row-dense auto-rows-[0.75rem] grid-cols-1 gap-1.5 rounded-lg bg-muted p-2 lg:grid-cols-12">
+				{tiles.map((tile, index) => {
+					const type = decodeDraft(tile.insight.draft).display.type;
+					const Icon = DISPLAY_ICON[type];
+					const unavailable = coverage && !coverage.available[index];
 					return (
-						<Card
+						<div
 							key={tile.id}
+							title={DISPLAY_LABEL[type]()}
 							className={cn(
-								"min-w-0",
+								"flex min-w-0 items-start gap-1.5 rounded-md border bg-card px-2 py-1.5 text-xs",
 								TILE_WIDTH_CLASS[tile.width],
 								TILE_HEIGHT_CLASS[tile.height],
 								tile.column && TILE_COLUMN_CLASS[tile.column],
+								unavailable && "border-dashed text-muted-foreground",
 							)}
 						>
-							<CardContent className="flex min-w-0 flex-col gap-1 p-3">
-								<p className="break-words text-sm font-medium">
-									{tile.insight.name}
-								</p>
-								<p className="text-xs text-muted-foreground">
-									{DISPLAY_LABEL[draft.display.type]()}
-								</p>
-								{coverage && (
-									<p className="text-xs text-muted-foreground">
-										{coverage.available[index]
-											? m.dashboard_templates_panel_available()
-											: m.dashboard_templates_panel_unavailable()}
-									</p>
-								)}
-							</CardContent>
-						</Card>
+							{unavailable ? (
+								<TriangleAlertIcon
+									aria-hidden="true"
+									className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
+								/>
+							) : (
+								<Icon
+									aria-hidden="true"
+									className="size-3.5 shrink-0 text-muted-foreground"
+								/>
+							)}
+							<span className="truncate">{tile.insight.name}</span>
+						</div>
 					);
 				})}
 			</div>
+			{missing.length > 0 && (
+				<p className="text-xs text-muted-foreground">
+					{m.dashboard_templates_missing({
+						panels: missing.map((tile) => tile.insight.name).join(", "),
+					})}
+				</p>
+			)}
 		</section>
 	);
 }
