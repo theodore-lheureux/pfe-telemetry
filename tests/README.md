@@ -30,6 +30,7 @@ records focused scenarios, reproduction commands and their limits.
 | Real ClickHouse HTTP reader                                            | `bun --no-env-file test --timeout 30000 apps/web/tests/telemetry/clickhouse.test.ts`                                                              | ClickHouse administrator and restricted-reader credentials, plus `RECOUNT_CONTRACT_FIXTURE`                                              |
 | Native Kafka-to-ClickHouse storage                                     | `cargo test --locked -p recount-normalizer --test storage -- --ignored --test-threads=1 --skip unclean_restart --skip invalid_initialized`        | Explicit storage settings below; no service restart authority                                                                            |
 | Browser with native Bun web                                            | `node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts`                                                           | `TEST_DATABASE_URL`; installed Playwright Chromium                                                                                       |
+| Native pipeline identities after resend, kill, replay and revocation   | `just --justfile tests/justfile load-check`                                                                                                       | Storage settings below plus `TEST_DATABASE_URL`, `RECOUNT_STORAGE_TEST_NAMESPACE` and Bun                                                |
 
 Build the fixture natively and discover its executable from Cargo's JSON output,
 not an assumed `target/` directory:
@@ -96,6 +97,20 @@ PostgreSQL fixtures migrate new databases through the application migration
 function. They do not cache sessions, tenant data, actors or database snapshots.
 Only the targeted migration suite replays migrations to test history,
 serialization and rollback.
+
+## Pipeline load check
+
+`load-check` builds the ingestion API, normalizer and `recount-pipeline-load`,
+then runs `recount-pipeline-load check`. It allocates fresh topics, a ClickHouse
+database with the shipped schema renderer and a migrated PostgreSQL database
+with synthetic signed-token principals in two projects. It starts both services
+natively and asserts exact sample identities in ClickHouse after delayed
+resends, a killed normalizer, a rewound ClickHouse checkpoint and a live
+revocation. It refuses a run directory that already holds an allocation and
+removes every resource it created, including after a failure. The tool and the
+k6 scripts live in `tests/load`.
+Capacity numbers are recorded evidence, not assertions; see the
+[ClickHouse ingestion evaluation](../docs/clickhouse-evaluation.md).
 
 ## Browser ownership
 
@@ -257,6 +272,7 @@ Live tests remain separate native commands.
 | HTTP precision, typed dimension ordering/bits, cancellation, capacity and SELECT-only reader behavior                                         | Web ClickHouse HTTP tests                                           |
 | Packaged hosting, assets, private-file exclusion, non-root entrypoints and shutdown                                                           | Runtime image smoke tests                                           |
 | Collector sampling through authorized browser, both hosts/locales and restart                                                                 | Explicit pipeline Playwright configuration                          |
+| Accepted identities through native services after resends, restarts, checkpoint replay and revocation                                         | `recount-pipeline-load check`                                       |
 
 CI separates lightweight checks from live integration. Each job owns and reuses
 its backends. Checks include `infra/local` safety tests and TypeScript checks, the
