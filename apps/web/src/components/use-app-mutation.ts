@@ -121,11 +121,7 @@ export function useAppMutation<Input, Data>(options: {
 	);
 
 	async function toastFailure(failure: DomainError | null, unknown: string) {
-		publishNotice(
-			failure ? failureMessage(failure) : unknown,
-			true,
-			failure ? "error" : "warning",
-		);
+		publishNotice(failure ? failureMessage(failure) : unknown, true, "error");
 		// Without inline feedback, show what the server holds after a lost response.
 		if (!failure) await router.invalidate({ sync: true }).catch(() => {});
 	}

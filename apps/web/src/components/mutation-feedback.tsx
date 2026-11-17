@@ -30,7 +30,7 @@ function NoticeToast({
 	return (
 		<div className="flex w-[min(24rem,calc(100vw-2rem))] items-start gap-3 rounded-md border bg-card p-3 text-sm text-card-foreground shadow-lg">
 			<p
-				role={kind === "success" ? "status" : "alert"}
+				role={kind === "error" ? "alert" : "status"}
 				className="flex min-w-0 flex-1 items-start gap-2"
 			>
 				{kind === "success" ? (

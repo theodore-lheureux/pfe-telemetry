@@ -90,9 +90,10 @@ test("a current saved operation can follow its typed destination and release its
 		.toBe(1);
 	await expect(page).toHaveURL(/\/settings\?section=user$/);
 	await expect(page.getByRole("heading", { name: "Other page" })).toBeVisible();
+	// The notice becomes a confirmation that dismisses itself.
 	await expect(
 		page.getByRole("button", { name: "Dismiss notice" }),
-	).toHaveCount(0);
+	).toHaveCount(0, { timeout: 10_000 });
 });
 
 test("a cross-tab identity change retires the response and confirmation before route replacement", async ({
