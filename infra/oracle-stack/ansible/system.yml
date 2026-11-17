@@ -66,7 +66,7 @@
     remote_src: true
     creates: /opt/recount/bootstrap/bun-linux-aarch64/bun
 
-- name: Install Bun in the receiver's protected executable path
+- name: Install Bun in a root-owned executable path
   ansible.builtin.copy:
     src: /opt/recount/bootstrap/bun-linux-aarch64/bun
     dest: /usr/local/bin/bun
@@ -82,45 +82,39 @@
   changed_when: false
   failed_when: recount_installed_bun.stdout != recount_bun_version
 
-- name: Install the reviewed deployment receiver
+- name: Remove the retired Run Command receiver and its sudo rule
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/sudoers.d/recount-release
+    - /usr/local/sbin/recount-release
+    - /opt/recount/bootstrap/install-sudoers.sh
+    - /opt/recount/bootstrap/sudoers
+
+- name: Create the CD deployment user
+  ansible.builtin.user:
+    name: recount-deploy
+    shell: /bin/bash
+    groups: []
+    create_home: true
+
+- name: Authorize only the CD deployment key
+  ansible.posix.authorized_key:
+    user: recount-deploy
+    key: "{{ recount_deploy_public_key }}"
+    exclusive: true
+
+# Ansible deploys need privilege escalation; the key lives only in the protected
+# GitHub environment, and every deployment requires its approval.
+- name: Allow the CD deployment user to escalate without a password
   ansible.builtin.copy:
-    src: ../deploy/receive.sh
-    dest: /usr/local/sbin/recount-release
+    content: "recount-deploy ALL=(ALL) NOPASSWD: ALL\n"
+    dest: /etc/sudoers.d/recount-deploy
     owner: root
     group: root
-    mode: "0755"
-
-- name: Install receiver permission bootstrap inputs
-  ansible.builtin.copy:
-    src: "../deploy/{{ item }}"
-    dest: "/opt/recount/bootstrap/{{ item }}"
-    owner: root
-    group: root
-    mode: "0600"
-  loop: [install-sudoers.sh, sudoers]
-
-- name: Inspect the existing receiver sudoers rule
-  ansible.builtin.stat:
-    path: /etc/sudoers.d/recount-release
-  register: recount_sudoers_rule
-
-- name: Validate the receiver-only passwordless sudo grant
-  ansible.builtin.command:
-    argv:
-      - /bin/bash
-      - /opt/recount/bootstrap/install-sudoers.sh
-      - /opt/recount/bootstrap/sudoers
-  changed_when: >-
-    not recount_sudoers_rule.stat.exists or
-    recount_sudoers_rule.stat.mode != "0440" or
-    recount_sudoers_rule.stat.uid != 0 or recount_sudoers_rule.stat.gid != 0
-
-- name: Verify the Run Command user cannot access Docker
-  ansible.builtin.command:
-    argv: [id, -nG, ocarun]
-  register: recount_ocarun_groups
-  changed_when: false
-  failed_when: "'docker' in recount_ocarun_groups.stdout.split()"
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s
 
 - name: Configure the public release repository
   ansible.builtin.copy:

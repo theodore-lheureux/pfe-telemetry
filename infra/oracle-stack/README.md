@@ -1,15 +1,15 @@
-# Oracle ingestion deployment
+# Oracle stack deployment
 
 The existing Oracle VM is referenced by OpenTofu, with state in the existing
 [S3 backend](../state-backend/README.md). GitHub Actions builds native Linux
-artifacts and prepares approved release activation through OCI Run Command.
+artifacts, and an approved deployment activates a release with Ansible over SSH.
 The [layout decision](layout.md) records inspected resources, resource caps,
 storage limits, TLS, backups and why Semaphore is not needed.
 
 **Identity bootstrap is not an application deployment.** The AWS state user and
 policy have been applied, native S3 locking verified with that identity, and
 approval-gated GitHub environments configured. OCI bootstrap created the CD user,
-API key, group, scoped policies, agent permissions and project compartment.
+API key, group, scoped policies and project compartment.
 Live storage grants were narrowed
 and confirmed with `oci iam policy get`. Infrastructure CD has applied the data
 volume and attachment, backup policy/assignment, DNS and OCI TCP/443 rule.
@@ -51,8 +51,8 @@ changing the landing workflow.
 inspected public SSH rule; use approved operator CIDRs, or an empty set after
 verifying another management path. Storage and backups belong only in the
 project `storage_compartment_id`; the VM remains in its existing compartment.
-The owner approved broad compute/network and Run Command service-family access
-in the VM compartment, with storage management in the project compartment.
+The owner approved broad compute/network service-family access in the VM
+compartment, with storage management in the project compartment.
 Identity/policy management remains excluded; see the bootstrap guide's risk note.
 
 After a partial apply, never reuse the old saved plan or reset state. Generate
@@ -112,8 +112,8 @@ Both architectures must finish before publication.
 
 Native builds attest final runtime and collector archives with GitHub artifact
 attestations. Deployment verifies the repository, expected workflow, `main`,
-release commit and hosted-runner identity before computing the receiver digest.
-VM-side hashing remains mandatory. GitHub attestation OIDC does not require an
+release commit and hosted-runner identity before computing the archive digest.
+The VM-side download verifies that digest. GitHub attestation OIDC does not require an
 AWS IAM OIDC provider.
 
 Bundles include tagged ingestion/normalizer/web images, the schema image and
@@ -121,22 +121,17 @@ explicit runtime configuration files. They exclude private environment files,
 source workspaces, cloud credentials and databases. The existing GitHub
 repository must remain **public** for anonymous VM downloads; deployment refuses
 a private repository. A private registry/transfer path would need a separate
-approved design, not a token embedded in the VM command.
+approved design, not a token placed on the VM.
 
 Packaging rejects images above a combined 4-GiB unpacked budget or a download
-above 2 GiB, keeping the receiver's staging allowance bounded.
+above 2 GiB, keeping the release staging allowance bounded.
 
-Set environment variables after approval:
+Set the deploy environment after approval:
 
-| Environment                  | Variables                                                                                                                  |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `ingestion-deploy`, secrets  | `OCI_INSTANCE_ID`, `OCI_COMPARTMENT_ID`, `OCI_TENANCY_ID`, `OCI_USER_ID`, `OCI_API_KEY_FINGERPRINT`, `OCI_API_PRIVATE_KEY` |
-| `ingestion-deploy`, variable | `OCI_INGESTION_ARCH=arm64`                                                                                                 |
-
-`OCI_COMPARTMENT_ID` selects the isolated project compartment where commands are
-stored, not the root compartment containing the VM. CD has the owner-approved
-Run Command family grants in the VM compartment. The Oracle agent's separate
-dynamic group remains bound to its own VM.
+| Environment                  | Values                                             |
+| ---------------------------- | -------------------------------------------------- |
+| `ingestion-deploy`, secrets  | `DEPLOY_SSH_PRIVATE_KEY`, `DEPLOY_SSH_KNOWN_HOSTS` |
+| `ingestion-deploy`, variable | `OCI_INGESTION_ARCH=arm64`                         |
 
 Infrastructure changes run through `infra-oracle.yml`. Plan runs for
 same-repository PRs and relevant `main` changes; fork PRs get offline checks only.
@@ -166,26 +161,20 @@ just --justfile infra/oracle-stack/justfile check
 just --justfile infra/oracle-stack/justfile plan
 ```
 
-GitHub uses a dedicated OCI user and API key, never the owner's session or an
-administrator key. The private key lives in the protected `ingestion-deploy`
-environment secret. The runner writes mode-0600 files and removes them on
-completion. Rotate/revoke the key through the owner-managed process; no private
-key belongs in OpenTofu state or release artifacts.
+Infrastructure CD uses a dedicated OCI user and API key, never the owner's
+session or an administrator key. Its private key lives in the protected
+`ingestion-infrastructure` and `ingestion-plan` environments; the runner writes
+mode-0600 files and removes them on completion. The policy grants compute,
+network and project-storage service families but no IAM administration. The VM
+is in the root compartment, so the CD key has broad compute/network authority
+there.
 
-Release activation uses Run Command. Infrastructure CD also has the reviewed
-compute, network and project-storage service families in the bootstrap guide,
-but no IAM administration. Anonymous
-public-release downloads need no additional OCI transfer permissions. The agent's
-dynamic group must include only the existing VM and have command-execution
-permission for itself. Verify that the reviewed service-family policy is
-installed. The VM is in the root
-compartment, so the CD key has broad compute/network authority there.
-
-See Oracle's [Run Command prerequisites](https://docs.oracle.com/en-us/iaas/Content/Compute/Tasks/runningcommands.htm)
-and [command permissions](https://docs.oracle.com/en-us/iaas/Content/Identity/Reference/corepolicyreference.htm).
-The dedicated identity's command creation and successful status retrieval were
-verified on the Ubuntu VM. Host bootstrap installs the deployment receiver and
-verifies its restricted sudo rule.
+Release deployment uses SSH, not the OCI API. The protected `ingestion-deploy`
+environment holds only `DEPLOY_SSH_PRIVATE_KEY`, a dedicated ed25519 key for the
+`recount-deploy` user, and `DEPLOY_SSH_KNOWN_HOSTS`, the VM's pinned host key for
+`app.recount.cloud`. Rotate the deploy key by generating a new pair, updating
+`recount_deploy_public_key` in the private inventory, rerunning the `system`
+tag and replacing the secret.
 
 ## Prepare the host after approval
 
@@ -218,8 +207,8 @@ application release activation.
    ```
 
 4. Run the playbook again and require `changed=0`. Verify the UUID-backed mount
-   and `/etc/fstab`, backend health, runtime role restrictions, receiver-only
-   sudo grant, and TLS certificates through both real hostnames. Do not dispatch
+   and `/etc/fstab`, backend health, runtime role restrictions, the deploy
+   user's single authorized key, and TLS certificates through both real hostnames. Do not dispatch
    application deployment until these checks pass.
 
 The playbook installs Ubuntu's Docker and Caddy packages plus checksum-pinned
@@ -232,7 +221,7 @@ selected serial, mounts by UUID, and requires that mount before Docker starts.
 The root-only `/etc/recount/data-mount` records the identity checked by activation.
 
 The approved release is unpacked under `/opt/recount/bootstrap`, not the
-receiver's `/opt/recount/releases` directory. Its backend is installed once and
+deployment's `/opt/recount/releases` directory. Its backend is installed once and
 verified on every run; a changed manifest fails rather than replacing it.
 Private runtime credentials and matching Ed25519 signing/public keys are created
 once in root-owned mode-0600 `/etc/recount/ingestion.env`. Web uses `recount_web`,
@@ -279,71 +268,46 @@ credentials out of command arguments, inventory examples and logs. Bootstrap
 never rotates existing runtime secrets; later credential or backend changes
 require separate maintenance.
 
-## One-time Run Command sudoers bootstrap
+## Deployment user
 
-Oracle Run Command runs as `ocarun`; cloud IAM permissions do not grant Linux
-sudo permission. Use the owner's existing key as `ubuntu` over a host-key-pinned,
-password-disabled SSH connection. Verify the fingerprint through trusted
-console/OCI output before connecting. Keep the working key/host configuration
-outside Git.
-
-The playbook installs and validates the reviewed receiver-only rule using
-`deploy/install-sudoers.sh`. For permission-only preparation without Ansible,
-copy only that script and `deploy/sudoers` into a
-private temporary directory on the VM. From that directory, run:
+The `system` tag creates `recount-deploy` with exactly one authorized key,
+`recount_deploy_public_key` from the private inventory, and a validated
+passwordless sudo rule, because Ansible activation needs privilege escalation.
+Only the protected deploy environment holds the matching private key, and every
+deployment requires its approval.
 
 ```sh
-sudo -n /bin/bash ./install-sudoers.sh ./sudoers
-sudo -n -u ocarun sudo -n -l
+ANSIBLE_CONFIG=infra/oracle-stack/ansible/ansible.cfg \
+  uv run ansible-playbook \
+    -i infra/oracle-stack/.state/ansible/inventory.json \
+    infra/oracle-stack/ansible/bootstrap.yml --tags system
 ```
-
-The script validates the exact rule bytes, checks protected parent directories,
-validates existing and new configuration with `visudo -c`, and installs
-`/etc/sudoers.d/recount-release` as root:root mode 0440. It refuses a differing
-existing file and verifies that `ocarun` has exactly one sudo command:
-
-```text
-(root) NOPASSWD: /usr/local/sbin/recount-release *
-```
-
-The standalone script installs permissions only. It does not install the receiver, initialize
-data, start containers or activate a release. Do not approve another deploy
-until the receiver, mounted-data identity, backend manifest, migration receipt,
-private environment and required software are prepared. Never replace this rule
-with `NOPASSWD:ALL`.
 
 ## Activate and verify
 
-After explicit deployment approval, dispatch `Deploy ingestion release` with
-the approved release ID. It submits only the fixed receiver command with
-validated ID/architecture/checksum arguments, then waits for terminal execution
-success **and exit code zero**. API acceptance is not deployment success.
+After explicit deployment approval, dispatch `Release · deploy to Oracle` with
+the approved release ID (without the `release-` prefix). The runner verifies the
+archive's build attestation against this repository's release workflow on
+`main`, computes its SHA-256, then runs `ansible/deploy.yml` over SSH as
+`recount-deploy`. The playbook checks that the release matches the VM's
+architecture, downloads the archive with that checksum, checks its embedded
+release identity and runs the archive's `activate.sh`.
 
-Commands are created in the isolated project compartment, so an execution list
-scoped only to the VM's original compartment can miss them. Their display name
-includes the public release identifier. On failure, CI prints a bounded,
-redacted tail of the command/host output after removing terminal controls.
-The raw execution receipt remains mode 0600 on the runner and is removed during
-cleanup, never uploaded as an artifact. Control characters in OCI JSON are
-accepted with `strict=False`. Receiver absence or missing command-specific
-passwordless sudo is reported as incomplete host bootstrap before activation.
-
-The receiver checks architecture, free staging space plus a 30% disk reserve,
-SHA-256, backend/schema manifest equality, migration receipt and initialized
-database identities. It verifies topics, loads images and updates only
-ingestion, normalizer, Live and web with `--no-deps --pull never`; it never
-restarts shared backends. A backend/schema change fails for separate maintenance
-review instead of replacing mounted schemas under running consumers.
+Activation checks free space plus a 30% disk reserve, backend/schema manifest
+equality, the migration receipt and initialized database identities. It
+verifies topics, loads images and updates only the ingestion API, normalizer,
+Live and web with `--no-deps --pull never`; it never restarts shared backends. A
+backend/schema change fails for separate maintenance review instead of replacing
+mounted schemas under running consumers.
 
 After health checks, inspect normalizer assignment, independent native consumer
 lag and a synthetic authorized collector-to-query round trip. Test HTTPS gRPC,
 auth/passkeys, SSE and proxy forwarding through the real hostnames. Container
 health alone does not prove freshness, completeness or capacity.
 
-Failure leaves staged releases and data intact. There is no automatic cleanup,
-rollback or retry of an uncertain remote command. Inspect OCI execution status
-and the host first; failed activation can leave some application containers
-updated. Reactivating an older application is safe only after checking its
+Failure leaves staged releases and data intact. There is no automatic cleanup
+or rollback. Read the Ansible output in the workflow log and inspect the host;
+failed activation can leave some application containers updated. Reactivating an older application is safe only after checking its
 schema compatibility. Never roll back the database or delete volumes to make
 an old image start.
 

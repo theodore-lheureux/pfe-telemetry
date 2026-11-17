@@ -27,20 +27,14 @@ jobs:
     env:
       RELEASE: ${{ inputs.release }}
       ARCH: ${{ vars.OCI_INGESTION_ARCH }}
-      OCI_API_KEY_FINGERPRINT: ${{ secrets.OCI_API_KEY_FINGERPRINT }}
-      OCI_USER_ID: ${{ secrets.OCI_USER_ID }}
-      OCI_TENANCY_ID: ${{ secrets.OCI_TENANCY_ID }}
-      OCI_INSTANCE_ID: ${{ secrets.OCI_INSTANCE_ID }}
-      OCI_COMPARTMENT_ID: ${{ secrets.OCI_COMPARTMENT_ID }}
+      DEPLOY_HOST: app.recount.cloud
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: python3 infra/ci/public_logs.py mask
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.12.23"
-      - run: uv tool install oci-cli==3.96.2
       - name: Verify native build provenance before authorizing root execution
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,16 +49,27 @@ jobs:
             --source-ref refs/heads/main --source-digest "${RELEASE%%-*}" \
             --deny-self-hosted-runners
           (cd assets && sha256sum "recount-stack-$ARCH.tar.gz" > "recount-stack-$ARCH.tar.gz.sha256")
-      - name: Materialize the scoped OCI deployment identity
+      - name: Install the pinned deployment key and host key
         env:
-          OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
-        run: python3 infra/oracle-stack/ci/credentials.py
-      - name: Activate the release through OCI Run Command
-        id: activate
-        run: python3 infra/oracle-stack/ci/run-command.py
-      - name: Show redacted host failure output
-        if: failure() && steps.activate.outcome == 'failure'
-        run: python3 infra/ci/public_logs.py host-failure
-      - name: Remove this runner's deployment credential files
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy" "$HOME/.ssh/known_hosts"
+      - name: Activate the release with Ansible
+        env:
+          ANSIBLE_CONFIG: infra/oracle-stack/ansible/ansible.cfg
+          ANSIBLE_HOST_KEY_CHECKING: "true"
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          digest=$(cut -d' ' -f1 "assets/recount-stack-$ARCH.tar.gz.sha256")
+          printf '[recount_ingestion]\n%s\n' "$DEPLOY_HOST" > "$RUNNER_TEMP/inventory.ini"
+          uv run --locked ansible-playbook infra/oracle-stack/ansible/deploy.yml \
+            --inventory "$RUNNER_TEMP/inventory.ini" \
+            --user recount-deploy --private-key "$HOME/.ssh/deploy" \
+            --extra-vars "recount_release=$RELEASE recount_arch=$ARCH recount_release_sha256=$digest recount_repository=$REPOSITORY"
+      - name: Remove this runner's deployment key
         if: always()
-        run: rm -f "$HOME/.oci/config" "$HOME/.oci/deployment.pem" .state/oci-deploy-execution.json
+        run: rm -f "$HOME/.ssh/deploy"

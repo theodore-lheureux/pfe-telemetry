@@ -1,0 +1,67 @@
+- name: Activate an attested release on the Oracle stack
+  hosts: recount_ingestion
+  become: true
+  gather_facts: true
+  vars:
+    recount_release_directory: "/opt/recount/releases/{{ recount_release }}"
+  tasks:
+    - name: Require a release built for this host
+      ansible.builtin.assert:
+        that:
+          - recount_release is match("^[a-f0-9]{40}-[0-9]+-[0-9]+$")
+          - recount_release_sha256 is match("^[a-f0-9]{64}$")
+          - recount_repository is match("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+          - (recount_arch, ansible_facts.architecture) in [("arm64", "aarch64"), ("amd64", "x86_64")]
+        quiet: true
+
+    - name: Create the release directory
+      ansible.builtin.file:
+        path: "{{ recount_release_directory }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    # The runner verified this archive's build attestation and passes its digest.
+    - name: Download the attested release archive
+      ansible.builtin.get_url:
+        url: "https://github.com/{{ recount_repository }}/releases/download/release-{{ recount_release }}/recount-stack-{{ recount_arch }}.tar.gz"
+        dest: "{{ recount_release_directory }}/release.tar.gz"
+        checksum: "sha256:{{ recount_release_sha256 }}"
+        mode: "0600"
+        timeout: 600
+
+    - name: Extract the release
+      ansible.builtin.unarchive:
+        src: "{{ recount_release_directory }}/release.tar.gz"
+        dest: "{{ recount_release_directory }}"
+        remote_src: true
+        creates: "{{ recount_release_directory }}/activate.sh"
+
+    - name: Read the release identity
+      ansible.builtin.slurp:
+        src: "{{ recount_release_directory }}/{{ item }}"
+      loop: [release, arch]
+      register: recount_identity
+
+    - name: Require the archive to describe this release
+      ansible.builtin.assert:
+        that:
+          - (recount_identity.results[0].content | b64decode | trim) == recount_release
+          - (recount_identity.results[1].content | b64decode | trim) == recount_arch
+        quiet: true
+
+    - name: Activate the release
+      ansible.builtin.command:
+        argv:
+          [
+            bash,
+            "{{ recount_release_directory }}/activate.sh",
+            "{{ recount_release_directory }}",
+          ]
+      register: recount_activation
+      changed_when: true
+
+    - name: Report the activation
+      ansible.builtin.debug:
+        msg: "{{ recount_activation.stdout_lines | last }}"

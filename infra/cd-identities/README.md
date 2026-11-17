@@ -46,8 +46,8 @@ Use the tenancy's actual home region for IAM operations. The owner may select
 This tenancy requires an owner-selected `cd_email`; do not invent an address.
 
 The owner-approved CD policy uses standard service families without resource
-predicates: `manage instance-family`, `manage virtual-network-family` and both
-Run Command families in the VM's compartment; `manage volume-family` in the
+predicates: `manage instance-family` and `manage virtual-network-family` in the
+VM's compartment; `manage volume-family` in the
 dedicated project storage compartment; and read-only volume inventory in the
 VM's compartment. It grants no identity, group, policy, Vault or object-storage
 management. The VM remains where it is and no resource needs retagging.

@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import os
 import subprocess
@@ -8,13 +7,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import credentials
-
-spec = importlib.util.spec_from_file_location(
-    "run_command", Path(__file__).with_name("run-command.py")
-)
-run_command = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(run_command)
-
 
 class CredentialTests(unittest.TestCase):
     def test_invalid_identity_never_writes_credentials(self):
@@ -60,82 +52,6 @@ class CredentialTests(unittest.TestCase):
                 self.assertEqual((root / "config").read_text(), config)
         finally:
             os.umask(previous_umask)
-
-
-class RunCommandTests(unittest.TestCase):
-    def test_only_fixed_receiver_and_validated_arguments_reach_remote_shell(self):
-        release = "a" * 40 + "-123-1"
-        text = run_command.command_text(release, "arm64", "b" * 64)
-        self.assertIn("/usr/local/sbin/recount-release", text)
-        self.assertIn('if [[ ! -x "$receiver" ]]', text)
-        self.assertIn('sudo -n -l -- "$receiver"', text)
-        self.assertLess(len(text.encode()), 4096)
-        for value in ("../../release", release + "; id", release + "\nwhoami"):
-            with self.assertRaises(ValueError):
-                run_command.command_text(value, "arm64", "b" * 64)
-        with self.assertRaises(ValueError):
-            run_command.command_text(release, "arm64;id", "b" * 64)
-
-    def run_status(self, status):
-        with tempfile.TemporaryDirectory() as directory:
-            checksum = Path(directory) / "checksum"
-            checksum.write_text("b" * 64 + "  recount-stack-arm64.tar.gz\n")
-            with (
-                patch.dict(
-                    os.environ,
-                    {
-                        "RELEASE": "a" * 40 + "-123-1",
-                        "ARCH": "arm64",
-                        "OCI_INSTANCE_ID": "ocid1.instance.oc1.test",
-                        "OCI_COMPARTMENT_ID": "ocid1.compartment.oc1.test",
-                    },
-                ),
-                patch.object(run_command, "Path", return_value=checksum),
-                patch.object(
-                    run_command,
-                    "oci",
-                    side_effect=[{"id": "synthetic-command"}, status],
-                ) as api,
-                patch.object(run_command, "save_execution") as save,
-            ):
-                run_command.main()
-                save.assert_called_once_with(status)
-                arguments = api.call_args_list[0].args
-                content = json.loads(arguments[arguments.index("--content") + 1])
-                self.assertEqual(content["output"], {"outputType": "TEXT"})
-
-    def test_cli_response_accepts_literal_control_characters(self):
-        response = '{"data":{"content":{"text":"failure\\u001b[31m\\n"}}}'
-        response = response.replace("\\u001b", "\x1b").replace("\\n", "\n")
-        with patch.object(
-            run_command.subprocess, "check_output", return_value=response
-        ):
-            self.assertEqual(
-                run_command.oci("synthetic")["content"]["text"], "failure\x1b[31m\n"
-            )
-
-    def test_execution_receipt_is_private_and_retains_failure_output(self):
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory)
-            receipt = path / "oci-deploy-execution.json"
-            receipt.write_text("old")
-            receipt.chmod(0o644)
-            status = {
-                "content": {"text": "sudo: a password is required\n", "exit-code": 1}
-            }
-            run_command.save_execution(status, path)
-            self.assertEqual(json.loads(receipt.read_text()), status)
-            self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
-
-    def test_api_acceptance_is_not_deployment_success(self):
-        for status in (
-            {"lifecycle-state": "FAILED"},
-            {"lifecycle-state": "SUCCEEDED", "content": {"exit-code": 1}},
-            {"lifecycle-state": "SUCCEEDED", "content": {}},
-        ):
-            with self.assertRaises(SystemExit):
-                self.run_status(status)
-        self.run_status({"lifecycle-state": "SUCCEEDED", "content": {"exit-code": 0}})
 
 
 class ComposeTests(unittest.TestCase):

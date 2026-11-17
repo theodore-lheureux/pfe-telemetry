@@ -24,8 +24,6 @@ run "approved_compartment_service_families_without_identity_management" {
       "Allow group id ocid1.group.oc1.test to manage virtual-network-family in compartment id ocid1.compartment.oc1.test",
       "Allow group id ocid1.group.oc1.test to manage volume-family in compartment id ocid1.compartment.oc1.storage",
       "Allow group id ocid1.group.oc1.test to read volumes in compartment id ocid1.compartment.oc1.test",
-      "Allow group id ocid1.group.oc1.test to manage instance-agent-command-family in compartment id ocid1.compartment.oc1.test",
-      "Allow group id ocid1.group.oc1.test to manage instance-agent-command-execution-family in compartment id ocid1.compartment.oc1.test",
     ])
     error_message = "Use only the approved service families and compartments, without fragile resource predicates or IAM management."
   }

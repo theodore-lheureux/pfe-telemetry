@@ -93,7 +93,7 @@ resource "oci_identity_compartment" "storage" {
 resource "oci_identity_group" "cd" {
   compartment_id = var.tenancy_id
   name           = "recount-ingestion-cd"
-  description    = "Scoped ingestion infrastructure and Run Command permissions"
+  description    = "Scoped Oracle stack infrastructure permissions"
 }
 
 resource "oci_identity_user_group_membership" "cd" {
@@ -115,24 +115,6 @@ resource "oci_identity_policy" "cd" {
     "Allow group id ${oci_identity_group.cd.id} to manage virtual-network-family in compartment id ${var.compartment_id}",
     "Allow group id ${oci_identity_group.cd.id} to manage volume-family in compartment id ${oci_identity_compartment.storage.id}",
     "Allow group id ${oci_identity_group.cd.id} to read volumes in compartment id ${var.compartment_id}",
-    "Allow group id ${oci_identity_group.cd.id} to manage instance-agent-command-family in compartment id ${var.compartment_id}",
-    "Allow group id ${oci_identity_group.cd.id} to manage instance-agent-command-execution-family in compartment id ${var.compartment_id}",
-  ]
-}
-
-resource "oci_identity_dynamic_group" "agent" {
-  compartment_id = var.tenancy_id
-  name           = "recount-ingestion-agent"
-  description    = "Only the existing ingestion VM may receive its own Run Commands"
-  matching_rule  = "instance.id = '${var.instance_id}'"
-}
-
-resource "oci_identity_policy" "agent" {
-  compartment_id = var.compartment_id
-  name           = "recount-ingestion-agent"
-  description    = "Permit the selected Oracle agent to execute commands addressed to itself"
-  statements = [
-    "Allow dynamic-group id ${oci_identity_dynamic_group.agent.id} to use instance-agent-command-execution-family in compartment id ${var.compartment_id} where request.instance.id = target.instance.id",
   ]
 }
 
