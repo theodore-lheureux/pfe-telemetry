@@ -9,7 +9,6 @@ import type { Display } from "./draft";
 import { bucketGrid, offlineBands, onGrid, online } from "./grid";
 import { type FormulaNames, plottedTitle } from "./labels";
 import { NumberResults } from "./number-results";
-import { PercentileWarning } from "./percentile-warning";
 import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
 
 /** Why a series has no value in a bucket: its node, or any node when not grouped by node. */
@@ -79,7 +78,6 @@ export function InsightChart({
 				onZoom={onZoom}
 				highlight={highlight}
 			/>
-			<PercentileWarning result={result} />
 			{view.current.length > CHART_SERIES && display.type !== "table" && (
 				<p className="text-xs text-muted-foreground">
 					{m.insight_chart_limited()}
