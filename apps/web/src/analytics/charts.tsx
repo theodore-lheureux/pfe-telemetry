@@ -314,6 +314,20 @@ export function TimeseriesChart({
 		() => chartRows(drawn, bucketSeconds * 1000, now, logScale),
 		[drawn, bucketSeconds, now, logScale],
 	);
+	const capped = yMax !== undefined && Number.isFinite(yMax);
+	// Clipping to a fixed maximum would also halve a line drawn exactly at it, so the
+	// plot clips only when something rises above it.
+	const overflows = useMemo(
+		() =>
+			capped &&
+			(type === "stacked" ||
+				drawn.some((entry) =>
+					entry.points.some(
+						(point) => Math.max(point.value ?? 0, point.high ?? 0) > yMax,
+					),
+				)),
+		[capped, type, drawn, yMax],
+	);
 	const curve = smooth ? "monotone" : "linear";
 	// A single current series gets a soft area; several stay lines so fills never overlap.
 	const filled = type === "area" || (type === "auto" && current.length === 1);
@@ -552,9 +566,9 @@ export function TimeseriesChart({
 						scale={logScale ? "log" : "auto"}
 						domain={[
 							logScale || !beginAtZero ? "auto" : 0,
-							yMax !== undefined && Number.isFinite(yMax) ? yMax : "auto",
+							capped ? yMax : "auto",
 						]}
-						allowDataOverflow={logScale || yMax !== undefined}
+						allowDataOverflow={logScale || overflows}
 						tickFormatter={(value: number) => format(value)}
 						label={
 							yLabel
