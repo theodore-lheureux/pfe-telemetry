@@ -32,8 +32,9 @@ function dimensions(column: string, excluded: string[] = []) {
     a.bool_value,a.bytes_value), ${nodes}))`;
 }
 
-// FINAL establishes sample uniqueness before bucket selection, independently of
-// background merges. Only supported node scalars and their dimensions are read.
+// Each bucket keeps its latest sample through argMax over (time, sample); replayed
+// copies of a sample are identical, so duplicates cannot change the result and FINAL
+// is unnecessary. Only supported node scalars and their dimensions are read.
 export const telemetryQuery = `
 WITH samples AS (
   SELECT hex(SHA256(toString(tuple(project_id,source_id,resource_id,resource_kind,host_id,device_id,
@@ -48,7 +49,7 @@ WITH samples AS (
     if(bitAnd(flags,1)=0,int_value,NULL) AS integer_value,
     if(bitAnd(flags,1)=0,double_value,NULL) AS scalar_double,
     intDiv(time_unix_nano-{from:UInt64},{step:UInt64}) AS bucket
-  FROM metric_points FINAL
+  FROM metric_points
   WHERE project_id={project:String} AND source_id={source:String}
     AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}
     AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}
