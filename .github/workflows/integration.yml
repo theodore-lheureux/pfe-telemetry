@@ -75,9 +75,11 @@ jobs:
         with:
           bun-version-file: .bun-version
       - run: rustup show active-toolchain
+      # Reads the debug cache that CI · checks saves; it compiles a subset of it.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          shared-key: debug
+          save-if: false
       - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
       - run: bun run i18n:compile
       - run: bun apps/web/scripts/compile-telemetry.ts
