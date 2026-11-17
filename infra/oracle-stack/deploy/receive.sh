@@ -24,7 +24,7 @@ archive="$directory/release.tar.gz"
 curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
     --connect-timeout 20 --max-time 600 \
     --max-filesize 2147483648 \
-    "https://github.com/$repository/releases/download/ingestion-$release/recount-ingestion-$arch.tar.gz" \
+    "https://github.com/$repository/releases/download/release-$release/recount-stack-$arch.tar.gz" \
     --output "$archive"
 printf '%s  %s\n' "$digest" "$archive" | sha256sum --check --status
 tar --extract --gzip --no-same-owner --file "$archive" --directory "$directory"

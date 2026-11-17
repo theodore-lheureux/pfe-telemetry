@@ -2,36 +2,36 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # Local credentials only; mock tests and Compose rendering never contact cloud APIs.
 check:
-    tofu -chdir=../ingestion-bootstrap/aws fmt -check -recursive
-    tofu -chdir=../ingestion-bootstrap/oci fmt -check -recursive
+    tofu -chdir=../cd-identities/aws fmt -check -recursive
+    tofu -chdir=../cd-identities/oci fmt -check -recursive
     tofu -chdir=../state-backend fmt -check -recursive
     tofu -chdir=. fmt -check -recursive
     tofu fmt -check - < adoption.tf.example
     tofu -chdir=../state-backend init -backend=false -input=false
     tofu -chdir=. init -backend=false -input=false
-    tofu -chdir=../ingestion-bootstrap/aws init -backend=false -input=false
-    tofu -chdir=../ingestion-bootstrap/oci init -backend=false -input=false
+    tofu -chdir=../cd-identities/aws init -backend=false -input=false
+    tofu -chdir=../cd-identities/oci init -backend=false -input=false
     tofu -chdir=../state-backend validate
     tofu -chdir=. validate
-    tofu -chdir=../ingestion-bootstrap/aws validate
-    tofu -chdir=../ingestion-bootstrap/oci validate
+    tofu -chdir=../cd-identities/aws validate
+    tofu -chdir=../cd-identities/oci validate
     tofu -chdir=../state-backend test
     tofu -chdir=. test
-    tofu -chdir=../ingestion-bootstrap/aws test
-    tofu -chdir=../ingestion-bootstrap/oci test
+    tofu -chdir=../cd-identities/aws test
+    tofu -chdir=../cd-identities/oci test
     tofu -chdir=../aws-collectors init -backend=false -input=false
     tofu -chdir=../aws-collectors fmt -check -recursive
     tofu -chdir=../aws-collectors validate
     tofu -chdir=../aws-collectors test
-    cd ../.. && python3 -m unittest discover -s infra/oci-ingestion/ci -p 'test_*.py'
+    cd ../.. && python3 -m unittest discover -s infra/oracle-stack/ci -p 'test_*.py'
     cd ../.. && python3 -m unittest discover -s infra/ci -p 'test_*.py'
     cd ../.. && python3 -m unittest discover -s infra/aws-collectors -p 'test_*.py'
     ANSIBLE_CONFIG=ansible/ansible.cfg uv run ansible-playbook --syntax-check -i recount_ingestion, ansible/bootstrap.yml
     ANSIBLE_CONFIG=../aws-collectors/ansible/ansible.cfg uv run ansible-playbook --syntax-check -i recount_collectors, ../aws-collectors/ansible/collector.yml
-    cd ../.. && bun test infra/oci-ingestion/ansible/configure.test.ts
+    cd ../.. && bun test infra/oracle-stack/ansible/configure.test.ts
     shellcheck deploy/*.sh
-    cd ../.. && actionlint .github/workflows/ingestion-*.yml .github/workflows/collectors-infra.yml
-    cd ../.. && uvx zizmor==1.32.0 --offline .github/workflows/ingestion-*.yml .github/workflows/collectors-infra.yml .github/actions/ingestion-infra-setup/action.yml .github/actions/collectors-infra-setup/action.yml
+    cd ../.. && actionlint .github/workflows/ingestion-*.yml .github/workflows/infra-aws-collectors.yml
+    cd ../.. && uvx zizmor==1.32.0 --offline .github/workflows/ingestion-*.yml .github/workflows/infra-aws-collectors.yml .github/actions/infra-oracle-setup/action.yml .github/actions/infra-aws-collectors-setup/action.yml
 
 # Read-only local inspection only. Infrastructure changes run through GitHub CD.
 plan:

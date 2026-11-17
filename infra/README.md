@@ -4,9 +4,9 @@ The [backend Compose file](local/compose.yaml) runs reusable PostgreSQL, Kafka a
 
 Each acknowledgement is a separate at-least-once boundary. Analytical visibility can be partial and delayed. Read [the point contract](../docs/telemetry-point-contract.md) for identity, fidelity, authorization and replay rules.
 
-The [Oracle deployment](oci-ingestion/README.md) reuses this topology on the
+The [Oracle deployment](oracle-stack/README.md) reuses this topology on the
 existing VM with shared [S3 state](state-backend/README.md) and native GitHub
-Actions builds. Its [layout decision](oci-ingestion/layout.md) records inspected
+Actions builds. Its [layout decision](oracle-stack/layout.md) records inspected
 resources and deployment limits. Host setup and release activation require
 explicit approval; local recipes do not deploy to Oracle.
 

@@ -122,14 +122,14 @@ application/ClickHouse. A service's active state alone does not prove delivery.
 
 ## CD and identity
 
-The local [AWS bootstrap](../ingestion-bootstrap/README.md) creates the separate
+The local [AWS bootstrap](../cd-identities/README.md) creates the separate
 `recount-collectors-cd` user/policy and runtime role/profile. CD cannot manage
 IAM; role passing and profile reads are restricted to that runtime identity.
 EC2 mutations require Ohio and owned project/component tags; creation requires
 those tags. Launches also require Canonical's image, the selected VPC,
 `t4g.nano`, IMDSv2 and encrypted gp3 no larger than 8 GiB.
 
-`collectors-infra.yml` plans on same-repository PRs/main changes. Apply is manual
+`infra-aws-collectors.yml` plans on same-repository PRs/main changes. Apply is manual
 on `main` with approval in `collectors-infrastructure`, using the same run's
 encrypted plan. Runs share a concurrency group and native S3 locks. Fork PRs get
 offline checks only. Bootstrap never runs in CD.
@@ -182,7 +182,7 @@ tofu -chdir=infra/aws-collectors fmt -check -recursive
 tofu -chdir=infra/aws-collectors validate
 tofu -chdir=infra/aws-collectors test
 python3 -m unittest discover -s infra/aws-collectors -p 'test_*.py'
-actionlint .github/workflows/collectors-infra.yml
+actionlint .github/workflows/infra-aws-collectors.yml
 ANSIBLE_CONFIG=infra/aws-collectors/ansible/ansible.cfg \
   uv run --locked ansible-playbook --syntax-check \
     -i recount_collectors, infra/aws-collectors/ansible/collector.yml

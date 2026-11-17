@@ -1,10 +1,10 @@
-name: Deploy ingestion release
+name: Release · deploy to Oracle
 
 on:
   workflow_dispatch:
     inputs:
       release:
-        description: Release identifier (commit-run-attempt, without ingestion-)
+        description: Release identifier (commit-run-attempt, without the release- prefix)
         type: string
         required: true
 
@@ -48,20 +48,20 @@ jobs:
         run: |
           [[ $RELEASE =~ ^[a-f0-9]{40}-[0-9]+-[0-9]+$ && $ARCH =~ ^(arm64|amd64)$ ]]
           [[ $(gh api "repos/$GH_REPO" --jq .private) == false ]]
-          gh release download "ingestion-$RELEASE" --dir assets --pattern "recount-ingestion-$ARCH.tar.gz"
-          archive="assets/recount-ingestion-$ARCH.tar.gz"
+          gh release download "release-$RELEASE" --dir assets --pattern "recount-stack-$ARCH.tar.gz"
+          archive="assets/recount-stack-$ARCH.tar.gz"
           gh attestation verify "$archive" --repo "$GH_REPO" \
-            --signer-workflow "$GH_REPO/.github/workflows/ingestion-release.yml" \
+            --signer-workflow "$GH_REPO/.github/workflows/release.yml" \
             --source-ref refs/heads/main --source-digest "${RELEASE%%-*}" \
             --deny-self-hosted-runners
-          (cd assets && sha256sum "recount-ingestion-$ARCH.tar.gz" > "recount-ingestion-$ARCH.tar.gz.sha256")
+          (cd assets && sha256sum "recount-stack-$ARCH.tar.gz" > "recount-stack-$ARCH.tar.gz.sha256")
       - name: Materialize the scoped OCI deployment identity
         env:
           OCI_API_PRIVATE_KEY: ${{ secrets.OCI_API_PRIVATE_KEY }}
-        run: python3 infra/oci-ingestion/ci/credentials.py
+        run: python3 infra/oracle-stack/ci/credentials.py
       - name: Activate the release through OCI Run Command
         id: activate
-        run: python3 infra/oci-ingestion/ci/run-command.py
+        run: python3 infra/oracle-stack/ci/run-command.py
       - name: Show redacted host failure output
         if: failure() && steps.activate.outcome == 'failure'
         run: python3 infra/ci/public_logs.py host-failure

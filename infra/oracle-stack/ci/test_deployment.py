@@ -79,7 +79,7 @@ class RunCommandTests(unittest.TestCase):
     def run_status(self, status):
         with tempfile.TemporaryDirectory() as directory:
             checksum = Path(directory) / "checksum"
-            checksum.write_text("b" * 64 + "  recount-ingestion-arm64.tar.gz\n")
+            checksum.write_text("b" * 64 + "  recount-stack-arm64.tar.gz\n")
             with (
                 patch.dict(
                     os.environ,
@@ -176,7 +176,7 @@ class ComposeTests(unittest.TestCase):
                     "--file",
                     "infra/local/compose.apps.yaml",
                     "--file",
-                    "infra/oci-ingestion/deploy/compose.yaml",
+                    "infra/oracle-stack/deploy/compose.yaml",
                     "config",
                     "--format",
                     "json",

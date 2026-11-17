@@ -63,7 +63,7 @@ def save_execution(status, directory=None):
 def main():
     release, arch = os.environ["RELEASE"], os.environ["ARCH"]
     digest = (
-        Path(f"assets/recount-ingestion-{arch}.tar.gz.sha256").read_text().split()[0]
+        Path(f"assets/recount-stack-{arch}.tar.gz.sha256").read_text().split()[0]
     )
     text = command_text(release, arch, digest)
     target = os.environ["OCI_INSTANCE_ID"]
@@ -87,7 +87,7 @@ def main():
         "--timeout-in-seconds",
         "1200",
         "--display-name",
-        f"recount-ingestion-{release}",
+        f"recount-stack-{release}",
     )
     print("Submitted OCI deployment command", flush=True)
     deadline = time.monotonic() + 1260

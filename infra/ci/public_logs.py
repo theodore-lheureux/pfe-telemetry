@@ -272,7 +272,7 @@ def main():
         choices=["mask", "collectors-configuration", "plan", "apply", "host-failure"],
     )
     parser.add_argument(
-        "root", nargs="?", choices=["infra/oci-ingestion", "infra/aws-collectors"]
+        "root", nargs="?", choices=["infra/oracle-stack", "infra/aws-collectors"]
     )
     args = parser.parse_args()
     if args.operation == "mask":

@@ -3,7 +3,7 @@
 These roots run **locally once**, with the owner's approved AWS and OCI profile
 `pfe`. They are never called by GitHub Actions. They create identities and policies,
 not the VM, database volume, firewall changes or application deployment.
-The infrastructure workflow operates only on `infra/oci-ingestion`.
+The infrastructure workflow operates only on `infra/oracle-stack`.
 
 ## AWS state identity
 
@@ -19,9 +19,9 @@ existing bucket/account. Initialize with the existing backend configuration:
 
 ```sh
 export AWS_PROFILE=pfe
-tofu -chdir=infra/ingestion-bootstrap/aws init -backend-config=../../state-backend/backend.hcl
-tofu -chdir=infra/ingestion-bootstrap/aws plan -out=bootstrap.tfplan
-tofu -chdir=infra/ingestion-bootstrap/aws apply bootstrap.tfplan
+tofu -chdir=infra/cd-identities/aws init -backend-config=../../state-backend/backend.hcl
+tofu -chdir=infra/cd-identities/aws plan -out=bootstrap.tfplan
+tofu -chdir=infra/cd-identities/aws apply bootstrap.tfplan
 ```
 
 With collectors disabled, the plan should add only the ingestion user and its

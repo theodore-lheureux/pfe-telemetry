@@ -169,7 +169,7 @@ class PublicLogTests(unittest.TestCase):
             )
             self.assertEqual(
                 public_logs.run_tofu(
-                    "infra/oci-ingestion",
+                    "infra/oracle-stack",
                     "plan",
                     {"AWS_STATE_BUCKET": "private-state-bucket"},
                 ),
@@ -202,7 +202,7 @@ class PublicLogTests(unittest.TestCase):
                 '  ~ zone_id = "aabbccddaabbccddaabbccddaabbccdd"\n'
                 "Plan: 1 to add, 1 to change, 0 to destroy.\n"
             )
-            self.assertEqual(public_logs.run_tofu("infra/oci-ingestion", "plan", {}), 0)
+            self.assertEqual(public_logs.run_tofu("infra/oracle-stack", "plan", {}), 0)
         lines = output.getvalue().splitlines()
         mask_index = lines.index("::add-mask::owner+deployment@example.test")
         summary_index = lines.index(
@@ -244,7 +244,7 @@ class PublicLogTests(unittest.TestCase):
                 event_stream("apply") + "\n" + json.dumps(diagnostic)
             )
             result = public_logs.run_tofu(
-                "infra/oci-ingestion",
+                "infra/oracle-stack",
                 "apply",
                 {"AWS_ACCESS_KEY_ID": "synthetic-access-key"},
             )
@@ -279,7 +279,7 @@ class PublicLogTests(unittest.TestCase):
                 "Error acquiring the state lock for private-state-bucket"
             )
             public_logs.run_tofu(
-                "infra/oci-ingestion",
+                "infra/oracle-stack",
                 "apply",
                 {"AWS_STATE_BUCKET": "private-state-bucket"},
             )
@@ -384,7 +384,7 @@ class PublicLogTests(unittest.TestCase):
             '  + comment = "</pre></details><script>unsafe</script>"\n'
             "Plan: 1 to add, 0 to change, 0 to destroy.\n"
         )
-        for root in ("infra/oci-ingestion", "infra/aws-collectors"):
+        for root in ("infra/oracle-stack", "infra/aws-collectors"):
             with self.subTest(root=root), tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "summary.md"
                 path.write_text("Existing summary\n\n")

@@ -1,22 +1,22 @@
-name: Ingestion infrastructure CD
+name: Infrastructure · Oracle stack
 
 on:
   pull_request:
     paths:
       [
-        "infra/oci-ingestion/**",
+        "infra/oracle-stack/**",
         "infra/ci/**",
-        ".github/workflows/ingestion-infra.yml",
-        ".github/actions/ingestion-infra-setup/**",
+        ".github/workflows/infra-oracle.yml",
+        ".github/actions/infra-oracle-setup/**",
       ]
   push:
     branches: [main]
     paths:
       [
-        "infra/oci-ingestion/**",
+        "infra/oracle-stack/**",
         "infra/ci/**",
-        ".github/workflows/ingestion-infra.yml",
-        ".github/actions/ingestion-infra-setup/**",
+        ".github/workflows/infra-oracle.yml",
+        ".github/actions/infra-oracle-setup/**",
       ]
   workflow_dispatch:
     inputs:
@@ -46,11 +46,11 @@ jobs:
           tofu_version: 1.13.9
           tofu_wrapper: false
       - run: |
-          tofu -chdir=infra/oci-ingestion init -backend=false -input=false -lockfile=readonly
-          tofu -chdir=infra/oci-ingestion fmt -check -recursive
-          tofu -chdir=infra/oci-ingestion validate
-          tofu -chdir=infra/oci-ingestion test
-          python3 -m unittest discover -s infra/oci-ingestion/ci -p 'test_*.py'
+          tofu -chdir=infra/oracle-stack init -backend=false -input=false -lockfile=readonly
+          tofu -chdir=infra/oracle-stack fmt -check -recursive
+          tofu -chdir=infra/oracle-stack validate
+          tofu -chdir=infra/oracle-stack test
+          python3 -m unittest discover -s infra/oracle-stack/ci -p 'test_*.py'
           python3 -m unittest discover -s infra/ci -p 'test_*.py'
 
   plan:
@@ -76,23 +76,23 @@ jobs:
         with:
           persist-credentials: false
       # The reviewed checkout is intentional; pinned actionlint lacks $/ syntax.
-      - uses: ./.github/actions/ingestion-infra-setup # zizmor: ignore[self-repository]
+      - uses: ./.github/actions/infra-oracle-setup # zizmor: ignore[self-repository]
       - name: Plan with native S3 locking
         run: |
-          python3 infra/ci/public_logs.py plan infra/oci-ingestion
+          python3 infra/ci/public_logs.py plan infra/oracle-stack
           test -n "$PLAN_ENCRYPTION_KEY"
           printf '%s' "$PLAN_ENCRYPTION_KEY" | gpg --batch --yes --pinentry-mode loopback \
             --passphrase-fd 0 --symmetric --cipher-algo AES256 \
-            --output infra/oci-ingestion/deployment.tfplan.gpg infra/oci-ingestion/deployment.tfplan
+            --output infra/oracle-stack/deployment.tfplan.gpg infra/oracle-stack/deployment.tfplan
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ingestion-plan-${{ github.run_id }}-${{ github.run_attempt }}
-          path: infra/oci-ingestion/deployment.tfplan.gpg
+          path: infra/oracle-stack/deployment.tfplan.gpg
           retention-days: 1
           if-no-files-found: error
       - name: Remove plaintext plan and credentials
         if: always()
-        run: rm -f infra/oci-ingestion/deployment.tfplan "$HOME/.oci/config" "$HOME/.oci/deployment.pem"
+        run: rm -f infra/oracle-stack/deployment.tfplan "$HOME/.oci/config" "$HOME/.oci/deployment.pem"
 
   apply:
     needs: plan
@@ -117,18 +117,18 @@ jobs:
         with:
           persist-credentials: false
       # The reviewed checkout is intentional; pinned actionlint lacks $/ syntax.
-      - uses: ./.github/actions/ingestion-infra-setup # zizmor: ignore[self-repository]
+      - uses: ./.github/actions/infra-oracle-setup # zizmor: ignore[self-repository]
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ingestion-plan-${{ github.run_id }}-${{ github.run_attempt }}
-          path: infra/oci-ingestion
+          path: infra/oracle-stack
       - name: Apply exactly the reviewed plan
         run: |
           test -n "$PLAN_ENCRYPTION_KEY"
           printf '%s' "$PLAN_ENCRYPTION_KEY" | gpg --batch --yes --pinentry-mode loopback \
-            --passphrase-fd 0 --decrypt --output infra/oci-ingestion/deployment.tfplan \
-            infra/oci-ingestion/deployment.tfplan.gpg
-          python3 infra/ci/public_logs.py apply infra/oci-ingestion
+            --passphrase-fd 0 --decrypt --output infra/oracle-stack/deployment.tfplan \
+            infra/oracle-stack/deployment.tfplan.gpg
+          python3 infra/ci/public_logs.py apply infra/oracle-stack
       - name: Remove plaintext plan and credentials
         if: always()
-        run: rm -f infra/oci-ingestion/deployment.tfplan "$HOME/.oci/config" "$HOME/.oci/deployment.pem"
+        run: rm -f infra/oracle-stack/deployment.tfplan "$HOME/.oci/config" "$HOME/.oci/deployment.pem"

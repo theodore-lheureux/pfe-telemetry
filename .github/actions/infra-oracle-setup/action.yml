@@ -12,7 +12,7 @@ runs:
         tofu_wrapper: false
     - name: Configure the dedicated OCI identity
       shell: bash
-      run: python3 infra/oci-ingestion/ci/credentials.py
+      run: python3 infra/oracle-stack/ci/credentials.py
     - name: Select reviewed infrastructure identifiers
       shell: bash
       run: |
@@ -23,10 +23,10 @@ runs:
         values = json.loads(os.environ["INGESTION_TFVARS_JSON"])
         values["oci_auth"] = "APIKey"
         values["oci_profile"] = "recount-deploy"
-        Path("infra/oci-ingestion/terraform.tfvars.json").write_text(json.dumps(values))
+        Path("infra/oracle-stack/terraform.tfvars.json").write_text(json.dumps(values))
         PY
-        cp infra/oci-ingestion/adoption.tf.example infra/oci-ingestion/adoption.tf
-        tofu -chdir=infra/oci-ingestion init -input=false -lockfile=readonly \
+        cp infra/oracle-stack/adoption.tf.example infra/oracle-stack/adoption.tf
+        tofu -chdir=infra/oracle-stack init -input=false -lockfile=readonly \
           -backend-config="bucket=$AWS_STATE_BUCKET" \
           -backend-config=region=us-east-2 \
           -backend-config="allowed_account_ids=[\"$AWS_ACCOUNT_ID\"]"

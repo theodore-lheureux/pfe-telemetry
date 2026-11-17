@@ -18,7 +18,7 @@
 
 - name: Download the approved and attested release for backend preparation only
   ansible.builtin.get_url:
-    url: "https://github.com/{{ recount_repository }}/releases/download/ingestion-{{ recount_release }}/recount-ingestion-arm64.tar.gz"
+    url: "https://github.com/{{ recount_repository }}/releases/download/release-{{ recount_release }}/recount-stack-arm64.tar.gz"
     dest: /opt/recount/bootstrap/release.tar.gz
     checksum: "sha256:{{ recount_release_sha256 }}"
     owner: root

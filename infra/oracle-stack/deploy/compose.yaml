@@ -12,7 +12,7 @@ services:
     memswap_limit: 8192m
     volumes:
       - type: bind
-        source: ../oci-ingestion/deploy/clickhouse-memory.xml
+        source: ../oracle-stack/deploy/clickhouse-memory.xml
         target: /etc/clickhouse-server/config.d/zz-deployment-memory.xml
         read_only: true
         bind: { create_host_path: false }

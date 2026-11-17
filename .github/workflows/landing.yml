@@ -1,4 +1,4 @@
-name: Landing site
+name: Landing site · deploy
 
 on:
   push:

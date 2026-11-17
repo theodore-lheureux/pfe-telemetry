@@ -73,8 +73,8 @@ With valid owner credentials:
 
 ```sh
 export AWS_PROFILE=pfe
-tofu -chdir=infra/oci-ingestion init -backend-config=../state-backend/backend.hcl
-tofu -chdir=infra/oci-ingestion plan -lock=false -input=false
+tofu -chdir=infra/oracle-stack init -backend-config=../state-backend/backend.hcl
+tofu -chdir=infra/oracle-stack plan -lock=false -input=false
 ```
 
 Local defaults use `SecurityToken`, profile `pfe`, region `ca-montreal-1`;
@@ -86,11 +86,11 @@ approval. Do not apply or import as part of inspection.
 
 ## Workflows and credentials
 
-| Workflow                | Behavior                                                        | Approval boundary                                 |
-| ----------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
-| `ingestion-infra.yml`   | PR/main-change plans; manual apply of the same run's saved plan | `ingestion-plan`, then `ingestion-infrastructure` |
-| `ingestion-release.yml` | Manual native amd64/arm64 builds; immutable per-run bundles     | Publishing uses `ingestion-release` environment   |
-| `ingestion-deploy.yml`  | Manual activation of an already published release on `main`     | `ingestion-deploy` environment                    |
+| Workflow           | Behavior                                                        | Approval boundary                                 |
+| ------------------ | --------------------------------------------------------------- | ------------------------------------------------- |
+| `infra-oracle.yml` | PR/main-change plans; manual apply of the same run's saved plan | `ingestion-plan`, then `ingestion-infrastructure` |
+| `release.yml`      | Manual native amd64/arm64 builds; immutable per-run bundles     | Publishing uses `ingestion-release` environment   |
+| `deploy.yml`       | Manual activation of an already published release on `main`     | `ingestion-deploy` environment                    |
 
 Apply, release and deployment environments restrict execution to `main`, require
 reviewers and prevent self-review. Plan runs do not require review. Publishing
@@ -138,7 +138,7 @@ stored, not the root compartment containing the VM. CD has the owner-approved
 Run Command family grants in the VM compartment. The Oracle agent's separate
 dynamic group remains bound to its own VM.
 
-Infrastructure changes run through `ingestion-infra.yml`. Plan runs for
+Infrastructure changes run through `infra-oracle.yml`. Plan runs for
 same-repository PRs and relevant `main` changes; fork PRs get offline checks only.
 Apply is manual on `main`, after approval in `ingestion-infrastructure`.
 All runs share a concurrency group and native S3 locks. Apply uses the exact
@@ -155,15 +155,15 @@ remain ignored by lifecycle configuration, but state and full plans still
 contain them; only the encrypted plan artifact is uploaded. Existing published
 run logs are not retroactively redacted by these changes.
 
-The [bootstrap roots](../ingestion-bootstrap/README.md) run locally once with
+The [bootstrap roots](../cd-identities/README.md) run locally once with
 AWS/OCI profile `pfe` to create identities, policies and public keys. They are
 excluded from CD. CI's AWS user can access only ingestion state and its lock,
 not bootstrap state or IAM. Local commands are for offline checks and read-only
 inspection:
 
 ```sh
-just --justfile infra/oci-ingestion/justfile check
-just --justfile infra/oci-ingestion/justfile plan
+just --justfile infra/oracle-stack/justfile check
+just --justfile infra/oracle-stack/justfile plan
 ```
 
 GitHub uses a dedicated OCI user and API key, never the owner's session or an
@@ -207,14 +207,14 @@ application release activation.
 3. Run from the repository root:
 
    ```sh
-   ANSIBLE_CONFIG=infra/oci-ingestion/ansible/ansible.cfg \
+   ANSIBLE_CONFIG=infra/oracle-stack/ansible/ansible.cfg \
      uv run ansible-playbook \
-       -i infra/oci-ingestion/.state/ansible/inventory.json \
-       infra/oci-ingestion/ansible/bootstrap.yml --syntax-check
-   ANSIBLE_CONFIG=infra/oci-ingestion/ansible/ansible.cfg \
+       -i infra/oracle-stack/.state/ansible/inventory.json \
+       infra/oracle-stack/ansible/bootstrap.yml --syntax-check
+   ANSIBLE_CONFIG=infra/oracle-stack/ansible/ansible.cfg \
      uv run ansible-playbook \
-       -i infra/oci-ingestion/.state/ansible/inventory.json \
-       infra/oci-ingestion/ansible/bootstrap.yml
+       -i infra/oracle-stack/.state/ansible/inventory.json \
+       infra/oracle-stack/ansible/bootstrap.yml
    ```
 
 4. Run the playbook again and require `changed=0`. Verify the UUID-backed mount
@@ -350,7 +350,7 @@ an old image start.
 ## Offline checks
 
 ```sh
-just --justfile infra/oci-ingestion/justfile check
+just --justfile infra/oracle-stack/justfile check
 ```
 
 This includes the infrastructure roots, enabled-path provider mocks, collector retry

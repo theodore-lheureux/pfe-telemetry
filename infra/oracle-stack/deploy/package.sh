@@ -20,14 +20,14 @@ for file in Dockerfile entrypoint.sh verify-schema.sh healthcheck.sh users.xml c
     cp "infra/clickhouse/$file" "$bundle/backend/infra/clickhouse/"
 done
 cp infra/kafka/init-topics.sh "$bundle/backend/infra/kafka/"
-mkdir -p "$bundle/backend/infra/oci-ingestion/deploy"
-cp infra/oci-ingestion/deploy/clickhouse-memory.xml "$bundle/backend/infra/oci-ingestion/deploy/"
+mkdir -p "$bundle/backend/infra/oracle-stack/deploy"
+cp infra/oracle-stack/deploy/clickhouse-memory.xml "$bundle/backend/infra/oracle-stack/deploy/"
 cp infra/local/data.binds.yaml "$bundle/backend/infra/local/"
 cp -R .state/release-schema "$bundle/backend/schema"
 cp infra/local/compose.apps.yaml "$bundle/"
-cp infra/oci-ingestion/deploy/compose.yaml "$bundle/compose.release.yaml"
-cp infra/oci-ingestion/deploy/activate.sh "$bundle/"
-cp infra/oci-ingestion/deploy/check-storage.sh "$bundle/"
+cp infra/oracle-stack/deploy/compose.yaml "$bundle/compose.release.yaml"
+cp infra/oracle-stack/deploy/activate.sh "$bundle/"
+cp infra/oracle-stack/deploy/check-storage.sh "$bundle/"
 printf '%s\n' "$release" > "$bundle/release"
 printf '%s\n' "$arch" > "$bundle/arch"
 for service in ingestion-api normalizer web; do
@@ -49,11 +49,11 @@ image_bytes=$(docker image inspect --format '{{.Size}}' "recount-ingestion-api:$
     find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > ../backend.SHA256SUMS
 )
 find apps/web/drizzle -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1 > "$bundle/migrations.sha256"
-tar -czf ".state/recount-ingestion-$arch.tar.gz" -C "$bundle" .
-[[ $(stat -c %s ".state/recount-ingestion-$arch.tar.gz") -le 2147483648 ]] || {
+tar -czf ".state/recount-stack-$arch.tar.gz" -C "$bundle" .
+[[ $(stat -c %s ".state/recount-stack-$arch.tar.gz") -le 2147483648 ]] || {
     echo 'Release exceeds the 2 GiB download budget' >&2; exit 1;
 }
 (
     cd .state
-    sha256sum "recount-ingestion-$arch.tar.gz" > "recount-ingestion-$arch.tar.gz.sha256"
+    sha256sum "recount-stack-$arch.tar.gz" > "recount-stack-$arch.tar.gz.sha256"
 )
