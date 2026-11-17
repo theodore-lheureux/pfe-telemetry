@@ -2,9 +2,10 @@ import { m } from "@recount/i18n/messages";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/workspace";
+import { findPendingInvitation } from "@/organizations/invitation.functions";
 
 export const Route = createFileRoute("/_app/_workspace/")({
-	beforeLoad: ({ context }) => {
+	beforeLoad: async ({ context }) => {
 		const project = context.workspaceProject;
 		if (project)
 			throw redirect({
@@ -19,6 +20,14 @@ export const Route = createFileRoute("/_app/_workspace/")({
 			throw redirect({
 				to: "/organizations/$organizationId",
 				params: { organizationId: organization.id },
+			});
+		// Sign-in links land here without the invitation destination; answer
+		// pending invitations before offering a new organization.
+		const { data: invitationId } = await findPendingInvitation();
+		if (invitationId)
+			throw redirect({
+				to: "/invitations/$invitationId",
+				params: { invitationId },
 			});
 	},
 	head: () => ({

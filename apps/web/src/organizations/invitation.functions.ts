@@ -63,6 +63,11 @@ export const inspectInvitation = createServerFn({ method: "GET" })
 			invitations.inspectInvitation(auth, headers, data),
 		),
 	);
+export const findPendingInvitation = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
+	.handler(({ context: { identity, auth, headers } }) =>
+		withActor(identity, () => invitations.findPendingInvitation(auth, headers)),
+	);
 export const acceptInvitation = createServerFn({ method: "POST" })
 	.middleware([privateOperation])
 	.validator(parseInvitationReference)

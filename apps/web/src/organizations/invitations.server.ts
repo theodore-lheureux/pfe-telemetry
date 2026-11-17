@@ -198,6 +198,23 @@ export async function inspectInvitation(
 	};
 }
 
+/** The oldest pending invitation addressed to the signed-in user, if any. */
+export async function findPendingInvitation(auth: Auth, headers: Headers) {
+	const entries = await auth.api.listUserInvitations({ headers });
+	const now = Date.now();
+	const pending = entries
+		.filter(
+			(entry) =>
+				entry.status === "pending" && new Date(entry.expiresAt).getTime() > now,
+		)
+		.sort(
+			(left, right) =>
+				new Date(left.createdAt).getTime() -
+				new Date(right.createdAt).getTime(),
+		);
+	return pending[0]?.id ?? null;
+}
+
 export async function acceptInvitation(
 	auth: Auth,
 	headers: Headers,
