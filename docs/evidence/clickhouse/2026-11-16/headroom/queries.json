@@ -1,0 +1,139 @@
+{
+  "database": "recount_load_1794885292_65766",
+  "queries": [
+    {
+      "name": "node_chart",
+      "sql": "\nWITH samples AS (\n  SELECT hex(SHA256(toString(tuple(project_id,source_id,resource_id,resource_kind,host_id,device_id,\n    resource_present,scope_present,scope_name,scope_version,resource_schema_url,scope_schema_url,\n    metric_name,unit,metric_kind,temporality,monotonic,\n    arraySort(a -> a.1, arrayMap(a -> tuple(a.path,a.kind,a.string_value,a.int_value,\n    if(isNull(a.double_value),NULL,reinterpretAsUInt64(assumeNotNull(a.double_value))),\n    a.bool_value,a.bytes_value), arrayFilter(a -> a.path NOT IN ('/recount.host.boot_id','/recount.collection.epoch_id'), resource_attributes))),\n    arraySort(a -> a.1, arrayMap(a -> tuple(a.path,a.kind,a.string_value,a.int_value,\n    if(isNull(a.double_value),NULL,reinterpretAsUInt64(assumeNotNull(a.double_value))),\n    a.bool_value,a.bytes_value), scope_attributes)),\n    arraySort(a -> a.1, arrayMap(a -> tuple(a.path,a.kind,a.string_value,a.int_value,\n    if(isNull(a.double_value),NULL,reinterpretAsUInt64(assumeNotNull(a.double_value))),\n    a.bool_value,a.bytes_value), arrayFilter(a -> a.path NOT IN ('/recount.counter.segment_id'), point_attributes))))))) AS id,\n    hex(stream_id) AS segment, metric_name AS metric, unit, host_id AS hostId,\n    arrayFirst(a -> a.path='/cpu.mode' AND a.kind=2,point_attributes).string_value AS cpuMode,\n    time_unix_nano, sample_id, flags,\n    if(bitAnd(flags,1)=0,int_value,NULL) AS integer_value,\n    if(bitAnd(flags,1)=0,double_value,NULL) AS scalar_double,\n    intDiv(time_unix_nano-{from:UInt64},{step:UInt64}) AS bucket\n  FROM metric_points FINAL\n  WHERE project_id={project:String} AND source_id={source:String}\n    AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}\n    AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}\n    AND ({allHosts:UInt8}=1 OR host_id={host:String})\n    AND resource_kind=1\n    AND arrayExists(a -> a.path='/recount.collection.scope' AND a.kind=2 AND a.string_value='node',resource_attributes)\n    AND ((metric_name='recount.node.cpu.time' AND unit='s' AND metric_kind=2 AND temporality=2 AND monotonic=1)\n      OR (metric_name IN ('recount.node.memory.total','recount.node.memory.available') AND unit='By' AND metric_kind=1))\n    AND (bitAnd(flags,1)!=0 OR (isNull(int_value) AND double_value>=0)\n      OR (isNull(double_value) AND int_value>=0))\n)\nSELECT id,segment,metric,unit,hostId,cpuMode,\n  toString({from:UInt64}+bucket*{step:UInt64}) AS bucketNs,\n  argMax(tuple(toString(time_unix_nano),if(isNull(integer_value),NULL,toString(integer_value)),scalar_double,flags),\n    tuple(time_unix_nano,sample_id)) AS sample\nFROM samples GROUP BY id,segment,metric,unit,hostId,cpuMode,bucket\n",
+      "params": {
+        "project": "01a1e780-1136-71ce-9790-4160fd79b688",
+        "source": "01a1e780-1136-71ce-9790-4194815769ca",
+        "allHosts": 1,
+        "host": ""
+      },
+      "settings": {
+        "max_execution_time": 6,
+        "max_threads": 1,
+        "max_memory_usage": "268435456",
+        "max_rows_to_read": "100000",
+        "max_bytes_to_read": "268435456",
+        "read_overflow_mode": "throw",
+        "max_result_rows": "50000",
+        "max_result_bytes": "8388608",
+        "result_overflow_mode": "throw",
+        "max_rows_to_group_by": "200000",
+        "group_by_overflow_mode": "throw",
+        "max_bytes_before_external_group_by": "0",
+        "max_bytes_before_external_sort": "0",
+        "output_format_json_quote_64bit_integers": 1
+      },
+      "windowSeconds": 900,
+      "stepSeconds": 8
+    },
+    {
+      "name": "gauge_by_node",
+      "sql": "WITH base AS (\n  SELECT series_id AS series, stream_id AS stream,\n    source_id AS g0,\n    time_unix_nano AS t, sample_id,\n    intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64} AS bucket, if(bitAnd(flags, 1) = 0,\n    if(isNull(int_value), double_value, toFloat64(int_value)), NULL) AS v\n  FROM metric_points FINAL\n  WHERE project_id = {project:String}\n    AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}\n    AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}\n    AND metric_name = {p0:String} AND CAST(metric_kind, 'Int16') = {p1:Int16}\n),\nper_series AS (\n  SELECT series, g0, bucket, avg(v) AS value FROM base WHERE v IS NOT NULL GROUP BY series, g0, bucket\n),\ncombined AS (\n  SELECT g0, bucket, avg(value) AS value,\n    NULL AS low, NULL AS high, count(per_series.value) AS sources\n  FROM per_series GROUP BY g0, bucket\n),\nranked AS (\n  SELECT *, dense_rank() OVER (ORDER BY weight DESC, g0) AS rank\n  FROM (SELECT *, sum(abs(value)) OVER (PARTITION BY g0) AS weight FROM combined)\n)\nSELECT g0 AS k_g0, 0 AS other, toString(bucket) AS bucket_ns, value AS series_value, rank AS series_rank,\n  low AS series_low, high AS series_high, sources AS series_sources\nFROM ranked WHERE rank <= {seriesLimit:UInt32} + 1",
+      "params": {
+        "p0": "recount.node.memory.available",
+        "p1": 1,
+        "project": "01a1e780-1136-71ce-9790-4160fd79b688",
+        "from": "1794884393611000000",
+        "to": "1794885293611000000",
+        "step": "10000000000",
+        "seconds": 10,
+        "firstDay": 20774,
+        "lastDay": 20774,
+        "seriesLimit": 25
+      },
+      "settings": {
+        "max_execution_time": 6,
+        "max_threads": 4,
+        "max_memory_usage": "268435456",
+        "max_rows_to_read": "20000000",
+        "max_bytes_to_read": "2147483648",
+        "read_overflow_mode": "throw",
+        "max_result_rows": "250000",
+        "max_result_bytes": "33554432",
+        "result_overflow_mode": "throw",
+        "max_rows_to_group_by": "2000000",
+        "group_by_overflow_mode": "throw",
+        "max_bytes_before_external_group_by": "0",
+        "max_bytes_before_external_sort": "0",
+        "output_format_json_quote_64bit_integers": 1,
+        "do_not_merge_across_partitions_select_final": 1
+      },
+      "windowSeconds": 900,
+      "stepSeconds": 10
+    },
+    {
+      "name": "counter_rate_by_execution",
+      "sql": "WITH base AS (\n  SELECT series_id AS series, stream_id AS stream,\n    arrayJoin(if(empty(execution_keys), [NULL], arrayMap(k -> toNullable(k), execution_keys))) AS g0,\n    time_unix_nano AS t, sample_id,\n    intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64} AS bucket, if(bitAnd(flags, 1) = 0,\n    if(isNull(int_value), double_value, toFloat64(int_value)), NULL) AS v\n  FROM (SELECT points.*, arraySort(arrayDistinct(arrayMap(m -> m.1,\n    arrayFilter(m -> resource_kind = 4 AND time_unix_nano >= m.2 AND\n      if(m.4 = 0, time_unix_nano <= m.3, time_unix_nano < m.4), memberships)))) AS execution_keys\n  FROM (SELECT *, series_id FROM metric_points FINAL\n  WHERE project_id = {project:String}\n    AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}\n    AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}) AS points\n  LEFT JOIN (\n    SELECT node_id AS membership_node, assumeNotNull(process_resource_id) AS membership_resource,\n      groupArray(tuple(execution_key, first_seen_unix_nano, last_seen_unix_nano,\n        ifNull(ended_unix_nano, toUInt64(0)))) AS memberships\n    FROM (\n      SELECT * FROM execution_participants FINAL WHERE project_id = {project:String}\n    )\n    WHERE NOT retracted AND kind = 2 AND process_resource_id IS NOT NULL\n      AND first_seen_unix_nano < {to:UInt64}\n      AND if(isNull(ended_unix_nano), last_seen_unix_nano >= {from:UInt64}, ended_unix_nano > {from:UInt64})\n    GROUP BY membership_node, membership_resource\n  ) AS membership_sets\n  ON points.source_id = membership_node AND points.resource_id = membership_resource)\n  WHERE project_id = {project:String}\n    AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}\n    AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}\n    AND metric_name = {p0:String} AND CAST(metric_kind, 'Int16') = {p1:Int16}\n),\ndiffs AS (\n  SELECT series, g0, bucket, v - lagInFrame(v) OVER w AS d, row_number() OVER w AS n\n  FROM base WHERE v IS NOT NULL\n  WINDOW w AS (PARTITION BY stream, g0 ORDER BY t, sample_id\n    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)\n),\nper_series AS (\n  SELECT series, g0, bucket, sum(greatest(d, 0)) / ((least(bucket + {step:UInt64}, {to:UInt64}) - greatest(bucket, {from:UInt64})) / 1e9) AS value FROM diffs WHERE n > 1 GROUP BY series, g0, bucket\n),\ncombined AS (\n  SELECT g0, bucket, sum(value) AS value,\n    NULL AS low, NULL AS high, count(per_series.value) AS sources\n  FROM per_series GROUP BY g0, bucket\n),\nranked AS (\n  SELECT *, dense_rank() OVER (ORDER BY weight DESC, g0) AS rank\n  FROM (SELECT *, sum(abs(value)) OVER (PARTITION BY g0) AS weight FROM combined)\n)\nSELECT g0 AS k_g0, 0 AS other, toString(bucket) AS bucket_ns, value AS series_value, rank AS series_rank,\n  low AS series_low, high AS series_high, sources AS series_sources\nFROM ranked WHERE rank <= {seriesLimit:UInt32} + 1",
+      "params": {
+        "p0": "process.cpu.time",
+        "p1": 2,
+        "project": "01a1e780-1136-71ce-9790-4160fd79b688",
+        "from": "1794884393611000000",
+        "to": "1794885293611000000",
+        "step": "10000000000",
+        "seconds": 10,
+        "firstDay": 20774,
+        "lastDay": 20774,
+        "seriesLimit": 25
+      },
+      "settings": {
+        "max_execution_time": 6,
+        "max_threads": 4,
+        "max_memory_usage": "268435456",
+        "max_rows_to_read": "20000000",
+        "max_bytes_to_read": "2147483648",
+        "read_overflow_mode": "throw",
+        "max_result_rows": "250000",
+        "max_result_bytes": "33554432",
+        "result_overflow_mode": "throw",
+        "max_rows_to_group_by": "2000000",
+        "group_by_overflow_mode": "throw",
+        "max_bytes_before_external_group_by": "0",
+        "max_bytes_before_external_sort": "0",
+        "output_format_json_quote_64bit_integers": 1,
+        "do_not_merge_across_partitions_select_final": 1
+      },
+      "windowSeconds": 900,
+      "stepSeconds": 10
+    },
+    {
+      "name": "execution_memory_table",
+      "sql": "WITH base AS (\n  SELECT series_id AS series, stream_id AS stream,\n    resource_id AS g0,\n    time_unix_nano AS t, sample_id,\n    toUInt64(0) AS bucket, if(bitAnd(flags, 1) = 0,\n    if(isNull(int_value), double_value, toFloat64(int_value)), NULL) AS v\n  FROM (SELECT points.*, arraySort(arrayDistinct(arrayMap(m -> m.1,\n    arrayFilter(m -> resource_kind = 4 AND time_unix_nano >= m.2 AND\n      if(m.4 = 0, time_unix_nano <= m.3, time_unix_nano < m.4), memberships)))) AS execution_keys\n  FROM (SELECT *, series_id FROM metric_points FINAL\n  WHERE project_id = {project:String}\n    AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}\n    AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}) AS points\n  LEFT JOIN (\n    SELECT node_id AS membership_node, assumeNotNull(process_resource_id) AS membership_resource,\n      groupArray(tuple(execution_key, first_seen_unix_nano, last_seen_unix_nano,\n        ifNull(ended_unix_nano, toUInt64(0)))) AS memberships\n    FROM (\n      SELECT * FROM execution_participants FINAL WHERE project_id = {project:String}\n    )\n    WHERE NOT retracted AND kind = 2 AND process_resource_id IS NOT NULL\n      AND first_seen_unix_nano < {to:UInt64}\n      AND if(isNull(ended_unix_nano), last_seen_unix_nano >= {from:UInt64}, ended_unix_nano > {from:UInt64})\n    GROUP BY membership_node, membership_resource\n  ) AS membership_sets\n  ON points.source_id = membership_node AND points.resource_id = membership_resource)\n  WHERE project_id = {project:String}\n    AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}\n    AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}\n    AND metric_name = {p1:String} AND CAST(metric_kind, 'Int16') = {p2:Int16}\n    AND hasAny(execution_keys, {p0:Array(String)})\n),\nper_series AS (\n  SELECT series, g0, bucket, max(v) AS value FROM base WHERE v IS NOT NULL GROUP BY series, g0, bucket\n),\ncombined AS (\n  SELECT g0, bucket, quantileExact(0.95)(value) AS value,\n    NULL AS low, NULL AS high, count(per_series.value) AS sources\n  FROM per_series GROUP BY g0, bucket\n),\nranked AS (\n  SELECT *, dense_rank() OVER (ORDER BY weight DESC, g0) AS rank\n  FROM (SELECT *, sum(abs(value)) OVER (PARTITION BY g0) AS weight FROM combined)\n)\nSELECT g0 AS k_g0, 0 AS other, toString(bucket) AS bucket_ns, value AS series_value, rank AS series_rank,\n  low AS series_low, high AS series_high, sources AS series_sources\nFROM ranked WHERE rank <= {seriesLimit:UInt32} + 1",
+      "params": {
+        "p0": ["load:0:0"],
+        "p1": "recount.process.memory.rss",
+        "p2": 1,
+        "project": "01a1e780-1136-71ce-9790-4160fd79b688",
+        "from": "1794884393611000000",
+        "to": "1794885293611000000",
+        "step": "900000000000",
+        "seconds": 900,
+        "firstDay": 20774,
+        "lastDay": 20774,
+        "seriesLimit": 25
+      },
+      "settings": {
+        "max_execution_time": 6,
+        "max_threads": 4,
+        "max_memory_usage": "268435456",
+        "max_rows_to_read": "20000000",
+        "max_bytes_to_read": "2147483648",
+        "read_overflow_mode": "throw",
+        "max_result_rows": "250000",
+        "max_result_bytes": "33554432",
+        "result_overflow_mode": "throw",
+        "max_rows_to_group_by": "2000000",
+        "group_by_overflow_mode": "throw",
+        "max_bytes_before_external_group_by": "0",
+        "max_bytes_before_external_sort": "0",
+        "output_format_json_quote_64bit_integers": 1,
+        "do_not_merge_across_partitions_select_final": 1
+      },
+      "windowSeconds": 900,
+      "stepSeconds": null
+    }
+  ]
+}

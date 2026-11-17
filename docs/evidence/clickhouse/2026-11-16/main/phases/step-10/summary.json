@@ -1,0 +1,113 @@
+{
+  "label": "step-10",
+  "args": {
+    "label": "step-10",
+    "rate": 10.0,
+    "seconds": 60.0,
+    "nodes": null,
+    "only_node": null,
+    "shape": {
+      "metrics": 4,
+      "processes": 4,
+      "points": 8,
+      "attributes": 2,
+      "series": 4,
+      "padding": 0,
+      "foreign_resource": false
+    },
+    "connections": 8,
+    "max_outstanding": 512,
+    "max_attempts": 6,
+    "timeout_ms": 10000,
+    "resend_every": 0,
+    "resend_delay_ms": 0,
+    "probe_interval_ms": 1000,
+    "monitor_interval": 5,
+    "gzip": false,
+    "address": null
+  },
+  "host": {
+    "cpus": "10",
+    "load_average": "{ 11.01 8.35 9.87 }",
+    "memory_bytes": "17179869184",
+    "uname": "Darwin 27.0.0 arm64"
+  },
+  "started_unix_nano": 1794880094446617000,
+  "schedule_seconds": 59.97599425,
+  "completion_seconds": 60.177740541,
+  "offered_batches": 620,
+  "skipped_batches": 0,
+  "outcomes": {
+    "acked": 620,
+    "probe_acked": 59
+  },
+  "codes": {
+    "Ok": 679,
+    "Unavailable": 71
+  },
+  "acked_samples": 27904,
+  "acked_bytes": 1567380,
+  "acked_batches_per_second": 10.33746931173217,
+  "acked_samples_per_second": 465.2528123783459,
+  "acked_bytes_per_second": 26133.455886810912,
+  "mean_batch_bytes": 2528.032258064516,
+  "mean_samples_per_batch": 45.00645161290323,
+  "first_attempt_ms": {
+    "count": 559,
+    "min": 5.672,
+    "p50": 6.982,
+    "p95": 9.464,
+    "p99": 31.686,
+    "max": 69.793,
+    "mean": 7.797
+  },
+  "acknowledged_ms": {
+    "count": 620,
+    "min": 6.554,
+    "p50": 8.804,
+    "p95": 172.65,
+    "p99": 205.025,
+    "max": 1210.31,
+    "mean": 27.631
+  },
+  "schedule_delay_ms": {
+    "count": 620,
+    "min": 0.064,
+    "p50": 1.535,
+    "p95": 2.555,
+    "p99": 3.781,
+    "max": 15.543,
+    "mean": 1.64
+  },
+  "probe_ack_ms": {
+    "count": 59,
+    "min": 5.754,
+    "p50": 7.116,
+    "p95": 188.123,
+    "p99": 204.57,
+    "max": 204.57,
+    "mean": 20.576
+  },
+  "probe_visible_ms": {
+    "count": 59,
+    "min": 415.904,
+    "p50": 2405.491,
+    "p95": 4118.22,
+    "p99": 4424.697,
+    "max": 4424.697,
+    "mean": 2388.823
+  },
+  "probe_visible_after_ack_ms": {
+    "count": 59,
+    "min": 409.375,
+    "p50": 2397.945,
+    "p95": 4111.438,
+    "p99": 4404.689,
+    "max": 4404.689,
+    "mean": 2368.247
+  },
+  "resends": {},
+  "code_windows_ms": {
+    "Ok": [35.149916000000005, 59976.043916]
+  }
+}

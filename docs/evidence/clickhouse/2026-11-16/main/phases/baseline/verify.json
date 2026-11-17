@@ -1,0 +1,96 @@
+{
+  "passed": true,
+  "failures": [],
+  "acked_batches": 1329,
+  "ambiguous_present": 0,
+  "ambiguous_absent": 0,
+  "rejected_batches": 0,
+  "rejected_present": 0,
+  "expected_samples": 55527,
+  "physical_rows": 55527,
+  "distinct_samples": 55527,
+  "final_rows": 55527,
+  "duplicate_rows": 0,
+  "amplification": 1.0,
+  "raw_records": 1329,
+  "normalized_records": 55527,
+  "inserted_rows": 55527,
+  "normalized_amplification": 1.0,
+  "insert_amplification": 1.0,
+  "cross_tenant_sample_ids": 0,
+  "divergent_replicas": 0,
+  "sources": 64,
+  "wait_seconds": 0.589349709,
+  "lags": [
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.raw",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.normalizer",
+      "low": 0,
+      "high": 1329,
+      "committed": 1329,
+      "lag": 0
+    },
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.normalized",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.clickhouse",
+      "low": 0,
+      "high": 55527,
+      "committed": 55527,
+      "lag": 0
+    },
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.late",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.clickhouse-late",
+      "low": 0,
+      "high": 0,
+      "committed": 0,
+      "lag": 0
+    }
+  ],
+  "part_log": [
+    {
+      "bytes": 5381360,
+      "duration_max_ms": 137,
+      "duration_p50_ms": 18,
+      "duration_p95_ms": 44,
+      "errors": 0,
+      "event_type": "NewPart",
+      "events": 36,
+      "mean_rows": 1542.4,
+      "peak_memory_max": 0,
+      "peak_memory_p50": 0,
+      "row_count": 55527
+    },
+    {
+      "bytes": 9673642,
+      "duration_max_ms": 292,
+      "duration_p50_ms": 158,
+      "duration_p95_ms": 292,
+      "errors": 0,
+      "event_type": "MergeParts",
+      "events": 6,
+      "mean_rows": 29086.2,
+      "peak_memory_max": 368545892,
+      "peak_memory_p50": 366759972,
+      "row_count": 174517
+    },
+    {
+      "bytes": 0,
+      "duration_max_ms": 0,
+      "duration_p50_ms": 0,
+      "duration_p95_ms": 0,
+      "errors": 0,
+      "event_type": "MergePartsStart",
+      "events": 6,
+      "mean_rows": 0,
+      "peak_memory_max": 0,
+      "peak_memory_p50": 0,
+      "row_count": 0
+    }
+  ],
+  "retained_bytes": {
+    "recount.pfe16.campaign.load.1794879963_11109.late": 0,
+    "recount.pfe16.campaign.load.1794879963_11109.normalized": 5155838,
+    "recount.pfe16.campaign.load.1794879963_11109.raw": 1141347
+  }
+}

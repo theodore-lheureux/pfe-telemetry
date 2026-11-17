@@ -1,0 +1,217 @@
+[
+  {
+    "phase": "auth-accepted",
+    "offered_per_second": 201.6,
+    "outcomes": {
+      "acked": 24189
+    },
+    "skipped": 0,
+    "acked_batches_per_second": 201.6,
+    "acked_samples_per_second": 822,
+    "mean_batch_bytes": 339,
+    "first_attempt_ms": {
+      "p50": 6.939,
+      "p95": 8.556,
+      "p99": 46.084,
+      "max": 182.272
+    },
+    "acknowledged_ms": {
+      "p50": 8.33,
+      "p95": 18.006,
+      "p99": 179.643,
+      "max": 1981.918
+    },
+    "queryable_ms": null,
+    "queryable_after_ack_ms": null,
+    "load_average": "{ 3.00 3.50 4.18 }",
+    "k6_ack_ms": null,
+    "revocation_delay_seconds": null,
+    "rejected_first_attempt_ms": null,
+    "drain": null,
+    "resources": {
+      "raw_catch_up": null,
+      "normalized_catch_up": null,
+      "ingestion": {
+        "peak_rss_mib": 15,
+        "mean_cpu_percent": 13.7
+      },
+      "normalizer": {
+        "peak_rss_mib": 10.8,
+        "mean_cpu_percent": 6.3
+      },
+      "peak_lag": {
+        "raw": 716,
+        "normalized": 6152,
+        "late": 0
+      },
+      "peak_active_parts": 6,
+      "peak_parts_in_partition": 6,
+      "peak_clickhouse_memory_mib": 339.3,
+      "peak_container_cpu_percent": {
+        "recount-clickhouse-1": 36.66,
+        "recount-kafka-1": 98.78,
+        "recount-postgres-1": 3.34
+      },
+      "credential_lookups_per_minute": 2.5
+    },
+    "queries": {},
+    "verify": null
+  },
+  {
+    "phase": "auth-denied",
+    "offered_per_second": 200.9,
+    "outcomes": {
+      "acked": 47,
+      "rejected": 24056
+    },
+    "skipped": 0,
+    "acked_batches_per_second": 0.4,
+    "acked_samples_per_second": 17,
+    "mean_batch_bytes": 2839,
+    "first_attempt_ms": {
+      "p50": 8.064,
+      "p95": 11.287,
+      "p99": 12.005,
+      "max": 12.005
+    },
+    "acknowledged_ms": {
+      "p50": 10.082,
+      "p95": 12.044,
+      "p99": 14.474,
+      "max": 14.474
+    },
+    "queryable_ms": null,
+    "queryable_after_ack_ms": null,
+    "load_average": "{ 2.84 3.25 3.99 }",
+    "k6_ack_ms": null,
+    "revocation_delay_seconds": null,
+    "rejected_first_attempt_ms": {
+      "count": 24056,
+      "p50": 0.563,
+      "p95": 0.804,
+      "p99": 0.962
+    },
+    "drain": null,
+    "resources": {
+      "raw_catch_up": {
+        "peak": 1,
+        "seconds": 7.5,
+        "records_per_second": 0
+      },
+      "normalized_catch_up": {
+        "peak": 1229,
+        "seconds": 37.7,
+        "records_per_second": 33
+      },
+      "ingestion": {
+        "peak_rss_mib": 15.5,
+        "mean_cpu_percent": 7.5
+      },
+      "normalizer": {
+        "peak_rss_mib": 10.2,
+        "mean_cpu_percent": 0.2
+      },
+      "peak_lag": {
+        "raw": 1,
+        "normalized": 1229,
+        "late": 0
+      },
+      "peak_active_parts": 6,
+      "peak_parts_in_partition": 6,
+      "peak_clickhouse_memory_mib": 348.2,
+      "peak_container_cpu_percent": {
+        "recount-clickhouse-1": 37.07,
+        "recount-kafka-1": 14.93,
+        "recount-postgres-1": 4.31
+      },
+      "credential_lookups_per_minute": 1.99
+    },
+    "queries": {},
+    "verify": null
+  },
+  {
+    "phase": "auth-revoked",
+    "offered_per_second": 20.6,
+    "outcomes": {
+      "acked": 463,
+      "rejected": 466
+    },
+    "skipped": 0,
+    "acked_batches_per_second": 10.3,
+    "acked_samples_per_second": 329,
+    "mean_batch_bytes": 2139,
+    "first_attempt_ms": {
+      "p50": 7.869,
+      "p95": 9.03,
+      "p99": 20.296,
+      "max": 41.738
+    },
+    "acknowledged_ms": {
+      "p50": 10.155,
+      "p95": 11.915,
+      "p99": 22.814,
+      "max": 43.765
+    },
+    "queryable_ms": null,
+    "queryable_after_ack_ms": null,
+    "load_average": "{ 3.85 3.42 4.01 }",
+    "k6_ack_ms": null,
+    "revocation_delay_seconds": 24.1,
+    "rejected_first_attempt_ms": {
+      "count": 466,
+      "p50": 0.648,
+      "p95": 0.839,
+      "p99": 0.959
+    },
+    "drain": null,
+    "resources": {
+      "raw_catch_up": {
+        "peak": 16,
+        "seconds": 7.6,
+        "records_per_second": 2
+      },
+      "normalized_catch_up": {
+        "peak": 2624,
+        "seconds": 22.5,
+        "records_per_second": 116
+      },
+      "ingestion": {
+        "peak_rss_mib": 15.9,
+        "mean_cpu_percent": 1.6
+      },
+      "normalizer": {
+        "peak_rss_mib": 8.3,
+        "mean_cpu_percent": 0.7
+      },
+      "peak_lag": {
+        "raw": 16,
+        "normalized": 2624,
+        "late": 0
+      },
+      "peak_active_parts": 6,
+      "peak_parts_in_partition": 6,
+      "peak_clickhouse_memory_mib": 326.6,
+      "peak_container_cpu_percent": {
+        "recount-clickhouse-1": 32.84,
+        "recount-kafka-1": 30.43,
+        "recount-postgres-1": 3.68
+      },
+      "credential_lookups_per_minute": 1.27
+    },
+    "queries": {},
+    "verify": {
+      "passed": true,
+      "expected": 115520,
+      "final": 115520,
+      "physical": 115520,
+      "inserted": 115520,
+      "insert_amplification": 1,
+      "normalized_amplification": 1,
+      "ambiguous_present": 0,
+      "ambiguous_absent": 0,
+      "rejected": 24522,
+      "unenrolled_sources": 0,
+      "divergent": 0
+    }
+  }
+]

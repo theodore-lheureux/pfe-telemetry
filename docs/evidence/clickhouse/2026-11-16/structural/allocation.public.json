@@ -1,0 +1,56 @@
+{
+  "created_unix_nano": 1794883510118816000,
+  "source_revision": "f64f408f0bc53de949492b8c58b482688a58c1f9+dirty",
+  "namespace": "recount.pfe16.campaign",
+  "raw_topic": "recount.pfe16.campaign.load.1794883510_70507.raw",
+  "normalized_topic": "recount.pfe16.campaign.load.1794883510_70507.normalized",
+  "late_topic": "recount.pfe16.campaign.load.1794883510_70507.late",
+  "normalizer_group": "recount.pfe16.campaign.load.1794883510_70507.normalizer",
+  "clickhouse_group": "recount.pfe16.campaign.load.1794883510_70507.clickhouse",
+  "output_rows": 128,
+  "database": "recount_load_1794883510_70507",
+  "pg_database": "recount_load_1794883510_70507",
+  "settings": {
+    "projects": 1,
+    "direct_nodes": 4,
+    "linux_nodes": 1,
+    "raw_partitions": 12,
+    "normalized_partitions": 12,
+    "retention_bytes": 134217728,
+    "ingestion_max_in_flight": 4,
+    "normalizer_max_active": 2
+  },
+  "projects": ["01a1e764-df66-70b0-8190-ba8a98368bd6"],
+  "nodes": [
+    {
+      "id": "01a1e764-df66-70b0-8190-ba8b9680c926",
+      "project": 0,
+      "root": "load-root-0",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e764-df66-70b0-8190-ba8cf43af085",
+      "project": 0,
+      "root": "load-root-1",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e764-df66-70b0-8190-ba8d1baddf55",
+      "project": 0,
+      "root": "load-root-2",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e764-df66-70b0-8190-ba8ef54e59de",
+      "project": 0,
+      "root": "load-root-3",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e764-df66-70b0-8190-ba8f138d89e0",
+      "project": 0,
+      "root": "load-root-4",
+      "kind": "linux"
+    }
+  ]
+}

@@ -1,0 +1,204 @@
+[
+  {
+    "phase": "step-100",
+    "offered_per_second": 100.2,
+    "outcomes": {
+      "acked": 6011,
+      "probe_acked": 59
+    },
+    "skipped": 0,
+    "acked_batches_per_second": 100.2,
+    "acked_samples_per_second": 4605,
+    "mean_batch_bytes": 2557,
+    "first_attempt_ms": {
+      "p50": 6.669,
+      "p95": 11.107,
+      "p99": 51.475,
+      "max": 210.312
+    },
+    "acknowledged_ms": {
+      "p50": 8.056,
+      "p95": 22.895,
+      "p99": 135.364,
+      "max": 602.738
+    },
+    "queryable_ms": {
+      "p50": 1756.993,
+      "p95": 4203.04,
+      "p99": 4257.537,
+      "max": 4257.537
+    },
+    "queryable_after_ack_ms": {
+      "p50": 1751.4,
+      "p95": 4196.572,
+      "p99": 4254.769,
+      "max": 4254.769
+    },
+    "load_average": "{ 5.26 6.81 8.67 }",
+    "k6_ack_ms": null,
+    "revocation_delay_seconds": null,
+    "rejected_first_attempt_ms": null,
+    "drain": {
+      "seconds": 1,
+      "initial_lag": [0, 0, 0]
+    },
+    "resources": {
+      "raw_catch_up": {
+        "peak": 198,
+        "seconds": 54.5,
+        "records_per_second": 4
+      },
+      "normalized_catch_up": {
+        "peak": 15669,
+        "seconds": 47,
+        "records_per_second": 333
+      },
+      "ingestion": {
+        "peak_rss_mib": 15,
+        "mean_cpu_percent": 6
+      },
+      "normalizer": {
+        "peak_rss_mib": 11.7,
+        "mean_cpu_percent": 4.6
+      },
+      "peak_lag": {
+        "raw": 198,
+        "normalized": 15669,
+        "late": 0
+      },
+      "peak_active_parts": 8,
+      "peak_parts_in_partition": 8,
+      "peak_clickhouse_memory_mib": 350.1,
+      "peak_container_cpu_percent": {
+        "recount-clickhouse-1": 79.76,
+        "recount-kafka-1": 87.2,
+        "recount-postgres-1": 3.52
+      },
+      "credential_lookups_per_minute": 2.9
+    },
+    "queries": {
+      "node_chart": {
+        "p50": 22.9,
+        "p95": 43.6,
+        "max": 59.7,
+        "count": 66
+      },
+      "execution_memory_table": {
+        "p50": 21.9,
+        "p95": 53.1,
+        "max": 102.1,
+        "count": 65
+      },
+      "counter_rate_by_execution": {
+        "p50": 29.5,
+        "p95": 56.6,
+        "max": 64.1,
+        "count": 65
+      },
+      "gauge_by_node": {
+        "p50": 13.6,
+        "p95": 25,
+        "max": 86.8,
+        "count": 65
+      }
+    },
+    "verify": null
+  },
+  {
+    "phase": "step-200",
+    "offered_per_second": 199.7,
+    "outcomes": {
+      "acked": 11985,
+      "probe_acked": 59
+    },
+    "skipped": 0,
+    "acked_batches_per_second": 199.7,
+    "acked_samples_per_second": 9184,
+    "mean_batch_bytes": 2557,
+    "first_attempt_ms": {
+      "p50": 6.49,
+      "p95": 9.147,
+      "p99": 55.15,
+      "max": 289.847
+    },
+    "acknowledged_ms": {
+      "p50": 7.725,
+      "p95": 58.391,
+      "p99": 469.504,
+      "max": 2581.64
+    },
+    "queryable_ms": {
+      "p50": 4328.917,
+      "p95": 6821.628,
+      "p99": 7886.157,
+      "max": 7886.157
+    },
+    "queryable_after_ack_ms": {
+      "p50": 4316.412,
+      "p95": 6790.73,
+      "p99": 7882.555,
+      "max": 7882.555
+    },
+    "load_average": "{ 5.03 6.44 8.38 }",
+    "k6_ack_ms": null,
+    "revocation_delay_seconds": null,
+    "rejected_first_attempt_ms": null,
+    "drain": {
+      "seconds": 0.9,
+      "initial_lag": [0, 0, 0]
+    },
+    "resources": {
+      "raw_catch_up": null,
+      "normalized_catch_up": null,
+      "ingestion": {
+        "peak_rss_mib": 15.7,
+        "mean_cpu_percent": 9.5
+      },
+      "normalizer": {
+        "peak_rss_mib": 17.2,
+        "mean_cpu_percent": 7.9
+      },
+      "peak_lag": {
+        "raw": 1103,
+        "normalized": 18005,
+        "late": 0
+      },
+      "peak_active_parts": 14,
+      "peak_parts_in_partition": 14,
+      "peak_clickhouse_memory_mib": 682.5,
+      "peak_container_cpu_percent": {
+        "recount-clickhouse-1": 168.16,
+        "recount-kafka-1": 112.8,
+        "recount-postgres-1": 4.18
+      },
+      "credential_lookups_per_minute": 1.87
+    },
+    "queries": {
+      "gauge_by_node": {
+        "p50": 23.3,
+        "p95": 34.6,
+        "max": 85,
+        "count": 65
+      },
+      "execution_memory_table": {
+        "p50": 34.8,
+        "p95": 63.6,
+        "max": 107.5,
+        "count": 65
+      },
+      "node_chart": {
+        "p50": 41,
+        "p95": 64.8,
+        "max": 118.2,
+        "count": 66
+      },
+      "counter_rate_by_execution": {
+        "p50": 41.8,
+        "p95": 64.1,
+        "max": 78.5,
+        "count": 65
+      }
+    },
+    "verify": null
+  }
+]

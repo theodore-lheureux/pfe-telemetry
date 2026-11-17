@@ -1,0 +1,74 @@
+{
+  "root_group": {
+    "groups": {},
+    "checks": {
+      "acknowledged": {
+        "name": "acknowledged",
+        "path": "::acknowledged",
+        "id": "189290702746a68d507556e5b0c511bc",
+        "passes": 11508,
+        "fails": 6506
+      }
+    },
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "metrics": {
+    "data_received": {
+      "count": 1188097,
+      "rate": 7920.3708793526475
+    },
+    "iteration_duration": {
+      "min": 0.285291,
+      "med": 7.0610625,
+      "p(95)": 9.294493849999999,
+      "p(99)": 25.489466459999964,
+      "max": 213.534875,
+      "count": 18014
+    },
+    "vus": {
+      "value": 1,
+      "min": 0,
+      "max": 6
+    },
+    "checks": {
+      "passes": 11508,
+      "fails": 6506,
+      "value": 0.6388364605306983
+    },
+    "grpc_req_duration": {
+      "med": 6.587896000000001,
+      "p(95)": 8.257774999999999,
+      "p(99)": 21.897085669999978,
+      "max": 213.013875,
+      "count": 18014,
+      "min": 0.086542
+    },
+    "export_outcomes": {
+      "count": 18014,
+      "rate": 120.08915182906665
+    },
+    "iterations": {
+      "count": 18014,
+      "rate": 120.08915182906665
+    },
+    "vus_max": {
+      "value": 64,
+      "min": 64,
+      "max": 64
+    },
+    "ack_ms": {
+      "p(95)": 10,
+      "p(99)": 39,
+      "max": 213,
+      "count": 11508,
+      "min": 5,
+      "med": 8
+    },
+    "data_sent": {
+      "count": 15233660,
+      "rate": 101554.19721618626
+    }
+  }
+}
