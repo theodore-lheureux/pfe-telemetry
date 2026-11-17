@@ -134,6 +134,7 @@ function perSeries(
 	behavior: MetricBehavior,
 	groups: string,
 	timeseries: boolean,
+	aligned: boolean,
 ) {
 	const keys = ["series", ...groups.split(", ").filter(Boolean), "bucket"].join(
 		", ",
@@ -149,27 +150,43 @@ function perSeries(
   SELECT ${keys}, ${aggregate} AS value FROM base WHERE v IS NOT NULL GROUP BY ${keys}
 )`;
 	}
-	// Rates divide by the time the range covers within each bucket, so the current,
-	// still-filling bucket and a range starting mid-bucket are not understated.
-	const covered = timeseries
-		? "((least(bucket + {step:UInt64}, {to:UInt64}) - greatest(bucket, {from:UInt64})) / 1e9)"
-		: "{seconds:Float64}";
-	const scale = measure.calculation === "rate" ? ` / ${covered}` : "";
+	const rate = measure.calculation === "rate";
+	const scale = rate ? ` / ${coveredSeconds(timeseries, aligned)}` : "";
 	if (behavior === "delta")
 		return `per_series AS (
   SELECT ${keys}, sum(v)${scale} AS value FROM base WHERE v IS NOT NULL GROUP BY ${keys}
 )`;
 	// Cumulative counters: positive differences within one continuity segment. The first
 	// point of a segment has no predecessor, so it contributes nothing.
+	// An elapsed bucket's counter rate divides by the time its differences span, from
+	// the earliest predecessor to the latest sample: its period has ended, so a final
+	// bucket the run left early, or one holding only the last sighting, is neither
+	// stretched to the full bucket nor squeezed to the moments after the bucket start.
+	const spanned = rate && timeseries && aligned;
+	const counterScale = spanned
+		? " / nullIf((max(t) - min(previous)) / 1e9, 0)"
+		: scale;
 	return `diffs AS (
-  SELECT ${keys}, v - lagInFrame(v) OVER w AS d, row_number() OVER w AS n
+  SELECT ${keys}, v - lagInFrame(v) OVER w AS d, row_number() OVER w AS n${spanned ? ",\n    t, lagInFrame(t) OVER w AS previous" : ""}
   FROM base WHERE v IS NOT NULL
   WINDOW w AS (PARTITION BY stream${groups ? `, ${groups}` : ""} ORDER BY t, sample_id
     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
 ),
 per_series AS (
-  SELECT ${keys}, sum(greatest(d, 0))${scale} AS value FROM diffs WHERE n > 1 GROUP BY ${keys}
+  SELECT ${keys}, sum(greatest(d, 0))${counterScale} AS value FROM diffs WHERE n > 1 GROUP BY ${keys}
 )`;
+}
+
+/**
+ * What a delta rate, or a calendar counter rate, divides by: the time the range covers
+ * within each bucket, so the current, still-filling bucket and a range starting
+ * mid-bucket are not understated. Elapsed buckets start at the origin.
+ */
+function coveredSeconds(timeseries: boolean, aligned: boolean) {
+	if (!timeseries) return "{seconds:Float64}";
+	if (aligned)
+		return "((least(bucket + {step:UInt64}, {to:UInt64} - {origin:UInt64}) - bucket) / 1e9)";
+	return "((least(bucket + {step:UInt64}, {to:UInt64}) - greatest(bucket, {from:UInt64})) / 1e9)";
 }
 
 /** The stored kind and behavior of a measured metric. */
@@ -207,6 +224,7 @@ function measureSelect(
 	measure: Measure,
 	scope: MeasureScope,
 	params: Params,
+	aligned: boolean,
 ) {
 	const groupBy = query.groupBy ?? [];
 	const allFilters = [...(query.filters ?? []), ...(measure.filters ?? [])];
@@ -226,11 +244,9 @@ function measureSelect(
 		)
 		.join(",\n    ");
 	const filters = allFilters.map((filter) => filterExpression(filter, params));
-	// Timeseries buckets align to the interval; a table result is one bucket.
-	const bucket =
-		query.shape === "timeseries"
-			? "intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64}"
-			: "toUInt64(0)";
+	// Timeseries buckets align to the interval, or hold the elapsed time since an aligned
+	// window's origin; a table result is one bucket.
+	const bucket = bucketExpression(query.shape, aligned);
 	const groups = groupColumns.join(", ");
 	// A sum or count is larger than each source, so their band would not surround it.
 	const banded =
@@ -259,7 +275,7 @@ FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
     AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}
     AND metric_name = ${params.bind(measure.metric, "String")} AND CAST(metric_kind, 'Int16') = ${params.bind(scope.kind, "Int16")}${filters.map((filter) => `\n    AND ${filter}`).join("")}
 ),
-${perSeries(measure, scope.behavior, groups, query.shape === "timeseries")},
+${perSeries(measure, scope.behavior, groups, query.shape === "timeseries", aligned)},
 combined AS (
   SELECT ${groups ? `${groups}, ` : ""}bucket, ${COMBINE_SQL[measure.combine]} AS value,
     ${low} AS low, ${high} AS high, count(per_series.value) AS sources
@@ -272,6 +288,22 @@ ranked AS (
 ${selection}`;
 }
 
+function bucketExpression(shape: AnalyticsQuery["shape"], aligned: boolean) {
+	if (shape !== "timeseries") return "toUInt64(0)";
+	if (aligned)
+		return "intDiv(time_unix_nano - {origin:UInt64}, {step:UInt64}) * {step:UInt64}";
+	return "intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64}";
+}
+
+/** A window of a query: its project and bounds, and an origin for elapsed buckets. */
+export interface CompileWindow {
+	projectId: string;
+	from: Date;
+	to: Date;
+	/** Counts buckets from this time instead of aligning them to the interval. */
+	origin?: Date;
+}
+
 /**
  * Compiles one measure of a validated query for one time window into a parameterized
  * ClickHouse statement. Each measure runs alone, within the reader's per-query limits.
@@ -280,10 +312,10 @@ export function compileMeasure(
 	query: AnalyticsQuery,
 	measure: Measure,
 	scope: MeasureScope,
-	window: { projectId: string; from: Date; to: Date },
+	window: CompileWindow,
 ): CompiledQuery {
 	const params = new Params();
-	const sql = measureSelect(query, measure, scope, params);
+	const sql = measureSelect(query, measure, scope, params, !!window.origin);
 	const from = BigInt(window.from.getTime()) * NS_PER_MS,
 		to = BigInt(window.to.getTime()) * NS_PER_MS;
 	const bucketSeconds =
@@ -299,6 +331,11 @@ export function compileMeasure(
 			to: to.toString(),
 			step: (BigInt(Math.round(bucketSeconds)) * 1_000_000_000n).toString(),
 			seconds: bucketSeconds,
+			...(window.origin
+				? {
+						origin: (BigInt(window.origin.getTime()) * NS_PER_MS).toString(),
+					}
+				: {}),
 			firstDay: Math.floor(window.from.getTime() / 86_400_000),
 			lastDay: Math.floor((window.to.getTime() - 1) / 86_400_000),
 			// One extra group reveals whether the limit cut any series.

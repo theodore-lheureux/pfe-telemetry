@@ -29,6 +29,7 @@ import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteR
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsNewRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/new'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/index'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/route'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/compare'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/route'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExploreRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/explore'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/insights'
@@ -154,6 +155,15 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute
     {
       id: '/activity',
       path: '/activity',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRouteImport.update(
+    {
+      id: '/compare',
+      path: '/compare',
       getParentRoute: () =>
         AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
     } as any,
@@ -304,6 +314,7 @@ export interface FileRoutesByFullPath {
   '/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
   '/organizations/$organizationId/projects/$projectId/activity': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren
   '/organizations/$organizationId/projects/$projectId/definitions': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRouteWithChildren
+  '/organizations/$organizationId/projects/$projectId/compare': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRoute
   '/organizations/$organizationId/projects/$projectId/explore': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExploreRoute
   '/organizations/$organizationId/projects/$projectId/insights': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRoute
   '/organizations/$organizationId/projects/$projectId/nodes': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRoute
@@ -334,6 +345,7 @@ export interface FileRoutesByTo {
   '/organizations/new': typeof AppWorkspaceOrganizationsNewRoute
   '/organizations/$organizationId': typeof AppWorkspaceOrganizationsOrganizationIdIndexRoute
   '/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
+  '/organizations/$organizationId/projects/$projectId/compare': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRoute
   '/organizations/$organizationId/projects/$projectId/explore': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExploreRoute
   '/organizations/$organizationId/projects/$projectId/insights': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRoute
   '/organizations/$organizationId/projects/$projectId/nodes': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRoute
@@ -371,6 +383,7 @@ export interface FileRoutesById {
   '/_app/_workspace/organizations/$organizationId/projects/new': typeof AppWorkspaceOrganizationsOrganizationIdProjectsNewRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRouteWithChildren
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/compare': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/explore': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExploreRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/nodes': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRoute
@@ -407,6 +420,7 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/projects/new'
     | '/organizations/$organizationId/projects/$projectId/activity'
     | '/organizations/$organizationId/projects/$projectId/definitions'
+    | '/organizations/$organizationId/projects/$projectId/compare'
     | '/organizations/$organizationId/projects/$projectId/explore'
     | '/organizations/$organizationId/projects/$projectId/insights'
     | '/organizations/$organizationId/projects/$projectId/nodes'
@@ -437,6 +451,7 @@ export interface FileRouteTypes {
     | '/organizations/new'
     | '/organizations/$organizationId'
     | '/organizations/$organizationId/projects/new'
+    | '/organizations/$organizationId/projects/$projectId/compare'
     | '/organizations/$organizationId/projects/$projectId/explore'
     | '/organizations/$organizationId/projects/$projectId/insights'
     | '/organizations/$organizationId/projects/$projectId/nodes'
@@ -473,6 +488,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/organizations/$organizationId/projects/new'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/compare'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/explore'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/insights'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/nodes'
@@ -643,6 +659,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteImport
       parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
     }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/compare': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/compare'
+      path: '/compare'
+      fullPath: '/organizations/$organizationId/projects/$projectId/compare'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
     '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions': {
       id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions'
       path: '/definitions'
@@ -789,6 +812,7 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRo
 interface AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren {
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRouteWithChildren
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExploreRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExploreRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRoute
@@ -805,6 +829,8 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteWithChildren,
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRoute:
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRouteWithChildren,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdCompareRoute,
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExploreRoute:
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExploreRoute,
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsightsRoute:

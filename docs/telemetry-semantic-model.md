@@ -93,7 +93,8 @@ The visual builder, saved analyses and execution pages all produce this object. 
 ```
 
 - `shape` is `timeseries` (one value per bucket per group) or `table` (one value per group over the whole range).
-- `range` is absolute or relative (`"last": "1h"`); the server resolves relative ranges once per run.
+- `range` is absolute, relative (`"last": "1h"`) or a list of up to four execution keys (`"executions": ["run:a", "run:b"]`); the server resolves relative ranges once per run. [Execution alignment](#execution-alignment) describes the execution form.
+- `compare` adds an earlier calendar window, the previous period or a fixed offset, shifted onto the current one. It is not available with an execution range.
 - Filters combine with AND; `in` with several values is OR. Operators: `eq`, `neq`, `in`, `not_in`, `exists`, `not_exists`, and numeric comparisons on numeric fields.
 - Measure filters apply to one measure; top-level filters apply to all.
 - `groupBy` accepts any field except `time` and `value`.
@@ -128,7 +129,20 @@ Insights, dashboard overrides and Activity Explorer expose execution through the
 - **Usage:** `filters: execution = X`, grouped by node or combined.
 - **Remaining process load:** a second measure with `execution != X`, grouped by `node`. Apply the same node filter to both measures to restrict the comparison to selected nodes.
 - **Node-wide context:** use a node metric as measure B and execution-filtered process usage as measure A, grouped by the same node field. For compatible units and calculations, `B - A` shows the remaining node load. A lifecycle does not attribute a node's entire CPU or memory to an execution.
-- **Totals and comparison:** `table` queries over each execution's range.
+- **Totals and comparison:** an [execution range](#execution-alignment), as a `timeseries` on elapsed time or a `table` with one total per execution.
+
+### Execution alignment
+
+An execution range reads each listed execution separately and aligns them on elapsed time, so runs that started hours or days apart overlay on one axis:
+
+1. The server checks project access, then reads each key's period from the project's nonretracted participant facts: the earliest `first_seen` to the latest `ended`, or `last_seen` for a fact without an end. If any key has no facts in the project, the query fails as not found.
+2. Each period becomes its own window, with the execution as an added `execution = key` filter, so a window contains only points from that execution's process memberships, under the membership rules above.
+3. Timeseries buckets start at the execution's first sighting, not on the interval grid: bucket 0 covers the first interval after the start. A counter rate divides each bucket's increase by the time its differences span, from the earliest predecessor sample to the latest sample in the bucket. A period has ended, so its final bucket is often partial: dividing by the full bucket length would understate it, and dividing by the time after the bucket start would turn a last sighting just past a boundary into a spike. A delta rate divides by the time the period covers within the bucket.
+4. Each series carries its `execution` key, and bucket times are milliseconds since that execution's start. Formulas and group aggregations combine values only within one execution.
+
+Each period is at most 30 days and at most 600 buckets at the requested interval, as an absolute range would be. The result-size limit applies once to the buckets of all executions together. A query that exceeds these limits is rejected rather than truncated. Results list each execution's period in the requested order and span from 0 to the longest period.
+
+Elapsed buckets have no collector coverage, since collector reports are absolute in time; a bucket without a value is a gap, not a zero. A shorter execution's series ends with its period. A measure that has values for only some executions cannot be compared for the others; the execution comparison page labels it instead of drawing an empty line. Overlapping periods on shared nodes are context for a difference, not evidence of its cause.
 
 ## Alternatives considered
 

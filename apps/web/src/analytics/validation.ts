@@ -1,3 +1,4 @@
+import { parseExecutionKey } from "../executions/validation";
 import { InputError } from "../lib/input-error";
 import { parseProjectReference } from "../organizations/validation";
 import {
@@ -15,6 +16,7 @@ import {
 	type FilterOperator,
 	INTERVALS,
 	type Interval,
+	MAX_ALIGNED_EXECUTIONS,
 	MAX_BUCKETS,
 	MAX_FILTERS,
 	MAX_FORMULAS,
@@ -31,6 +33,7 @@ import {
 	type RunQueryInput,
 	SPREADS,
 	type Spread,
+	type TimeRange,
 } from "./contracts";
 import { parseAttributeField } from "./fields";
 import { FormulaError, parseFormula } from "./formula";
@@ -161,7 +164,7 @@ function parseMeasure(value: unknown): Measure {
 
 /** Resolves a query range to absolute bounds, once per run. */
 export function resolveRange(
-	range: AnalyticsQuery["range"],
+	range: TimeRange,
 	now = new Date(),
 ): { from: Date; to: Date } {
 	if ("last" in range) {
@@ -171,8 +174,23 @@ export function resolveRange(
 	return { from: new Date(range.from), to: new Date(range.to) };
 }
 
+function parseExecutionRange(value: unknown): string[] {
+	const keys = list(value, MAX_ALIGNED_EXECUTIONS, "executions").map((key) => {
+		try {
+			return parseExecutionKey(key);
+		} catch {
+			throw new InputError("INVALID_QUERY", "Invalid execution key");
+		}
+	});
+	if (!keys.length || new Set(keys).size !== keys.length)
+		throw new InputError("INVALID_QUERY", "Invalid executions");
+	return keys;
+}
+
 function parseRange(value: unknown): AnalyticsQuery["range"] {
 	const input = record(value, "range");
+	if ("executions" in input)
+		return { executions: parseExecutionRange(input.executions) };
 	if ("last" in input) {
 		if (!Object.hasOwn(RELATIVE_RANGES, input.last as string))
 			throw new InputError("INVALID_TIME_RANGE", "Invalid relative range");
@@ -199,21 +217,21 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		throw new InputError("INVALID_QUERY", "Invalid result shape");
 	const range = parseRange(input.range);
 	let interval: Interval | undefined;
-	let buckets = 1;
 	if (input.shape === "timeseries") {
 		if (!Object.hasOwn(INTERVALS, input.interval as string))
 			throw new InputError("INVALID_QUERY", "Invalid interval");
 		interval = input.interval as Interval;
-		const { from, to } = resolveRange(range);
-		buckets = Math.ceil(
-			(to.getTime() - from.getTime()) / 1000 / INTERVALS[interval],
-		);
-		if (buckets > MAX_BUCKETS)
-			throw new InputError(
-				"INVALID_TIME_RANGE",
-				"Interval is too small for this range",
-			);
 	}
+	if ("executions" in range && input.compare !== undefined)
+		throw new InputError(
+			"INVALID_QUERY",
+			"Execution ranges cannot add a calendar comparison",
+		);
+	// An execution range's periods are only known once read, so the runner checks them.
+	const buckets =
+		"executions" in range
+			? 1
+			: rangeBuckets(resolveRange(range), input.shape, interval);
 	const measures = list(input.measures, MAX_MEASURES, "measures").map(
 		parseMeasure,
 	);
@@ -263,18 +281,15 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		(!COMBINES.includes(input.aggregate as Combine) || !groupBy.length)
 	)
 		throw new InputError("INVALID_QUERY", "Invalid group aggregation");
-	// Every measure returns up to limit + 1 groups (the extra one, or Other) per bucket;
-	// an aggregation reads up to the largest groups allowed.
-	const limit =
-		input.aggregate === undefined
-			? ((input.limit as number | undefined) ?? DEFAULT_SERIES_LIMIT)
-			: MAX_SERIES;
-	const groups = groupBy.length ? limit + 1 : 1;
-	if (measures.length * groups * buckets > MAX_RESULT_POINTS)
-		throw new InputError(
-			"INVALID_QUERY",
-			"Too many series for this range: lower the series limit or use a longer interval",
-		);
+	assertResultSize(
+		{
+			measures,
+			groupBy: groupBy as string[],
+			limit: input.limit as number | undefined,
+			aggregate: input.aggregate as Combine | undefined,
+		},
+		buckets,
+	);
 	return {
 		shape: input.shape,
 		range,
@@ -287,6 +302,47 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		...(input.other ? { other: true } : {}),
 		...comparisonOptions(input),
 	};
+}
+
+/**
+ * The buckets one window spans at an interval, within the bucket limit, and 1 for a
+ * table result.
+ */
+export function rangeBuckets(
+	{ from, to }: { from: Date; to: Date },
+	shape: AnalyticsQuery["shape"],
+	interval: Interval | undefined,
+) {
+	if (shape !== "timeseries" || !interval) return 1;
+	const buckets = Math.ceil(
+		(to.getTime() - from.getTime()) / 1000 / INTERVALS[interval],
+	);
+	if (buckets > MAX_BUCKETS)
+		throw new InputError(
+			"INVALID_TIME_RANGE",
+			"Interval is too small for this range",
+		);
+	return buckets;
+}
+
+/**
+ * Every measure returns up to limit + 1 groups (the extra one, or Other) per bucket; an
+ * aggregation reads up to the largest groups allowed.
+ */
+export function assertResultSize(
+	query: Pick<AnalyticsQuery, "measures" | "groupBy" | "limit" | "aggregate">,
+	buckets: number,
+) {
+	const limit =
+		query.aggregate === undefined
+			? (query.limit ?? DEFAULT_SERIES_LIMIT)
+			: MAX_SERIES;
+	const groups = query.groupBy?.length ? limit + 1 : 1;
+	if (query.measures.length * groups * buckets > MAX_RESULT_POINTS)
+		throw new InputError(
+			"INVALID_QUERY",
+			"Too many series for this range: lower the series limit or use a longer interval",
+		);
 }
 
 /** The comparison window, collapsed groups and band a query asks for, if any. */

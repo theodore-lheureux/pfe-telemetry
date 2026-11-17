@@ -104,7 +104,7 @@ function TooltipCard({
 	series,
 	format,
 	gapLabel,
-	timeZone,
+	formatTime,
 }: {
 	active?: boolean;
 	payload?: readonly { payload?: unknown }[];
@@ -112,20 +112,13 @@ function TooltipCard({
 	series: ChartSeries[];
 	format: (value: number) => string;
 	gapLabel?: (key: string, bucketMs: number) => string | null;
-	timeZone: string;
+	formatTime: (bucketMs: number) => string;
 }) {
 	if (!active || !payload?.length || typeof label !== "number") return null;
 	const row = payload[0]?.payload as Record<string, number | null>;
-	const locale = getLocale();
 	return (
 		<div className="grid min-w-44 gap-1.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
-			<p className="font-medium">
-				{new Intl.DateTimeFormat(locale, {
-					dateStyle: "medium",
-					timeStyle: "short",
-					timeZone,
-				}).format(label)}
-			</p>
+			<p className="font-medium tabular-nums">{formatTime(label)}</p>
 			{series.map((entry) => {
 				const value = row[entry.key] ?? row[`${entry.key}${TAIL}`] ?? null;
 				const band = (row as Record<string, unknown>)[`${entry.key}${BAND}`] as
@@ -168,6 +161,31 @@ function TooltipCard({
 	);
 }
 
+/** Axis ticks and tooltip headings: elapsed time, or clock times in the display time zone. */
+function timeFormats(
+	locale: string,
+	timeZone: string,
+	span: number,
+	elapsed: ((ms: number) => string) | undefined,
+) {
+	if (elapsed) return { tick: elapsed, heading: elapsed };
+	const time = new Intl.DateTimeFormat(locale, {
+		timeZone,
+		...(span > 86_400_000
+			? { month: "short", day: "numeric" }
+			: { hour: "2-digit", minute: "2-digit" }),
+	});
+	const full = new Intl.DateTimeFormat(locale, {
+		dateStyle: "medium",
+		timeStyle: "short",
+		timeZone,
+	});
+	return {
+		tick: (value: number) => time.format(value),
+		heading: (value: number) => full.format(value),
+	};
+}
+
 export type ChartType = "auto" | "line" | "area" | "bar" | "stacked";
 const MAX_VALUE_LABELS = 16;
 
@@ -197,6 +215,7 @@ export function TimeseriesChart({
 	movingAverage,
 	highlight = null,
 	height = "h-72",
+	elapsed,
 }: {
 	series: ChartSeries[];
 	bucketSeconds: number;
@@ -237,6 +256,8 @@ export function TimeseriesChart({
 	highlight?: string | null;
 	/** The plot's height class; `h-full` fills a sized parent. */
 	height?: string;
+	/** Formats bucket times as elapsed time instead of clock times. */
+	elapsed?: (ms: number) => string;
 }) {
 	const gradient = useId().replace(/:/g, "");
 	const timeZone = useDisplayTimeZone();
@@ -315,13 +336,7 @@ export function TimeseriesChart({
 	const span = rows.length
 		? (rows.at(-1)?.bucketMs ?? 0) - (rows[0]?.bucketMs ?? 0)
 		: 0;
-	// Times read in the display time zone, like every other time in the app.
-	const time = new Intl.DateTimeFormat(locale, {
-		timeZone,
-		...(span > 86_400_000
-			? { month: "short", day: "numeric" }
-			: { hour: "2-digit", minute: "2-digit" }),
-	});
+	const { tick, heading } = timeFormats(locale, timeZone, span, elapsed);
 	const config = Object.fromEntries(
 		drawn.map((entry) => [
 			entry.key,
@@ -523,7 +538,7 @@ export function TimeseriesChart({
 						axisLine={false}
 						tickMargin={8}
 						minTickGap={56}
-						tickFormatter={(value: number) => time.format(value)}
+						tickFormatter={tick}
 						label={
 							xLabel
 								? {
@@ -581,7 +596,7 @@ export function TimeseriesChart({
 								series={drawn}
 								format={format}
 								gapLabel={gapLabel}
-								timeZone={timeZone}
+								formatTime={heading}
 							/>
 						)}
 					/>

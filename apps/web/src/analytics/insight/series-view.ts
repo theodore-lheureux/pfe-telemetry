@@ -21,7 +21,7 @@ export function lineId(series: SeriesResult) {
 	return `${identity(series)}/${series.comparison ?? false}`;
 }
 
-export function stats(series: SeriesResult) {
+export function stats(series: Pick<SeriesResult, "points">) {
 	const values = series.points
 		.map((point) => point.value)
 		.filter((value): value is number => value !== null);
