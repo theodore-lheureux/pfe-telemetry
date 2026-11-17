@@ -22,14 +22,16 @@ An ignored test is not evidence that its live boundary passed.
 The [identity and interruption evaluation](../docs/identity-interruption-evaluation.md)
 records focused scenarios, reproduction commands and their limits.
 
-| Boundary                                                               | Command                                                                                                                                           | Required allocation                                                                                                                      |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Application database, auth and shipped ingestion grants                | `bun --no-env-file test --timeout 30000 apps/web/tests/integration`                                                                               | `TEST_DATABASE_URL`, an administrator URL permitting disposable databases and scoped roles; host `psql` for the shipped provisioning SQL |
-| Ingestion authority, rotation, revocation, expiry and outage           | `cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live -- --ignored --exact` | `TEST_DATABASE_URL` and locked web dependencies                                                                                          |
-| Normalizer progress, first start, replay, rebalance, expiry and poison | `cargo test --locked -p recount-normalizer --test kafka -- --ignored --test-threads=1`                                                            | Explicit normalizer settings below                                                                                                       |
-| Real ClickHouse HTTP reader                                            | `bun --no-env-file test --timeout 30000 apps/web/tests/telemetry/clickhouse.test.ts`                                                              | ClickHouse administrator and restricted-reader credentials, plus `RECOUNT_CONTRACT_FIXTURE`                                              |
-| Native Kafka-to-ClickHouse storage                                     | `cargo test --locked -p recount-normalizer --test storage -- --ignored --test-threads=1 --skip unclean_restart --skip invalid_initialized`        | Explicit storage settings below; no service restart authority                                                                            |
-| Browser with native Bun web                                            | `node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts`                                                           | `TEST_DATABASE_URL`; installed Playwright Chromium                                                                                       |
+| Boundary                                                              | Command                                                                                                                                           | Required allocation                                                                                                                      |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Application database, auth and shipped ingestion grants               | `bun --no-env-file test --timeout 30000 apps/web/tests/integration`                                                                               | `TEST_DATABASE_URL`, an administrator URL permitting disposable databases and scoped roles; host `psql` for the shipped provisioning SQL |
+| Ingestion authority, rotation, revocation, expiry and outage          | `cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live -- --ignored --exact` | `TEST_DATABASE_URL` and locked web dependencies                                                                                          |
+| Normalizer progress, replay, rebalance, event time, expiry and poison | `cargo test --locked -p recount-normalizer --test kafka -- --ignored --test-threads=1 --skip owned_broker --skip peak_rss`                        | Explicit normalizer settings below                                                                                                       |
+| Normalizer lost acknowledgements and broker restart                   | `cargo test --locked -p recount-normalizer --test kafka owned_broker -- --ignored --test-threads=1`                                               | Normalizer namespace plus the owned fault broker settings below                                                                          |
+| Ingestion lost acknowledgement and broker restart                     | `cargo test --locked -p recount-ingestion-api --lib tests::kafka_faults -- --ignored`                                                             | Owned fault broker settings below                                                                                                        |
+| Real ClickHouse HTTP reader                                           | `bun --no-env-file test --timeout 30000 apps/web/tests/telemetry/clickhouse.test.ts`                                                              | ClickHouse administrator and restricted-reader credentials, plus `RECOUNT_CONTRACT_FIXTURE`                                              |
+| Native Kafka-to-ClickHouse storage                                    | `cargo test --locked -p recount-normalizer --test storage -- --ignored --test-threads=1 --skip unclean_restart --skip invalid_initialized`        | Explicit storage settings below; no service restart authority                                                                            |
+| Browser with native Bun web                                           | `node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts`                                                           | `TEST_DATABASE_URL`; installed Playwright Chromium                                                                                       |
 
 Build the fixture natively and discover its executable from Cargo's JSON output,
 not an assumed `target/` directory:
@@ -55,6 +57,39 @@ The supplied topics must be empty, have three partitions, and use distinct names
 under `<namespace>.normalizer.`. The progress case creates its own fresh topics.
 Cargo supplies the normalizer executable; no separate binary-dispatch driver is
 required.
+
+Only `real_kafka_first_start_replay_rebalance_and_global_handler_poison` uses
+the supplied topics and group; the other cases create topics under the
+namespace. The in-flight rebalance, event-time and backlog RSS cases remove their
+topics and group after success. The RSS case queues 9,000 and then 18,000
+inputs and takes several minutes in a debug build, so the routine command skips
+it. Run it explicitly, preferably as a release build:
+
+```sh
+cargo test --release --locked -p recount-normalizer --test kafka backlog_catchup_peak_rss_stays_bounded -- --ignored --exact --nocapture
+```
+
+### Owned fault broker
+
+Lost acknowledgements and broker restarts are tested against a disposable
+single-node Kafka container that the test starts and removes, never the shared
+broker. Components under test connect through a
+[Toxiproxy](https://github.com/Shopify/toxiproxy) listener, so a `timeout`
+toxic on the downstream stream drops every broker response while requests still
+reach Kafka. Observers use a second, direct listener. These cases use:
+
+- `RECOUNT_KAFKA_FAULT_TEST_ALLOW_CONTAINER=1`
+- `RECOUNT_KAFKA_FAULT_TEST_IMAGE`, the Kafka image of the local stack, for example
+  `apache/kafka@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837`
+- `RECOUNT_KAFKA_FAULT_TEST_TOXIPROXY`, the `toxiproxy-server` executable
+- `RECOUNT_NORMALIZER_TEST_NAMESPACE`, for the normalizer cases' topic names
+
+The container is labelled `recount.test=kafka-fault` and publishes ephemeral
+loopback ports. Each case removes its container and stops its Toxiproxy process when it
+finishes or fails an assertion. An interrupted run, such as Ctrl-C, can leave
+them behind; remove the containers with
+`docker rm --force --volumes $(docker ps --all --quiet --filter label=recount.test=kafka-fault)`
+and stop the `toxiproxy-server` process that run started.
 
 The storage suite uses:
 
@@ -245,18 +280,20 @@ Live tests remain separate native commands.
 
 ## Assertion owners
 
-| Invariant                                                                                                                                     | Owner                                                               |
-| --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Canonical identity, typed projections, input bounds and scalar serializer fidelity                                                            | Rust telemetry contract tests and `contract_fixture`                |
-| Native Protobuf field/bit roundtrip, logical replay uniqueness, sparse flush, poison/no-commit, missing/expired checkpoints and finite fanout | Normalizer `storage` integration target                             |
-| New-sample outage recovery, unclean restart, inactive owned-group rewind and invalid initialized-image refusal before consumption             | Normalizer `storage` recovery cases                                 |
-| Coherent manifest tampering, altered proto and row-bound mismatch against image-pinned hashes                                                 | `tests/runtime/schema.test.ts`                                      |
-| Explicit initialization, partial state and identity refusal                                                                                   | `tests/tooling/data-entrypoint.test.ts`                             |
-| Artifact platform and executable guards                                                                                                       | `tests/tooling/linux-artifacts.test.ts` and the packaging validator |
-| Real credential/grant SELECT access, privilege revocation on reprovisioning and unrelated read/write denial                                   | Web provisioning integration test                                   |
-| HTTP precision, typed dimension ordering/bits, cancellation, capacity and SELECT-only reader behavior                                         | Web ClickHouse HTTP tests                                           |
-| Packaged hosting, assets, private-file exclusion, non-root entrypoints and shutdown                                                           | Runtime image smoke tests                                           |
-| Collector sampling through authorized browser, both hosts/locales and restart                                                                 | Explicit pipeline Playwright configuration                          |
+| Invariant                                                                                                                                             | Owner                                                               |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Canonical identity, typed projections, input bounds and scalar serializer fidelity                                                                    | Rust telemetry contract tests and `contract_fixture`                |
+| Native Protobuf field/bit roundtrip, logical replay uniqueness, sparse flush, poison/no-commit, missing/expired checkpoints and finite fanout         | Normalizer `storage` integration target                             |
+| New-sample outage recovery, unclean restart, inactive owned-group rewind and invalid initialized-image refusal before consumption                     | Normalizer `storage` recovery cases                                 |
+| Settled-prefix checkpoints during rebalance, recent/late event-time routing, replay after lost publication/commit acknowledgements and broker restart | Normalizer `kafka` integration target                               |
+| Retried batches after a lost raw-publication acknowledgement or broker restart keep one logical sample identity                                       | Ingestion `tests::kafka_faults`                                     |
+| Coherent manifest tampering, altered proto and row-bound mismatch against image-pinned hashes                                                         | `tests/runtime/schema.test.ts`                                      |
+| Explicit initialization, partial state and identity refusal                                                                                           | `tests/tooling/data-entrypoint.test.ts`                             |
+| Artifact platform and executable guards                                                                                                               | `tests/tooling/linux-artifacts.test.ts` and the packaging validator |
+| Real credential/grant SELECT access, privilege revocation on reprovisioning and unrelated read/write denial                                           | Web provisioning integration test                                   |
+| HTTP precision, typed dimension ordering/bits, cancellation, capacity and SELECT-only reader behavior                                                 | Web ClickHouse HTTP tests                                           |
+| Packaged hosting, assets, private-file exclusion, non-root entrypoints and shutdown                                                                   | Runtime image smoke tests                                           |
+| Collector sampling through authorized browser, both hosts/locales and restart                                                                         | Explicit pipeline Playwright configuration                          |
 
 CI separates lightweight checks from live integration. Each job owns and reuses
 its backends. Checks include `infra/local` safety tests and TypeScript checks, the

@@ -66,3 +66,20 @@ Use deterministic sample identities and compare the accepted set with stored res
 | Inject late samples and clock differences across nodes.                | Analysis distinguishes collection time from arrival order and shows uncertainty.                 |
 
 Record collector overhead, accepted data rate, backlog age, recovery time, and sample-to-query delay for baseline and competing-workload runs. Failure tests establish behavior under their stated conditions; performance targets need separate measurements.
+
+### Current coverage
+
+Automated tests cover these scenarios. Kafka cases run against one local broker; the [test guide](../tests/README.md) lists their commands and settings:
+
+| Scenario                                          | Covered by                                                                                                                                                             |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Collector disconnection and restart               | Collector queue tests with controlled receivers: the same batch is retried after reconnection or an uncertain acknowledgement.                                         |
+| Lost export response after raw publication        | Ingestion `tests::kafka_faults`: Kafka keeps the unacknowledged record, the API returns `UNAVAILABLE`, and the resent batch yields the same sample identities.         |
+| Normalizer crash, restart and in-flight rebalance | Normalizer `kafka` target: no observed checkpoint passes an input with unpublished samples, the final output is complete, and replays are byte-identical.              |
+| Lost normalizer publication or commit response    | Normalizer `owned_broker` cases: the member fails before settling unacknowledged output, and a replacement replays it identically.                                     |
+| Broker restart                                    | Normalizer and ingestion owned-broker cases: acknowledged records survive an unclean single-broker restart, and processing and acceptance resume.                      |
+| Storage outage and crash before checkpoint        | Normalizer `storage` target: native ClickHouse stores the missing samples and `FINAL` returns each sample once.                                                        |
+| Late samples across nodes                         | Normalizer `kafka` target: unordered event times route to the recent or late topic by distance from the process clock, with unchanged identities.                      |
+| Retention expiry and memory during catch-up       | Expiry cases warn and resume from the retained suffix; a [local measurement](kafka-recovery.md#normalizer-peak-rss-during-catch-up) records the normalizer's peak RSS. |
+
+Replicated broker failover, replica loss and buffer overflow reporting remain untested. The web application does not show the delay between acceptance and queryable samples, so an empty or partial chart cannot distinguish missing data from processing lag. Every recovery result applies only while unprocessed records remain retained; the supported outage window is a deployment sizing choice, not a guarantee.
