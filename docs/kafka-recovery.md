@@ -105,33 +105,31 @@ Select the admitted load and disk budget before creating deployment topics.
 
 ## Lag, retention headroom and disk
 
-Run the read-only snapshot with an explicitly selected broker container and
-topic/group pairs. Include every durable consumer, including independent replay
-groups. Use `-` only for a deliberately best-effort reader such as live:
+Kafka's own read-only tools report consumer lag, retained offsets and log sizes.
+Run them in the broker container; none of them joins a group, commits or resets
+offsets:
 
 ```sh
-bun --no-env-file infra/local/kafka-capacity.ts --container recount-kafka-1 \
-  --warn-ms 3600000 \
-  recount.metrics.raw=recount-normalizer \
-  recount.metrics.normalized=recount-clickhouse \
-  recount.metrics.late=recount-clickhouse-late \
-  recount.participants=recount-clickhouse-participants \
-  recount.metrics.live=-
+kafka=/opt/kafka/bin
+docker exec recount-kafka-1 $kafka/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 --describe --all-groups
+docker exec recount-kafka-1 $kafka/kafka-get-offsets.sh \
+  --bootstrap-server localhost:9092 --time -2
+docker exec recount-kafka-1 $kafka/kafka-log-dirs.sh \
+  --bootstrap-server localhost:9092 --describe
 ```
 
-The JSON-lines report includes effective retention, per-partition committed
-offsets, earliest/latest offsets, lag, retained prefix distance, physical log
-bytes, byte headroom and filesystem available bytes/utilization. It performs no
-group joins, commits, offset resets or writes. Schedule repeated snapshots in the
-existing operator loop and retain their timestamps to measure growth and drain
-rates. There is no new monitoring service or automatic alert delivery.
-
-Exit status is 0 for a clear snapshot, 1 for a headroom warning, and 2 for
-unavailable/incomplete inspection. Gaps and missing checkpoints are warnings,
-not fail-stop conditions. Byte usage at
-80% of the retention target and disk utilization at 80% warn independently.
-Negative byte headroom is possible during asynchronous deletion. Record counts
-are not byte or time estimates.
+`kafka-consumer-groups.sh` lists each durable group's committed offset, log end
+offset and lag per partition: `recount-normalizer` on the raw topic,
+`recount-clickhouse`, `recount-clickhouse-late` and
+`recount-clickhouse-participants` on the normalized, late and participant
+topics. The live reader is best-effort and has no group to check.
+`kafka-get-offsets.sh --time -2` prints each partition's earliest retained
+offset. A committed offset close to that earliest offset means the consumer is
+about to lose unread records to retention; one below it already has a gap.
+`kafka-log-dirs.sh` reports the bytes each partition occupies, to compare with
+its `retention.bytes` and the disk. Negative headroom is possible while deletion
+runs asynchronously, and record counts are not byte or time estimates.
 
 The time guard asks Kafka for the first offset at
 `now - retention.ms + warn-ms`; a lagging checkpoint before that offset warns.
@@ -213,7 +211,7 @@ then starts the real normalizer. Every input checkpoint and expected sample
 identity must complete. Its result prints payload bytes, outage duration and
 checkpoint catch-up time; payload throughput is not stored-log throughput.
 Topics remain under the printed unique allocation for read-only log-size
-inspection with `kafka-capacity.ts` or `kafka-log-dirs.sh`. Remove only those exact
+inspection with `kafka-log-dirs.sh`. Remove only those exact
 owned topics after recording the result.
 
 The expiry test independently exercises natural time and byte eviction with

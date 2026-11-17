@@ -44,16 +44,16 @@
         mode: "0700"
       loop: [/etc/recount-collector, /var/lib/recount-collector]
 
-    - name: Install non-secret release and enrollment selections
+    - name: Record the enrollment parameter for the service's start-up helper
       ansible.builtin.copy:
-        content: "{{ {'release_url': recount_collector_release_url, 'sha256': recount_collector_release_sha256, 'parameter': recount_enrollment_parameter} | to_nice_json }}\n"
-        dest: /etc/recount-collector/bootstrap.json
+        content: "{{ recount_enrollment_parameter }}\n"
+        dest: /etc/recount-collector/enrollment-parameter
         owner: root
         group: root
         mode: "0600"
       notify: Restart the collector
 
-    - name: Install the finite release and private enrollment helper
+    - name: Install the enrollment helper
       ansible.builtin.copy:
         src: ../prepare.py
         dest: /usr/local/sbin/recount-collector-prepare
@@ -62,11 +62,26 @@
         mode: "0700"
       notify: Restart the collector
 
-    - name: Install the checksum-verified native release without touching node state
-      ansible.builtin.command:
-        argv: [/usr/local/sbin/recount-collector-prepare, install]
-      register: recount_release_install
-      changed_when: recount_release_install.stdout == "installed"
+    - name: Download the checksum-verified collector release
+      ansible.builtin.get_url:
+        url: "{{ recount_collector_release_url }}"
+        dest: /var/lib/recount-collector/release.tar.gz
+        checksum: "sha256:{{ recount_collector_release_sha256 }}"
+        owner: root
+        group: root
+        mode: "0600"
+      register: recount_release_download
+
+    - name: Install the collector binary without touching node state
+      ansible.builtin.unarchive:
+        src: /var/lib/recount-collector/release.tar.gz
+        dest: /usr/local/bin
+        remote_src: true
+        include: [recount-collector]
+        owner: root
+        group: root
+        mode: "0755"
+      when: recount_release_download is changed
       notify: Restart the collector
 
     - name: Configure production export and enrollment
