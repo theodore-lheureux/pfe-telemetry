@@ -7,6 +7,9 @@ mod local 'infra/local/justfile'
 # Optional Linux VMs, workloads and monitoring.
 mod lab 'infra/lab/justfile'
 
+# Temporary Google Cloud collectors, with optional GPU, for tests and demos.
+mod demo 'infra/demo/justfile'
+
 default:
     @just --list
 

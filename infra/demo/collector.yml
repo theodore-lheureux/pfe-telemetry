@@ -1,0 +1,194 @@
+- name: Install or re-enroll a temporary demo collector
+  hosts: demo
+  become: true
+  gather_facts: true
+  vars:
+    recount_endpoint: https://ingest.recount.cloud
+    recount_enrollment_url: https://app.recount.cloud
+    recount_state: /var/lib/recount-collector
+    recount_gpu: false
+    recount_load: false
+    recount_reenroll: false
+  tasks:
+    - name: Require the selected release and an enrollment key
+      ansible.builtin.assert:
+        that:
+          - recount_release is match("^release-[a-f0-9]{40}-[0-9]+-[0-9]+$")
+          - recount_release_sha256 is match("^[a-f0-9]{64}$")
+          - recount_repository is match("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+          - recount_enrollment_key_file is file
+          - ansible_facts.architecture == "x86_64"
+        quiet: true
+
+    - name: Install DCGM for GPU telemetry
+      when: recount_gpu
+      block:
+        - name: Read the driver's CUDA major version
+          ansible.builtin.shell: nvidia-smi -q | sed -En 's/^CUDA Version[ :]+([0-9]+)[.].*/\1/p'
+          register: recount_cuda
+          changed_when: false
+          failed_when: recount_cuda.stdout not in ["12", "13"]
+
+        - name: Add NVIDIA's CUDA repository key
+          ansible.builtin.apt:
+            deb: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+
+        - name: Refuse a DCGM install that would replace the image's NVIDIA driver
+          ansible.builtin.shell: >-
+            apt-get update -qq &&
+            apt-get --simulate --no-install-recommends install
+            datacenter-gpu-manager-4-cuda{{ recount_cuda.stdout }}
+            datacenter-gpu-manager-4-proprietary
+            datacenter-gpu-manager-4-proprietary-cuda{{ recount_cuda.stdout }}
+          register: recount_dcgm_plan
+          changed_when: false
+          failed_when: >-
+            recount_dcgm_plan.rc != 0 or
+            recount_dcgm_plan.stdout is search('^(Remv |Inst (nvidia-driver|cuda-drivers|linux-image|libnvidia-compute))', multiline=True)
+
+        - name: Install DCGM with its profiling module
+          ansible.builtin.apt:
+            name:
+              - "datacenter-gpu-manager-4-cuda{{ recount_cuda.stdout }}"
+              - datacenter-gpu-manager-4-proprietary
+              - "datacenter-gpu-manager-4-proprietary-cuda{{ recount_cuda.stdout }}"
+            install_recommends: false
+            update_cache: true
+            cache_valid_time: 600
+          register: recount_dcgm
+          retries: 2
+          delay: 15
+          until: recount_dcgm is succeeded
+
+        - name: Start the DCGM host engine
+          ansible.builtin.systemd_service:
+            name: nvidia-dcgm
+            enabled: true
+            state: started
+
+    - name: Download the collector release
+      ansible.builtin.get_url:
+        url: "https://github.com/{{ recount_repository }}/releases/download/{{ recount_release }}/recount-collector-amd64.tar.gz"
+        dest: /tmp/recount-collector.tar.gz
+        checksum: "sha256:{{ recount_release_sha256 }}"
+        mode: "0600"
+
+    - name: Install the collector binary
+      ansible.builtin.unarchive:
+        src: /tmp/recount-collector.tar.gz
+        dest: /usr/local/bin
+        remote_src: true
+        include: [recount-collector]
+        mode: "0755"
+
+    - name: Stop the collector before re-enrolling it
+      when: recount_reenroll
+      ansible.builtin.systemd_service:
+        name: recount-collector
+        state: stopped
+      failed_when: false
+
+    - name: Forget the previous project's node identity and queue
+      when: recount_reenroll
+      ansible.builtin.file:
+        path: "{{ recount_state }}"
+        state: absent
+
+    - name: Create private collector directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop: [/etc/recount-collector, "{{ recount_state }}"]
+
+    - name: Install the enrollment key
+      ansible.builtin.copy:
+        src: "{{ recount_enrollment_key_file }}"
+        dest: /etc/recount-collector/enrollment.key
+        mode: "0600"
+      no_log: true
+
+    - name: Install the collector service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/recount-collector.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Recount collector (demo)
+          Wants=network-online.target
+          After=network-online.target{{ ' nvidia-dcgm.service' if recount_gpu else '' }}
+
+          [Service]
+          Environment=RECOUNT_COLLECTOR_ENROLLMENT_URL={{ recount_enrollment_url }}
+          Environment=OTEL_EXPORTER_OTLP_ENDPOINT={{ recount_endpoint }}
+          Environment=RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=/etc/recount-collector/enrollment.key
+          Environment=RECOUNT_COLLECTOR_STATE_DIRECTORY={{ recount_state }}/node
+          Environment=RECOUNT_COLLECTOR_QUEUE_DIRECTORY={{ recount_state }}/queue
+          Environment=RECOUNT_COLLECTOR_VISIBILITY=host
+          ExecStart=/usr/local/bin/recount-collector
+          Restart=on-failure
+          RestartSec=15
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start the collector
+      ansible.builtin.systemd_service:
+        name: recount-collector
+        enabled: true
+        state: restarted
+        daemon_reload: true
+
+    - name: Wait for enrollment
+      ansible.builtin.wait_for:
+        path: "{{ recount_state }}/node/node.json"
+        timeout: 120
+
+    - name: Remove the enrollment key once the node is enrolled
+      ansible.builtin.file:
+        path: /etc/recount-collector/enrollment.key
+        state: absent
+
+    - name: Run a labelled synthetic GPU workload
+      when: recount_gpu and recount_load
+      block:
+        - name: Install the workload loop
+          ansible.builtin.copy:
+            dest: /usr/local/bin/recount-demo-load
+            mode: "0755"
+            content: |
+              #!/usr/bin/env bash
+              # Each cycle of tensor, FP16 and FP32 load is one labelled execution.
+              set -uo pipefail
+              tester=$(command -v dcgmproftester{{ recount_cuda.stdout }})
+              cycle=0
+              while true; do
+                cycle=$((cycle + 1))
+                RECOUNT_EXECUTION="demo-$(date -u +%Y%m%dT%H%M)-$cycle" \
+                RECOUNT_EXECUTION_NAME="GPU demo workload $cycle" \
+                bash -c "for field in 1004 1008 1007; do $tester --no-dcgm-validation -i 0 -t \$field -d 60 >/dev/null 2>&1; sleep 10; done"
+                sleep 60
+              done
+
+        - name: Install the workload service
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/recount-demo-load.service
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Synthetic GPU workload for Recount demos
+              After=recount-collector.service
+
+              [Service]
+              ExecStart=/usr/local/bin/recount-demo-load
+              Restart=always
+
+              [Install]
+              WantedBy=multi-user.target
+
+        - name: Start the workload
+          ansible.builtin.systemd_service:
+            name: recount-demo-load
+            enabled: true
+            state: started
+            daemon_reload: true

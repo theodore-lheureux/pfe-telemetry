@@ -1,0 +1,19 @@
+# Store a project's enrollment key, read from stdin.
+key project:
+    python3 demo.py key "{{ project }}"
+
+# Start temporary collectors: --project NAME [--gpu] [--load] [--ttl 2h] [--count 1].
+up *args:
+    python3 demo.py up {{ args }}
+
+# Show running demo collectors and when they expire.
+list:
+    python3 demo.py list
+
+# Re-enroll a collector into another project: NAME --project NAME.
+move name *args:
+    python3 demo.py move "{{ name }}" {{ args }}
+
+# Delete demo collectors by name, or all of them with --all.
+down *args:
+    python3 demo.py down {{ args }}

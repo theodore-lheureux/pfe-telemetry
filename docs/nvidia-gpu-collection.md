@@ -238,13 +238,26 @@ Utilization cursors are per UUID. Flush bootstrap history, process every PID sha
 
 The templates rework is already on this base, so no GPU dashboard template, GPU page or component is added. Web presentation changes are limited to friendly EN/FR metric names and shared UCUM formatting. The separately approved enrollment default/migration is backend authorization, not GPU UI.
 
-The completed diff is reviewed directly by the owner; do not open Plannotator or commit automatically. Missing per-process/job pipe counters and unvalidated historical process attribution remain explicit coverage limits, not zeros or inferred measurements.
+Missing per-process/job pipe counters and unvalidated historical process attribution remain explicit coverage limits, not zeros or inferred measurements.
 
-## Hardware validation after authorization
+## Hardware validation
 
-For an owner-provisioned Google Cloud L4/T4/A10 VM and the full collector-to-storage path, use the prepared [NVIDIA GPU validation runner](../infra/gpu-lab/README.md). It builds the exact source snapshot natively, installs matching DCGM packages only when explicitly run, uses fingerprint-pinned SSH reverse tunnels, and keeps a dedicated project's mandatory ClickHouse and optional authenticated browser evidence. Profiling expectations come from `dcgmi profile -l` on that host, not the GPU model. The commands below remain standalone acquisition probes, not a replacement for that end-to-end gate.
+Check the full collector-to-storage path on a temporary Google Cloud GPU with the
+[demo collectors](../infra/demo/README.md):
 
-The owner starts the lab. First run its existing `smoke.sh` through the owner's SSM workflow to verify bootstrap, expiry timer, driver and DCGM service. Do not edit that worktree. Then, on the already-running host with the reviewed source snapshot and Rust 1.99 available:
+```sh
+just demo up --project "GPU demo" --gpu --load --ttl 2h
+```
+
+It starts a Spot L4 (falling back to a T4), installs DCGM without replacing the
+image's driver, installs the collector from the latest attested release and
+runs labelled tensor, FP16 and FP32 load. Check the project's GPU metrics and
+executions in the app, or `telemetry.metric_points` in ClickHouse. Profiling
+expectations come from `dcgmi profile -l` on that host, not the GPU model.
+
+To record the capability catalogue and raw readings of a new GPU model, run the
+standalone probes on such a host with the source checkout and Rust 1.99
+available:
 
 ```sh
 nvidia-smi
