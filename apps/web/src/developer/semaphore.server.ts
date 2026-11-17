@@ -360,14 +360,13 @@ export class Semaphore {
 		)
 			throw new OperationError("NOT_FOUND", "Task not found");
 		await this.authorizeTaskLab(task.data, match.action, guard);
-		if (!match.action.startsWith("create") && !isLoadAction(match.action))
-			return "";
+		if (match.action === "list") return "";
 		const result = z
 			.array(z.object({ output: z.string() }))
 			.safeParse(await this.request(`tasks/${taskId}/output`));
 		if (!result.success) return unavailable();
 		return publicTaskOutput(
-			result.data.slice(-500).map(({ output }) => output),
+			result.data.map(({ output }) => output),
 			{
 				action: match.action,
 				projectId,

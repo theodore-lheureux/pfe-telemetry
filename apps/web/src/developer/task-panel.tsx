@@ -136,7 +136,7 @@ export function TaskPanel({
 									aria-label={`#${task.id} · ${labels[task.action]}`}
 									aria-pressed={taskId === task.id}
 									className={cn(
-										"h-auto w-full justify-start gap-2 whitespace-normal rounded-lg border border-border px-3 py-2.5 text-left",
+										"h-auto! w-full justify-start gap-2 whitespace-normal rounded-lg border border-border px-3 py-2.5 text-left",
 										taskId === task.id && "border-primary/40 bg-accent/40",
 									)}
 									onClick={() => selectTask(task.id)}

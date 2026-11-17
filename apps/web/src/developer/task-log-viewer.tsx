@@ -5,7 +5,7 @@ export default function TaskLogViewer({ text }: { text: string }) {
 	return (
 		<div className="h-[360px] overflow-hidden rounded-lg border">
 			<LazyLog
-				text={text || m.developer_output_empty()}
+				text={text}
 				height={360}
 				enableSearch
 				enableLineNumbers

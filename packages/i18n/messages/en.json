@@ -36,7 +36,7 @@
   "developer_generated": "Auto-generated",
   "developer_refresh": "Refresh tasks",
   "developer_no_tasks": "No tasks yet",
-  "developer_output_empty": "No public output yet.",
+  "developer_output_empty": "No public results available. Open the task in Semaphore to see the full log.",
   "developer_close_output": "Close task output",
   "developer_queueing": "Queueing…",
   "developer_status_waiting": "Queued",

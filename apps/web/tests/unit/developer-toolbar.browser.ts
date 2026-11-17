@@ -221,6 +221,41 @@ test("task output is text, and closing/account changes retire private view", asy
 	expect(reads).toBeGreaterThan(0);
 });
 
+test("task output without public results points to the native log", async ({
+	page,
+}) => {
+	await page.route("**/fixture-rpc/tasks", (route) =>
+		route.fulfill({
+			json: {
+				data: [
+					{
+						id: 29,
+						action: "create-cpu",
+						status: "running",
+						created: "2026-11-17T18:51:42Z",
+						nativeUrl: "https://semaphore.example/project/1/history?t=29",
+					},
+				],
+				error: null,
+			},
+		}),
+	);
+	await page.route("**/fixture-rpc/output", (route) =>
+		route.fulfill({ json: { data: "", error: null } }),
+	);
+	await page.goto("/");
+	await page.getByRole("button", { name: "Recount" }).click();
+	await page.getByRole("tab", { name: "Activity" }).click();
+	await page.getByRole("button", { name: "#29" }).click();
+	await expect(
+		page.getByRole("region", { name: "Redacted task output", exact: true }),
+	).toContainText("No public results available.");
+	await expect(
+		page.getByRole("link", { name: "Open in Semaphore" }),
+	).toHaveAttribute("href", "https://semaphore.example/project/1/history?t=29");
+	await expect(page.getByPlaceholder("Search output")).toHaveCount(0);
+});
+
 test("load forms expose bounded profiles and durations without the old Create/Configure flag", async ({
 	page,
 }) => {

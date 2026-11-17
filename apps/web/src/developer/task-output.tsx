@@ -49,7 +49,15 @@ export function TaskOutput({
 					{m.developer_error()}
 				</p>
 			)}
-			{!error && (
+			{!error && !loading && !text?.trim() && (
+				<p
+					role="status"
+					className="rounded-lg border p-3 text-sm text-muted-foreground"
+				>
+					{m.developer_output_empty()}
+				</p>
+			)}
+			{!error && (loading || Boolean(text?.trim())) && (
 				<Suspense fallback={<p role="status">{m.loading()}</p>}>
 					{loading ? (
 						<p role="status">{m.loading()}</p>

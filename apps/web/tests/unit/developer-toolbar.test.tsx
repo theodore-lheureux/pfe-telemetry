@@ -792,6 +792,9 @@ describe("pinned Semaphore API connector", () => {
 			"tasks/20": { ...task, environment, message },
 			"tasks/20/output": [
 				{ output: `private diagnostic\n    ${marker}\nsecret token` },
+				...Array.from({ length: 516 }, () => ({
+					output: "private diagnostic",
+				})),
 			],
 		});
 		expect(JSON.parse(await connector.output(reference.projectId, 20))).toEqual(

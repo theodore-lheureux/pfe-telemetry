@@ -207,15 +207,17 @@ Application authentication also clears the shared QueryClient on identity change
 Selecting a task opens its output beside the list on wider screens. On mobile it
 opens a separate output view with a Back control. The on-demand
 `@melloware/react-logviewer` component provides search, line numbers, selection and
-virtualized scrolling. It receives only reserialized validated public results, never an upstream
-URL or credentials; remote loading, link detection and global search hotkeys are
-not enabled. Authorized task links use Semaphore's native
+virtualized scrolling. It receives only recognized Ansible step names and validated
+public results, never an upstream URL or credentials. Remote loading, link
+detection and global search hotkeys are not enabled. Authorized task links use Semaphore's native
 `/project/{id}/history?t={taskId}` route and require the viewer's own Semaphore
 sign-in, never the connector token.
 
 Arbitrary Ansible output may contain secrets unknown to the web application.
-Raw output is never forwarded. The parser accepts only full-line native debug
-JSON key/value records, with optional surrounding whitespace:
+Raw output is never forwarded. The viewer shows a fixed allowlist of step names
+as the task progresses, without arguments, hostnames, or error details. For
+structured results, the parser accepts full-line native debug JSON key/value
+records with optional surrounding whitespace:
 
 ```text
 "msg": "RECOUNT_PUBLIC_CREATE <canonical base64>"
@@ -245,14 +247,14 @@ Node cardinality, unique names, states, elapsed-time/counter bounds, CPU reducti
 totals and pi estimates, GPU profiler fields and exit statuses are validated.
 Native task success is not interpreted as job completion. Repeated snapshots may
 update one job; conflicting job or generated-lab identities withhold the result.
-No valid record means no public output. Task scope, canonical project access and
-current load lab grants are checked before output is parsed.
+Without a valid record, only recognized step names appear. Task scope, canonical
+project access and current load lab grants are checked before output is parsed.
 
 List currently enumerates the entire demo fleet. Its output remains entirely
 withheld, even when the native template is project-bound: a project group alone
 does not establish per-VM ownership. List has no native output link in the
-toolbar. List and all other unsupported output actions
-do not fetch raw task output. No VM counts, TTL or fleet ownership are inferred.
+toolbar and does not fetch raw task output. No VM counts, TTL or fleet ownership
+are inferred.
 Exposing List requires executor-verified per-project ownership and an agreed
 structured inventory contract. Destroy retains its explicit existing-lab grant
 and project checks. No infrastructure changes are included with the toolbar.

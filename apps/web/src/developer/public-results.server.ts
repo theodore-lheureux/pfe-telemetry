@@ -7,6 +7,7 @@ import {
 	type WorkflowAction,
 	workflowFleet,
 } from "./contracts";
+import { publicTaskProgress } from "./task-progress.server";
 
 const maximumDecodedBytes = 65_536;
 const maximumEncodedLength = Math.ceil(maximumDecodedBytes / 3) * 4;
@@ -269,8 +270,12 @@ export function parsePublicTaskLine(
 
 export function publicTaskOutput(lines: string[], scope: PublicResultScope) {
 	let selected: PublicTaskResult | null = null;
+	let conflicting = false;
+	const progress = new Set<string>();
 	for (const output of lines) {
 		for (const line of output.split("\n")) {
+			const step = publicTaskProgress(line);
+			if (step) progress.add(step);
 			const parsed = parsePublicTaskLine(line, scope);
 			if (!parsed) continue;
 			if (
@@ -279,16 +284,18 @@ export function publicTaskOutput(lines: string[], scope: PublicResultScope) {
 				parsed.kind === "create" &&
 				selected.result.lab_id !== parsed.result.lab_id
 			)
-				return "";
+				conflicting = true;
 			if (
 				selected &&
 				selected.kind === "load" &&
 				parsed.kind === "load" &&
 				selected.result.job_id !== parsed.result.job_id
 			)
-				return "";
+				conflicting = true;
 			selected = parsed;
 		}
 	}
-	return selected ? JSON.stringify(selected.result, null, 2) : "";
+	const result =
+		selected && !conflicting ? JSON.stringify(selected.result, null, 2) : "";
+	return [[...progress].join("\n"), result].filter(Boolean).join("\n\n");
 }

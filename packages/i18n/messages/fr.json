@@ -36,7 +36,7 @@
   "developer_generated": "Généré automatiquement",
   "developer_refresh": "Actualiser les tâches",
   "developer_no_tasks": "Aucune tâche",
-  "developer_output_empty": "Aucune sortie publique pour le moment.",
+  "developer_output_empty": "Aucun résultat public disponible. Ouvrez la tâche dans Semaphore pour consulter le journal complet.",
   "developer_close_output": "Fermer la sortie de tâche",
   "developer_queueing": "Mise en file…",
   "developer_status_waiting": "En file",
