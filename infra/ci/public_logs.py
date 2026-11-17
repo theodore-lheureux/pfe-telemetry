@@ -6,7 +6,6 @@ import json
 import os
 import re
 import subprocess
-from collections import Counter
 from pathlib import Path
 
 IDENTIFIERS = (
@@ -35,9 +34,6 @@ PRIVATE_PATTERNS = (
     re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
     re.compile(r"\b[0-9a-fA-F]{32}\b"),
 )
-HCL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-ACTIONS = {"create", "read", "update", "replace", "delete", "move", "import"}
-ANSI_ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))")
 
 
 def strings(value):
@@ -104,31 +100,6 @@ def write_plan_summary(masked_plan, environ):
         )
 
 
-def host_failure_tail(environ, path=None):
-    path = path or Path(".state/oci-deploy-execution.json")
-    if not path.is_file():
-        print(
-            "No OCI host execution output was captured; inspect the request privately."
-        )
-        return
-    status = json.loads(path.read_text(), strict=False)
-    content = status.get("content") or {}
-    text = content.get("text") or content.get("message") or ""
-    text = ANSI_ESCAPE.sub("", text).replace("\r\n", "\n").replace("\r", "\n")
-    text = "".join(
-        character
-        for character in text
-        if character in "\n\t" or character.isprintable()
-    )
-    values = mask(environ, text)
-    masked = redact(text, values)
-    tail = "\n".join(masked.splitlines()[-40:])[-4096:]
-    code = content.get("exit-code")
-    print(f"OCI host exit code: {code if type(code) is int else 'unknown'}")
-    print("Redacted OCI host output tail:")
-    print(tail or "No host output was returned by OCI.")
-
-
 def collectors_configuration(environ):
     mask(environ)
     raw = environ.get("COLLECTORS_TFVARS_JSON", "").strip()
@@ -148,85 +119,6 @@ def collectors_configuration(environ):
     Path("infra/aws-collectors/terraform.tfvars.json").write_text(json.dumps(values))
 
 
-def summary(output, operation):
-    changes = Counter()
-    totals = None
-    for line in output.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(event, dict):
-            continue
-        if event.get("type") == "planned_change":
-            change = event.get("change", {})
-            resource = change.get("resource", {})
-            kind, name, action = (
-                resource.get("resource_type", ""),
-                resource.get("resource_name", ""),
-                change.get("action"),
-            )
-            if (
-                HCL_NAME.fullmatch(kind)
-                and HCL_NAME.fullmatch(name)
-                and action in ACTIONS
-            ):
-                changes[(kind, name, action)] += 1
-            if (
-                HCL_NAME.fullmatch(kind)
-                and HCL_NAME.fullmatch(name)
-                and change.get("importing")
-                and action != "import"
-            ):
-                changes[(kind, name, "import")] += 1
-        if event.get("type") == "change_summary":
-            value = event.get("changes", {})
-            counts = [value.get(key) for key in ("add", "change", "remove")]
-            if value.get("operation") == operation and all(
-                type(count) is int and count >= 0 for count in counts
-            ):
-                totals = counts
-    if totals is None:
-        raise ValueError("No recognized OpenTofu summary")
-    lines = [
-        f"# {kind}.{name}: {action} ({count})"
-        for (kind, name, action), count in sorted(changes.items())
-    ]
-    added, changed, removed = totals
-    if operation == "plan":
-        lines.append(
-            f"Plan: {added} to add, {changed} to change, {removed} to destroy."
-        )
-    else:
-        lines.append(
-            f"Apply complete! Resources: {added} added, {changed} changed, {removed} destroyed."
-        )
-    return lines
-
-
-def error_diagnostics(output, values):
-    errors = []
-    for line in output.splitlines():
-        try:
-            event = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(event, dict) or event.get("type") != "diagnostic":
-            continue
-        diagnostic = event.get("diagnostic", {})
-        if not isinstance(diagnostic, dict):
-            continue
-        if diagnostic.get("severity") != "error":
-            continue
-        text = f"Error: {diagnostic.get('summary', 'OpenTofu apply failed')}"
-        if diagnostic.get("address"):
-            text += f"\n  with {diagnostic['address']}"
-        if diagnostic.get("detail"):
-            text += f"\n{diagnostic['detail']}"
-        errors.append(text)
-    return redact("\n\n".join(errors) if errors else output, values)
-
-
 def run_tofu(root, operation, environ):
     mask(environ)
     command = [
@@ -236,12 +128,8 @@ def run_tofu(root, operation, environ):
         "-no-color",
         "-input=false",
         "-lock-timeout=5m",
+        "-out=deployment.tfplan" if operation == "plan" else "deployment.tfplan",
     ]
-    command.append(
-        "-out=deployment.tfplan" if operation == "plan" else "deployment.tfplan"
-    )
-    if operation == "apply":
-        command.append("-json")
     result = subprocess.run(
         command,
         stdout=subprocess.PIPE,
@@ -250,26 +138,22 @@ def run_tofu(root, operation, environ):
         env=environ,
         check=False,
     )
-    values = mask(environ, result.stdout)
-    if operation == "plan":
-        masked_plan = redact(result.stdout, values)
-        print(masked_plan, end="", flush=True)
-        write_plan_summary(masked_plan, environ)
-        return result.returncode
+    # Plans and apply output name runtime values (addresses, created resource IDs,
+    # provider tags) that are not secrets, so they are redacted before printing.
+    output = redact(result.stdout, mask(environ, result.stdout))
     if result.returncode:
-        print(f"::error::OpenTofu {operation} failed; redacted diagnostics follow.")
-        print(error_diagnostics(result.stdout, values), flush=True)
-        return result.returncode
-    for line in summary(result.stdout, operation):
-        print(line)
-    return 0
+        print(f"::error::OpenTofu {operation} failed; redacted output follows.")
+    print(output, end="", flush=True)
+    if operation == "plan":
+        write_plan_summary(output, environ)
+    return result.returncode
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "operation",
-        choices=["mask", "collectors-configuration", "plan", "apply", "host-failure"],
+        choices=["mask", "collectors-configuration", "plan", "apply"],
     )
     parser.add_argument(
         "root", nargs="?", choices=["infra/oracle-stack", "infra/aws-collectors"]
@@ -280,9 +164,6 @@ def main():
         return 0
     if args.operation == "collectors-configuration":
         collectors_configuration(os.environ)
-        return 0
-    if args.operation == "host-failure":
-        host_failure_tail(os.environ)
         return 0
     if not args.root:
         parser.error("plan/apply requires a selected deployment root")

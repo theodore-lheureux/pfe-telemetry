@@ -117,46 +117,6 @@ class PublicLogTests(unittest.TestCase):
         self.assertNotIn("::add-mask::true\n", output.getvalue())
         self.assertNotIn("::add-mask::false\n", output.getvalue())
 
-    def test_public_summary_never_contains_resource_keys_tags_or_outputs(self):
-        lines = public_logs.summary(event_stream(), "plan")
-        self.assertEqual(
-            lines,
-            [
-                "# oci_core_security_list.ingestion: update (1)",
-                "Plan: 1 to add, 1 to change, 0 to destroy.",
-            ],
-        )
-        self.assertEqual(
-            public_logs.summary(event_stream("apply"), "apply")[-1],
-            "Apply complete! Resources: 1 added, 1 changed, 0 destroyed.",
-        )
-        for private in ("owner@", "ocid1.", "private-key"):
-            self.assertNotIn(private, "\n".join(lines))
-
-    def test_import_summary_omits_the_imported_identifier(self):
-        events = [
-            {
-                "type": "planned_change",
-                "change": {
-                    "resource": {
-                        "resource_type": "oci_core_security_list",
-                        "resource_name": "ingestion",
-                    },
-                    "action": "noop",
-                    "importing": {"id": "ocid1.securitylist.oc1.private"},
-                },
-            },
-            {
-                "type": "change_summary",
-                "changes": {"add": 0, "change": 0, "remove": 0, "operation": "plan"},
-            },
-        ]
-        lines = public_logs.summary(
-            "\n".join(json.dumps(event) for event in events), "plan"
-        )
-        self.assertIn("# oci_core_security_list.ingestion: import (1)", lines)
-        self.assertNotIn("ocid1.", "\n".join(lines))
-
     def test_failed_tofu_plan_diagnostics_are_redacted(self):
         output = io.StringIO()
         with (
@@ -220,29 +180,21 @@ class PublicLogTests(unittest.TestCase):
         self.assertNotIn("example.test", visible)
 
     def test_failed_apply_emits_useful_redacted_diagnostics(self):
-        diagnostic = {
-            "type": "diagnostic",
-            "diagnostic": {
-                "severity": "error",
-                "summary": "404-NotAuthorizedOrNotFound",
-                "address": "oci_core_volume_attachment.data[0]",
-                "detail": (
-                    "AttachVolume denied for ocid1.instance.oc1.private; "
-                    "account=123456789012; actor=owner@example.test; "
-                    "key=synthetic-access-key; zone=aabbccddaabbccddaabbccddaabbccdd; "
-                    "origin=192.0.2.10"
-                ),
-            },
-        }
+        diagnostic = (
+            "Error: 404-NotAuthorizedOrNotFound\n"
+            "  with oci_core_volume_attachment.data[0]\n"
+            "AttachVolume denied for ocid1.instance.oc1.private; "
+            "account=123456789012; actor=owner@example.test; "
+            "key=synthetic-access-key; zone=aabbccddaabbccddaabbccddaabbccdd; "
+            "origin=192.0.2.10\n"
+        )
         output = io.StringIO()
         with (
             patch.object(public_logs.subprocess, "run") as process,
             contextlib.redirect_stdout(output),
         ):
             process.return_value.returncode = 1
-            process.return_value.stdout = (
-                event_stream("apply") + "\n" + json.dumps(diagnostic)
-            )
+            process.return_value.stdout = diagnostic
             result = public_logs.run_tofu(
                 "infra/oracle-stack",
                 "apply",
@@ -266,7 +218,6 @@ class PublicLogTests(unittest.TestCase):
             "192.0.2.10",
         ):
             self.assertNotIn(private, visible)
-        self.assertNotIn('"outputs"', visible)
 
     def test_plain_apply_failure_also_keeps_diagnostics_and_masks_private_values(self):
         output = io.StringIO()
@@ -290,70 +241,6 @@ class PublicLogTests(unittest.TestCase):
         )
         self.assertIn("Error acquiring the state lock", visible)
         self.assertNotIn("private-state-bucket", visible)
-
-    def test_host_failure_tail_normalizes_controls_and_redacts_runtime_values(self):
-        text = (
-            "older output must not be shown\n" * 50
-            + "recent context\n" * 40
-            + "\x1b[31mHost failed\x1b[0m\r\n"
-            + "id=ocid1.inst\x1b[31mance.oc1.private\x1b[0m\x00\n"
-            + "owner+host@example.test 192.0.2.10 aabbccddaabbccddaabbccddaabbccdd\n"
-            + "key=synthetic-secret\n"
-            + "database=postgresql://runtime:host-password@postgres:5432/recount\n"
-        )
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "execution.json"
-            path.write_text(json.dumps({"content": {"exit-code": 1, "text": text}}))
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                public_logs.host_failure_tail(
-                    {"AWS_SECRET_ACCESS_KEY": "synthetic-secret"},
-                    path,
-                )
-            visible = "\n".join(
-                line
-                for line in output.getvalue().splitlines()
-                if not line.startswith("::add-mask::")
-            )
-            self.assertIn("OCI host exit code: 1", visible)
-            self.assertIn("Host failed", visible)
-            for private in (
-                "ocid1.instance.oc1.private",
-                "owner+host@example.test",
-                "192.0.2.10",
-                "aabbccddaabbccddaabbccddaabbccdd",
-                "synthetic-secret",
-                "host-password",
-            ):
-                self.assertNotIn(private, visible)
-            self.assertNotIn("\x1b", visible)
-            self.assertNotIn("\x00", visible)
-            self.assertNotIn("\r", visible)
-            self.assertNotIn("older output", visible)
-
-    def test_absent_host_receipt_is_not_reported_as_a_host_failure(self):
-        with tempfile.TemporaryDirectory() as directory:
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                public_logs.host_failure_tail({}, Path(directory) / "absent.json")
-            self.assertIn(
-                "No OCI host execution output was captured", output.getvalue()
-            )
-
-    def test_host_output_is_redacted_before_tail_truncation(self):
-        secret = "synthetic-secret-" * 12
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "execution.json"
-            path.write_text(json.dumps({"content": {"text": secret + "y" * 4000}}))
-            output = io.StringIO()
-            with contextlib.redirect_stdout(output):
-                public_logs.host_failure_tail({"AWS_SECRET_ACCESS_KEY": secret}, path)
-            visible = "\n".join(
-                line
-                for line in output.getvalue().splitlines()
-                if not line.startswith("::add-mask::")
-            )
-            self.assertNotIn("synthetic", visible)
 
     def test_configured_collectors_emit_true_and_write_only_private_tfvars(self):
         with tempfile.TemporaryDirectory() as directory:
