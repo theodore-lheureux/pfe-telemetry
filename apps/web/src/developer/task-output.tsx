@@ -22,7 +22,10 @@ export function TaskOutput({
 	onBack: () => void;
 }) {
 	return (
-		<section aria-label={m.developer_logs()} className="min-w-0 space-y-3">
+		<section
+			aria-label={m.developer_logs()}
+			className="ph-no-capture rr-block min-w-0 space-y-3"
+		>
 			<div className="flex items-center justify-between gap-2">
 				<Button variant="ghost" size="xs" onClick={onBack}>
 					<ArrowLeftIcon aria-hidden="true" />

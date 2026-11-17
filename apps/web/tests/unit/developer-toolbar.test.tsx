@@ -702,7 +702,7 @@ describe("pinned Semaphore API connector", () => {
 				expect(values).not.toHaveProperty("DEMO_FLEET");
 		}
 	});
-	test("load history and output independently recheck the current lab grant and keep native results withheld", async () => {
+	test("load history and output independently recheck the current lab grant", async () => {
 		const action: WorkflowAction = "load-status";
 		const environment = JSON.stringify({
 			DEMO_LAB: "demo-load",
@@ -748,9 +748,9 @@ describe("pinned Semaphore API connector", () => {
 		const allowed = operations(fixture().connector).api;
 		expect(
 			await allowed.output(database, actor, { ...reference, taskId: 20 }),
-		).toBe("");
+		).toBe("[redacted]");
 	});
-	test("logs with tokens, enrollment keys, variable groups or injected HTML never cross the boundary", async () => {
+	test("structured results reject untrusted log text and native logs redact credential lines", async () => {
 		for (const line of [
 			config.token,
 			"DEMO_ENROLLMENT_KEY=secret",
@@ -766,7 +766,7 @@ describe("pinned Semaphore API connector", () => {
 				}),
 			).toBe("");
 		const { connector } = upstream();
-		expect(await connector.output(reference.projectId, 20)).toBe("");
+		expect(await connector.output(reference.projectId, 20)).toBe("[redacted]");
 	});
 	test("cannot fetch output from another template or project", async () => {
 		const { connector, calls } = upstream({
@@ -791,15 +791,19 @@ describe("pinned Semaphore API connector", () => {
 		const { connector, calls } = upstream({
 			"tasks/20": { ...task, environment, message },
 			"tasks/20/output": [
-				{ output: `private diagnostic\n    ${marker}\nsecret token` },
+				{
+					output: `TASK [Create collectors] ****\n    ${marker}\nAWS_SECRET_ACCESS_KEY=example`,
+				},
 				...Array.from({ length: 516 }, () => ({
 					output: "private diagnostic",
 				})),
 			],
 		});
-		expect(JSON.parse(await connector.output(reference.projectId, 20))).toEqual(
-			payload,
-		);
+		const output = await connector.output(reference.projectId, 20);
+		expect(output).toStartWith("TASK [Create collectors] ****\n[redacted]");
+		expect(output).not.toContain("AWS_SECRET_ACCESS_KEY");
+		expect(output).not.toContain("RECOUNT_PUBLIC_CREATE");
+		expect(output).toEndWith(JSON.stringify(payload, null, 2));
 		expect(calls.some((call) => call.path.endsWith("/output"))).toBe(true);
 		const mismatched = upstream({
 			"tasks/20": { ...task, id: 21, environment, message },

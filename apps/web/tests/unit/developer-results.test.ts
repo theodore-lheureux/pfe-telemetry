@@ -344,19 +344,4 @@ describe("producer public result contract", () => {
 		).toBe("");
 		expect(publicTaskOutput(raw, { ...loadScope, action: "list" })).toBe("");
 	});
-	test("shows recognized Ansible steps without forwarding arbitrary log text", () => {
-		const step = "TASK [Apply the saved create plan once] ***************";
-		expect(
-			publicTaskOutput(
-				[
-					step,
-					"changed: [private-host] => secret",
-					"TASK [private-token] ***************",
-					`${step} secret`,
-					step,
-				],
-				{ ...loadScope, action: "create-cpu" },
-			),
-		).toBe("TASK [Apply the saved create plan once]");
-	});
 });

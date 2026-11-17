@@ -207,17 +207,17 @@ Application authentication also clears the shared QueryClient on identity change
 Selecting a task opens its output beside the list on wider screens. On mobile it
 opens a separate output view with a Back control. The on-demand
 `@melloware/react-logviewer` component provides search, line numbers, selection and
-virtualized scrolling. It receives only recognized Ansible step names and validated
-public results, never an upstream URL or credentials. Remote loading, link
-detection and global search hotkeys are not enabled. Authorized task links use Semaphore's native
+virtualized scrolling. It shows the native Ansible transcript by default, with
+recognized credential patterns masked and validated results appended. Remote
+loading, link detection and global search hotkeys are not enabled. Task links use Semaphore's native
 `/project/{id}/history?t={taskId}` route and require the viewer's own Semaphore
 sign-in, never the connector token.
 
-Arbitrary Ansible output may contain secrets unknown to the web application.
-Raw output is never forwarded. The viewer shows a fixed allowlist of step names
-as the task progresses, without arguments, hostnames, or error details. For
-structured results, the parser accepts full-line native debug JSON key/value
-records with optional surrounding whitespace:
+Every log fetch requires developer allowlist membership, project access and a
+verified task binding. The response is private and not cacheable. Redaction is
+defense in depth, not a substitute for Ansible `no_log`; do not print secrets
+from playbooks. Structured results are extracted from full-line native debug
+JSON key/value records with optional surrounding whitespace:
 
 ```text
 "msg": "RECOUNT_PUBLIC_CREATE <canonical base64>"
@@ -228,7 +228,7 @@ Only syntactically valid SGR colour sequences are stripped. Cursor-control
 sequences, OSC, backspaces, partial escapes, arbitrary prefixes/suffixes, noncanonical
 base64 and invalid UTF-8/JSON are rejected. Decoded payloads are capped at 65,536
 bytes. Unknown object fields are rejected at every level. Accepted records are
-reserialized as JSON; the raw line, base64 and surrounding logs are never returned.
+reserialized as JSON rather than showing the original encoded record.
 
 `RECOUNT_PUBLIC_CREATE` is accepted only for Create CPU/GPU. The strict payload is
 `{lab_id, ttl}`. TTL must match the task's signed survey. An explicit lab must match
@@ -247,8 +247,8 @@ Node cardinality, unique names, states, elapsed-time/counter bounds, CPU reducti
 totals and pi estimates, GPU profiler fields and exit statuses are validated.
 Native task success is not interpreted as job completion. Repeated snapshots may
 update one job; conflicting job or generated-lab identities withhold the result.
-Without a valid record, only recognized step names appear. Task scope, canonical
-project access and current load lab grants are checked before output is parsed.
+Without a valid record, the redacted transcript still appears. Current load lab
+grants are checked before load output is parsed.
 
 List currently enumerates the entire demo fleet. Its output remains entirely
 withheld, even when the native template is project-bound: a project group alone

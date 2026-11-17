@@ -13,6 +13,7 @@ import {
 	type WorkflowInput,
 	workflowFleet,
 } from "./contracts";
+import { redactNativeLog } from "./native-log.server";
 import { publicTaskOutput } from "./public-results.server";
 import { surveyNames, validActionMetadata } from "./template-metadata.server";
 
@@ -365,13 +366,13 @@ export class Semaphore {
 			.array(z.object({ output: z.string() }))
 			.safeParse(await this.request(`tasks/${taskId}/output`));
 		if (!result.success) return unavailable();
-		return publicTaskOutput(
-			result.data.map(({ output }) => output),
-			{
-				action: match.action,
-				projectId,
-				survey: JSON.parse(task.data.environment || "{}"),
-			},
-		);
+		const lines = result.data.map(({ output }) => output);
+		const log = redactNativeLog(lines, this.config.token);
+		const summary = publicTaskOutput(lines, {
+			action: match.action,
+			projectId,
+			survey: JSON.parse(task.data.environment || "{}"),
+		});
+		return [log, summary].filter(Boolean).join("\n\n");
 	}
 }
