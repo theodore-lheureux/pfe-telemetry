@@ -5,12 +5,15 @@ import { createAuth } from "../../src/auth/create-auth.server";
 import * as executions from "../../src/executions/executions.server";
 import type {
 	readExecutionFacts,
+	readExecutionFilterOptions,
 	readExecutions,
 } from "../../src/executions/participants.server";
+import { parseExecutionList } from "../../src/executions/validation";
 import type { OperationResult } from "../../src/lib/operation-result";
 import * as organizations from "../../src/organizations/organizations.server";
 import * as projects from "../../src/organizations/projects.server";
 import { trustedActor } from "../auth-actors";
+import { createTestNode } from "../collector-node";
 import { createTestDatabase } from "../database";
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -96,6 +99,9 @@ async function scenario() {
 		environmentVariables: ["SLURM_JOB_ID"],
 		firstSeen: new Date("2026-11-03T10:00:00Z"),
 		lastSeen: new Date("2026-11-03T11:00:00Z"),
+		running: false,
+		nodeIds: [] as string[],
+		ownerUids: [1000],
 	};
 	let reads = 0;
 	const read: typeof readExecutions = async (projectId, selector = {}) => {
@@ -261,7 +267,7 @@ test("execution pagination returns key cursors and propagates analytics failures
 	expect(first.nextCursor).toBe("run:049");
 	const read: typeof readExecutions = async (projectId, selector) => {
 		expect(projectId).toBe(f.reference.projectId);
-		expect(selector).toEqual({ afterKey: "run:049" });
+		expect(selector).toEqual({ afterKey: "run:049", filters: {} });
 		return [entries[50]];
 	};
 	const second = data(
@@ -336,4 +342,99 @@ test("identical execution keys do not grant reads in another project or organiza
 		}
 	}
 	expect(f.reads()).toBe(0);
+});
+
+test("execution filters reach the reader and node names stay within the project", async () => {
+	const f = await scenario();
+	const other = await scenario();
+	const local = await createTestNode(database.db, f.reference, {
+		hostname: "compute-a",
+	});
+	const foreign = await createTestNode(database.db, other.reference, {
+		hostname: "foreign-host",
+	});
+	const input = parseExecutionList({
+		...f.reference,
+		q: "job",
+		application: ["Distributed job"],
+		state: "running",
+		machine: [local.nodeId.toUpperCase()],
+		owner: [1000, 0],
+		from: new Date("2026-11-03T00:00:00Z"),
+		to: new Date("2026-11-04T00:00:00Z"),
+	});
+	const { organizationId: _, projectId: __, ...filters } = input;
+	let seen: Parameters<typeof readExecutions>[1];
+	const read: typeof readExecutions = async (projectId, selector) => {
+		expect(projectId).toBe(f.reference.projectId);
+		seen = selector;
+		return [
+			{
+				...f.entry,
+				nodeIds: [local.nodeId, foreign.nodeId, "fixture-node"],
+			},
+		];
+	};
+	const page = data(
+		await requests(f.viewer.headers, (actor) =>
+			executions.listExecutions(database.db, actor, input, undefined, read),
+		),
+	);
+	expect(seen).toEqual({ afterKey: undefined, filters });
+	expect(filters.machine).toEqual([local.nodeId]);
+	expect(page.nodes).toEqual([
+		{ id: local.nodeId, hostname: "compute-a" },
+		{ id: foreign.nodeId, hostname: null },
+		{ id: "fixture-node", hostname: null },
+	]);
+	expect(JSON.stringify(page)).not.toContain("foreign-host");
+});
+
+test("filter options require project access, name only the project's nodes and offer only node UUIDs", async () => {
+	const f = await scenario();
+	const other = await scenario();
+	const local = await createTestNode(database.db, f.reference, {
+		hostname: "compute-a",
+	});
+	const foreign = await createTestNode(database.db, other.reference, {
+		hostname: "foreign-host",
+	});
+	let reads = 0;
+	const read: typeof readExecutionFilterOptions = async (projectId) => {
+		reads++;
+		expect(projectId).toBe(f.reference.projectId);
+		return {
+			applications: ["Distributed job"],
+			machines: [local.nodeId, foreign.nodeId, "fixture-node"],
+			owners: [0, 1000],
+		};
+	};
+	const options = (headers: Headers, reference = f.reference) =>
+		requests(headers, (actor) =>
+			executions.listExecutionFilterOptions(
+				database.db,
+				actor,
+				reference,
+				undefined,
+				read,
+			),
+		);
+	for (const reader of [f.owner, f.viewer])
+		expect(data(await options(reader.headers))).toEqual({
+			applications: ["Distributed job"],
+			machines: [
+				{ id: local.nodeId, hostname: "compute-a" },
+				{ id: foreign.nodeId, hostname: null },
+			],
+			owners: [0, 1000],
+		});
+	expect(reads).toBe(2);
+	for (const [headers, reference, code] of [
+		[f.outsider.headers, f.reference, "NOT_FOUND"],
+		[other.viewer.headers, f.reference, "NOT_FOUND"],
+		[f.viewer.headers, other.reference, "NOT_FOUND"],
+		[new Headers(), f.reference, "UNAUTHENTICATED"],
+	] as const)
+		expect((await options(headers, reference)).error?.code).toBe(code);
+	expect(reads).toBe(2);
 });

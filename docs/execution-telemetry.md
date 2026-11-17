@@ -36,6 +36,31 @@ rows, 256 MiB read/memory, one thread, six seconds of server execution and an
 eight-MiB result. Limit, storage and cancellation failures are errors, not empty
 or silently truncated pages. Internal RPC timestamps remain native `Date` values.
 
+## Searching and filtering
+
+The list filters grouped executions with bound ClickHouse parameters after the
+key cursor, so filtered pages keep the same cursor and lookahead. Filters combine;
+each accepts up to 20 values and matches any of them.
+
+| Filter      | Matches                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------- |
+| Search      | Case-insensitive text within the displayed name or the key.                             |
+| Application | Exact displayed name, including names that fall back to the key.                        |
+| State       | Running while any nonretracted fact has no end; completed otherwise. No exit status.    |
+| Machine     | Any participating node ID.                                                              |
+| Owner UID   | A participant lifecycle's kernel `owner_uid`, not a membership UID or Better Auth user. |
+| Period      | Executions whose first-to-last observation overlaps the range; the end is exclusive.    |
+
+The URL holds the filters and cursor, so links, reloads and back navigation from
+an execution restore the same results. Changing a filter returns to the first
+page, and invalid URL values are dropped. Period presets such as "Last 24 hours"
+are stored as fixed bounds, so a link always shows the same period. The
+application, machine and owner choices come from a separate authorized operation
+that returns the first 200 values of each kind in sort order. Machine choices
+are node UUIDs, named by the project's enrolled nodes only; listed node IDs
+without an enrolled node are shown as IDs. A telemetry failure keeps the filters
+visible with a retry action, while access failures leave the page.
+
 ## Running and validating
 
 Provision `RECOUNT_PARTICIPANT_TOPIC` and `RECOUNT_PARTICIPANT_PARTITIONS` on a
