@@ -184,6 +184,8 @@ test("embedded grant editors give the same member independent labels, writes and
 		[second, "admin", projects[1]],
 	] as const) {
 		const select = section.getByLabel(label, { exact: true });
+		// A person choosing an option focuses the select; selectOption does not.
+		await select.focus();
 		await select.selectOption(role);
 		await expect(select).not.toHaveAttribute("aria-busy", "true");
 		await expect(select).toBeFocused();

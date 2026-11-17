@@ -389,6 +389,8 @@ for (const locale of ["en", "fr"] as const) {
 				m.project_role_for({ email: "collaborator@example.invalid" }, options),
 				{ exact: true },
 			);
+			// A person choosing an option focuses the select; selectOption does not.
+			await grant.focus();
 			await grant.selectOption("none");
 			await expect(
 				page.getByRole("button", { name: text(m.keep_current_access) }),
