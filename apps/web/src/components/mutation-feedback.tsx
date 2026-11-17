@@ -11,10 +11,44 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { toast } from "sonner";
 import { mutationRefreshFailed } from "../lib/mutation-refresh";
 import type { FeedbackKind } from "./form-feedback";
 import { useLocaleChangeBlocker } from "./locale-safety";
 import { Button } from "./ui/button";
+import { Toaster } from "./ui/sonner";
+
+function NoticeToast({
+	kind,
+	message,
+	onDismiss,
+}: {
+	kind: FeedbackKind;
+	message: string;
+	onDismiss: () => void;
+}) {
+	return (
+		<div className="flex w-[min(24rem,calc(100vw-2rem))] items-start gap-3 rounded-md border bg-card p-3 text-sm text-card-foreground shadow-lg">
+			<p role="status" className="flex min-w-0 flex-1 items-start gap-2">
+				{kind === "success" ? (
+					<CircleCheckIcon
+						aria-hidden="true"
+						className="mt-0.5 size-4 shrink-0 text-primary"
+					/>
+				) : (
+					<TriangleAlertIcon
+						aria-hidden="true"
+						className="mt-0.5 size-4 shrink-0"
+					/>
+				)}
+				{message}
+			</p>
+			<Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
+				{m.dismiss_notice()}
+			</Button>
+		</div>
+	);
+}
 
 interface MutationNotice {
 	update: (message: string, kind?: FeedbackKind) => void;
@@ -141,6 +175,32 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 		};
 	}, [router]);
 	useLocaleChangeBlocker(notices.length > 0);
+	// Notices render as toasts; the state stays authoritative so updates and
+	// navigation-scoped clearing keep working.
+	const shown = useRef(new Set<number>());
+	useEffect(() => {
+		const current = new Set(notices.map((notice) => notice.id));
+		for (const id of shown.current)
+			if (!current.has(id)) toast.dismiss(`notice-${id}`);
+		for (const notice of notices) {
+			const forget = () =>
+				setNotices((previous) =>
+					previous.filter((entry) => entry.id !== notice.id),
+				);
+			// Acknowledgements stay until dismissed, like the banner they replace.
+			toast.custom(
+				() => (
+					<NoticeToast
+						kind={notice.kind}
+						message={notice.message}
+						onDismiss={forget}
+					/>
+				),
+				{ id: `notice-${notice.id}`, duration: Number.POSITIVE_INFINITY },
+			);
+		}
+		shown.current = current;
+	}, [notices]);
 	function setMessage(message: string | null, kind: FeedbackKind = "success") {
 		setNotices(message ? [{ id: ++nextId.current, message, kind }] : []);
 	}
@@ -176,38 +236,7 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 			}}
 		>
 			{children}
-			{notices.length > 0 && (
-				<div className="mx-auto my-4 flex max-w-7xl flex-wrap items-center justify-between gap-3 rounded-md border bg-card px-4 py-3">
-					<div
-						role="status"
-						className="flex min-w-0 flex-1 flex-col gap-2 text-sm"
-					>
-						{notices.map((notice) => (
-							<p key={notice.id} className="flex items-start gap-2">
-								{notice.kind === "success" ? (
-									<CircleCheckIcon
-										aria-hidden="true"
-										className="mt-0.5 size-4 shrink-0 text-primary"
-									/>
-								) : (
-									<TriangleAlertIcon
-										aria-hidden="true"
-										className="mt-0.5 size-4 shrink-0"
-									/>
-								)}
-								{notice.message}
-							</p>
-						))}
-					</div>
-					<Button
-						type="button"
-						variant="ghost"
-						onClick={() => setMessage(null)}
-					>
-						{m.dismiss_notice()}
-					</Button>
-				</div>
-			)}
+			<Toaster position="bottom-right" />
 		</FeedbackContext>
 	);
 }

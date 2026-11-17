@@ -30,7 +30,6 @@ import {
 	SidebarTrigger,
 	useSidebar,
 } from "./ui/sidebar";
-import { Toaster } from "./ui/sonner";
 import { TooltipProvider } from "./ui/tooltip";
 import { WorkspaceMenu } from "./workspace-menu";
 
@@ -57,7 +56,6 @@ export function AppShell({
 			>
 				<AppShellContent user={user}>{children}</AppShellContent>
 			</SidebarProvider>
-			<Toaster position="bottom-right" />
 		</TooltipProvider>
 	);
 }
