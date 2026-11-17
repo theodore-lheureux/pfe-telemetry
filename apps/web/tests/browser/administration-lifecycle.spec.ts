@@ -254,12 +254,6 @@ test("a delayed self-project demotion cannot replace a newer organization page",
 		.getByLabel("Project role for manager@example.invalid", { exact: true })
 		.selectOption("viewer");
 	await page
-		.getByRole("button", {
-			name: "Save project grant for manager@example.invalid",
-			exact: true,
-		})
-		.click();
-	await page
 		.getByRole("button", { name: "Confirm access change", exact: true })
 		.click();
 	await held.ready;

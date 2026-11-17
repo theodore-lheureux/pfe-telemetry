@@ -37,7 +37,8 @@ export function useProjectGrants(project: ProjectSummary, userId: string) {
 		saved: m.your_project_grant_change_was_saved(),
 		refreshFailed: m.your_project_grant_change_was_saved_but_the(),
 		unknown: m.the_grant_change_could_not_be_completed_refresh(),
-		toastErrors: true,
+		// Inline actions report errors as toasts; a confirmation dialog shows its own.
+		toastErrors: !confirmation,
 	});
 	async function change(member: MemberSummary, role: ProjectRole | null) {
 		const saved = await mutation.submit({ member, role });
@@ -71,6 +72,8 @@ export function useProjectGrants(project: ProjectSummary, userId: string) {
 		confirmationTrigger,
 		pending: mutation.pending,
 		disabled: mutation.disabled,
+		message: mutation.message,
+		failed: mutation.kind !== "success",
 		confirmation,
 		setConfirmation,
 		change,

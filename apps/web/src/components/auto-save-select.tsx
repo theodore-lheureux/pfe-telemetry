@@ -1,7 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { useHydrated } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useOptimistic, useTransition } from "react";
+import { useId, useOptimistic, useTransition } from "react";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Spinner } from "./ui/spinner";
 
@@ -27,15 +27,21 @@ export function AutoSaveSelect<Value extends string>({
 	options: AutoSaveOption<Value>[];
 	label: string;
 	disabled?: boolean;
-	onSave: (value: Value) => Promise<unknown> | undefined;
+	/** Receives the select too, for returning focus after a confirmation. */
+	onSave: (
+		value: Value,
+		select: HTMLSelectElement,
+	) => Promise<unknown> | undefined;
 	className?: string;
 }) {
+	const id = useId();
 	const hydrated = useHydrated();
 	const [shown, show] = useOptimistic(value);
 	const [saving, startSaving] = useTransition();
 	return (
 		<div className={cn("flex items-center gap-2", className)}>
 			<NativeSelect
+				id={id}
 				aria-label={label}
 				aria-busy={saving}
 				value={shown}
@@ -44,10 +50,11 @@ export function AutoSaveSelect<Value extends string>({
 				className="min-w-36 flex-1"
 				onChange={(event) => {
 					if (saving) return;
-					const next = event.target.value as Value;
+					const select = event.currentTarget;
+					const next = select.value as Value;
 					startSaving(async () => {
 						show(next);
-						await onSave(next);
+						await onSave(next, select);
 					});
 				}}
 			>

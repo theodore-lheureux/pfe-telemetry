@@ -9,6 +9,7 @@ import type {
 } from "../../organizations/contracts";
 import type { OrganizationMemberSummary } from "../../organizations/member-contracts";
 import { AlertDialogActions } from "../dialog-actions";
+import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
 import { TimeDisplay } from "../time-display";
 import {
@@ -66,7 +67,7 @@ export function MemberRow({
 	const canManage = organizationRole !== "member";
 	const protectedOwner =
 		member.role === "owner" && (organizationRole !== "owner" || owners <= 1);
-	const { pending, disabled, confirm, heading } = state;
+	const { pending, disabled, confirm, failed, message, heading } = state;
 	const [editingAccess, setEditingAccess] = useState(false);
 	// You cannot change your own role here; a slip would remove your access.
 	const canChangeRole = canManage && !protectedOwner && !self;
@@ -263,6 +264,12 @@ export function MemberRow({
 							: m.remove_member_question({ email: member.email })}{" "}
 						{m.this_removes_their_organization_membership_and_all_explicit()}
 					</AlertDialogDescription>
+					<FormFeedback
+						reserveLine={false}
+						message={failed ? message : ""}
+						kind="error"
+						pending={pending}
+					/>
 					<AlertDialogActions
 						cancel={{
 							label: m.keep_membership(),

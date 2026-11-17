@@ -242,8 +242,9 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 		kind: FeedbackKind = "success",
 	): MutationNotice {
 		const id = ++nextId.current;
+		// A new notice replaces confirmations that are still on screen.
 		setNotices((previous) => [
-			...previous,
+			...previous.filter((notice) => !notice.settled),
 			{
 				id,
 				message,

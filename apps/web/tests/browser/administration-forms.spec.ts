@@ -200,92 +200,84 @@ for (const locale of ["en", "fr"] as const) {
 	});
 }
 
-for (const kind of ["member", "grant"] as const) {
-	test(`fragment navigation releases a retained ${kind} form before its old response arrives`, async ({
-		page,
-		workspace,
-	}) => {
-		const email = "target@example.invalid";
-		const owner = await workspace.signIn(page, "owner@example.invalid");
-		const organization = data(
-			await workspace.operations(owner.headers, () =>
-				organizationDomain.createOrganization(workspace.auth, owner.headers, {
-					name: "Abandoned drafts",
-					slug: "abandoned-drafts",
-				}),
-			),
-		);
-		const project = data(
-			await workspace.operations(owner.headers, (actor) =>
-				projectDomain.createProject(workspace.database.db, actor, {
-					requestId: crypto.randomUUID(),
-					organizationId: organization.id,
-					name: "Private",
-				}),
-			),
-		);
-		const target = await workspace.signIn(page, email);
-		await workspace.auth.api.addMember({
-			body: {
+// Member roles change from a row menu and keep no draft, so only the grant form applies.
+test("fragment navigation releases a retained grant form before its old response arrives", async ({
+	page,
+	workspace,
+}) => {
+	const email = "target@example.invalid";
+	const owner = await workspace.signIn(page, "owner@example.invalid");
+	const organization = data(
+		await workspace.operations(owner.headers, () =>
+			organizationDomain.createOrganization(workspace.auth, owner.headers, {
+				name: "Abandoned drafts",
+				slug: "abandoned-drafts",
+			}),
+		),
+	);
+	const project = data(
+		await workspace.operations(owner.headers, (actor) =>
+			projectDomain.createProject(workspace.database.db, actor, {
+				requestId: crypto.randomUUID(),
 				organizationId: organization.id,
-				userId: target.userId,
-				role: "member",
-			},
-		});
-		await workspace.signIn(page, "owner@example.invalid");
-		const url = settingsUrl(
-			`${workspace.origin}/organizations/${organization.id}${kind === "member" ? "" : `/projects/${project.id}`}`,
-			kind === "member" ? "organization-members" : "project-members",
-		);
-		await page.goto(url);
-		if (kind === "grant") await openProjectGrant(page, email);
-		const select = page.getByLabel(`Project role for ${email}`, {
-			exact: true,
-		});
-		// Member roles change from the row menu; new grants are a dialog form.
-		const submit = page.getByRole("button", {
-			name: `Save project grant for ${email}`,
-			exact: true,
-		});
-		if (kind === "grant") {
-			await expect(submit).toBeEnabled();
-			await select.selectOption("member");
-		}
-		const { promise: gate, release } = createGate();
-		let received = false;
-		let settled = false;
-		let writes = 0;
-		await page.route("**/_serverFn/**", async (route) => {
-			if (route.request().method() !== "POST") return route.continue();
-			writes++;
-			const response = await route.fetch();
-			received = true;
-			await gate;
-			await route.fulfill({ response }).catch(() => {});
-			settled = true;
-		});
-		try {
-			if (kind === "member")
-				await changeMemberRole(page, email, "Upgrade to admin");
-			else await submit.click();
-			await expect.poll(() => received).toBe(true);
-			await page.evaluate(() => {
-				window.location.hash = "main-content";
-			});
-			await expect(page).toHaveURL(`${url}#main-content`);
-			if (kind === "grant") {
-				await expect(submit).toBeEnabled();
-				await expect(select).toHaveValue("member");
-			} else await expect(memberRole(page, email)).toHaveText("Admin");
-			release();
-			await expect.poll(() => settled).toBe(true);
-			await expect(
-				page.getByRole("button", { name: "Dismiss notice", exact: true }),
-			).toHaveCount(0);
-			await expect(page).toHaveURL(`${url}#main-content`);
-			expect(writes).toBe(1);
-		} finally {
-			release();
-		}
+				name: "Private",
+			}),
+		),
+	);
+	const target = await workspace.signIn(page, email);
+	await workspace.auth.api.addMember({
+		body: {
+			organizationId: organization.id,
+			userId: target.userId,
+			role: "member",
+		},
 	});
-}
+	await workspace.signIn(page, "owner@example.invalid");
+	const url = settingsUrl(
+		`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
+		"project-members",
+	);
+	await page.goto(url);
+	await openProjectGrant(page, email);
+	const select = page.getByLabel(`Project role for ${email}`, {
+		exact: true,
+	});
+	const submit = page.getByRole("button", {
+		name: `Save project grant for ${email}`,
+		exact: true,
+	});
+	await expect(submit).toBeEnabled();
+	await select.selectOption("member");
+	const { promise: gate, release } = createGate();
+	let received = false;
+	let settled = false;
+	let writes = 0;
+	await page.route("**/_serverFn/**", async (route) => {
+		if (route.request().method() !== "POST") return route.continue();
+		writes++;
+		const response = await route.fetch();
+		received = true;
+		await gate;
+		await route.fulfill({ response }).catch(() => {});
+		settled = true;
+	});
+	try {
+		await submit.click();
+		await expect.poll(() => received).toBe(true);
+		await page.evaluate(() => {
+			window.location.hash = "main-content";
+		});
+		await expect(page).toHaveURL(`${url}#main-content`);
+		await expect(submit).toBeEnabled();
+		await expect(select).toHaveValue("member");
+		release();
+		await expect.poll(() => settled).toBe(true);
+		await expect(
+			page.getByRole("button", { name: "Dismiss notice", exact: true }),
+		).toHaveCount(0);
+		await expect(page).toHaveURL(`${url}#main-content`);
+		expect(writes).toBe(1);
+	} finally {
+		release();
+	}
+});

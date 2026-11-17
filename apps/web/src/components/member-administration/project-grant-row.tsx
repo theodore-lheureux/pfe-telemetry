@@ -9,6 +9,7 @@ import type {
 import type { MemberSummary } from "../../organizations/member-contracts";
 import { AutoSaveSelect } from "../auto-save-select";
 import { AlertDialogActions } from "../dialog-actions";
+import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
 import {
 	AlertDialog,
@@ -35,7 +36,7 @@ export function ProjectGrantRow({
 	label?: ReactNode;
 }) {
 	const implicit = member.role !== "member";
-	const { confirmation, pending, disabled } = state;
+	const { confirmation, pending, disabled, failed, message } = state;
 	return (
 		<TableRow className={label ? undefined : "h-16"}>
 			<TableCell>
@@ -76,15 +77,11 @@ export function ProjectGrantRow({
 							{ value: "member", label: m.role_member() },
 							{ value: "admin", label: m.role_admin() },
 						]}
-						onSave={(choice) => {
+						onSave={(choice, select) => {
 							const role = choice === "none" ? null : choice;
 							// Removing access, or lowering your own, asks first.
 							if (!role || (self && role !== "admin")) {
-								state.requestConfirmation(
-									member.id,
-									role,
-									document.activeElement as HTMLElement | null,
-								);
+								state.requestConfirmation(member.id, role, select);
 								return;
 							}
 							return state.change(member, role);
@@ -149,6 +146,12 @@ export function ProjectGrantRow({
 								!self &&
 								m.remove_access_question({ email: member.email })}
 						</AlertDialogDescription>
+						<FormFeedback
+							reserveLine={false}
+							message={failed ? message : ""}
+							kind="error"
+							pending={pending}
+						/>
 						<AlertDialogActions
 							cancel={{
 								label: m.keep_current_access(),

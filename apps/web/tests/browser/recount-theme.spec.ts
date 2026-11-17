@@ -268,6 +268,8 @@ test("real workspace, collectors and administration retain Core geometry and key
 								.locator('[data-slot="input-group"]')
 								.filter({ has: readyControl })
 						: readyControl;
+				// The resting border; a dialog may have focused its first field.
+				await readyControl.blur();
 				if (screen !== "workspace")
 					await expect(frame).toHaveCSS(
 						"border-color",

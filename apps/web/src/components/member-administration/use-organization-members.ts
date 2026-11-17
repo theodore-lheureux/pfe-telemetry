@@ -41,7 +41,8 @@ export function useOrganizationMembers(
 		saved: m.your_membership_change_was_saved(),
 		refreshFailed: m.your_membership_change_was_saved_but_the_page(),
 		unknown: m.the_member_change_could_not_be_completed_refresh(),
-		toastErrors: true,
+		// Inline actions report errors as toasts; a confirmation dialog shows its own.
+		toastErrors: !confirm,
 	});
 	async function change(input: MemberChange) {
 		const saved = await mutation.submit(input);
@@ -61,6 +62,8 @@ export function useOrganizationMembers(
 	}
 	return {
 		heading,
+		message: mutation.message,
+		failed: mutation.kind !== "success",
 		pending: mutation.pending,
 		disabled: mutation.disabled,
 		confirm,

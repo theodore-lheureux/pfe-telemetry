@@ -62,7 +62,7 @@ test("manages native memberships and restricts administrator owner controls", as
 		page.getByText("Member role updated.", { exact: true }),
 	).toBeVisible();
 	await expect(memberRole(page, "collaborator@example.invalid")).toHaveText(
-		"Admin",
+		"Administrator",
 	);
 	expect(
 		data(
@@ -667,7 +667,9 @@ test("a successful membership write survives a failed loader refresh", async ({
 	).toBe("admin");
 	await page.unroute("**/_serverFn/**");
 	await page.getByRole("button", { name: "Try again", exact: true }).click();
-	await expect(memberRole(page, "target@example.invalid")).toHaveText("Admin");
+	await expect(memberRole(page, "target@example.invalid")).toHaveText(
+		"Administrator",
+	);
 	await expect(
 		page.getByRole("button", { name: "Dismiss notice", exact: true }),
 	).toHaveCount(0);

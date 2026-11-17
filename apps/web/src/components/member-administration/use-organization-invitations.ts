@@ -209,7 +209,8 @@ export function useOrganizationInvitations(
 		formDisabled: mutation.disabled || formPending || blocked,
 		failed: mutation.kind !== "success" || partial,
 		feedbackKind: feedbackKind(blocked, partial, mutation.kind),
-		message: mutation.message,
+		// A partly failed batch lists what failed next to the form.
+		message: partial ? mutation.confirmation : mutation.message,
 		cancelId,
 		setCancelId,
 		inviting: !!inviting,

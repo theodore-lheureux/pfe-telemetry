@@ -317,9 +317,9 @@ test("a later name submission keeps its field and feedback when an older respons
 		await page
 			.getByRole("button", { name: "Save project", exact: true })
 			.click();
-		await expect(page.locator("#entity-message")).toContainText(
-			"Changes saved",
-		);
+		await expect(
+			page.getByRole("status").filter({ hasText: "Changes saved" }),
+		).toBeVisible();
 		release();
 		await expect.poll(() => delivered).toBe(true);
 		await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Y");

@@ -221,6 +221,11 @@ export function useAppMutation<Input, Data>(options: {
 	return {
 		status,
 		message,
+		/** The confirmation, for results that need detail beside the form. */
+		confirmation:
+			feedbackKind(status) === "success"
+				? (acknowledgement?.message ?? "")
+				: "",
 		data: acknowledgement?.data,
 		kind: feedbackKind(status),
 		canRetry,
