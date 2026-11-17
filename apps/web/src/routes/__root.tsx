@@ -1,7 +1,4 @@
 import { PostHogProvider } from "@posthog/react";
-// Bundle the replay recorder: content blockers often block the recorder.js that
-// PostHog would otherwise download at runtime, even through our proxy.
-import "posthog-js/dist/recorder";
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import type { QueryClient } from "@tanstack/react-query";
@@ -29,6 +26,7 @@ import { StepUpAuthentication } from "../components/step-up-authentication";
 import { TimeDisplayProvider } from "../components/time-display";
 import { AppearanceContext } from "../lib/appearance";
 import { clearValidation, localizeValidation } from "../lib/input-validation";
+import "../lib/posthog-extensions";
 import { loadPostHogConfig } from "../lib/posthog.functions";
 import {
 	getInitialTheme,
