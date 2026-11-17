@@ -1,14 +1,37 @@
 name: Release · build and deploy
 
-# Every push to main builds a release and deploys it after approval in the
-# ingestion-deploy environment. Deploys do not wait for the test workflows.
+# A push to main that changes what ships builds a release and deploys it after
+# approval in the ingestion-deploy environment. Deploys do not wait for the test
+# workflows. Run it manually to release without a change.
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - "apps/landing/**"
-      - "docs/**"
-      - "**/*.md"
+    # Everything the build and deploy read; later "!" entries exclude.
+    paths:
+      - "apps/**"
+      - "crates/**"
+      - "packages/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "package.json"
+      - "bun.lock"
+      - "bunfig.toml"
+      - ".bun-version"
+      - ".dockerignore"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "infra/local/**"
+      - "infra/clickhouse/**"
+      - "infra/kafka/**"
+      - "infra/oracle-stack/deploy/**"
+      - "infra/oracle-stack/ansible/deploy.yml"
+      - "infra/oracle-stack/ansible/ansible.cfg"
+      - "tests/ci/stage-artifacts.ts"
+      - ".github/workflows/release.yml"
+      - "!apps/landing/**"
+      - "!apps/web/tests/**"
+      - "!**/*.md"
   workflow_dispatch:
 
 permissions:
