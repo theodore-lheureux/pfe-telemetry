@@ -1537,5 +1537,16 @@
   "dashboard_templates_blank_description": "Start empty and add panels yourself.",
   "dashboard_templates_project_badge": "Project",
   "dashboard_templates_missing": "No matching metrics yet: {panels}. These panels stay empty until a collector reports them.",
-  "dashboard_templates_node_variable_help": "Sets the dashboard’s node filter. All nodes shows every node."
+  "dashboard_templates_node_variable_help": "Sets the dashboard’s node filter. All nodes shows every node.",
+  "dashboard_template_gpu": "GPU (DCGM)",
+  "dashboard_template_gpu_description": "NVIDIA GPU utilization, SM activity and occupancy, tensor and FP pipe activity, memory, power, temperature and clocks from DCGM.",
+  "dashboard_template_gpu_utilization": "GPU utilization",
+  "dashboard_template_gpu_sm_activity": "SM activity",
+  "dashboard_template_gpu_sm_occupancy": "SM occupancy",
+  "dashboard_template_gpu_pipe_activity": "Pipe activity (tensor, FP16, FP32, FP64)",
+  "dashboard_template_gpu_memory_used": "GPU memory used",
+  "dashboard_template_gpu_power": "Power",
+  "dashboard_template_gpu_temperature": "Temperature",
+  "dashboard_template_gpu_sm_clock": "SM clock",
+  "dashboard_template_gpu_nodes": "GPU nodes"
 }

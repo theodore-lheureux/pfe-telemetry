@@ -8,6 +8,7 @@ import {
 import { calculatedPlan } from "../../src/analytics/calculated-plan";
 import type { MetricDefinition } from "../../src/analytics/contracts";
 import {
+	builtInDashboardTemplates,
 	dashboardTemplate,
 	fillTemplateVariables,
 	nodeHealthTemplate,
@@ -21,6 +22,7 @@ import {
 } from "../../src/analytics/dashboard-templates-validation";
 import { decodeDraft, toQuery } from "../../src/analytics/insight/draft";
 import { parseSavedDraft } from "../../src/analytics/saved-insights-validation";
+import { parseQuery } from "../../src/analytics/validation";
 
 function metric(
 	name: string,
@@ -90,6 +92,30 @@ test("Node health panels are ordinary saved drafts and expand through the normal
 		expect(draft.display.unit).toBe("auto");
 	}
 	expect(template.variables).toEqual([{ name: "$node", field: "node" }]);
+});
+
+test("GPU panels are valid saved drafts that query the collector's DCGM metrics", () => {
+	const gpu = builtInDashboardTemplates().find((choice) => choice.id === "gpu");
+	if (!gpu) throw new Error("Missing GPU template");
+	expect(gpu.template.variables).toEqual([{ name: "$node", field: "node" }]);
+	for (const tile of gpu.template.tiles) {
+		expect(JSON.parse(parseSavedDraft(tile.insight.draft))).toEqual(
+			JSON.parse(tile.insight.draft),
+		);
+		const query = toQuery(
+			decodeDraft(tile.insight.draft),
+			new Date("2026-11-15T12:00:00Z"),
+			"UTC",
+			"en",
+		);
+		if (!query) throw new Error(`No query for ${tile.insight.name}`);
+		expect(() => parseQuery(query)).not.toThrow();
+		expect(
+			query.measures.every((measure) =>
+				measure.metric.startsWith("recount.gpu."),
+			),
+		).toBe(true);
+	}
 });
 
 test("recommendations count complete panels and require at least 60%, not 60% of metric names", () => {

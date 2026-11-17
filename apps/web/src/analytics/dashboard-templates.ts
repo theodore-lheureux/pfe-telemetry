@@ -11,6 +11,7 @@ import type {
 	DashboardTile,
 } from "./dashboards";
 import { decodeDraft } from "./insight/draft";
+import gpu from "./templates/gpu.json" with { type: "json" };
 import nodeHealth from "./templates/node-health.json" with { type: "json" };
 import { ALLOWED_CALCULATIONS } from "./validation";
 
@@ -83,27 +84,42 @@ export function dashboardTemplate(
 	};
 }
 
-/** Only labels are resolved at runtime; queries and layouts live in JSON. */
-export function nodeHealthTemplate(): DashboardTemplate {
-	const labels: Record<string, () => string> = {
-		dashboard_template_node_health: m.dashboard_template_node_health,
-		dashboard_template_node_health_description:
-			m.dashboard_template_node_health_description,
-		dashboard_template_cpu_busy: m.dashboard_template_cpu_busy,
-		dashboard_template_memory_used: m.dashboard_template_memory_used,
-		dashboard_template_processes: m.dashboard_template_processes,
-		dashboard_template_disk_throughput: m.dashboard_template_disk_throughput,
-		dashboard_template_network_throughput:
-			m.dashboard_template_network_throughput,
-		dashboard_template_nodes: m.dashboard_template_nodes,
-	};
-	const label = (key: string) => labels[key]?.() ?? key;
+// Template JSON names its labels by message key; only labels resolve at runtime.
+const TEMPLATE_LABELS: Record<string, () => string> = {
+	dashboard_template_node_health: m.dashboard_template_node_health,
+	dashboard_template_node_health_description:
+		m.dashboard_template_node_health_description,
+	dashboard_template_cpu_busy: m.dashboard_template_cpu_busy,
+	dashboard_template_memory_used: m.dashboard_template_memory_used,
+	dashboard_template_processes: m.dashboard_template_processes,
+	dashboard_template_disk_throughput: m.dashboard_template_disk_throughput,
+	dashboard_template_network_throughput:
+		m.dashboard_template_network_throughput,
+	dashboard_template_nodes: m.dashboard_template_nodes,
+	dashboard_template_gpu: m.dashboard_template_gpu,
+	dashboard_template_gpu_description: m.dashboard_template_gpu_description,
+	dashboard_template_gpu_utilization: m.dashboard_template_gpu_utilization,
+	dashboard_template_gpu_sm_activity: m.dashboard_template_gpu_sm_activity,
+	dashboard_template_gpu_sm_occupancy: m.dashboard_template_gpu_sm_occupancy,
+	dashboard_template_gpu_pipe_activity: m.dashboard_template_gpu_pipe_activity,
+	dashboard_template_gpu_memory_used: m.dashboard_template_gpu_memory_used,
+	dashboard_template_gpu_power: m.dashboard_template_gpu_power,
+	dashboard_template_gpu_temperature: m.dashboard_template_gpu_temperature,
+	dashboard_template_gpu_sm_clock: m.dashboard_template_gpu_sm_clock,
+	dashboard_template_gpu_nodes: m.dashboard_template_gpu_nodes,
+};
+
+type TemplateJson = typeof nodeHealth;
+
+/** Queries and layouts live in JSON; labels resolve in the current locale. */
+function jsonTemplate(json: TemplateJson): DashboardTemplate {
+	const label = (key: string) => TEMPLATE_LABELS[key]?.() ?? key;
 	return {
-		name: label(nodeHealth.name),
-		description: label(nodeHealth.description),
-		filters: JSON.stringify(nodeHealth.filters),
-		variables: nodeHealth.variables as TemplateVariable[],
-		tiles: nodeHealth.tiles.map((tile) => ({
+		name: label(json.name),
+		description: label(json.description),
+		filters: JSON.stringify(json.filters),
+		variables: json.variables as TemplateVariable[],
+		tiles: json.tiles.map((tile) => ({
 			...tile,
 			width: tile.width as DashboardTile["width"],
 			height: tile.height as DashboardTile["height"],
@@ -117,9 +133,18 @@ export function nodeHealthTemplate(): DashboardTemplate {
 	};
 }
 
+export function nodeHealthTemplate(): DashboardTemplate {
+	return jsonTemplate(nodeHealth);
+}
+
 export function builtInDashboardTemplates(): TemplateChoice[] {
 	return [
 		{ id: "node-health", scope: "built-in", template: nodeHealthTemplate() },
+		{
+			id: "gpu",
+			scope: "built-in",
+			template: jsonTemplate(gpu as TemplateJson),
+		},
 	];
 }
 

@@ -1537,5 +1537,16 @@
   "dashboard_templates_blank_description": "Commencez vide et ajoutez vos propres panneaux.",
   "dashboard_templates_project_badge": "Projet",
   "dashboard_templates_missing": "Aucune métrique correspondante pour l’instant : {panels}. Ces panneaux restent vides jusqu’à ce qu’un collecteur les fournisse.",
-  "dashboard_templates_node_variable_help": "Définit le filtre de nœud du tableau de bord. Tous les nœuds les affiche tous."
+  "dashboard_templates_node_variable_help": "Définit le filtre de nœud du tableau de bord. Tous les nœuds les affiche tous.",
+  "dashboard_template_gpu": "GPU (DCGM)",
+  "dashboard_template_gpu_description": "Utilisation des GPU NVIDIA, activité et occupation des SM, activité des pipelines tensoriels et FP, mémoire, puissance, température et fréquences issues de DCGM.",
+  "dashboard_template_gpu_utilization": "Utilisation du GPU",
+  "dashboard_template_gpu_sm_activity": "Activité des SM",
+  "dashboard_template_gpu_sm_occupancy": "Occupation des SM",
+  "dashboard_template_gpu_pipe_activity": "Activité des pipelines (tensoriel, FP16, FP32, FP64)",
+  "dashboard_template_gpu_memory_used": "Mémoire GPU utilisée",
+  "dashboard_template_gpu_power": "Puissance",
+  "dashboard_template_gpu_temperature": "Température",
+  "dashboard_template_gpu_sm_clock": "Fréquence des SM",
+  "dashboard_template_gpu_nodes": "Nœuds GPU"
 }

@@ -1,0 +1,398 @@
+{
+  "name": "dashboard_template_gpu",
+  "description": "dashboard_template_gpu_description",
+  "filters": {},
+  "variables": [
+    {
+      "name": "$node",
+      "field": "node"
+    }
+  ],
+  "tiles": [
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_utilization",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.utilization",
+              "calculation": "avg",
+              "combine": "avg",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "ratio",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_sm_activity",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.sm.activity",
+              "calculation": "avg",
+              "combine": "avg",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "ratio",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_sm_occupancy",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.sm.occupancy",
+              "calculation": "avg",
+              "combine": "avg",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "ratio",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_pipe_activity",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.pipe.activity",
+              "calculation": "avg",
+              "combine": "avg",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "attributes[\"gpu.pipe\"]",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "ratio",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_memory_used",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.memory.used",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "bytes",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_power",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.power",
+              "calculation": "avg",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_temperature",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.temperature",
+              "calculation": "max",
+              "combine": "max",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 4,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_sm_clock",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.clock",
+              "calculation": "avg",
+              "combine": "avg",
+              "filters": [
+                {
+                  "field": "attributes[\"gpu.clock.domain\"]",
+                  "op": "eq",
+                  "values": ["sm"]
+                }
+              ]
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 12,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_gpu_nodes",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.gpu.utilization",
+              "calculation": "last",
+              "combine": "avg",
+              "filters": []
+            },
+            {
+              "name": "B",
+              "metric": "recount.gpu.sm.activity",
+              "calculation": "last",
+              "combine": "avg",
+              "filters": []
+            },
+            {
+              "name": "C",
+              "metric": "recount.gpu.memory.used",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            },
+            {
+              "name": "D",
+              "metric": "recount.gpu.power",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            },
+            {
+              "name": "E",
+              "metric": "recount.gpu.temperature",
+              "calculation": "last",
+              "combine": "max",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "table",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    }
+  ]
+}
