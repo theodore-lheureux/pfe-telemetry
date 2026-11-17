@@ -62,28 +62,30 @@
           - (recount_identity.results[1].content | b64decode | trim) == recount_arch
         quiet: true
 
-    - name: Require plain PostHog settings
+    - name: Require plain runtime settings
       ansible.builtin.assert:
         that:
           - recount_posthog_project_token | default('') is match("^[A-Za-z0-9_-]*$")
           - recount_posthog_host | default('') is match("^(https://[A-Za-z0-9.-]+(:[0-9]+)?)?$")
+          - recount_landing_origin | default('') is match("^(https://[A-Za-z0-9.-]+(:[0-9]+)?)?$")
         quiet: true
 
     # Runtime settings, so the same release can be promoted between environments.
-    # An empty value removes the setting, which turns PostHog off.
-    - name: Configure PostHog for the web application
+    # An empty value removes the setting, which turns that feature off.
+    - name: Configure the web application's runtime settings
       ansible.builtin.lineinfile:
         path: /etc/recount/ingestion.env
         regexp: "^{{ item.key }}="
         line: '{{ item.key }}="{{ item.value }}"'
         state: "{{ 'present' if item.value else 'absent' }}"
-      loop: "{{ recount_posthog | dict2items }}"
+      loop: "{{ recount_runtime | dict2items }}"
       loop_control:
         label: "{{ item.key }}"
       vars:
-        recount_posthog:
+        recount_runtime:
           RECOUNT_POSTHOG_PROJECT_TOKEN: "{{ recount_posthog_project_token | default('') }}"
           RECOUNT_POSTHOG_HOST: "{{ recount_posthog_host | default('') }}"
+          RECOUNT_LANDING_ORIGIN: "{{ recount_landing_origin | default('') }}"
 
     - name: Activate the release
       ansible.builtin.command:

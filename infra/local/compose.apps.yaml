@@ -108,6 +108,7 @@ services:
       RECOUNT_LIVE_GATEWAY_SECRET: ${RECOUNT_LIVE_GATEWAY_SECRET:?Set a shared Live gateway secret}
       RECOUNT_POSTHOG_PROJECT_TOKEN: ${RECOUNT_POSTHOG_PROJECT_TOKEN:-}
       RECOUNT_POSTHOG_HOST: ${RECOUNT_POSTHOG_HOST:-}
+      RECOUNT_LANDING_ORIGIN: ${RECOUNT_LANDING_ORIGIN:-}
     networks: [authority, analytics, live-access, outbound]
     tmpfs: ["/tmp:rw,nosuid,size=32m"]
     healthcheck:

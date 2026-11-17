@@ -167,6 +167,7 @@ jobs:
           # Environment settings belong to the deployment, not the build.
           POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
           POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+          LANDING_ORIGIN: ${{ vars.LANDING_ORIGIN }}
         run: |
           archive="$PWD/assets/recount-stack-$ARCH.tar"
           digest=$(sha256sum "$archive" | cut -d' ' -f1)
@@ -175,7 +176,7 @@ jobs:
             --inventory "$RUNNER_TEMP/inventory.ini" \
             --user recount-deploy --private-key "$HOME/.ssh/deploy" \
             --extra-vars "recount_release=$RELEASE recount_arch=$ARCH recount_release_sha256=$digest recount_release_archive=$archive" \
-            --extra-vars "$(jq -n '{recount_posthog_project_token: env.POSTHOG_PROJECT_TOKEN, recount_posthog_host: env.POSTHOG_HOST}')"
+            --extra-vars "$(jq -n '{recount_posthog_project_token: env.POSTHOG_PROJECT_TOKEN, recount_posthog_host: env.POSTHOG_HOST, recount_landing_origin: env.LANDING_ORIGIN}')"
       - name: Remove this runner's deployment key
         if: always()
         run: rm -f "$HOME/.ssh/deploy"

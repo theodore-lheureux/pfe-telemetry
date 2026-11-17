@@ -25,3 +25,17 @@ export function readAuthConfig(env: Env = process.env) {
 }
 
 export type AuthConfig = ReturnType<typeof readAuthConfig>;
+
+const landing = z.object({
+	// Compose passes unset settings as empty strings.
+	RECOUNT_LANDING_ORIGIN: z.preprocess(
+		(value) => (value === "" ? undefined : value),
+		httpUrl("RECOUNT_LANDING_ORIGIN", { root: true }).optional(),
+	),
+});
+
+/** The landing site allowed to check whether someone is signed in, if any. */
+export function readLandingOrigin(env: Env = process.env) {
+	const value = readEnv(landing, env).RECOUNT_LANDING_ORIGIN;
+	return value ? new URL(value).origin : undefined;
+}
