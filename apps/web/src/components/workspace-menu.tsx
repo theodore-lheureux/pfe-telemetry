@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
 import { Link, useHydrated, useRouter } from "@tanstack/react-router";
@@ -83,6 +84,7 @@ export function WorkspaceMenu({
 		projectGroups.set(entry.projectGroup, group);
 	}
 	const router = useRouter();
+	const posthog = usePostHog();
 	const hydrated = useHydrated();
 	const setFeedback = useMutationFeedback();
 	const [open, setOpen] = useState(false);
@@ -102,7 +104,9 @@ export function WorkspaceMenu({
 	async function logout() {
 		setFailure("");
 		try {
-			setFailure(await signOutOfApplication(router, setFeedback));
+			setFailure(
+				await signOutOfApplication(router, setFeedback, () => posthog.reset()),
+			);
 		} catch {
 			setFailure(m.signout_failed_please_try_again());
 		}

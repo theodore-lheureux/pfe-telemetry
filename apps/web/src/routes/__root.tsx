@@ -1,3 +1,4 @@
+import { PostHogProvider } from "@posthog/react";
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import type { QueryClient } from "@tanstack/react-query";
@@ -70,6 +71,9 @@ const MODE_THEME: Record<ThemeMode, Theme> = {
 	light: "tide",
 };
 
+const posthogToken = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
+const posthogHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
+
 function RootDocument({ children }: { children: ReactNode }) {
 	const { theme: initialTheme } = Route.useRouteContext();
 	const [theme, setTheme] = useState(initialTheme ?? "tide");
@@ -79,6 +83,55 @@ function RootDocument({ children }: { children: ReactNode }) {
 		shouldThrow: false,
 	});
 	const hasAppLayout = appMatch?.status === "success";
+
+	const app = (
+		<>
+			<NavigationProgress />
+			<LocaleSafety>
+				<AppearanceContext
+					value={{
+						mode: THEME_MODE[theme],
+						disabled: !hydrated,
+						onModeChange: (mode) => {
+							const next = MODE_THEME[mode];
+							// biome-ignore lint/suspicious/noDocumentCookie: Cookie Store is not available in every supported browser.
+							document.cookie = `${themeCookie}=${next}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
+							setTheme(next);
+						},
+					}}
+				>
+					<a
+						href={hasAppLayout ? "#main-content" : "#page-content"}
+						className="sr-only focus:not-sr-only focus:block focus:p-3 focus:outline-2 focus:outline-ring"
+					>
+						{m.skip_to_content()}
+					</a>
+					{!appMatch && (
+						<header className="border-b bg-card" data-public-header>
+							<div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
+								<Link
+									to="/"
+									aria-label={m.brand_home()}
+									className="inline-flex rounded-md p-1 focus-visible:outline-2 focus-visible:outline-ring"
+								>
+									<BrandLogo />
+								</Link>
+							</div>
+						</header>
+					)}
+					<div id="page-content" tabIndex={-1} className="flex-1">
+						<MutationFeedback>
+							<TimeDisplayProvider>
+								<StepUpAuthentication>{children}</StepUpAuthentication>
+							</TimeDisplayProvider>
+						</MutationFeedback>
+					</div>
+					{!appMatch && <PublicFooter />}
+				</AppearanceContext>
+			</LocaleSafety>
+		</>
+	);
+
 	return (
 		<html lang={getLocale()} data-theme={theme} data-variant="core">
 			<head>
@@ -90,49 +143,21 @@ function RootDocument({ children }: { children: ReactNode }) {
 				onInputCapture={(event) => clearValidation(event.target)}
 				onChangeCapture={(event) => clearValidation(event.target)}
 			>
-				<NavigationProgress />
-				<LocaleSafety>
-					<AppearanceContext
-						value={{
-							mode: THEME_MODE[theme],
-							disabled: !hydrated,
-							onModeChange: (mode) => {
-								const next = MODE_THEME[mode];
-								// biome-ignore lint/suspicious/noDocumentCookie: Cookie Store is not available in every supported browser.
-								document.cookie = `${themeCookie}=${next}; Path=/; Max-Age=31536000; SameSite=Lax${location.protocol === "https:" ? "; Secure" : ""}`;
-								setTheme(next);
-							},
+				{posthogToken && posthogHost ? (
+					<PostHogProvider
+						apiKey={posthogToken}
+						options={{
+							api_host: posthogHost,
+							capture_exceptions: true,
+							tracing_headers:
+								typeof window === "undefined" ? [] : [window.location.hostname],
 						}}
 					>
-						<a
-							href={hasAppLayout ? "#main-content" : "#page-content"}
-							className="sr-only focus:not-sr-only focus:block focus:p-3 focus:outline-2 focus:outline-ring"
-						>
-							{m.skip_to_content()}
-						</a>
-						{!appMatch && (
-							<header className="border-b bg-card" data-public-header>
-								<div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
-									<Link
-										to="/"
-										aria-label={m.brand_home()}
-										className="inline-flex rounded-md p-1 focus-visible:outline-2 focus-visible:outline-ring"
-									>
-										<BrandLogo />
-									</Link>
-								</div>
-							</header>
-						)}
-						<div id="page-content" tabIndex={-1} className="flex-1">
-							<MutationFeedback>
-								<TimeDisplayProvider>
-									<StepUpAuthentication>{children}</StepUpAuthentication>
-								</TimeDisplayProvider>
-							</MutationFeedback>
-						</div>
-						{!appMatch && <PublicFooter />}
-					</AppearanceContext>
-				</LocaleSafety>
+						{app}
+					</PostHogProvider>
+				) : (
+					app
+				)}
 				<Scripts />
 			</body>
 		</html>

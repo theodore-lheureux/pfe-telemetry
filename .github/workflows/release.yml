@@ -54,6 +54,10 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
       - name: Compile on the native Linux host
+        env:
+          # Public browser analytics configuration, baked into the web build.
+          VITE_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          VITE_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
         run: |
           bun run --filter @recount/web build
           mkdir -p .state

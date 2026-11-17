@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
 import { generatedSlug } from "../lib/slug";
@@ -33,6 +34,7 @@ export function WorkspaceCreationDialog({
 }) {
 	const title =
 		kind === "organization" ? m.create_organization() : m.create_project();
+	const posthog = usePostHog();
 	const mutation = useAppMutation<
 		{ name: string; slug?: string; requestId: string },
 		unknown
@@ -64,7 +66,12 @@ export function WorkspaceCreationDialog({
 		},
 	});
 	async function settle(result: Awaited<ReturnType<typeof mutation.submit>>) {
-		if (result && !result.error && (await result.refresh())) onClose();
+		if (!result || result.error) return;
+		posthog.capture(
+			kind === "organization" ? "organization_created" : "project_created",
+			{ creation_surface: "workspace_dialog" },
+		);
+		if (await result.refresh()) onClose();
 	}
 	const form = useAppForm({
 		defaultValues: { name: "" },

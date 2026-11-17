@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { m } from "@recount/i18n/messages";
 import { useSelector } from "@tanstack/react-form";
 import { useQueryClient } from "@tanstack/react-query";
@@ -58,6 +59,7 @@ export function UserProfile() {
 	const { user } = getRouteApi("/_app").useRouteContext();
 	const requireStepUp = useStepUpAuthentication();
 	const router = useRouter();
+	const posthog = usePostHog();
 	const hydrated = useHydrated();
 	const queryClient = useQueryClient();
 	const { begin } = useMutationOwner(user.id);
@@ -153,7 +155,9 @@ export function UserProfile() {
 		if (actionBusy.current) return;
 		setMessage("");
 		setFailed(false);
-		const failure = await signOutOfApplication(router, setFeedback);
+		const failure = await signOutOfApplication(router, setFeedback, () =>
+			posthog.reset(),
+		);
 		if (failure) {
 			setActivity("signout");
 			setFailed(true);

@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { m } from "@recount/i18n/messages";
 import { useNavigate } from "@tanstack/react-router";
 import { MoreHorizontalIcon } from "lucide-react";
@@ -62,6 +63,7 @@ export function useDashboardActions(
 	openId?: string,
 ) {
 	const navigate = useNavigate();
+	const posthog = usePostHog();
 	const mutation = useAppMutation<Change, unknown>({
 		userId,
 		saved: changed,
@@ -99,6 +101,9 @@ export function useDashboardActions(
 	const apply = async (change: Change) => {
 		const result = await mutation.submit(change);
 		if (!result || result.error) return;
+		posthog.capture(
+			change.kind === "delete" ? "dashboard_deleted" : "dashboard_updated",
+		);
 		// The deleted dashboard's page cannot reload, so it is left for the list instead.
 		if (change.kind === "delete" && change.dashboard.id === openId) {
 			close();

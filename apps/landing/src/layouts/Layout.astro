@@ -153,5 +153,9 @@ const alternate = translated ? switchPath(Astro.url.pathname, other) : null;
 			});
 		</script>
 		<script is:inline set:html={analyticsScript} />
+		<script>
+			import { startAnalytics } from "../lib/posthog";
+			startAnalytics();
+		</script>
 	</body>
 </html>

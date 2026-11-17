@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { m } from "@recount/i18n/messages";
 import { useQueryClient } from "@tanstack/react-query";
 import { useId, useState } from "react";
@@ -58,6 +59,7 @@ export function SaveCalculatedDialog({
 	onClose: () => void;
 }) {
 	const id = useId();
+	const posthog = usePostHog();
 	const queryClient = useQueryClient();
 	const [identifier] = useState(() => existing?.id ?? crypto.randomUUID());
 	const [name, setName] = useState(
@@ -85,6 +87,10 @@ export function SaveCalculatedDialog({
 			definition,
 		});
 		if (!result || result.error) return;
+		posthog.capture(
+			existing ? "calculated_metric_updated" : "calculated_metric_created",
+			{ unit },
+		);
 		const refreshed = await result.refresh(async (navigate) => {
 			await Promise.all([
 				queryClient.invalidateQueries({

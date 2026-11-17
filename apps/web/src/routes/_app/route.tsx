@@ -1,4 +1,6 @@
+import { usePostHog } from "@posthog/react";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { getCurrentUser } from "@/auth/session.functions";
 import { AppShell } from "@/components/app-shell";
 import { RouteError } from "@/components/route-feedback";
@@ -26,7 +28,22 @@ function App() {
 	const { user } = Route.useRouteContext();
 	return (
 		<AppShell user={user}>
+			<PostHogIdentity user={user} />
 			<Outlet />
 		</AppShell>
 	);
+}
+
+function PostHogIdentity({
+	user,
+}: {
+	user: { id: string; email: string; name: string };
+}) {
+	const posthog = usePostHog();
+
+	useEffect(() => {
+		posthog.identify(user.id, { email: user.email, name: user.name });
+	}, [posthog, user.email, user.id, user.name]);
+
+	return null;
 }

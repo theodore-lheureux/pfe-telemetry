@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useHydrated } from "@tanstack/react-router";
@@ -56,6 +57,7 @@ export function CollectorsSettings({
 	enrollmentKeys: EnrollmentKeySummary[];
 }) {
 	const hydrated = useHydrated();
+	const posthog = usePostHog();
 	const { begin } = useMutationOwner(userId);
 	const reference = {
 		organizationId: project.organizationId,
@@ -150,8 +152,8 @@ export function CollectorsSettings({
 				pending={pending}
 				error={error}
 				onClose={() => setCreating(false)}
-				onCreate={(values) =>
-					mutate(
+				onCreate={async (values) => {
+					const created = await mutate(
 						(signal) =>
 							createEnrollmentKey({
 								data: { ...reference, ...values },
@@ -162,8 +164,14 @@ export function CollectorsSettings({
 							setCreating(false);
 							setReveal(created);
 						},
-					)
-				}
+					);
+					if (created)
+						posthog.capture("enrollment_key_created", {
+							has_node_limit: values.maxNodes !== null,
+							has_expiry: values.expiresAt !== null,
+						});
+					return created;
+				}}
 			/>
 			<RevealDialog
 				key={reveal?.enrollmentKey.id ?? "closed"}
@@ -218,7 +226,9 @@ export function CollectorsSettings({
 										}),
 									m.enrollment_key_revoked_done(),
 									() => setConfirmation(null),
-								);
+								).then((revoked) => {
+									if (revoked) posthog.capture("enrollment_key_revoked");
+								});
 							}}
 						>
 							{m.enrollment_key_revoke()}

@@ -1,3 +1,4 @@
+import { usePostHog } from "@posthog/react";
 import { m } from "@recount/i18n/messages";
 import {
 	type ErrorComponentProps,
@@ -133,9 +134,15 @@ export function RouteError(props: ErrorComponentProps) {
 }
 
 function LoadError({
+	error,
 	reset,
 	children,
 }: ErrorComponentProps & { children?: ReactNode }) {
+	const posthog = usePostHog();
+	// Render errors stop at the router's boundary, so report them here.
+	useEffect(() => {
+		posthog?.captureException(error);
+	}, [posthog, error]);
 	const router = useRouter();
 	const hydrated = useHydrated();
 	const setFeedback = useOptionalMutationFeedback();

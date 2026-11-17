@@ -49,6 +49,8 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       PUBLIC_APP_URL: ${{ vars.PUBLIC_APP_URL }}
+      PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+      PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

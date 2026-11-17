@@ -20,3 +20,4 @@ packages/i18n/project.inlang/cache/
 .astro/
 .wrangler/
 apps/web/src/activity/generated/
+.env

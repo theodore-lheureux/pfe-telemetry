@@ -98,6 +98,8 @@ const link =
 </style>
 
 <script>
+	import { startAnalytics, track } from "../../lib/posthog";
+
 	type Turnstile = {
 		render(element: HTMLElement, options: Record<string, unknown>): string;
 		execute(widget: string): void;
@@ -182,6 +184,8 @@ const link =
 				if (result.ok) {
 					form.reset();
 					show(text.success);
+					startAnalytics();
+					track("early_access_requested");
 					return;
 				}
 				if (result.error === "invalid_email") {

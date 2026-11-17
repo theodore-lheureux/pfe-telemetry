@@ -6,11 +6,13 @@ import type { useMutationFeedback } from "./mutation-feedback";
 export async function signOutOfApplication(
 	router: ReturnType<typeof useRouter>,
 	setFeedback: ReturnType<typeof useMutationFeedback>,
+	resetAnalytics: () => void,
 ) {
 	try {
 		const succeeded = await router.options.context.authentication.signOut(
 			async () => !(await authClient.signOut()).error,
 			async () => {
+				resetAnalytics();
 				await router.navigate({ to: "/login", replace: true });
 			},
 		);

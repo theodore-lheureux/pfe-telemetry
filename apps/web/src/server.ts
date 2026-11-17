@@ -5,6 +5,7 @@ import { closeLiveStreams } from "./activity/live.server";
 import { drainProcessAuthEmailDelivery } from "./auth/email-delivery.server";
 import { closeDatabase } from "./db/client.server";
 import { closeTelemetryClient } from "./executions/telemetry.server";
+import { closePostHog } from "./lib/posthog.server";
 
 async function close() {
 	let failed = false;
@@ -17,6 +18,7 @@ async function close() {
 		closeTelemetryClient(),
 		closeLiveStreams(),
 		closeDatabase(),
+		closePostHog(),
 	]);
 	if (failed || results.some((result) => result.status === "rejected")) {
 		process.exitCode = 1;
