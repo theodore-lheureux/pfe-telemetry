@@ -21,7 +21,7 @@ export COMPOSE_FILE="/opt/recount/backend/infra/local/compose.yaml:/opt/recount/
 bun --no-env-file /opt/recount/backend/infra/local/data.ts start
 docker compose config --quiet
 docker compose run --rm --no-deps kafka-topics verify
-docker image load --input images.tar.gz
+docker image load --input images.tar.zst
 docker compose up --no-build --no-deps --pull never --detach --wait --wait-timeout 180 ingestion-api normalizer live web
 ln -sfn "$directory" /opt/recount/current
 printf 'Activated ingestion release %s\n' "$(cat release)"

@@ -89,18 +89,12 @@ approval. Do not apply or import as part of inspection.
 | Workflow           | Behavior                                                        | Approval boundary                                 |
 | ------------------ | --------------------------------------------------------------- | ------------------------------------------------- |
 | `infra-oracle.yml` | PR/main-change plans; manual apply of the same run's saved plan | `ingestion-plan`, then `ingestion-infrastructure` |
-| `release.yml`      | Manual native amd64/arm64 builds; immutable per-run bundles     | Publishing uses `ingestion-release` environment   |
-| `deploy.yml`       | Manual activation of an already published release on `main`     | `ingestion-deploy` environment                    |
+| `release.yml`      | Native amd64/arm64 builds on every push to `main`, then deploy  | `ingestion-deploy` environment                    |
 
-Apply, release and deployment environments restrict execution to `main`, require
-reviewers and prevent self-review. Plan runs do not require review. Publishing
-creates a release/tag and uploading credentials changes secrets: both need
-explicit approval. No workflow is dispatched by this task. Runner minutes and
-artifact/release storage must fit the owner's approved GitHub allowance.
-
-The apply/release/deploy environments use owner review with self-review disabled.
-An initiator cannot approve their own apply. Reviewer approval is separate from
-the authorization to push these workflow files; neither is bypassed here.
+Apply and deployment environments restrict execution to `main` and require the
+owner's review. Plan runs do not require review. Deploys do not wait for the test
+workflows. Publishing a prerelease, which collectors and demo VMs install from,
+runs beside the deploy without approval and never blocks it.
 
 Release IDs are `COMMIT-RUN-ATTEMPT`. Rust, the web bundle and schema exporter
 compile on `ubuntu-24.04` and `ubuntu-24.04-arm` respectively, using locked
@@ -285,13 +279,18 @@ ANSIBLE_CONFIG=infra/oracle-stack/ansible/ansible.cfg \
 
 ## Activate and verify
 
-After explicit deployment approval, dispatch `Release · deploy to Oracle` with
-the approved release ID (without the `release-` prefix). The runner verifies the
-archive's build attestation against this repository's release workflow on
+Each push to `main` runs `Release · build and deploy`, whose deploy job waits for
+approval in the `ingestion-deploy` environment. The runner verifies the build
+attestation of that run's archive against this repository's release workflow on
 `main`, computes its SHA-256, then runs `ansible/deploy.yml` over SSH as
 `recount-deploy`. The playbook checks that the release matches the VM's
-architecture, downloads the archive with that checksum, checks its embedded
-release identity and runs the archive's `activate.sh`.
+architecture, uploads the archive and checks its digest, checks its embedded
+release identity and runs the archive's `activate.sh`. To roll back, re-run the
+deploy job of an earlier run while its artifacts are retained (7 days).
+
+Releases ship only the web, ingestion API and normalizer images, compressed
+with zstd. Bootstrap builds the ClickHouse image on the host from the pinned
+upstream image and the release's schema files.
 
 Activation checks free space plus a 30% disk reserve, backend/schema manifest
 equality, the migration receipt and initialized database identities. It

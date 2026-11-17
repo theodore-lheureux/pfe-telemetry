@@ -38,10 +38,12 @@ RECOUNT_INGESTION_IMAGE=recount-ingestion-api:$release
 RECOUNT_NORMALIZER_IMAGE=recount-normalizer:$release
 RECOUNT_WEB_IMAGE=recount-web:$release
 EOF
+# Only the application images ship; the host builds its ClickHouse image from the
+# backend schema when it is provisioned.
 docker image save "recount-ingestion-api:$release" "recount-normalizer:$release" \
-    "recount-web:$release" "recount-clickhouse:$release" | gzip > "$bundle/images.tar.gz"
+    "recount-web:$release" | zstd -T0 -3 -q > "$bundle/images.tar.zst"
 image_bytes=$(docker image inspect --format '{{.Size}}' "recount-ingestion-api:$release" \
-    "recount-normalizer:$release" "recount-web:$release" "recount-clickhouse:$release" |
+    "recount-normalizer:$release" "recount-web:$release" |
     awk '{ total += $1 } END { printf "%.0f", total }')
 [[ $image_bytes -le 4294967296 ]] || { echo 'Release images exceed the 4 GiB unpacked budget' >&2; exit 1; }
 (
@@ -49,11 +51,12 @@ image_bytes=$(docker image inspect --format '{{.Size}}' "recount-ingestion-api:$
     find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > ../backend.SHA256SUMS
 )
 find apps/web/drizzle -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1 > "$bundle/migrations.sha256"
-tar -czf ".state/recount-stack-$arch.tar.gz" -C "$bundle" .
-[[ $(stat -c %s ".state/recount-stack-$arch.tar.gz") -le 2147483648 ]] || {
+# The images are already compressed, so the outer archive is a plain tar.
+tar -cf ".state/recount-stack-$arch.tar" -C "$bundle" .
+[[ $(stat -c %s ".state/recount-stack-$arch.tar") -le 2147483648 ]] || {
     echo 'Release exceeds the 2 GiB download budget' >&2; exit 1;
 }
 (
     cd .state
-    sha256sum "recount-stack-$arch.tar.gz" > "recount-stack-$arch.tar.gz.sha256"
+    sha256sum "recount-stack-$arch.tar" > "recount-stack-$arch.tar.sha256"
 )

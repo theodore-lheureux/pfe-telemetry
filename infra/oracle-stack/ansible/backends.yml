@@ -18,8 +18,8 @@
 
 - name: Download the approved and attested release for backend preparation only
   ansible.builtin.get_url:
-    url: "https://github.com/{{ recount_repository }}/releases/download/release-{{ recount_release }}/recount-stack-arm64.tar.gz"
-    dest: /opt/recount/bootstrap/release.tar.gz
+    url: "https://github.com/{{ recount_repository }}/releases/download/release-{{ recount_release }}/recount-stack-arm64.tar"
+    dest: /opt/recount/bootstrap/release.tar
     checksum: "sha256:{{ recount_release_sha256 }}"
     owner: root
     group: root
@@ -35,7 +35,7 @@
 
 - name: Extract the approved bootstrap release
   ansible.builtin.unarchive:
-    src: /opt/recount/bootstrap/release.tar.gz
+    src: /opt/recount/bootstrap/release.tar
     dest: /opt/recount/bootstrap/release
     remote_src: true
     creates: /opt/recount/bootstrap/release/release
@@ -133,7 +133,24 @@
   failed_when: recount_schema_image.rc not in [0, 1]
   changed_when: false
 
-- name: Load approved images without starting application services
+# Releases ship only application images; ClickHouse is the pinned upstream image
+# with this release's schema, built here from the verified backend files.
+- name: Build the pinned schema image from the release's backend files
+  ansible.builtin.command:
+    argv:
+      [
+        docker,
+        build,
+        --file,
+        /opt/recount/bootstrap/release/backend/infra/clickhouse/Dockerfile,
+        --tag,
+        "recount-clickhouse:{{ recount_release }}",
+        /opt/recount/bootstrap/release/backend/schema,
+      ]
+  when: recount_schema_image.rc == 1
+  changed_when: true
+
+- name: Load approved application images without starting them
   ansible.builtin.command:
     argv:
       [
@@ -141,7 +158,7 @@
         image,
         load,
         --input,
-        /opt/recount/bootstrap/release/images.tar.gz,
+        /opt/recount/bootstrap/release/images.tar.zst,
       ]
   when: recount_schema_image.rc == 1
   changed_when: true

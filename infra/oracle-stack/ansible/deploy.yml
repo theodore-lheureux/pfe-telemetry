@@ -10,7 +10,7 @@
         that:
           - recount_release is match("^[a-f0-9]{40}-[0-9]+-[0-9]+$")
           - recount_release_sha256 is match("^[a-f0-9]{64}$")
-          - recount_repository is match("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+          - recount_release_archive is match("^/")
           - (recount_arch, ansible_facts.architecture) in [("arm64", "aarch64"), ("amd64", "x86_64")]
         quiet: true
 
@@ -23,17 +23,28 @@
         mode: "0700"
 
     # The runner verified this archive's build attestation and passes its digest.
-    - name: Download the attested release archive
-      ansible.builtin.get_url:
-        url: "https://github.com/{{ recount_repository }}/releases/download/release-{{ recount_release }}/recount-stack-{{ recount_arch }}.tar.gz"
-        dest: "{{ recount_release_directory }}/release.tar.gz"
-        checksum: "sha256:{{ recount_release_sha256 }}"
+    - name: Upload the attested release archive
+      ansible.builtin.copy:
+        src: "{{ recount_release_archive }}"
+        dest: "{{ recount_release_directory }}/release.tar"
+        owner: root
+        group: root
         mode: "0600"
-        timeout: 600
+
+    - name: Measure the uploaded archive
+      ansible.builtin.stat:
+        path: "{{ recount_release_directory }}/release.tar"
+        checksum_algorithm: sha256
+      register: recount_archive
+
+    - name: Require the attested archive digest
+      ansible.builtin.assert:
+        that: recount_archive.stat.checksum == recount_release_sha256
+        quiet: true
 
     - name: Extract the release
       ansible.builtin.unarchive:
-        src: "{{ recount_release_directory }}/release.tar.gz"
+        src: "{{ recount_release_directory }}/release.tar"
         dest: "{{ recount_release_directory }}"
         remote_src: true
         creates: "{{ recount_release_directory }}/activate.sh"
@@ -67,6 +78,8 @@
         line: '{{ item.key }}="{{ item.value }}"'
         state: "{{ 'present' if item.value else 'absent' }}"
       loop: "{{ recount_posthog | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
       vars:
         recount_posthog:
           RECOUNT_POSTHOG_PROJECT_TOKEN: "{{ recount_posthog_project_token | default('') }}"
