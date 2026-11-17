@@ -7,6 +7,7 @@ import {
 	chooseProject,
 	data,
 	expect,
+	notices,
 	openSettingsSection,
 	openWorkspaceMenu,
 	settingsUrl,
@@ -505,7 +506,7 @@ test("acknowledges a saved mutation when subsequent metadata reads fail, then re
 		page.getByRole("heading", { name: "Something went wrong" }),
 	).toBeVisible();
 	await expect(page.locator("[data-public-header], footer")).toHaveCount(0);
-	await expect(page.getByRole("status")).toContainText(
+	await expect(notices(page)).toContainText(
 		"Your change was saved, but the page could not refresh.",
 	);
 	expect(

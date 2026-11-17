@@ -8,6 +8,7 @@ import {
 	data,
 	expect,
 	memberRole,
+	notices,
 	openInvitationForm,
 	openMemberActions,
 	openProjectGrant,
@@ -175,13 +176,9 @@ test("embedded grant editors give the same member independent labels, writes and
 	const first = projectRow(projects[0].name);
 	const second = projectRow(projects[1].name);
 	const label = "Project role for embedded@example.invalid";
-	const firstId = await first
-		.getByLabel(label, { exact: true })
-		.getAttribute("id");
-	const secondId = await second
-		.getByLabel(label, { exact: true })
-		.getAttribute("id");
-	expect(firstId).not.toBe(secondId);
+	// Each project row has its own editor.
+	await expect(first.getByLabel(label, { exact: true })).toHaveCount(1);
+	await expect(second.getByLabel(label, { exact: true })).toHaveCount(1);
 	for (const [section, role, project] of [
 		[first, "viewer", projects[0]],
 		[second, "admin", projects[1]],
@@ -650,7 +647,7 @@ test("a successful membership write survives a failed loader refresh", async ({
 	await expect(
 		page.getByRole("heading", { name: "Something went wrong", exact: true }),
 	).toBeVisible();
-	await expect(page.getByRole("status")).toContainText(
+	await expect(notices(page)).toContainText(
 		"Your membership change was saved, but the page could not refresh.",
 	);
 	expect(writes).toBe(1);

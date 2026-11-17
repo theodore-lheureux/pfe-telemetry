@@ -236,9 +236,9 @@ test("acknowledgement survives reload-error unmount without marking the write re
 	await expect(
 		page.getByRole("heading", { name: "Reload failed" }),
 	).toBeVisible();
-	await expect(page.getByRole("status")).toContainText(
-		"Your change was saved, but",
-	);
+	await expect(
+		page.getByRole("region", { name: /Notifications/ }).getByRole("listitem"),
+	).toContainText("Your change was saved, but");
 	expect(await page.evaluate(() => window.mutationTest.writes().length)).toBe(
 		1,
 	);

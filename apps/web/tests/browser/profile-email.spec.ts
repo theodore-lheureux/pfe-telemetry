@@ -1,5 +1,5 @@
 import { m } from "@recount/i18n/messages";
-import { expect, settingsUrl, test } from "./fixtures";
+import { expect, notices, settingsUrl, test } from "./fixtures";
 
 for (const locale of ["en", "fr"] as const) {
 	test(`profile email links show request, invalid and success states in ${locale}`, async ({
@@ -81,9 +81,9 @@ for (const locale of ["en", "fr"] as const) {
 		).toBe(oldEmail);
 		await confirm().click();
 		await expect(
-			page
-				.getByRole("status")
-				.filter({ hasText: m.profile_email_change_saved({}, options) }),
+			notices(page).filter({
+				hasText: m.profile_email_change_saved({}, options),
+			}),
 		).toBeVisible();
 		await page
 			.getByRole("link", {

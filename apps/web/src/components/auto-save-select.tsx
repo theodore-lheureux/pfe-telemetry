@@ -1,7 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { useHydrated } from "@tanstack/react-router";
 import { cn } from "cn";
-import { useId, useOptimistic, useTransition } from "react";
+import { useOptimistic, useTransition } from "react";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import { Spinner } from "./ui/spinner";
 
@@ -34,14 +34,12 @@ export function AutoSaveSelect<Value extends string>({
 	) => Promise<unknown> | undefined;
 	className?: string;
 }) {
-	const id = useId();
 	const hydrated = useHydrated();
 	const [shown, show] = useOptimistic(value);
 	const [saving, startSaving] = useTransition();
 	return (
 		<div className={cn("relative", className)}>
 			<NativeSelect
-				id={id}
 				aria-label={label}
 				aria-busy={saving}
 				value={shown}

@@ -8,6 +8,7 @@ import {
 	data,
 	expect,
 	memberRole,
+	notices,
 	openProjectGrant,
 	settingsUrl,
 	test,
@@ -145,7 +146,7 @@ for (const locale of ["en", "fr"] as const) {
 				page.getByLabel(m.language({}, options), { exact: true }),
 			).toHaveCount(0);
 			release();
-			await expect(page.getByRole("alert")).toContainText(
+			await expect(notices(page)).toContainText(
 				kind === "member"
 					? m.the_member_change_could_not_be_completed_refresh({}, options)
 					: m.the_grant_change_could_not_be_completed_refresh({}, options),

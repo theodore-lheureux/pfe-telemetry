@@ -1,3 +1,4 @@
+import { m } from "@recount/i18n/messages";
 import {
 	CircleCheckIcon,
 	InfoIcon,
@@ -32,6 +33,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
 				classNames: {
 					toast: "cn-toast",
 				},
+				closeButtonAriaLabel: m.dismiss_notice(),
 			}}
 			{...props}
 		/>

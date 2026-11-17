@@ -9,6 +9,7 @@ import {
 	data,
 	dismissPasskeySetup,
 	expect,
+	notices,
 	openInvitationForm,
 	openReauthentication,
 	openSettingsSection,
@@ -318,7 +319,7 @@ test("a later name submission keeps its field and feedback when an older respons
 			.getByRole("button", { name: "Save project", exact: true })
 			.click();
 		await expect(
-			page.getByRole("status").filter({ hasText: "Changes saved" }),
+			notices(page).filter({ hasText: "Changes saved" }),
 		).toBeVisible();
 		release();
 		await expect.poll(() => delivered).toBe(true);
@@ -535,7 +536,7 @@ test("an acknowledged creation recovers its saved destination after metadata rea
 		),
 	);
 	await expect(page).toHaveURL(`${workspace.origin}/organizations/${saved.id}`);
-	await expect(page.getByRole("status")).toContainText("Your change was saved");
+	await expect(notices(page)).toContainText("Your change was saved");
 	await page.unroute("**/_serverFn/**");
 	await page.getByRole("button", { name: "Try again", exact: true }).click();
 	await expect(

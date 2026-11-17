@@ -12,6 +12,7 @@ import {
 	data,
 	expect,
 	memberRole,
+	notices,
 	openInvitationForm,
 	openMemberActions,
 	openProjectGrant,
@@ -475,9 +476,9 @@ test("accepted invitation keeps its acknowledged-write notice when the destinati
 		page.getByRole("heading", { name: "Something went wrong", exact: true }),
 	).toBeVisible();
 	await expect(
-		page
-			.getByRole("status")
-			.filter({ hasText: "Your invitation response was saved, but" }),
+		notices(page).filter({
+			hasText: "Your invitation response was saved, but",
+		}),
 	).toContainText("Your invitation response was saved");
 	await expect(
 		page.getByRole("button", { name: "Dismiss notice", exact: true }),
@@ -687,7 +688,7 @@ for (const kind of ["invitation", "grant"] as const) {
 		await expect(
 			page.getByRole("heading", { name: "Something went wrong", exact: true }),
 		).toBeVisible();
-		await expect(page.getByRole("status")).toContainText(
+		await expect(notices(page)).toContainText(
 			kind === "invitation"
 				? "The invitation request was processed, but the list could not refresh. Check the current invitations before sending again."
 				: "Your project grant change was saved, but the page could not refresh.",
@@ -829,9 +830,7 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 					.click();
 		} else {
 			await expect(
-				page
-					.getByRole("status")
-					.filter({ hasText: "Your membership change was saved." }),
+				notices(page).filter({ hasText: "Your membership change was saved." }),
 			).toBeVisible();
 			await expect(memberRole(page, "target@example.invalid")).toHaveAttribute(
 				"aria-busy",
@@ -863,7 +862,7 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 					exact: true,
 				}),
 			).toBeVisible();
-			await expect(page.getByRole("status")).toContainText(
+			await expect(notices(page)).toContainText(
 				"Your membership change was saved, but the page could not refresh.",
 			);
 		}
@@ -939,7 +938,7 @@ test("a saved membership write is acknowledged when its refresh becomes not-foun
 	await expect(
 		page.getByRole("heading", { name: "Page not found", exact: true }),
 	).toBeVisible();
-	await expect(page.getByRole("status")).toContainText(
+	await expect(notices(page)).toContainText(
 		"Your membership change was saved, but the page could not refresh.",
 	);
 	expect(

@@ -74,6 +74,13 @@ export async function openMemberActions(
 		.click();
 }
 
+/** Toasts, found through Sonner's notification region like assistive technology. */
+export function notices(page: Page) {
+	return page
+		.getByRole("region", { name: /Notifications/ })
+		.getByRole("listitem");
+}
+
 /** Changes a member's role from their row actions, such as "Upgrade to admin". */
 export async function changeMemberRole(
 	page: Page,
