@@ -5,7 +5,8 @@ export default defineConfig({
 	testDir: "./tests/browser",
 	testIgnore: ["**/execution-pipeline.spec.ts"],
 	fullyParallel: false,
-	workers: 1,
+	// Each test owns its database and server port, so workers only add load.
+	workers: Number(process.env.RECOUNT_BROWSER_WORKERS ?? 1),
 	timeout: 45_000,
 	reporter: "list",
 	outputDir: "test-results/browser",

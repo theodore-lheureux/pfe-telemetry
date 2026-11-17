@@ -243,6 +243,8 @@ jobs:
       - name: Image-pinned schema and packaged application smoke assertions
         run: just --no-dotenv test-runtime
       - name: Production build browser assertions with the initialized analytics backend
+        env:
+          RECOUNT_BROWSER_WORKERS: "3"
         run: node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts
       - name: Owned unclean restart, checkpoint replay and invalid initialized startup
         run: just --no-dotenv test-recovery --release
