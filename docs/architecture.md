@@ -75,6 +75,5 @@ PlantUML sources share the Recount styling in `diagram-style.iuml`; teal boxes a
 | [current-architecture](current-architecture.puml)     | Components and their connections                   |
 | [deployment](deployment.puml)                         | Where each component runs                          |
 | [telemetry-flow](telemetry-flow.puml)                 | One upload from collector to dashboard             |
-| [telemetry-retry](telemetry-retry.puml)               | A retried upload stored once                       |
 | [execution-participants](execution-participants.puml) | How a labelled process joins an execution          |
 | [application-access](application-access.puml)         | Organizations, projects, roles and their resources |

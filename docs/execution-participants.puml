@@ -15,21 +15,21 @@ participant "Web application" as web <<recount>>
 == Launch ==
 user -> launcher : recount run ~--execution run-42 ~-- cmd
 launcher -> process : exec with RECOUNT_EXECUTION=run-42
-note over launcher, process : Slurm jobs use SLURM_JOB_ID as slurm:<id>
+note over launcher, process : Slurm jobs use slurm:<SLURM_JOB_ID>
 
 == Discovery ==
 collector -> process : Read environment once
-collector -> collector : Keep only the execution label
+collector -> collector : Keep only the label
 collector -> ingestion ++ : Claim participant
 ingestion -> kafka : Publish participant fact
 ingestion --> collector -- : OK
 collector -> ingestion : Claim process membership
-collector -> ingestion : End membership when the process exits
+collector -> ingestion : End membership on exit
 kafka -> clickhouse : Participant facts
 
 == Viewing ==
 user -> web ++ : Open execution run-42
-web -> clickhouse ++ : Participants and their metrics
+web -> clickhouse ++ : Participants and metrics
 clickhouse --> web --
 web --> user -- : Execution view
 

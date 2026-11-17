@@ -1,7 +1,7 @@
 @startuml
 !include diagram-style.iuml
 skinparam nodesep 40
-skinparam ranksep 60
+skinparam ranksep 45
 
 actor "User" as user
 
@@ -16,20 +16,15 @@ rectangle "Cloudflare" <<zone>> {
 
 rectangle "Oracle Cloud VM" <<zone>> {
   rectangle "<b>Caddy</b>\n\napp.recount.cloud\ningest.recount.cloud" as caddy
-  rectangle "Docker Compose" <<zone>> {
-    rectangle "<b>Web application</b>" as web <<recount>>
-    rectangle "<b>Live gateway</b>" as live <<recount>>
-    rectangle "<b>Ingestion API</b>" as ingestion <<recount>>
-    rectangle "<b>Normalizer</b>" as normalizer <<recount>>
-    database "<b>PostgreSQL</b>" as postgres
-    queue "<b>Kafka</b>" as kafka
-    database "<b>ClickHouse</b>" as clickhouse
-  }
+  rectangle "<b>Web application</b>" as web <<recount>>
+  rectangle "<b>Ingestion API</b>" as ingestion <<recount>>
+  rectangle "<b>Live gateway</b>" as live <<recount>>
+  database "<b>PostgreSQL</b>" as postgres
+  database "<b>ClickHouse</b>" as clickhouse
+  queue "<b>Kafka</b>" as kafka
+  rectangle "<b>Normalizer</b>" as normalizer <<recount>>
 }
 
-rectangle "PostHog" <<zone>> {
-  rectangle "<b>Product analytics</b>\n\napi-service.recount.cloud" as posthog
-}
 
 user -down-> landing
 user -down-> caddy
@@ -38,14 +33,13 @@ aws2 -down-> caddy : telemetry
 landing -right-> caddy : session check
 caddy -down-> web
 caddy -down-> ingestion
-web -[hidden]right- live
-live -[hidden]right- ingestion
-ingestion -[hidden]right- normalizer
+web -[hidden]right- ingestion
 web -[hidden]down- postgres
-live -[hidden]down- kafka
-normalizer -[hidden]down- clickhouse
-landing ..> posthog : events
-web ..> posthog : events
+ingestion -[hidden]down- kafka
+live -[hidden]right- postgres
+postgres -[hidden]right- clickhouse
+clickhouse -[hidden]right- kafka
+kafka -[hidden]right- normalizer
 
 hide stereotype
 @enduml
