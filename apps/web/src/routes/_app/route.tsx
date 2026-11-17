@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { getCurrentUser } from "@/auth/session.functions";
 import { AppShell } from "@/components/app-shell";
 import { RouteError } from "@/components/route-feedback";
+import { identifyPerson } from "@/lib/posthog-identity";
 
 export const Route = createFileRoute("/_app")({
 	beforeLoad: async ({ location, context }) => {
@@ -40,10 +41,11 @@ function PostHogIdentity({
 	user: { id: string; email: string; name: string };
 }) {
 	const posthog = usePostHog();
+	const { id, email, name } = user;
 
 	useEffect(() => {
-		posthog.identify(user.id, { email: user.email, name: user.name });
-	}, [posthog, user.email, user.id, user.name]);
+		identifyPerson(posthog, { id, email, name });
+	}, [posthog, email, id, name]);
 
 	return null;
 }
