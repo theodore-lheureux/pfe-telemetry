@@ -176,7 +176,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE: ${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           COMMIT: ${{ github.sha }}
+        # GitHub refuses a GITHUB_TOKEN tag on a commit whose workflow files differ
+        # from main's, so only the run for main's latest commit publishes; an older
+        # run's release would be superseded anyway.
         run: |
+          latest=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
+          if [[ $latest != "$COMMIT" ]]; then
+            echo "main has moved to $latest; that run publishes instead."
+            exit 0
+          fi
           cd assets
           sha256sum --check recount-*.sha256
           gh release create "release-$RELEASE" --target "$COMMIT" \
