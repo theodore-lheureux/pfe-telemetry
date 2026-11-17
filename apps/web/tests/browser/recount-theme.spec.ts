@@ -268,6 +268,9 @@ test("real workspace, collectors and administration retain Core geometry and key
 								.locator('[data-slot="input-group"]')
 								.filter({ has: readyControl })
 						: readyControl;
+				// The invitation dialog focuses its first field, which is focus-visible after
+				// earlier keyboard use; the resting border is what this checks.
+				if (screen !== "workspace") await readyControl.blur();
 				if (screen !== "workspace")
 					await expect(frame).toHaveCSS(
 						"border-color",
