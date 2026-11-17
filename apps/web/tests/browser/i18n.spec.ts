@@ -6,6 +6,7 @@ import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import { gate as createGate } from "../gate";
 import {
+	changeMemberRole,
 	closePreferences,
 	data,
 	expect,
@@ -339,12 +340,12 @@ for (const locale of ["en", "fr"] as const) {
 				body: { organizationId, userId: collaborator.userId, role: "member" },
 			});
 			await page.goto(settingsUrl(orgURL, "organization-members"));
-			const role = page.getByLabel(
-				m.role_for({ email: "collaborator@example.invalid" }, options),
-				{ exact: true },
+			await changeMemberRole(
+				page,
+				"collaborator@example.invalid",
+				text(m.role_upgrade_to_admin),
+				locale,
 			);
-			await expect(role).toHaveValue("member");
-			await role.selectOption("admin");
 			await expect(
 				page.getByText(text(m.member_role_updated), { exact: true }),
 			).toBeVisible();

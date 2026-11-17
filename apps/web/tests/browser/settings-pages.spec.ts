@@ -7,7 +7,7 @@ import {
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 import { settingsPath } from "../settings-path";
-import { data, expect, test } from "./fixtures";
+import { changeMemberRole, data, expect, test } from "./fixtures";
 
 for (const locale of ["en", "fr"] as const) {
 	test(`scoped settings pages, membership tables and planned authentication in ${locale}`, async ({
@@ -169,12 +169,12 @@ for (const locale of ["en", "fr"] as const) {
 		});
 		await search.fill("settings-member");
 		await expect(members.getByRole("row")).toHaveCount(2);
-		const role = page.getByLabel(
-			m.role_for({ email: "settings-member@example.invalid" }, options),
-			{ exact: true },
+		await changeMemberRole(
+			page,
+			"settings-member@example.invalid",
+			m.role_upgrade_to_admin({}, options),
+			locale,
 		);
-		await role.selectOption("admin");
-		await expect(role).not.toHaveAttribute("aria-busy", "true");
 		await expect
 			.poll(
 				async () =>

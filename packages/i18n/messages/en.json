@@ -411,7 +411,6 @@
   "implicit_role": "Implicit administrator · Organization {role}",
   "explicit_role": "Explicit {role}",
   "redundant_role": "Redundant explicit {role} grant",
-  "role_for": "Role for {email}",
   "project_role_for": "Project role for {email}",
   "save_grant_for": "Save project grant for {email}",
   "remove_member_named": "Remove member: {email}",
@@ -1540,5 +1539,9 @@
   "dashboard_templates_snapshot_description": "Save the persisted layout and insights as an independent project template. Unsaved filter changes are not included.",
   "dashboard_templates_parameterize_node": "Ask for $node at creation instead of retaining the dashboard-level node filter.",
   "dashboard_templates_project_empty": "No project templates yet.",
-  "dashboard_templates_project_loading": "Loading project templates…"
+  "dashboard_templates_project_loading": "Loading project templates…",
+  "role_upgrade_to_admin": "Upgrade to admin",
+  "role_make_owner": "Make owner",
+  "role_downgrade_to_member": "Downgrade to member",
+  "role_downgrade_to_admin": "Downgrade to admin"
 }

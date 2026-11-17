@@ -411,7 +411,6 @@
   "implicit_role": "Administrateur implicite · Organisation : {role}",
   "explicit_role": "Accès explicite : {role}",
   "redundant_role": "Accès explicite redondant : {role}",
-  "role_for": "Rôle de {email}",
   "project_role_for": "Rôle dans le projet de {email}",
   "save_grant_for": "Enregistrer l’accès au projet de {email}",
   "remove_member_named": "Retirer le membre : {email}",
@@ -1540,5 +1539,9 @@
   "dashboard_templates_snapshot_description": "Enregistrez la disposition et les analyses sauvegardées comme modèle indépendant du projet. Les modifications de filtres non enregistrées sont exclues.",
   "dashboard_templates_parameterize_node": "Demander $node à la création au lieu de conserver le filtre de nœud du tableau de bord.",
   "dashboard_templates_project_empty": "Aucun modèle de projet pour le moment.",
-  "dashboard_templates_project_loading": "Chargement des modèles du projet…"
+  "dashboard_templates_project_loading": "Chargement des modèles du projet…",
+  "role_upgrade_to_admin": "Promouvoir administrateur",
+  "role_make_owner": "Nommer propriétaire",
+  "role_downgrade_to_member": "Rétrograder en membre",
+  "role_downgrade_to_admin": "Rétrograder en administrateur"
 }

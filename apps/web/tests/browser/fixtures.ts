@@ -74,11 +74,23 @@ export async function openMemberActions(
 		.click();
 }
 
-/** Picks a value in an auto-saving select and waits for its save to settle. */
-export async function chooseAndSave(page: Page, label: string, value: string) {
-	const select = page.getByLabel(label, { exact: true });
-	await select.selectOption(value);
-	await expect(select).not.toHaveAttribute("aria-busy", "true");
+/** Changes a member's role from their row actions, such as "Upgrade to admin". */
+export async function changeMemberRole(
+	page: Page,
+	email: string,
+	action: string,
+	locale: Locale = "en",
+) {
+	await openMemberActions(page, email, locale);
+	await page.getByRole("menuitem", { name: action, exact: true }).click();
+}
+
+/** The role badge in a member's row. */
+export function memberRole(page: Page, email: string) {
+	return page
+		.getByRole("row")
+		.filter({ hasText: email })
+		.locator("[aria-busy]");
 }
 
 export async function openInvitationForm(page: Page, locale: Locale = "en") {

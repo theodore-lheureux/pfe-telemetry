@@ -6,10 +6,12 @@ import * as organizationDomain from "../../src/organizations/organizations.serve
 import * as projectDomain from "../../src/organizations/projects.server";
 import { gate as createGate } from "../gate";
 import {
+	changeMemberRole,
 	chooseOrganization,
 	chooseProject,
 	data,
 	expect,
+	memberRole,
 	openInvitationForm,
 	openMemberActions,
 	openProjectGrant,
@@ -778,7 +780,10 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 			),
 		);
 		await expect(
-			page.getByLabel("Role for target@example.invalid", { exact: true }),
+			page.getByRole("button", {
+				name: "Actions for target@example.invalid",
+				exact: true,
+			}),
 		).toBeEnabled();
 		const rpc = await workspace.serverFunctionPath(
 			page,
@@ -804,9 +809,7 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 				delivered();
 			},
 		);
-		await page
-			.getByLabel("Role for target@example.invalid", { exact: true })
-			.selectOption("admin");
+		await changeMemberRole(page, "target@example.invalid", "Upgrade to admin");
 		await ready;
 		if (transition === "dismiss-then-navigate")
 			await page
@@ -836,9 +839,10 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 					.getByRole("status")
 					.filter({ hasText: "Your membership change was saved." }),
 			).toBeVisible();
-			await expect(
-				page.getByLabel("Role for target@example.invalid", { exact: true }),
-			).toHaveAttribute("aria-busy", "true");
+			await expect(memberRole(page, "target@example.invalid")).toHaveAttribute(
+				"aria-busy",
+				"true",
+			);
 		}
 		release();
 		await finished;
@@ -937,9 +941,7 @@ test("a saved membership write is acknowledged when its refresh becomes not-foun
 			.where(eq(member.id, ownerMember.id));
 		await route.fulfill({ response });
 	});
-	await page
-		.getByLabel("Role for target@example.invalid", { exact: true })
-		.selectOption("admin");
+	await changeMemberRole(page, "target@example.invalid", "Upgrade to admin");
 	await expect(
 		page.getByRole("heading", { name: "Page not found", exact: true }),
 	).toBeVisible();

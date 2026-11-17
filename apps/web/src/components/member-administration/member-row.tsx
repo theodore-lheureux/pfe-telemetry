@@ -2,13 +2,12 @@ import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
 import { Link } from "@tanstack/react-router";
 import { MoreHorizontalIcon, UserMinusIcon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useOptimistic, useRef, useState, useTransition } from "react";
 import type {
 	OrganizationRole,
 	ProjectSummary,
 } from "../../organizations/contracts";
 import type { OrganizationMemberSummary } from "../../organizations/member-contracts";
-import { AutoSaveSelect } from "../auto-save-select";
 import { AlertDialogActions } from "../dialog-actions";
 import { UserAvatar } from "../identity-avatar";
 import { TimeDisplay } from "../time-display";
@@ -33,9 +32,19 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { Spinner } from "../ui/spinner";
 import { TableCell, TableRow } from "../ui/table";
 import { MemberProjectAccess } from "./member-project-access";
 import type { useOrganizationMembers } from "./use-organization-members";
+
+const ROLES: OrganizationRole[] = ["member", "admin", "owner"];
+function roleChangeLabel(from: OrganizationRole, to: OrganizationRole) {
+	if (to === "owner") return m.role_make_owner();
+	if (to === "member") return m.role_downgrade_to_member();
+	return from === "member"
+		? m.role_upgrade_to_admin()
+		: m.role_downgrade_to_admin();
+}
 
 export function MemberRow({
 	member,
@@ -59,6 +68,16 @@ export function MemberRow({
 		member.role === "owner" && (organizationRole !== "owner" || owners <= 1);
 	const { pending, disabled, confirm, heading } = state;
 	const [editingAccess, setEditingAccess] = useState(false);
+	// You cannot change your own role here; a slip would remove your access.
+	const canChangeRole = canManage && !protectedOwner && !self;
+	const [role, showRole] = useOptimistic(member.role);
+	const [changingRole, startRoleChange] = useTransition();
+	function changeRole(target: OrganizationRole) {
+		startRoleChange(async () => {
+			showRole(target);
+			await state.change({ action: "role", memberId: member.id, role: target });
+		});
+	}
 	const canManageProjects = projects.some(
 		(project) => project.role === "admin",
 	);
@@ -87,24 +106,10 @@ export function MemberRow({
 					</div>
 				</TableCell>
 				<TableCell>
-					{canManage && !protectedOwner && !self ? (
-						<AutoSaveSelect<OrganizationRole>
-							value={member.role}
-							label={m.role_for({ email: member.email })}
-							options={[
-								{ value: "member", label: m.role_member() },
-								{ value: "admin", label: m.role_admin() },
-								...(organizationRole === "owner"
-									? [{ value: "owner" as const, label: m.role_owner() }]
-									: []),
-							]}
-							onSave={(role) =>
-								state.change({ action: "role", memberId: member.id, role })
-							}
-						/>
-					) : (
-						<Badge variant="outline">{roleLabel(member.role)}</Badge>
-					)}
+					<div className="flex items-center gap-2" aria-busy={changingRole}>
+						<Badge variant="outline">{roleLabel(role)}</Badge>
+						{changingRole && <Spinner aria-label={m.saving()} />}
+					</div>
 				</TableCell>
 				<TableCell>
 					<div className="flex max-w-64 flex-wrap gap-1">
@@ -171,6 +176,19 @@ export function MemberRow({
 										{m.member_manage_access()}
 									</DropdownMenuItem>
 								)}
+								{canChangeRole &&
+									ROLES.filter(
+										(target) =>
+											target !== member.role &&
+											(target !== "owner" || organizationRole === "owner"),
+									).map((target) => (
+										<DropdownMenuItem
+											key={target}
+											onSelect={() => changeRole(target)}
+										>
+											{roleChangeLabel(member.role, target)}
+										</DropdownMenuItem>
+									))}
 								{!protectedOwner && (self || canManage) && (
 									<DropdownMenuItem
 										variant="destructive"

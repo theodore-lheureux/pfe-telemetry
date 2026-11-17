@@ -4,9 +4,10 @@ import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 import {
-	chooseAndSave,
+	changeMemberRole,
 	data,
 	expect,
+	memberRole,
 	openInvitationForm,
 	openMemberActions,
 	openProjectGrant,
@@ -52,13 +53,17 @@ test("manages native memberships and restricts administrator owner controls", as
 		"organization-members",
 	);
 	await page.goto(url);
-	await expect(
-		page.getByLabel("Role for owner@example.invalid", { exact: true }),
-	).toHaveCount(0);
-	await chooseAndSave(page, "Role for collaborator@example.invalid", "admin");
+	await changeMemberRole(
+		page,
+		"collaborator@example.invalid",
+		"Upgrade to admin",
+	);
 	await expect(
 		page.getByText("Member role updated.", { exact: true }),
 	).toBeVisible();
+	await expect(memberRole(page, "collaborator@example.invalid")).toHaveText(
+		"Admin",
+	);
 	expect(
 		data(
 			await workspace.operations(collaborator.headers, (actor) =>
@@ -72,12 +77,12 @@ test("manages native memberships and restricts administrator owner controls", as
 	).toBe("admin");
 	await workspace.signIn(page, "admin@example.invalid");
 	await page.goto(url);
+	// Only owners can make owners.
+	await openMemberActions(page, "collaborator@example.invalid");
 	await expect(
-		page.getByLabel("Role for owner@example.invalid", { exact: true }),
+		page.getByRole("menuitem", { name: "Make owner", exact: true }),
 	).toHaveCount(0);
-	await expect(
-		page.getByRole("option", { name: "Owner", exact: true }),
-	).toHaveCount(0);
+	await page.keyboard.press("Escape");
 	await expect(
 		page.getByRole("button", {
 			name: "Remove member: owner@example.invalid",
@@ -588,7 +593,7 @@ test("stale organization administration is rejected and the controls are refresh
 		.getByRole("button", { name: "Confirm removal", exact: true })
 		.click();
 	await expect(
-		page.getByLabel("Role for target@example.invalid", { exact: true }),
+		page.getByRole("row").filter({ hasText: "target@example.invalid" }),
 	).toHaveCount(0);
 	await expect(
 		page.getByRole("heading", { name: "Pending invites", exact: true }),
@@ -641,9 +646,7 @@ test("a successful membership write survives a failed loader refresh", async ({
 	await page.route("**/_serverFn/**", (route) =>
 		route.request().method() === "GET" ? route.abort() : route.continue(),
 	);
-	await page
-		.getByLabel("Role for target@example.invalid", { exact: true })
-		.selectOption("admin");
+	await changeMemberRole(page, "target@example.invalid", "Upgrade to admin");
 	await expect(
 		page.getByRole("heading", { name: "Something went wrong", exact: true }),
 	).toBeVisible();
@@ -664,9 +667,7 @@ test("a successful membership write survives a failed loader refresh", async ({
 	).toBe("admin");
 	await page.unroute("**/_serverFn/**");
 	await page.getByRole("button", { name: "Try again", exact: true }).click();
-	await expect(
-		page.getByLabel("Role for target@example.invalid", { exact: true }),
-	).toHaveValue("admin");
+	await expect(memberRole(page, "target@example.invalid")).toHaveText("Admin");
 	await expect(
 		page.getByRole("button", { name: "Dismiss notice", exact: true }),
 	).toHaveCount(0);

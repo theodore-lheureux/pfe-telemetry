@@ -3,7 +3,15 @@ import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 import { gate as createGate } from "../gate";
-import { data, expect, openProjectGrant, settingsUrl, test } from "./fixtures";
+import {
+	changeMemberRole,
+	data,
+	expect,
+	memberRole,
+	openProjectGrant,
+	settingsUrl,
+	test,
+} from "./fixtures";
 
 for (const locale of ["en", "fr"] as const) {
 	test(`typed member and grant forms keep pending drafts and uncertain writes explicit in ${locale}`, async ({
@@ -59,10 +67,7 @@ for (const locale of ["en", "fr"] as const) {
 		});
 		try {
 			const ssr = await noScript.newPage();
-			for (const [url, label] of [
-				[membersUrl, m.role_for({ email }, options)],
-				[grantsUrl, m.project_role_for({ email }, options)],
-			]) {
+			for (const url of [membersUrl, grantsUrl]) {
 				await ssr.goto(url);
 				if (url === membersUrl) {
 					await expect(
@@ -71,7 +76,6 @@ for (const locale of ["en", "fr"] as const) {
 							exact: true,
 						}),
 					).toBeDisabled();
-					await expect(ssr.getByLabel(label, { exact: true })).toBeDisabled();
 					continue;
 				}
 				await expect(
@@ -80,7 +84,11 @@ for (const locale of ["en", "fr"] as const) {
 						exact: true,
 					}),
 				).toBeDisabled();
-				await expect(ssr.getByLabel(label, { exact: true })).toHaveCount(0);
+				await expect(
+					ssr.getByLabel(m.project_role_for({ email }, options), {
+						exact: true,
+					}),
+				).toHaveCount(0);
 			}
 		} finally {
 			await noScript.close();
@@ -89,13 +97,10 @@ for (const locale of ["en", "fr"] as const) {
 		for (const kind of ["member", "grant"] as const) {
 			await page.goto(kind === "member" ? membersUrl : grantsUrl);
 			if (kind === "grant") await openProjectGrant(page, email, locale);
-			const select = page.getByLabel(
-				kind === "member"
-					? m.role_for({ email }, options)
-					: m.project_role_for({ email }, options),
-				{ exact: true },
-			);
-			// Member roles save on change; new grants are a dialog form.
+			const select = page.getByLabel(m.project_role_for({ email }, options), {
+				exact: true,
+			});
+			// Member roles change from the row menu; new grants are a dialog form.
 			const submit = select
 				.locator("xpath=ancestor::form")
 				.locator('button[type="submit"]');
@@ -105,7 +110,7 @@ for (const locale of ["en", "fr"] as const) {
 				);
 				await expect(submit).toBeEnabled();
 				await select.selectOption("member");
-			} else await expect(select).toBeEnabled();
+			}
 			const { promise: received, release: ready } = createGate();
 			const { promise: gate, release } = createGate();
 			let writes = 0;
@@ -117,11 +122,20 @@ for (const locale of ["en", "fr"] as const) {
 				await gate;
 				await route.abort();
 			});
-			if (kind === "member") await select.selectOption("admin");
+			if (kind === "member")
+				await changeMemberRole(
+					page,
+					email,
+					m.role_upgrade_to_admin({}, options),
+					locale,
+				);
 			else await submit.click();
 			await received;
 			if (kind === "member")
-				await expect(select).toHaveAttribute("aria-busy", "true");
+				await expect(memberRole(page, email)).toHaveAttribute(
+					"aria-busy",
+					"true",
+				);
 			else {
 				await expect(submit).toBeDisabled();
 				await expect(submit).toHaveAttribute("aria-busy", "true");
@@ -136,7 +150,11 @@ for (const locale of ["en", "fr"] as const) {
 					? m.the_member_change_could_not_be_completed_refresh({}, options)
 					: m.the_grant_change_could_not_be_completed_refresh({}, options),
 			);
-			await expect(select).toHaveValue(kind === "member" ? "admin" : "member");
+			if (kind === "member")
+				await expect(memberRole(page, email)).toHaveText(
+					m.role_admin({}, options),
+				);
+			else await expect(select).toHaveValue("member");
 			expect(writes).toBe(1);
 			await page.unroute("**/_serverFn/**");
 			if (kind === "member") {
@@ -221,11 +239,10 @@ for (const kind of ["member", "grant"] as const) {
 		);
 		await page.goto(url);
 		if (kind === "grant") await openProjectGrant(page, email);
-		const select = page.getByLabel(
-			kind === "member" ? `Role for ${email}` : `Project role for ${email}`,
-			{ exact: true },
-		);
-		// Member roles save on change; new grants are a dialog form.
+		const select = page.getByLabel(`Project role for ${email}`, {
+			exact: true,
+		});
+		// Member roles change from the row menu; new grants are a dialog form.
 		const submit = page.getByRole("button", {
 			name: `Save project grant for ${email}`,
 			exact: true,
@@ -233,7 +250,7 @@ for (const kind of ["member", "grant"] as const) {
 		if (kind === "grant") {
 			await expect(submit).toBeEnabled();
 			await select.selectOption("member");
-		} else await expect(select).toBeEnabled();
+		}
 		const { promise: gate, release } = createGate();
 		let received = false;
 		let settled = false;
@@ -248,15 +265,18 @@ for (const kind of ["member", "grant"] as const) {
 			settled = true;
 		});
 		try {
-			if (kind === "member") await select.selectOption("admin");
+			if (kind === "member")
+				await changeMemberRole(page, email, "Upgrade to admin");
 			else await submit.click();
 			await expect.poll(() => received).toBe(true);
 			await page.evaluate(() => {
 				window.location.hash = "main-content";
 			});
 			await expect(page).toHaveURL(`${url}#main-content`);
-			if (kind === "grant") await expect(submit).toBeEnabled();
-			await expect(select).toHaveValue(kind === "member" ? "admin" : "member");
+			if (kind === "grant") {
+				await expect(submit).toBeEnabled();
+				await expect(select).toHaveValue("member");
+			} else await expect(memberRole(page, email)).toHaveText("Admin");
 			release();
 			await expect.poll(() => settled).toBe(true);
 			await expect(
