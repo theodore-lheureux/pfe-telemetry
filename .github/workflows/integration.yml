@@ -154,6 +154,8 @@ jobs:
       COMPOSE_FILE: ${{ github.workspace }}/infra/local/compose.yaml
       COMPOSE_ENV_FILES: ${{ github.workspace }}/infra/local/.env.example
       CARGO_BUILD_TARGET: x86_64-unknown-linux-gnu
+      # Matches the release build so this job can reuse its dependency cache.
+      CARGO_INCREMENTAL: "0"
       RECOUNT_ARTIFACT_ARCH: amd64
       POSTGRES_PASSWORD: recount-ci-only
       CLICKHOUSE_ADMIN_PASSWORD: recount-ci-admin-only
@@ -211,10 +213,12 @@ jobs:
         with:
           just-version: "1.58.0"
       - run: rustup show active-toolchain
+      # This job is often cancelled or fails after compiling, so it never saved a
+      # cache; it reads the release build's, which every push to main refreshes.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          key: native-runtime-x86_64-unknown-linux-gnu
-          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          shared-key: release-amd64
+          save-if: false
       - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
       - name: Build application artifacts on the Linux host
         run: |
