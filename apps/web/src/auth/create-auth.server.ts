@@ -172,7 +172,9 @@ export function createAuth(
 		databaseHooks: {
 			user: {
 				create: {
-					before: async (newUser) => {
+					before: async (newUser, ctx) => {
+						// Operator tooling creates accounts directly, without a request.
+						if (!ctx?.request) return;
 						await assertAccountCreationAllowed(
 							database,
 							config.allowSignUp,
