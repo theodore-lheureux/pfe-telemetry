@@ -68,14 +68,13 @@ Validate semantic fixtures separately from real Kafka/MV replay, poison, checkpo
 
 ## Local diagram sources
 
-PlantUML sources and their rendered PNG/SVG files share styling in `diagram-style.iuml`. Rendering tools are not managed by this repository.
+PlantUML sources share the Recount styling in `diagram-style.iuml`; teal boxes are Recount components. Rendered PNGs are in `diagrams/`; rendering tools are not managed by this repository.
 
-| Diagram                                               | Shows                                                     |
-| ----------------------------------------------------- | --------------------------------------------------------- |
-| [current-architecture](current-architecture.puml)     | Components and their connections                          |
-| [deployment](deployment.puml)                         | Where each component runs                                 |
-| [telemetry-flow](telemetry-flow.puml)                 | One upload from collector to dashboard                    |
-| [telemetry-retry](telemetry-retry.puml)               | A retried upload stored once                              |
-| [execution-participants](execution-participants.puml) | How a labelled process joins an execution                 |
-| [application-access](application-access.puml)         | Organizations, projects, roles and their resources        |
-| [delivery-pipeline](delivery-pipeline.puml)           | Checks, tests, build and approved deployment after a push |
+| Diagram                                               | Shows                                              |
+| ----------------------------------------------------- | -------------------------------------------------- |
+| [current-architecture](current-architecture.puml)     | Components and their connections                   |
+| [deployment](deployment.puml)                         | Where each component runs                          |
+| [telemetry-flow](telemetry-flow.puml)                 | One upload from collector to dashboard             |
+| [telemetry-retry](telemetry-retry.puml)               | A retried upload stored once                       |
+| [execution-participants](execution-participants.puml) | How a labelled process joins an execution          |
+| [application-access](application-access.puml)         | Organizations, projects, roles and their resources |

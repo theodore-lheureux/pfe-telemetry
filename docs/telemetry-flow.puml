@@ -1,21 +1,18 @@
 @startuml
-!pragma teoz true
 !include diagram-style.iuml
-
-title Recount - Telemetry flow
 skinparam style strictuml
 hide footbox
 
-participant "Collector" as collector
-participant "Ingestion API" as ingestion
+participant "Collector" as collector <<recount>>
+participant "Ingestion API" as ingestion <<recount>>
 queue "Kafka" as kafka
-participant "Normalizer" as normalizer
+participant "Normalizer" as normalizer <<recount>>
 database "ClickHouse" as clickhouse
-participant "Web application" as web
+participant "Web application" as web <<recount>>
 actor "User" as user
 
-== Ingestion ==
-collector -> ingestion ++ : OTLP export (node token)
+== Upload ==
+collector -> ingestion ++ : OTLP export with node token
 ingestion -> ingestion : Verify token and validate
 ingestion -> kafka ++ : Publish raw record
 kafka --> ingestion -- : Acknowledged
@@ -26,7 +23,7 @@ collector -> collector : Remove batch from queue
 normalizer -> kafka ++ : Read raw records
 kafka --> normalizer -- : Raw record
 normalizer -> normalizer : Revalidate and split into points
-normalizer -> kafka : Publish normalized points
+normalizer -> kafka : Publish points
 normalizer -> kafka : Commit offset
 
 == Storage ==
@@ -40,4 +37,6 @@ web -> web : Check project access
 web -> clickhouse ++ : Read-only query
 clickhouse --> web -- : Rows
 web --> user -- : Charts
+
+hide stereotype
 @enduml

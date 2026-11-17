@@ -1,36 +1,34 @@
 @startuml
-!pragma teoz true
 !include diagram-style.iuml
-
-title Recount - Retry after a timeout
 skinparam style strictuml
 hide footbox
 
-participant "Collector" as collector
-participant "Ingestion API" as ingestion
+participant "Collector" as collector <<recount>>
+participant "Ingestion API" as ingestion <<recount>>
 queue "Kafka" as kafka
-participant "Normalizer" as normalizer
+participant "Normalizer" as normalizer <<recount>>
 database "ClickHouse" as clickhouse
 
-== Initial upload ==
+== First attempt ==
 collector -> collector : Persist batch B1
-collector -> ingestion ++ : OTLP export (B1)
+collector -> ingestion ++ : OTLP export B1
 ingestion -> kafka ++ : Publish B1
 kafka --> ingestion -- : Acknowledged
 ingestion ->x collector -- : Response lost
 collector -> collector : Timeout, keep B1
 
 == Retry ==
-collector -> ingestion ++ : OTLP export (B1, same identities)
+collector -> ingestion ++ : OTLP export B1, same identities
 ingestion -> kafka ++ : Publish B1
 kafka --> ingestion -- : Acknowledged
 ingestion --> collector -- : OK
 collector -> collector : Delete B1
 
 == Storage ==
-normalizer -> kafka : Read B1, B1
-normalizer -> kafka : Publish points twice
+normalizer -> kafka : Read B1 twice
+normalizer -> kafka : Publish its points twice
 clickhouse -> kafka : Read points
-clickhouse -> clickhouse : Same sample identity
-clickhouse -> clickhouse : ReplacingMergeTree keeps one row
+clickhouse -> clickhouse : Same sample identity,\none row kept
+
+hide stereotype
 @enduml

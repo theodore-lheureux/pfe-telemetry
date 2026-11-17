@@ -1,37 +1,37 @@
 @startuml
-!pragma teoz true
 !include diagram-style.iuml
-
-title Recount - Execution participants
 skinparam style strictuml
 hide footbox
 
 actor "User" as user
-participant "Launcher\nor Slurm" as launcher
+participant "Launcher\nor Slurm" as launcher <<recount>>
 participant "Process" as process
-participant "Collector" as collector
-participant "Ingestion API" as ingestion
+participant "Collector" as collector <<recount>>
+participant "Ingestion API" as ingestion <<recount>>
 queue "Kafka" as kafka
 database "ClickHouse" as clickhouse
-participant "Web application" as web
+participant "Web application" as web <<recount>>
 
+== Launch ==
 user -> launcher : recount run ~--execution run-42 ~-- cmd
 launcher -> process : exec with RECOUNT_EXECUTION=run-42
-note right of launcher : Slurm jobs use\nSLURM_JOB_ID → slurm:<id>
+note over launcher, process : Slurm jobs use SLURM_JOB_ID as slurm:<id>
 
+== Discovery ==
 collector -> process : Read environment once
 collector -> collector : Keep only the execution label
-
-collector -> ingestion ++ : Claim participant lifecycle
+collector -> ingestion ++ : Claim participant
 ingestion -> kafka : Publish participant fact
 ingestion --> collector -- : OK
 collector -> ingestion : Claim process membership
-collector -> ingestion : End membership when process exits
-
+collector -> ingestion : End membership when the process exits
 kafka -> clickhouse : Participant facts
 
+== Viewing ==
 user -> web ++ : Open execution run-42
-web -> clickhouse ++ : Participants and their nodes' metrics
+web -> clickhouse ++ : Participants and their metrics
 clickhouse --> web --
 web --> user -- : Execution view
+
+hide stereotype
 @enduml

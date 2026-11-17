@@ -1,82 +1,88 @@
-' Shared style for the PFE Telemetry diagrams.
-' Black and white; yellow marks a choice that is still open.
+' Shared Recount diagram style.
+' Teal boxes are Recount components; white boxes are third-party services.
 
-skinparam dpi 160
+skinparam dpi 150
 skinparam shadowing false
 skinparam ResponseMessageBelowArrow true
+skinparam defaultFontName SansSerif
+skinparam defaultFontColor #0F1B1F
+skinparam defaultFontSize 14
+skinparam roundCorner 10
+skinparam ArrowColor #64767D
+skinparam ArrowThickness 1.2
+skinparam ArrowFontColor #475A62
+skinparam ArrowFontSize 12
+skinparam BackgroundColor #FFFFFF
 
-<style>
-root {
-  BackGroundColor #FFFFFF
-  FontColor #000000
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #C3CFD3
+  BorderThickness 1.2
+}
+skinparam rectangle<<recount>> {
+  BackgroundColor #DCEFEC
+  BorderColor #0F766E
+  BorderThickness 1.6
+}
+skinparam rectangle<<zone>> {
+  BackgroundColor #F5F7F8
+  BorderColor #D9E2E5
+  BorderStyle plain
+  FontColor #475A62
   FontSize 13
-  LineColor #222222
-}
-
-title {
-  FontSize 18
   FontStyle bold
-  LineColor transparent
-  BackGroundColor transparent
-  Margin 10 10 16 10
+  StereotypeFontSize 0
 }
-
-arrow {
-  LineColor #222222
-  LineThickness 1
-  FontColor #000000
+skinparam queue {
+  BackgroundColor #FFFFFF
+  BorderColor #C3CFD3
+}
+skinparam database {
+  BackgroundColor #FFFFFF
+  BorderColor #C3CFD3
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #0F1B1F
+}
+skinparam note {
+  BackgroundColor #FFFFFF
+  BorderColor #C3CFD3
+  FontColor #475A62
   FontSize 12
 }
 
-legend {
-  BackGroundColor transparent
-  LineColor transparent
-  FontSize 12
+skinparam sequence {
+  ParticipantBackgroundColor #FFFFFF
+  ParticipantBorderColor #C3CFD3
+  ParticipantFontSize 14
+  LifeLineBorderColor #C3CFD3
+  LifeLineBackgroundColor #DCEFEC
+  DividerBackgroundColor #F5F7F8
+  DividerBorderColor #D9E2E5
+  DividerFontColor #0F766E
+  DividerFontStyle bold
+  DividerFontSize 13
+  ActorBorderColor #0F1B1F
+  ActorBackgroundColor #FFFFFF
+}
+skinparam participant<<recount>> {
+  BackgroundColor #DCEFEC
+  BorderColor #0F766E
+}
+skinparam queue<<recount>> {
+  BackgroundColor #DCEFEC
 }
 
-componentDiagram, deploymentDiagram {
-  rectangle, queue, database {
-    BackGroundColor #FFFFFF
-    LineColor #222222
-    LineThickness 1
-    RoundCorner 0
-    MinimumWidth 200
-    Padding 10
-  }
-  .ouvert {
-    BackGroundColor #FFF4CC
-  }
-  .zone {
-    BackGroundColor transparent
-    LineColor #888888
-    LineStyle 6-4
-    FontStyle normal
-    FontColor #444444
-    FontSize 12
-  }
-  actor {
-    BackGroundColor #FFFFFF
-    LineColor #222222
-  }
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #C3CFD3
+  HeaderBackgroundColor #FFFFFF
+  AttributeFontColor #475A62
+  FontStyle bold
 }
-
-sequenceDiagram {
-  participant, queue, database, actor {
-    BackGroundColor #FFFFFF
-    LineColor #222222
-    RoundCorner 0
-  }
-  lifeLine {
-    LineColor #666666
-    BackGroundColor #FFFFFF
-  }
-  separator {
-    BackGroundColor #FFFFFF
-    LineColor #666666
-    FontStyle bold
-  }
+skinparam class<<recount>> {
+  BackgroundColor #DCEFEC
+  HeaderBackgroundColor #DCEFEC
+  BorderColor #0F766E
 }
-</style>
-
-!$open = "#FFF4CC"
-!$read = "dashed"

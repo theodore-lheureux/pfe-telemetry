@@ -1,33 +1,30 @@
 @startuml
 !include diagram-style.iuml
-
-title Recount - Deployment
-skinparam nodesep 50
+skinparam nodesep 40
 skinparam ranksep 60
-skinparam defaultTextAlignment left
 
 actor "User" as user
 
+rectangle "AWS" <<zone>> {
+  rectangle "<b>recount-collector-first</b>\n\nCollector" as aws1 <<recount>>
+  rectangle "<b>recount-collector-second</b>\n\nCollector" as aws2 <<recount>>
+}
+
 rectangle "Cloudflare" <<zone>> {
-  rectangle "<b>Landing site</b>\n[Astro / Workers]\n\nrecount.cloud" as landing
+  rectangle "<b>Landing site</b>\n\nrecount.cloud" as landing <<recount>>
 }
 
 rectangle "Oracle Cloud VM" <<zone>> {
   rectangle "<b>Caddy</b>\n\napp.recount.cloud\ningest.recount.cloud" as caddy
   rectangle "Docker Compose" <<zone>> {
-    rectangle "<b>Web application</b>" as web
-    rectangle "<b>Live gateway</b>" as live
-    rectangle "<b>Ingestion API</b>" as ingestion
-    rectangle "<b>Normalizer</b>" as normalizer
+    rectangle "<b>Web application</b>" as web <<recount>>
+    rectangle "<b>Live gateway</b>" as live <<recount>>
+    rectangle "<b>Ingestion API</b>" as ingestion <<recount>>
+    rectangle "<b>Normalizer</b>" as normalizer <<recount>>
+    database "<b>PostgreSQL</b>" as postgres
     queue "<b>Kafka</b>" as kafka
     database "<b>ClickHouse</b>" as clickhouse
-    database "<b>PostgreSQL</b>" as postgres
   }
-}
-
-rectangle "AWS" <<zone>> {
-  rectangle "<b>recount-collector-first</b>\n\nCollector" as aws1
-  rectangle "<b>recount-collector-second</b>\n\nCollector" as aws2
 }
 
 rectangle "PostHog" <<zone>> {
@@ -35,22 +32,20 @@ rectangle "PostHog" <<zone>> {
 }
 
 user -down-> landing
-user -down-> caddy : app.recount.cloud
-landing -right-> caddy : Session check
-aws1 -up-> caddy : ingest.recount.cloud
-aws2 -up-> caddy : ingest.recount.cloud
+user -down-> caddy
+aws1 -down-> caddy : telemetry
+aws2 -down-> caddy : telemetry
+landing -right-> caddy : session check
 caddy -down-> web
 caddy -down-> ingestion
-web -down-> live
-web -down-> clickhouse
-web -down-> postgres
-ingestion -down-> kafka
-ingestion -down-> postgres
-kafka -right-> normalizer
-kafka -down-> clickhouse
-live -down-> kafka
-landing -down-> posthog
-web -down-> posthog
+web -[hidden]right- live
+live -[hidden]right- ingestion
+ingestion -[hidden]right- normalizer
+web -[hidden]down- postgres
+live -[hidden]down- kafka
+normalizer -[hidden]down- clickhouse
+landing ..> posthog : events
+web ..> posthog : events
 
 hide stereotype
 @enduml
