@@ -36,6 +36,22 @@ rows, 256 MiB read/memory, one thread, six seconds of server execution and an
 eight-MiB result. Limit, storage and cancellation failures are errors, not empty
 or silently truncated pages. Internal RPC timestamps remain native `Date` values.
 
+## Comparing executions
+
+The project's compare page sets two executions side by side. It reads each key with
+its own authorized execution read; a key outside the project shows as not found
+without hiding the other. The context table shows name, key, workload version,
+start, duration, parameters, node and participant counts, owner UIDs and matched
+environment variable names, marking values that differ. Datasets and resource
+allocations have no collected source and show as not recorded; record a dataset as
+an explicit parameter. The page reports whether the two periods overlapped and how
+many nodes they share, without attributing differences to that overlap.
+
+Process CPU, resident memory and disk I/O come from one analytics query with an
+[execution range](telemetry-semantic-model.md#execution-alignment). Each chart
+marks a measurement as unavailable when neither execution, or the project, has
+values for it, and as not comparable when only one execution does.
+
 ## Running and validating
 
 Provision `RECOUNT_PARTICIPANT_TOPIC` and `RECOUNT_PARTICIPANT_PARTITIONS` on a

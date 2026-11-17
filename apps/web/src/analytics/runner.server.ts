@@ -7,16 +7,21 @@ import { compileMeasure, type MeasureScope } from "./compile.server";
 import {
 	type AnalyticsQuery,
 	DEFAULT_SERIES_LIMIT,
+	type ExecutionPeriod,
 	INTERVALS,
+	MAX_RANGE_SECONDS,
 	MAX_SERIES,
 	type QueryResult,
 	type SeriesResult,
 } from "./contracts";
 import { metricDefinitions } from "./discovery.server";
+import { executionPeriods } from "./execution-source.server";
 import { formulaSeries } from "./formula-series";
 import {
 	ALLOWED_CALCULATIONS,
+	assertResultSize,
 	comparisonRange,
+	rangeBuckets,
 	resolveRange,
 } from "./validation";
 
@@ -64,6 +69,8 @@ interface Window {
 	comparison: boolean;
 	/** Added to comparison buckets so they line up with the current window. */
 	shiftMs: number;
+	/** An aligned execution: only its points, in buckets counted from `from`. */
+	execution?: string;
 }
 
 type Row = Record<string, string | number | null>;
@@ -113,11 +120,25 @@ async function readWindow(
 	// memory limit, and a single statement over several metrics under FINAL can exceed it.
 	const rows: Record<string, string | number | null>[] = [];
 	let groupColumns: string[] = [];
+	const windowQuery = window.execution
+		? {
+				...query,
+				filters: [
+					...(query.filters ?? []),
+					{
+						field: "execution",
+						op: "eq" as const,
+						values: [window.execution],
+					},
+				],
+			}
+		: query;
 	for (const [index, measure] of query.measures.entries()) {
-		const compiled = compileMeasure(query, measure, scopes[index], {
+		const compiled = compileMeasure(windowQuery, measure, scopes[index], {
 			projectId,
 			from: window.from,
 			to: window.to,
+			...(window.execution ? { origin: window.from } : {}),
 		});
 		groupColumns = compiled.groupColumns;
 		const result = await connection.query({
@@ -155,6 +176,7 @@ async function readWindow(
 				group,
 				...(other ? { other: true } : {}),
 				...(window.comparison ? { comparison: true } : {}),
+				...(window.execution ? { execution: window.execution } : {}),
 				points: [],
 				rank,
 			};
@@ -234,19 +256,80 @@ LIMIT 500`,
 	}
 }
 
-/** Runs a validated query for an already authorized project. */
-export async function runQuery(
+/**
+ * One window per execution, over its period and in the requested order. Unknown keys
+ * are not found, like any other execution outside the project.
+ */
+async function executionWindows(
+	query: AnalyticsQuery,
+	keys: string[],
 	projectId: string,
-	input: AnalyticsQuery,
-	signal?: AbortSignal,
-	connection: ClickHouseClient = getTelemetryClient(),
-): Promise<QueryResult> {
-	if (signal?.aborted)
-		throw new OperationError("CANCELLED", "Analytics request cancelled");
-	// An aggregation reads up to the largest groups allowed, never folded into Other.
-	const query = input.aggregate
-		? { ...input, limit: MAX_SERIES, other: false }
-		: input;
+	connection: ClickHouseClient,
+	abort: AbortSignal,
+) {
+	const periods = await executionPeriods(
+		connection,
+		projectId,
+		keys,
+		abort,
+		SETTINGS,
+	);
+	const windows = keys.map((key): Window & { period: ExecutionPeriod } => {
+		const period = periods.get(key);
+		if (!period) throw new OperationError("NOT_FOUND", "Execution not found");
+		if (period.to.getTime() - period.from.getTime() > MAX_RANGE_SECONDS * 1000)
+			throw new InputError(
+				"INVALID_TIME_RANGE",
+				"Execution is too long to compare",
+			);
+		return {
+			from: period.from,
+			// Open memberships include their last sighting.
+			to: new Date(period.to.getTime() + 1),
+			comparison: false,
+			shiftMs: 0,
+			execution: key,
+			period: { execution: key, ...period },
+		};
+	});
+	// One result holds every execution's buckets, so the limit applies to their sum.
+	assertResultSize(
+		query,
+		windows.reduce(
+			(total, window) =>
+				total + rangeBuckets(window, query.shape, query.interval),
+			0,
+		),
+	);
+	return windows;
+}
+
+/** The windows a query reads: its range, then its calendar comparison or executions. */
+async function queryWindows(
+	query: AnalyticsQuery,
+	projectId: string,
+	connection: ClickHouseClient,
+	abort: AbortSignal,
+) {
+	if ("executions" in query.range) {
+		const windows = await executionWindows(
+			query,
+			query.range.executions,
+			projectId,
+			connection,
+			abort,
+		);
+		const longest = Math.max(
+			...windows.map((window) => window.to.getTime() - window.from.getTime()),
+		);
+		return {
+			windows,
+			from: new Date(0),
+			to: new Date(longest),
+			compared: null,
+			executions: windows.map((window) => window.period),
+		};
+	}
 	const { from, to } = resolveRange(query.range);
 	const compared = query.compare
 		? comparisonRange(query.compare, from, to)
@@ -263,9 +346,31 @@ export async function runQuery(
 				]
 			: []),
 	];
+	return { windows, from, to, compared, executions: undefined };
+}
+
+/** Runs a validated query for an already authorized project. */
+export async function runQuery(
+	projectId: string,
+	input: AnalyticsQuery,
+	signal?: AbortSignal,
+	connection: ClickHouseClient = getTelemetryClient(),
+): Promise<QueryResult> {
+	if (signal?.aborted)
+		throw new OperationError("CANCELLED", "Analytics request cancelled");
+	// An aggregation reads up to the largest groups allowed, never folded into Other.
+	const query = input.aggregate
+		? { ...input, limit: MAX_SERIES, other: false }
+		: input;
 	const deadline = AbortSignal.timeout(10_000);
 	const abort = signal ? AbortSignal.any([signal, deadline]) : deadline;
 	try {
+		const { windows, from, to, compared, executions } = await queryWindows(
+			query,
+			projectId,
+			connection,
+			abort,
+		);
 		const definitions = await metricDefinitions(
 			connection,
 			projectId,
@@ -316,8 +421,9 @@ export async function runQuery(
 			shape: query.shape,
 			from,
 			to,
+			// Collector reports are absolute in time, so elapsed buckets have no coverage.
 			coverage:
-				query.shape === "timeseries" && query.interval
+				query.shape === "timeseries" && query.interval && !executions
 					? await coverage(
 							connection,
 							projectId,
@@ -340,6 +446,7 @@ export async function runQuery(
 			...(query.aggregate ? { aggregate: query.aggregate } : {}),
 			limited,
 			compared,
+			...(executions ? { executions } : {}),
 		};
 	} catch (error) {
 		analyticsError(error, signal);

@@ -74,7 +74,10 @@ RPC and Kafka publisher against a single participant topic, verifies native
 ClickHouse replay and committed offsets, and removes its own database and topic
 on success. Execution reader tests in `apps/web/tests/telemetry/executions.test.ts`
 use the shared ClickHouse fixture to check project predicates, latest revisions,
-retractions, key pagination and unchanged point/series identities.
+retractions, key pagination and unchanged point/series identities. Execution
+comparison tests in `apps/web/tests/telemetry/execution-comparison.test.ts` align
+executions that started at different times on elapsed buckets and check that gaps
+and measurements missing on one side stay visible.
 
 Storage cases send one bare point per Kafka record through `ProtobufSingle`;
 the shared fixture's multirow file output uses standard delimited `Protobuf`

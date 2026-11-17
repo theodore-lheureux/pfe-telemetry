@@ -3,6 +3,7 @@ import { Link, useMatchRoute } from "@tanstack/react-router";
 import {
 	BookmarkIcon,
 	BookOpenIcon,
+	GitCompareArrowsIcon,
 	LayoutDashboardIcon,
 	ListIcon,
 	type LucideIcon,
@@ -28,7 +29,8 @@ type ProjectPath =
 	| "/organizations/$organizationId/projects/$projectId/activity"
 	| "/organizations/$organizationId/projects/$projectId/nodes"
 	| "/organizations/$organizationId/projects/$projectId/definitions"
-	| "/organizations/$organizationId/projects/$projectId/executions";
+	| "/organizations/$organizationId/projects/$projectId/executions"
+	| "/organizations/$organizationId/projects/$projectId/compare";
 
 interface Entry {
 	to: ProjectPath;
@@ -91,6 +93,11 @@ const GROUPS: { label?: () => string; entries: Entry[] }[] = [
 				to: "/organizations/$organizationId/projects/$projectId/executions",
 				icon: ListIcon,
 				label: m.executions,
+			},
+			{
+				to: "/organizations/$organizationId/projects/$projectId/compare",
+				icon: GitCompareArrowsIcon,
+				label: m.execution_compare_nav,
 			},
 		],
 	},

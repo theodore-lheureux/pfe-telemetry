@@ -91,7 +91,19 @@ export interface Measure {
 	filters?: Filter[];
 }
 
-export type QueryRange = { last: RelativeRange } | { from: string; to: string };
+/** Executions one query may align on their own elapsed time. */
+export const MAX_ALIGNED_EXECUTIONS = 4;
+
+/**
+ * A relative or absolute window, or each listed execution's own observed period. An
+ * execution range reads every execution separately, restricted to its points, with
+ * buckets counted in elapsed time from its start: see docs/telemetry-semantic-model.md.
+ */
+export type QueryRange =
+	| { last: RelativeRange }
+	| { from: string; to: string }
+	| { executions: string[] };
+export type TimeRange = Exclude<QueryRange, { executions: string[] }>;
 
 /** A named arithmetic expression over measure names, evaluated per bucket and group. */
 export interface Formula {
@@ -118,6 +130,7 @@ export interface AnalyticsQuery {
 	limit?: number;
 	/** Fold the groups past the limit into one "Other" series. */
 	other?: boolean;
+	/** A calendar comparison; not available with an execution range. */
 	compare?: Comparison;
 	/**
 	 * Collapses the groups of each measure or formula into one series, after formulas
@@ -126,6 +139,13 @@ export interface AnalyticsQuery {
 	aggregate?: Combine;
 	/** Returns each bucket's band across the sources a measure combines. */
 	spread?: Spread;
+}
+
+/** An execution's observed period, from its first fact to its last end or sighting. */
+export interface ExecutionPeriod {
+	execution: string;
+	from: Date;
+	to: Date;
 }
 
 export type RunQueryInput = ProjectReference & { query: AnalyticsQuery };
@@ -180,12 +200,17 @@ export interface SeriesResult {
 	other?: boolean;
 	/** The comparison window, with buckets shifted to line up with the current ones. */
 	comparison?: boolean;
+	/** With an execution range: the execution this series reads, in elapsed time. */
+	execution?: string;
 	/**
 	 * For a percentile across sources or groups: its level, and the most values any
 	 * bucket's percentile was taken over, which tells whether it can differ from the max.
 	 */
 	percentile?: { level: number; values: number };
-	/** Bucket start in milliseconds since the epoch, or null for table results. */
+	/**
+	 * Bucket start in milliseconds since the epoch, or since the execution's start with
+	 * an execution range; null for table results.
+	 */
 	/** `low` and `high` bound the sources' values when the query asks for a spread. */
 	points: {
 		bucketMs: number | null;
@@ -197,6 +222,7 @@ export interface SeriesResult {
 
 export interface QueryResult {
 	shape: AnalyticsQuery["shape"];
+	/** With an execution range, the elapsed span: from 0 to the longest period's length. */
 	from: Date;
 	to: Date;
 	bucketSeconds: number | null;
@@ -214,6 +240,8 @@ export interface QueryResult {
 	limited: boolean;
 	/** The comparison window, when one was requested. */
 	compared: { from: Date; to: Date } | null;
+	/** With an execution range: each execution's period, in the requested order. */
+	executions?: ExecutionPeriod[];
 	/**
 	 * Per node, the bucket starts (ms) in which its collector reported at all, which tells
 	 * a node that was offline from one that sent no points for this metric. Null when

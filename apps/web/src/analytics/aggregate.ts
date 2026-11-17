@@ -45,7 +45,7 @@ function bandOf(values: number[], spread: Spread) {
 }
 
 /**
- * Collapses each measure's or formula's groups into one series per window, bucket by
+ * Collapses each measure's or formula's groups into one series per window or execution, bucket by
  * bucket, so a breakdown can show, for example, the 99th percentile across nodes. With a
  * spread, each bucket's band covers the groups' values, so formulas computed per group
  * get one too.
@@ -60,15 +60,25 @@ export function aggregateGroups(
 		{
 			measure: string;
 			comparison: boolean;
+			execution?: string;
 			buckets: Map<number | null, number[]>;
 		}
 	>();
 	for (const entry of series) {
 		const comparison = entry.comparison ?? false;
-		const key = JSON.stringify([entry.measure, comparison]);
+		const key = JSON.stringify([
+			entry.measure,
+			comparison,
+			entry.execution ?? null,
+		]);
 		let target = merged.get(key);
 		if (!target) {
-			target = { measure: entry.measure, comparison, buckets: new Map() };
+			target = {
+				measure: entry.measure,
+				comparison,
+				execution: entry.execution,
+				buckets: new Map(),
+			};
 			merged.set(key, target);
 		}
 		for (const point of entry.points) {
@@ -82,6 +92,7 @@ export function aggregateGroups(
 		measure: entry.measure,
 		group: [],
 		...(entry.comparison ? { comparison: true } : {}),
+		...(entry.execution ? { execution: entry.execution } : {}),
 		...(level === undefined
 			? {}
 			: {
