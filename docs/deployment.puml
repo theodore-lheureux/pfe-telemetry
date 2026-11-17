@@ -26,11 +26,12 @@ rectangle "Oracle Cloud VM" <<zone>> {
 }
 
 
-user -down-> landing
-user -down-> caddy
+
+user -down-> landing : recount.cloud
+user -down-> caddy : app.recount.cloud
+landing -right-> caddy : session check
 aws1 -down-> caddy : telemetry
 aws2 -down-> caddy : telemetry
-landing -right-> caddy : session check
 caddy -down-> web
 caddy -down-> ingestion
 web -[hidden]right- ingestion

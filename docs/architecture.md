@@ -68,12 +68,12 @@ Validate semantic fixtures separately from real Kafka/MV replay, poison, checkpo
 
 ## Local diagram sources
 
-PlantUML sources share the Recount styling in `diagram-style.iuml`; teal boxes are Recount components. Rendered PNGs are in `diagrams/`; rendering tools are not managed by this repository.
+PlantUML sources share the Recount styling in `diagram-style.iuml`; teal boxes are Recount components. Rendered PNGs are in `diagrams/`, numbered in presentation order; rendering tools are not managed by this repository.
 
-| Diagram                                               | Shows                                              |
-| ----------------------------------------------------- | -------------------------------------------------- |
-| [current-architecture](current-architecture.puml)     | Components and their connections                   |
-| [deployment](deployment.puml)                         | Where each component runs                          |
-| [telemetry-flow](telemetry-flow.puml)                 | One upload from collector to dashboard             |
-| [execution-participants](execution-participants.puml) | How a labelled process joins an execution          |
-| [application-access](application-access.puml)         | Organizations, projects, roles and their resources |
+| Diagram                                                           | Source                                                     | Shows                                              |
+| ----------------------------------------------------------------- | ---------------------------------------------------------- | -------------------------------------------------- |
+| [1-current-architecture](diagrams/1-current-architecture.png)     | [current-architecture.puml](current-architecture.puml)     | Components and their connections                   |
+| [2-telemetry-flow](diagrams/2-telemetry-flow.png)                 | [telemetry-flow.puml](telemetry-flow.puml)                 | One upload from collector to dashboard             |
+| [3-execution-participants](diagrams/3-execution-participants.png) | [execution-participants.puml](execution-participants.puml) | How a labelled process joins an execution          |
+| [4-application-access](diagrams/4-application-access.png)         | [application-access.puml](application-access.puml)         | Organizations, projects, roles and their resources |
+| [5-deployment](diagrams/5-deployment.png)                         | [deployment.puml](deployment.puml)                         | Where each component runs                          |

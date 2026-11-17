@@ -3,33 +3,33 @@
 hide circle
 hide methods
 hide empty members
-skinparam nodesep 50
-skinparam ranksep 60
+skinparam nodesep 70
+skinparam ranksep 70
 
 class User
 class Organization
 class "Organization member" as OrgMember {
   role: owner | admin | member
 }
-class Project <<recount>>
 class "Project grant" as Grant {
   role: viewer | member | admin
 }
-class "Collector node" as Node <<recount>>
+class Project <<recount>>
 class Dashboard <<recount>>
 class "Saved insight" as Insight <<recount>>
+class "Collector node" as Node <<recount>>
 
-User "1" -- "*" OrgMember
-Organization "1" -- "*" OrgMember
-Organization "1" -- "*" Project
-OrgMember "1" -- "*" Grant
+User "1" -down- "*" OrgMember
+Organization "1" -down- "*" OrgMember
+Organization "1" -down- "*" Project
+OrgMember "1" -right- "*" Grant
 Grant "*" -right- "1" Project
-Project "1" -- "*" Node
-Project "1" -- "*" Dashboard
-Project "1" -- "*" Insight
+Project "1" -down- "*" Dashboard
+Project "1" -down- "*" Insight
+Project "1" -down- "*" Node
 Dashboard "*" -right- "*" Insight : tiles
 
-note left of OrgMember
+note bottom of OrgMember
   Owners and admins administer
   every project in the organization.
 end note

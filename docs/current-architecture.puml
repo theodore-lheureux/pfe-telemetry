@@ -1,7 +1,8 @@
 @startuml
 !include diagram-style.iuml
-skinparam nodesep 60
-skinparam ranksep 55
+left to right direction
+skinparam nodesep 50
+skinparam ranksep 90
 
 rectangle "Compute nodes" <<zone>> {
   rectangle "<b>Launcher</b>\n<i>recount run</i>\n\nLabels a command\nwith an execution key" as launcher <<recount>>
@@ -26,17 +27,17 @@ rectangle "Application" <<zone>> {
 
 actor "User" as user
 
-launcher -right-> collector : label
-collector -down-> ingestion : OTLP over TLS
-ingestion -right-> kafka : raw records
-kafka <-right-> normalizer : records, points
-kafka -down-> clickhouse : Kafka engine
-kafka -down-> live : live topic
-ingestion -down-> postgres : revoked nodes
-web -up-> postgres : sessions
-web -up-> clickhouse : queries
-live -left-> web : activity feed
-user -up-> web : HTTPS
+launcher -> collector : execution label
+collector --> ingestion : OTLP over TLS
+ingestion -> kafka : raw records
+kafka <-> normalizer : records, points
+ingestion --> postgres : revoked nodes
+kafka --> clickhouse : Kafka engine
+kafka ---> live : live topic
+postgres <-- web : sessions
+clickhouse <-- web : queries
+live -> web : activity feed
+web <-- user : HTTPS
 
 hide stereotype
 @enduml
