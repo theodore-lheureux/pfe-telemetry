@@ -53,22 +53,22 @@ export function ProjectGrantRow({
 						{!label && member.name && (
 							<p className="text-sm text-muted-foreground">{member.email}</p>
 						)}
-						<p className={label ? "text-sm text-muted-foreground" : "text-sm"}>
-							{implicit && m.implicit_role({ role: roleLabel(member.role) })}
-							{!implicit &&
-								grant &&
-								m.explicit_role({ role: roleLabel(grant.role) })}
-							{!implicit && !grant && m.no_project_access()}
-							{implicit && grant
-								? ` · ${m.redundant_role({ role: roleLabel(grant.role) })}`
-								: ""}
-						</p>
+						{/* An explicit grant is shown by its select; inherited access needs saying. */}
+						{implicit && (
+							<p className="text-sm text-muted-foreground">
+								{m.implicit_role({ role: roleLabel(member.role) })}
+								{grant
+									? ` · ${m.redundant_role({ role: roleLabel(grant.role) })}`
+									: ""}
+							</p>
+						)}
 					</div>
 				</div>
 			</TableCell>
 			<TableCell>
 				{!implicit && (
 					<AutoSaveSelect<ProjectRole | "none">
+						className="w-48"
 						value={grant?.role ?? "none"}
 						label={m.project_role_for({ email: member.email })}
 						options={[

@@ -259,8 +259,6 @@
   "project_search_time_zones": "Search time zones…",
   "project_week_start": "Week starts on",
   "project_access_control": "Access control",
-  "project_default_access": "Default access to this project",
-  "project_no_access": "No access",
   "project_add_member": "Add member",
   "project_select_member": "Select an organization member",
   "project_roles": "Roles",
@@ -409,7 +407,6 @@
   "invitation_join": "{organization} invited you to join as {role}.",
   "expires_date": "Expires {date} UTC",
   "implicit_role": "Implicit administrator · Organization {role}",
-  "explicit_role": "Explicit {role}",
   "redundant_role": "Redundant explicit {role} grant",
   "project_role_for": "Project role for {email}",
   "save_grant_for": "Save project grant for {email}",
@@ -717,7 +714,6 @@
   "project_members": "Project members",
   "project_settings": "Project settings",
   "projects": "Projects",
-  "projects_are_private_grant_access_only_to_current": "Projects are private. Grant access only to current members of this organization. Viewers and members can read every execution in this project; execution attribution does not restrict access. Project administrators can manage grants and settings.",
   "promote_a_replacement_owner_before_leaving_or_changing": "Promote a replacement owner before leaving or changing your role.",
   "record_an_execution_interval": "Record an execution interval",
   "record_execution": "Record execution",
@@ -1543,5 +1539,6 @@
   "role_upgrade_to_admin": "Upgrade to admin",
   "role_make_owner": "Make owner",
   "role_downgrade_to_member": "Downgrade to member",
-  "role_downgrade_to_admin": "Downgrade to admin"
+  "role_downgrade_to_admin": "Downgrade to admin",
+  "project_private_description": "Projects are private: only the members below and organization owners and administrators can see them."
 }

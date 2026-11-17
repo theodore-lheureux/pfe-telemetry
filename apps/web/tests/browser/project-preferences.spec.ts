@@ -160,12 +160,6 @@ for (const locale of ["en", "fr"] as const) {
 		await page.goto(
 			`${workspace.origin}${settingsPath("project-members", selection)}`,
 		);
-		await expect(
-			page.getByRole("combobox", {
-				name: m.project_default_access({}, opt),
-				exact: true,
-			}),
-		).toBeDisabled();
 		await page
 			.getByRole("button", { name: m.project_add_member({}, opt), exact: true })
 			.click();

@@ -125,32 +125,10 @@ export function ProjectGrants({
 				headingId="grants-heading"
 			/>
 			<SettingsSection
-				id="project-default-access"
-				title={m.project_default_access()}
-			>
-				<div className="max-w-48">
-					<NativeSelect
-						aria-label={m.project_default_access()}
-						value="none"
-						disabled
-					>
-						<NativeSelectOption value="none">
-							{m.project_no_access()}
-						</NativeSelectOption>
-					</NativeSelect>
-				</div>
-				<p className="text-sm text-muted-foreground">
-					{m.projects_are_private_grant_access_only_to_current()}
-				</p>
-			</SettingsSection>
-			<section
-				className="flex flex-col gap-4"
-				aria-labelledby="project-members-heading"
-			>
-				<div className="flex items-center justify-between">
-					<h2 id="project-members-heading" className="text-base font-semibold">
-						{m.members()}
-					</h2>
+				id="project-members"
+				title={m.members()}
+				description={m.project_private_description()}
+				actions={
 					<Dialog
 						open={adding}
 						onOpenChange={(open) => {
@@ -188,7 +166,7 @@ export function ProjectGrants({
 							<DialogHeader>
 								<DialogTitle>{m.project_add_member()}</DialogTitle>
 								<DialogDescription>
-									{m.projects_are_private_grant_access_only_to_current()}
+									{m.project_private_description()}
 								</DialogDescription>
 							</DialogHeader>
 							{candidate ? (
@@ -223,7 +201,8 @@ export function ProjectGrants({
 							)}
 						</DialogContent>
 					</Dialog>
-				</div>
+				}
+			>
 				<div className="rounded-md border bg-card">
 					<Table aria-label={m.project_members()}>
 						<MemberTableHeader table={table} />
@@ -247,7 +226,7 @@ export function ProjectGrants({
 						</TableBody>
 					</Table>
 				</div>
-			</section>
+			</SettingsSection>
 			<SettingsSection
 				id="project-inherited-roles"
 				title={m.project_roles()}

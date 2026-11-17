@@ -714,8 +714,10 @@ for (const kind of ["invitation", "grant"] as const) {
 			).toHaveLength(1);
 		} else {
 			await expect(
-				page.getByText("Explicit Viewer", { exact: true }),
-			).toBeVisible();
+				page.getByLabel("Project role for target@example.invalid", {
+					exact: true,
+				}),
+			).toHaveValue("viewer");
 			expect(
 				data(
 					await workspace.operations(target.headers, (actor) =>

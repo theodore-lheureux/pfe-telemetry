@@ -259,8 +259,6 @@
   "project_search_time_zones": "Rechercher un fuseau horaire…",
   "project_week_start": "La semaine commence le",
   "project_access_control": "Contrôle d’accès",
-  "project_default_access": "Accès par défaut à ce projet",
-  "project_no_access": "Aucun accès",
   "project_add_member": "Ajouter un membre",
   "project_select_member": "Sélectionnez un membre de l’organisation",
   "project_roles": "Rôles",
@@ -409,7 +407,6 @@
   "invitation_join": "{organization} vous invite à rejoindre l’organisation en tant que {role}.",
   "expires_date": "Expiration : {date} UTC",
   "implicit_role": "Administrateur implicite · Organisation : {role}",
-  "explicit_role": "Accès explicite : {role}",
   "redundant_role": "Accès explicite redondant : {role}",
   "project_role_for": "Rôle dans le projet de {email}",
   "save_grant_for": "Enregistrer l’accès au projet de {email}",
@@ -717,7 +714,6 @@
   "project_members": "Membres du projet",
   "project_settings": "Paramètres du projet",
   "projects": "Projets",
-  "projects_are_private_grant_access_only_to_current": "Les projets sont privés. Accordez l’accès uniquement aux membres actuels de cette organisation. Les lecteurs et membres peuvent lire toutes les exécutions du projet ; l’attribution des exécutions ne limite pas l’accès. Les administrateurs du projet peuvent gérer les accès et les paramètres.",
   "promote_a_replacement_owner_before_leaving_or_changing": "Promouvez un nouveau propriétaire avant de quitter l’organisation ou de modifier votre rôle.",
   "record_an_execution_interval": "Enregistrer une période d’exécution",
   "record_execution": "Enregistrer l’exécution",
@@ -1543,5 +1539,6 @@
   "role_upgrade_to_admin": "Promouvoir administrateur",
   "role_make_owner": "Nommer propriétaire",
   "role_downgrade_to_member": "Rétrograder en membre",
-  "role_downgrade_to_admin": "Rétrograder en administrateur"
+  "role_downgrade_to_admin": "Rétrograder en administrateur",
+  "project_private_description": "Les projets sont privés : seuls les membres ci-dessous et les propriétaires et administrateurs de l’organisation peuvent les voir."
 }

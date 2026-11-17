@@ -75,7 +75,6 @@ export const settingsCatalog = {
 				label: m.project_access,
 				keywords: [m.project_members],
 			},
-			{ id: "project-default-access", label: m.project_default_access },
 			{ id: "project-inherited-roles", label: m.project_roles },
 		],
 	},
