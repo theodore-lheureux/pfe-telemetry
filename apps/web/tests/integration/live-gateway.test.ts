@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createHash, randomUUID } from "node:crypto";
-import { Kafka, logLevel } from "kafkajs";
+import { CompressionTypes, Kafka, logLevel } from "kafkajs";
 import { Root } from "protobufjs/light";
 import { liveShard } from "../../src/activity/codec.server";
 import generated from "../../src/activity/generated/descriptors.json";
@@ -95,6 +95,8 @@ test.skipIf(!enabled)(
 			const location = (
 				await producer.send({
 					topic: rawTopic,
+					// The ingestion API writes ZSTD batches; reads must decompress them.
+					compression: CompressionTypes.ZSTD,
 					messages: [{ value: Buffer.from(raw) }],
 				})
 			)[0];

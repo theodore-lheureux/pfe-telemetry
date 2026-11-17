@@ -1,11 +1,27 @@
 import { createHash, randomUUID } from "node:crypto";
-import { AssignerProtocol, type Consumer, Kafka, logLevel } from "kafkajs";
+import {
+	AssignerProtocol,
+	CompressionCodecs,
+	CompressionTypes,
+	type Consumer,
+	Kafka,
+	logLevel,
+} from "kafkajs";
 import * as z from "zod";
 import { integer, readEnv } from "../lib/env.server";
 import { OperationError } from "../lib/operation-error";
 import { decodePacket } from "./codec.server";
 import type { PacketInput } from "./contracts";
 import { ownLiveConnection } from "./live-connection.server";
+
+// The ingestion API produces ZSTD batches; kafkajs ships no ZSTD codec, so
+// reading raw packets crashed the consumer. Bun provides ZSTD natively.
+CompressionCodecs[CompressionTypes.ZSTD] = () => ({
+	compress: async (encoder: { buffer: Buffer }) =>
+		Buffer.from(Bun.zstdCompressSync(encoder.buffer)),
+	decompress: async (buffer: Buffer) =>
+		Buffer.from(Bun.zstdDecompressSync(buffer)),
+});
 
 const brokersError =
 	"RECOUNT_ACTIVITY_KAFKA_BROKERS must list host:port brokers, separated by commas";
@@ -142,7 +158,12 @@ export function readRawPacket(
 	const missing = () =>
 		reject(new OperationError("NOT_FOUND", "Packet unavailable"));
 	deadline.addEventListener("abort", missing, { once: true });
-	consumer.on(consumer.events.CRASH, missing);
+	consumer.on(consumer.events.CRASH, (event) => {
+		console.error("Live packet consumer crashed", {
+			error: event.payload.error?.message,
+		});
+		missing();
+	});
 	consumer.on(consumer.events.GROUP_JOIN, () => {
 		if (deadline.aborted) return;
 		consumer.seek({ topic, partition: input.partition, offset: input.offset });

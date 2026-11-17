@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import * as z from "zod";
 import { readEnv, secret } from "../lib/env.server";
+import { OperationError } from "../lib/operation-error";
 import { decodeNotification, liveShard } from "./codec.server";
 import { ownLiveConnection } from "./live-connection.server";
 import { liveMatches, parseLiveNodes } from "./live-filter";
@@ -173,7 +174,12 @@ export async function createLiveGateway() {
 			return Response.json(await read.result, {
 				headers: { "Cache-Control": "no-store" },
 			});
-		} catch {
+		} catch (error) {
+			// Missing packets are expected; anything else was previously invisible.
+			if (!(error instanceof OperationError && error.code === "NOT_FOUND"))
+				console.error("Live packet read failed", {
+					error: error instanceof Error ? error.message : String(error),
+				});
 			return new Response(null, { status: 404 });
 		} finally {
 			if (!started) {
