@@ -26,6 +26,7 @@ import {
 } from "../auth/passkey";
 import { loginSearch } from "../auth/redirect";
 import { readSignInLink } from "../auth/sign-in-link";
+import { SIGN_UP_DISABLED } from "../auth/sign-up-policy";
 import { useAppForm } from "../components/app-form";
 import { AuthCard, AuthDivider } from "../components/auth-card";
 import { ActionStack } from "../components/dialog-actions";
@@ -418,6 +419,8 @@ function Login() {
 				showCode({ kind: "success", text: resend ? m.code_requested() : "" });
 			} else if (result.error.status === 429)
 				setMessage({ kind: "warning", text: m.code_rate_limited() });
+			else if (result.error.code === SIGN_UP_DISABLED)
+				setMessage({ kind: "error", text: m.sign_up_closed() });
 			else if (!result.error.status || result.error.status >= 500)
 				showCode({ kind: "warning", text: m.code_request_uncertain() });
 			else setMessage({ kind: "error", text: m.code_request_failed() });

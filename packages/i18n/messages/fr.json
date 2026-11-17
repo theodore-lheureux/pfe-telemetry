@@ -494,6 +494,7 @@
   "code_six_digits": "Saisissez le code à six chiffres.",
   "code_help": "Les codes expirent après cinq minutes. Utilisez le plus récent.",
   "code_requested": "Utilisez le code le plus récent dans votre boîte de réception.",
+  "sign_up_closed": "Les inscriptions sont fermées. Demandez à un administrateur d’organisation d’inviter cette adresse courriel.",
   "code_request_failed": "Impossible de demander un code. Veuillez réessayer plus tard.",
   "code_request_uncertain": "L’envoi de l’e-mail n’a pas pu être confirmé. Vérifiez votre boîte de réception avant de demander un autre code.",
   "code_invalid": "Ce code est incorrect ou expiré. Réessayez ou demandez un nouveau code.",

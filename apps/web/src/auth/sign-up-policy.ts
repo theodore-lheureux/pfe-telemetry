@@ -1,0 +1,1 @@
+export const SIGN_UP_DISABLED = "SIGN_UP_DISABLED";

@@ -169,7 +169,7 @@ test("email code rotation, expiry and attempt limit are enforced", async () => {
 		).ok,
 	).toBe(false);
 });
-test("closed registration sends generic acknowledgements without waiting for SMTP", async () => {
+test("closed registration acknowledges existing accounts without waiting for SMTP", async () => {
 	await signIn(auth(), "existing@example.invalid");
 	const { promise: gate, release } = createGate();
 	let completed = false;
@@ -190,15 +190,7 @@ test("closed registration sends generic acknowledgements without waiting for SMT
 				type: "sign-in",
 			}),
 		);
-		const unknown = await instance.handler(
-			post("/email-otp/send-verification-otp", {
-				email: "unknown@example.invalid",
-				type: "sign-in",
-			}),
-		);
 		expect(existing.status).toBe(200);
-		expect(unknown.status).toBe(200);
-		expect(await existing.json()).toEqual(await unknown.json());
 		expect(started).toBe(true);
 		expect(completed).toBe(false);
 	} finally {
@@ -206,13 +198,63 @@ test("closed registration sends generic acknowledgements without waiting for SMT
 		await instance.emailDelivery.drain();
 	}
 	expect(completed).toBe(true);
-	expect(
+});
+
+test("closed registration rejects uninvited addresses and admits pending invitations", async () => {
+	await signIn(auth(), "inviter@example.invalid");
+	const closed = auth(false);
+	const userCount = async (email: string) =>
 		(
 			await database.db.execute(
-				sql`SELECT id FROM app."user" WHERE email='unknown@example.invalid'`,
+				sql`SELECT id FROM app."user" WHERE lower(email) = lower(${email})`,
 			)
-		).rows,
-	).toHaveLength(0);
+		).rows.length;
+
+	const uninvited = await closed.handler(
+		post("/email-otp/send-verification-otp", {
+			email: "stranger@example.invalid",
+			type: "sign-in",
+		}),
+	);
+	expect(uninvited.status).toBe(403);
+	expect((await uninvited.json()).code).toBe("SIGN_UP_DISABLED");
+	await closed.emailDelivery.drain();
+	expect(
+		sentCodes.some(({ email }) => email === "stranger@example.invalid"),
+	).toBe(false);
+	expect(await userCount("stranger@example.invalid")).toBe(0);
+
+	await database.db.execute(sql`
+		WITH org AS (
+			INSERT INTO app.organization (id, name, slug, created_at)
+			VALUES ('org-invite-test', 'Invite test', 'invite-test', now())
+			RETURNING id
+		)
+		INSERT INTO app.invitation (id, organization_id, email, role, status, expires_at, inviter_id)
+		SELECT 'invite-pending', org.id, 'Invited@Example.invalid', 'member', 'pending',
+			now() + interval '1 day', u.id
+		FROM org, app."user" u WHERE u.email = 'inviter@example.invalid'
+	`);
+	const invited = await closed.handler(
+		post("/email-otp/send-verification-otp", {
+			email: "invited@example.invalid",
+			type: "sign-in",
+		}),
+	);
+	expect(invited.status).toBe(200);
+	await signIn(closed, "invited@example.invalid");
+	expect(await userCount("invited@example.invalid")).toBe(1);
+
+	await database.db.execute(
+		sql`UPDATE app.invitation SET expires_at = now() - interval '1 minute'`,
+	);
+	const expired = await closed.handler(
+		post("/email-otp/send-verification-otp", {
+			email: "late@example.invalid",
+			type: "sign-in",
+		}),
+	);
+	expect(expired.status).toBe(403);
 });
 test("email delivery errors are owned and sanitized while HTTP acknowledgements stay generic", async () => {
 	let failures = 0;
@@ -420,9 +462,11 @@ test.each(["wrong", "unknown", "expired", "exhausted"] as const)(
 		const email = "privacy@example.invalid";
 		if (kind !== "unknown") await signIn(auth(), email);
 		const instance = auth(false);
-		await instance.api.sendVerificationOTP({
-			body: { email, type: "sign-in" },
-		});
+		// Closed registration refuses to send codes to unknown addresses.
+		if (kind !== "unknown")
+			await instance.api.sendVerificationOTP({
+				body: { email, type: "sign-in" },
+			});
 		await instance.emailDelivery.drain();
 		const code = sentCodes
 			.filter((message) => message.email === email)

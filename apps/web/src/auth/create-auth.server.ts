@@ -30,6 +30,10 @@ import { profileEmailSecurity } from "./profile-email.server";
 import { sessionSignInMethod } from "./session-details.server";
 import { AUTH_FRESH_AGE_SECONDS } from "./session-policy";
 import { signInLinkUrl } from "./sign-in-link";
+import {
+	assertAccountCreationAllowed,
+	signUpPolicy,
+} from "./sign-up-policy.server";
 import { isTwoFactorEnrollment, recountTwoFactor } from "./two-factor.server";
 
 const credentialSecurity = {
@@ -166,6 +170,17 @@ export function createAuth(
 			},
 		},
 		databaseHooks: {
+			user: {
+				create: {
+					before: async (newUser) => {
+						await assertAccountCreationAllowed(
+							database,
+							config.allowSignUp,
+							newUser.email,
+						);
+					},
+				},
+			},
 			session: {
 				create: {
 					before: async (session, context) => ({
@@ -192,12 +207,14 @@ export function createAuth(
 		plugins: [
 			organizationPlugin(config.origin, email.sendOrganizationInvitation),
 			invitationSecurity(database),
+			signUpPolicy(database, config.allowSignUp),
 			emailOTP({
 				otpLength: 6,
 				expiresIn: 300,
 				allowedAttempts: 3,
 				storeOTP: "hashed",
-				disableSignUp: !config.allowSignUp,
+				// The sign-up policy decides who may create an account.
+				disableSignUp: false,
 				rateLimit: { window: 60, max: 3 },
 				sendVerificationOTP: ({ email: recipient, otp, type }, context) => {
 					if (type !== "sign-in")
