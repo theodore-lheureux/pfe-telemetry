@@ -1,6 +1,7 @@
 import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
 import { Trash2Icon } from "lucide-react";
+import type { ReactNode } from "react";
 import type { ProjectMembershipSummary } from "../../organizations/contracts";
 import type { MemberSummary } from "../../organizations/member-contracts";
 import { AlertDialogActions } from "../dialog-actions";
@@ -22,29 +23,34 @@ export function ProjectGrantRow({
 	grant,
 	self,
 	state,
+	label,
 }: {
 	member: MemberSummary;
 	grant: ProjectMembershipSummary | undefined;
 	self: boolean;
 	state: ReturnType<typeof useProjectGrants>;
+	/** Replaces the member's identity, for views that already name the member. */
+	label?: ReactNode;
 }) {
 	const implicit = member.role !== "member";
 	const { confirmation, pending, disabled, failed, message } = state;
 	return (
-		<TableRow className="h-16">
+		<TableRow className={label ? undefined : "h-16"}>
 			<TableCell>
 				<div className="flex items-center gap-3">
-					<UserAvatar user={member} className="size-8" />
+					{!label && <UserAvatar user={member} className="size-8" />}
 					<div>
-						<p className="font-medium">
-							{self
-								? m.you_suffix({ name: member.name || member.email })
-								: member.name || member.email}
-						</p>
-						{member.name && (
+						{label ?? (
+							<p className="font-medium">
+								{self
+									? m.you_suffix({ name: member.name || member.email })
+									: member.name || member.email}
+							</p>
+						)}
+						{!label && member.name && (
 							<p className="text-sm text-muted-foreground">{member.email}</p>
 						)}
-						<p className="text-sm">
+						<p className={label ? "text-sm text-muted-foreground" : "text-sm"}>
 							{implicit && m.implicit_role({ role: roleLabel(member.role) })}
 							{!implicit &&
 								grant &&

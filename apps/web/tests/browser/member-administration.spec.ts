@@ -171,14 +171,16 @@ test("embedded grant editors give the same member independent labels, writes and
 	await page
 		.getByRole("menuitem", { name: "Manage project access", exact: true })
 		.click();
-	const first = page.getByRole("region", {
-		name: projects[0].name,
+	const dialog = page.getByRole("dialog", {
+		name: "Manage project access",
 		exact: true,
 	});
-	const second = page.getByRole("region", {
-		name: projects[1].name,
-		exact: true,
-	});
+	const projectRow = (name: string) =>
+		dialog.getByRole("row").filter({
+			has: page.getByRole("heading", { name, exact: true }),
+		});
+	const first = projectRow(projects[0].name);
+	const second = projectRow(projects[1].name);
 	const label = "Project role for embedded@example.invalid";
 	const firstId = await first
 		.getByLabel(label, { exact: true })

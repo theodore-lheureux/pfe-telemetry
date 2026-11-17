@@ -119,7 +119,7 @@ export function ProjectGrantForm({
 			method="post"
 			className={
 				compact
-					? "flex flex-wrap items-end gap-2 [&_label]:sr-only"
+					? "flex items-end gap-2 [&_label]:sr-only [&>*:first-child]:min-w-36 [&>*:first-child]:flex-1"
 					: "flex flex-wrap items-end gap-2"
 			}
 			onSubmit={(event) => {

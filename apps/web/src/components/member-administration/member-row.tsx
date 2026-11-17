@@ -26,6 +26,13 @@ import {
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "../ui/dialog";
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -207,29 +214,38 @@ export function MemberRow({
 				</TableCell>
 			</TableRow>
 			{editingAccess && canManageProjects && (
-				<TableRow>
-					<TableCell colSpan={7} className="bg-muted/30 whitespace-normal">
-						<div className="flex justify-between gap-3">
-							<h3 className="font-semibold">{m.member_manage_access()}</h3>
-							<Button
-								size="icon-sm"
-								variant="ghost"
-								aria-label={m.close()}
-								onClick={() => {
-									setEditingAccess(false);
-									actions.current?.focus();
-								}}
-							>
-								<XIcon aria-hidden="true" />
-							</Button>
+				<Dialog
+					open
+					onOpenChange={(open) => {
+						if (!open) setEditingAccess(false);
+					}}
+				>
+					<DialogContent
+						className="flex max-h-[calc(100svh-4rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+						onCloseAutoFocus={(event) => {
+							event.preventDefault();
+							actions.current?.focus();
+						}}
+					>
+						<DialogHeader className="shrink-0 border-b px-6 py-5 pr-12">
+							<DialogTitle className="text-xl font-semibold">
+								{m.member_manage_access()}
+							</DialogTitle>
+							<DialogDescription>
+								{member.name
+									? `${member.name} · ${member.email}`
+									: member.email}
+							</DialogDescription>
+						</DialogHeader>
+						<div className="min-h-0 overflow-y-auto px-6 py-4">
+							<MemberProjectAccess
+								projects={projects}
+								member={member}
+								userId={userId}
+							/>
 						</div>
-						<MemberProjectAccess
-							projects={projects}
-							member={member}
-							userId={userId}
-						/>
-					</TableCell>
-				</TableRow>
+					</DialogContent>
+				</Dialog>
 			)}
 			{editing && canManage && !protectedOwner && (
 				<TableRow>
