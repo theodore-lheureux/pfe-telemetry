@@ -169,36 +169,12 @@ for (const locale of ["en", "fr"] as const) {
 		});
 		await search.fill("settings-member");
 		await expect(members.getByRole("row")).toHaveCount(2);
-		await page
-			.getByRole("button", {
-				name: m.settings_member_actions(
-					{ email: "settings-member@example.invalid" },
-					options,
-				),
-				exact: true,
-			})
-			.click();
-		await page
-			.getByRole("menuitem", {
-				name: m.settings_change_role({}, options),
-				exact: true,
-			})
-			.click();
 		const role = page.getByLabel(
 			m.role_for({ email: "settings-member@example.invalid" }, options),
 			{ exact: true },
 		);
 		await role.selectOption("admin");
-		await page
-			.getByRole("button", {
-				name: m.save_role_for(
-					{ email: "settings-member@example.invalid" },
-					options,
-				),
-				exact: true,
-			})
-			.click();
-		await expect(role).toHaveCount(0);
+		await expect(role).not.toHaveAttribute("aria-busy", "true");
 		await expect
 			.poll(
 				async () =>

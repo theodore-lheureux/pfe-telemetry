@@ -4,8 +4,8 @@ import * as memberDomain from "../../src/organizations/members.server";
 import * as organizationDomain from "../../src/organizations/organizations.server";
 import * as projectDomain from "../../src/organizations/projects.server";
 import {
+	chooseAndSave,
 	data,
-	editMemberRole,
 	expect,
 	openInvitationForm,
 	openMemberActions,
@@ -55,22 +55,10 @@ test("manages native memberships and restricts administrator owner controls", as
 	await expect(
 		page.getByLabel("Role for owner@example.invalid", { exact: true }),
 	).toHaveCount(0);
-	await editMemberRole(page, "collaborator@example.invalid");
-	await page
-		.getByLabel("Role for collaborator@example.invalid", { exact: true })
-		.selectOption("admin");
-	await page
-		.getByRole("button", {
-			name: "Save role for collaborator@example.invalid",
-			exact: true,
-		})
-		.press("Enter");
+	await chooseAndSave(page, "Role for collaborator@example.invalid", "admin");
 	await expect(
 		page.getByText("Member role updated.", { exact: true }),
 	).toBeVisible();
-	await expect(
-		page.getByRole("heading", { name: "Organization members", exact: true }),
-	).toBeFocused();
 	expect(
 		data(
 			await workspace.operations(collaborator.headers, (actor) =>
@@ -193,16 +181,10 @@ test("embedded grant editors give the same member independent labels, writes and
 		[first, "viewer", projects[0]],
 		[second, "admin", projects[1]],
 	] as const) {
-		await section.getByLabel(label, { exact: true }).selectOption(role);
-		await section
-			.getByRole("button", {
-				name: "Save project grant for embedded@example.invalid",
-				exact: true,
-			})
-			.click();
-		await expect(
-			section.getByRole("heading", { name: project.name, exact: true }),
-		).toBeFocused();
+		const select = section.getByLabel(label, { exact: true });
+		await select.selectOption(role);
+		await expect(select).not.toHaveAttribute("aria-busy", "true");
+		await expect(select).toBeFocused();
 		const grants = data(
 			await workspace.operations(owner.headers, (actor) =>
 				projectDomain.listProjectMembers(workspace.database.db, actor, {
@@ -215,12 +197,7 @@ test("embedded grant editors give the same member independent labels, writes and
 			role,
 		);
 	}
-	await first
-		.getByRole("button", {
-			name: "Remove explicit project grant for embedded@example.invalid",
-			exact: true,
-		})
-		.click();
+	await first.getByLabel(label, { exact: true }).selectOption("none");
 	await page
 		.getByRole("button", { name: "Confirm access change", exact: true })
 		.click();
@@ -314,12 +291,6 @@ test("effective project administrators grant access and can give up their own ad
 	await page
 		.getByLabel("Project role for manager@example.invalid", { exact: true })
 		.selectOption("viewer");
-	await page
-		.getByRole("button", {
-			name: "Save project grant for manager@example.invalid",
-			exact: true,
-		})
-		.click();
 	await expect(
 		page.getByText("This removes your project administrator access.", {
 			exact: false,
@@ -670,16 +641,9 @@ test("a successful membership write survives a failed loader refresh", async ({
 	await page.route("**/_serverFn/**", (route) =>
 		route.request().method() === "GET" ? route.abort() : route.continue(),
 	);
-	await editMemberRole(page, "target@example.invalid");
 	await page
 		.getByLabel("Role for target@example.invalid", { exact: true })
 		.selectOption("admin");
-	await page
-		.getByRole("button", {
-			name: "Save role for target@example.invalid",
-			exact: true,
-		})
-		.click();
 	await expect(
 		page.getByRole("heading", { name: "Something went wrong", exact: true }),
 	).toBeVisible();
@@ -700,7 +664,6 @@ test("a successful membership write survives a failed loader refresh", async ({
 	).toBe("admin");
 	await page.unroute("**/_serverFn/**");
 	await page.getByRole("button", { name: "Try again", exact: true }).click();
-	await editMemberRole(page, "target@example.invalid");
 	await expect(
 		page.getByLabel("Role for target@example.invalid", { exact: true }),
 	).toHaveValue("admin");

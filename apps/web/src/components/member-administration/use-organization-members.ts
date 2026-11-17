@@ -41,6 +41,7 @@ export function useOrganizationMembers(
 		saved: m.your_membership_change_was_saved(),
 		refreshFailed: m.your_membership_change_was_saved_but_the_page(),
 		unknown: m.the_member_change_could_not_be_completed_refresh(),
+		toastErrors: true,
 	});
 	async function change(input: MemberChange) {
 		const saved = await mutation.submit(input);
@@ -55,14 +56,13 @@ export function useOrganizationMembers(
 				? m.member_role_updated()
 				: m.membership_removed(),
 		);
-		if (refreshed) heading.current?.focus();
+		// A removed row takes its focus with it; inline role changes keep theirs.
+		if (refreshed && input.action !== "role") heading.current?.focus();
 	}
 	return {
 		heading,
 		pending: mutation.pending,
 		disabled: mutation.disabled,
-		message: mutation.message,
-		failed: mutation.kind !== "success",
 		confirm,
 		setConfirm,
 		change,

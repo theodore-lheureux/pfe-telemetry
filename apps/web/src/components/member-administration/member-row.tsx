@@ -1,20 +1,15 @@
 import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
 import { Link } from "@tanstack/react-router";
-import {
-	MoreHorizontalIcon,
-	ShieldIcon,
-	UserMinusIcon,
-	XIcon,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { MoreHorizontalIcon, UserMinusIcon } from "lucide-react";
+import { useRef, useState } from "react";
 import type {
 	OrganizationRole,
 	ProjectSummary,
 } from "../../organizations/contracts";
 import type { OrganizationMemberSummary } from "../../organizations/member-contracts";
+import { AutoSaveSelect } from "../auto-save-select";
 import { AlertDialogActions } from "../dialog-actions";
-import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
 import { TimeDisplay } from "../time-display";
 import {
@@ -40,7 +35,6 @@ import {
 } from "../ui/dropdown-menu";
 import { TableCell, TableRow } from "../ui/table";
 import { MemberProjectAccess } from "./member-project-access";
-import { MemberRoleForm } from "./role-forms";
 import type { useOrganizationMembers } from "./use-organization-members";
 
 export function MemberRow({
@@ -63,21 +57,12 @@ export function MemberRow({
 	const canManage = organizationRole !== "member";
 	const protectedOwner =
 		member.role === "owner" && (organizationRole !== "owner" || owners <= 1);
-	const { pending, disabled, confirm, failed, message, heading } = state;
-	const [editing, setEditing] = useState(false);
+	const { pending, disabled, confirm, heading } = state;
 	const [editingAccess, setEditingAccess] = useState(false);
 	const canManageProjects = projects.some(
 		(project) => project.role === "admin",
 	);
 	const actions = useRef<HTMLButtonElement>(null);
-	const editor = useRef<HTMLFieldSetElement>(null);
-	const previousRole = useRef(member.role);
-	useEffect(() => {
-		if (previousRole.current !== member.role) {
-			previousRole.current = member.role;
-			setEditing(false);
-		}
-	}, [member.role]);
 	return (
 		<AlertDialog
 			open={confirm === member.id}
@@ -102,7 +87,24 @@ export function MemberRow({
 					</div>
 				</TableCell>
 				<TableCell>
-					<Badge variant="outline">{roleLabel(member.role)}</Badge>
+					{canManage && !protectedOwner && !self ? (
+						<AutoSaveSelect<OrganizationRole>
+							value={member.role}
+							label={m.role_for({ email: member.email })}
+							options={[
+								{ value: "member", label: m.role_member() },
+								{ value: "admin", label: m.role_admin() },
+								...(organizationRole === "owner"
+									? [{ value: "owner" as const, label: m.role_owner() }]
+									: []),
+							]}
+							onSave={(role) =>
+								state.change({ action: "role", memberId: member.id, role })
+							}
+						/>
+					) : (
+						<Badge variant="outline">{roleLabel(member.role)}</Badge>
+					)}
 				</TableCell>
 				<TableCell>
 					<div className="flex max-w-64 flex-wrap gap-1">
@@ -163,35 +165,10 @@ export function MemberRow({
 									<MoreHorizontalIcon aria-hidden="true" />
 								</Button>
 							</DropdownMenuTrigger>
-							<DropdownMenuContent
-								align="end"
-								className="w-56"
-								onCloseAutoFocus={(event) => {
-									if (editing) {
-										event.preventDefault();
-										editor.current?.querySelector("select")?.focus();
-									}
-								}}
-							>
+							<DropdownMenuContent align="end" className="w-56">
 								{canManageProjects && (
-									<DropdownMenuItem
-										onSelect={() => {
-											setEditing(false);
-											setEditingAccess(true);
-										}}
-									>
+									<DropdownMenuItem onSelect={() => setEditingAccess(true)}>
 										{m.member_manage_access()}
-									</DropdownMenuItem>
-								)}
-								{canManage && !protectedOwner && (
-									<DropdownMenuItem
-										onSelect={() => {
-											setEditingAccess(false);
-											setEditing(true);
-										}}
-									>
-										<ShieldIcon aria-hidden="true" />
-										{m.settings_change_role()}
 									</DropdownMenuItem>
 								)}
 								{!protectedOwner && (self || canManage) && (
@@ -247,41 +224,6 @@ export function MemberRow({
 					</DialogContent>
 				</Dialog>
 			)}
-			{editing && canManage && !protectedOwner && (
-				<TableRow>
-					<TableCell colSpan={7} className="bg-muted/30 whitespace-normal">
-						<fieldset ref={editor} className="flex min-w-0 flex-col gap-3 py-2">
-							<legend className="sr-only">{m.settings_change_role()}</legend>
-							<div className="flex items-start justify-between gap-4">
-								<p className="max-w-2xl text-sm text-muted-foreground">
-									{m.settings_member_role_description()}
-								</p>
-								<Button
-									variant="ghost"
-									size="icon-sm"
-									disabled={pending}
-									aria-label={m.close()}
-									onClick={() => {
-										setEditing(false);
-										actions.current?.focus();
-									}}
-								>
-									<XIcon aria-hidden="true" />
-								</Button>
-							</div>
-							<MemberRoleForm
-								key={`${member.role}:${organizationRole}`}
-								member={member}
-								allowOwner={organizationRole === "owner"}
-								disabled={disabled}
-								onSave={(role) =>
-									state.change({ action: "role", memberId: member.id, role })
-								}
-							/>
-						</fieldset>
-					</TableCell>
-				</TableRow>
-			)}
 			{confirm === member.id && !protectedOwner && (self || canManage) && (
 				<AlertDialogContent
 					onCloseAutoFocus={(event) => {
@@ -303,12 +245,6 @@ export function MemberRow({
 							: m.remove_member_question({ email: member.email })}{" "}
 						{m.this_removes_their_organization_membership_and_all_explicit()}
 					</AlertDialogDescription>
-					<FormFeedback
-						reserveLine={false}
-						message={failed ? message : ""}
-						kind="error"
-						pending={pending}
-					/>
 					<AlertDialogActions
 						cancel={{
 							label: m.keep_membership(),

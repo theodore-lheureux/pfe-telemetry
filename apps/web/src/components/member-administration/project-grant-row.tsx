@@ -2,10 +2,13 @@ import { roleLabel } from "@recount/i18n/labels";
 import { m } from "@recount/i18n/messages";
 import { Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
-import type { ProjectMembershipSummary } from "../../organizations/contracts";
+import type {
+	ProjectMembershipSummary,
+	ProjectRole,
+} from "../../organizations/contracts";
 import type { MemberSummary } from "../../organizations/member-contracts";
+import { AutoSaveSelect } from "../auto-save-select";
 import { AlertDialogActions } from "../dialog-actions";
-import { FormFeedback } from "../form-feedback";
 import { UserAvatar } from "../identity-avatar";
 import {
 	AlertDialog,
@@ -15,7 +18,6 @@ import {
 } from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { TableCell, TableRow } from "../ui/table";
-import { ProjectGrantForm } from "./role-forms";
 import type { useProjectGrants } from "./use-project-grants";
 
 export function ProjectGrantRow({
@@ -33,7 +35,7 @@ export function ProjectGrantRow({
 	label?: ReactNode;
 }) {
 	const implicit = member.role !== "member";
-	const { confirmation, pending, disabled, failed, message } = state;
+	const { confirmation, pending, disabled } = state;
 	return (
 		<TableRow className={label ? undefined : "h-16"}>
 			<TableCell>
@@ -65,38 +67,53 @@ export function ProjectGrantRow({
 			</TableCell>
 			<TableCell>
 				{!implicit && (
-					<ProjectGrantForm
-						compact
-						key={grant?.role ?? "none"}
-						member={member}
-						role={grant?.role}
-						disabled={disabled}
-						onSave={async (role, trigger) => {
-							if (self && role !== "admin")
-								state.requestConfirmation(member.id, role, trigger);
-							else await state.change(member, role);
+					<AutoSaveSelect<ProjectRole | "none">
+						value={grant?.role ?? "none"}
+						label={m.project_role_for({ email: member.email })}
+						options={[
+							{ value: "none", label: m.no_project_access() },
+							{ value: "viewer", label: m.role_viewer() },
+							{ value: "member", label: m.role_member() },
+							{ value: "admin", label: m.role_admin() },
+						]}
+						onSave={(choice) => {
+							const role = choice === "none" ? null : choice;
+							// Removing access, or lowering your own, asks first.
+							if (!role || (self && role !== "admin")) {
+								state.requestConfirmation(
+									member.id,
+									role,
+									document.activeElement as HTMLElement | null,
+								);
+								return;
+							}
+							return state.change(member, role);
 						}}
 					/>
 				)}
 				{implicit && (
-					<span className="text-sm text-muted-foreground">
-						{m.project_inherited_access()}
-					</span>
-				)}
-			</TableCell>
-			<TableCell className="w-12">
-				{grant && (
-					<Button
-						variant="outline"
-						size="icon"
-						disabled={disabled}
-						onClick={(event) =>
-							state.requestConfirmation(member.id, null, event.currentTarget)
-						}
-						aria-label={m.remove_grant_named({ email: member.email })}
-					>
-						<Trash2Icon aria-hidden="true" />
-					</Button>
+					<div className="flex items-center gap-2">
+						<span className="text-sm text-muted-foreground">
+							{m.project_inherited_access()}
+						</span>
+						{grant && (
+							<Button
+								variant="outline"
+								size="icon"
+								disabled={disabled}
+								onClick={(event) =>
+									state.requestConfirmation(
+										member.id,
+										null,
+										event.currentTarget,
+									)
+								}
+								aria-label={m.remove_grant_named({ email: member.email })}
+							>
+								<Trash2Icon aria-hidden="true" />
+							</Button>
+						)}
+					</div>
 				)}
 			</TableCell>
 			{confirmation?.memberId === member.id && (
@@ -110,7 +127,7 @@ export function ProjectGrantRow({
 						onCloseAutoFocus={(event) => {
 							event.preventDefault();
 							const trigger = state.confirmationTrigger.current;
-							(trigger?.isConnected && !trigger.disabled
+							(trigger?.isConnected && !trigger.matches(":disabled")
 								? trigger
 								: state.heading.current
 							)?.focus();
@@ -132,12 +149,6 @@ export function ProjectGrantRow({
 								!self &&
 								m.remove_access_question({ email: member.email })}
 						</AlertDialogDescription>
-						<FormFeedback
-							reserveLine={false}
-							message={failed ? message : ""}
-							kind="error"
-							pending={pending}
-						/>
 						<AlertDialogActions
 							cancel={{
 								label: m.keep_current_access(),

@@ -8,7 +8,6 @@ import type {
 	ProjectSummary,
 } from "../organizations/contracts";
 import type { MemberSummary } from "../organizations/member-contracts";
-import { FormFeedback } from "./form-feedback";
 import { UserAvatar } from "./identity-avatar";
 import {
 	MemberTableHeader,
@@ -86,11 +85,6 @@ export function ProjectGrants({
 					grants.find((grant) => grant.memberId === member.id)?.role,
 				header: m.settings_level(),
 			},
-			{
-				id: "actions",
-				header: () => <span className="sr-only">{m.actions()}</span>,
-				enableSorting: false,
-			},
 		],
 		[grants],
 	);
@@ -149,12 +143,6 @@ export function ProjectGrants({
 					{m.projects_are_private_grant_access_only_to_current()}
 				</p>
 			</SettingsSection>
-			<FormFeedback
-				message={state.confirmation || adding ? "" : state.message}
-				pending={state.pending && !state.confirmation && !adding}
-				kind={state.failed ? "error" : "success"}
-				reserveLine={false}
-			/>
 			<section
 				className="flex flex-col gap-4"
 				aria-labelledby="project-members-heading"
@@ -233,12 +221,6 @@ export function ProjectGrants({
 							) : (
 								<p>{m.project_no_candidates()}</p>
 							)}
-							<FormFeedback
-								message={state.failed ? state.message : ""}
-								kind={state.failed ? "error" : "success"}
-								pending={state.pending}
-								reserveLine={false}
-							/>
 						</DialogContent>
 					</Dialog>
 				</div>
@@ -257,7 +239,7 @@ export function ProjectGrants({
 							))}
 							{!data.length && (
 								<TableRow>
-									<TableCell colSpan={3} className="text-muted-foreground">
+									<TableCell colSpan={2} className="text-muted-foreground">
 										{m.project_no_explicit_members()}
 									</TableCell>
 								</TableRow>

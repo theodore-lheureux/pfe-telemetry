@@ -9,7 +9,6 @@ import type {
 	ProjectSummary,
 } from "../organizations/contracts";
 import type { OrganizationMemberSummary } from "../organizations/member-contracts";
-import { FormFeedback } from "./form-feedback";
 import { MemberRow } from "./member-administration/member-row";
 import {
 	MemberTableHeader,
@@ -145,12 +144,6 @@ export function OrganizationMembers({
 			description={m.settings_members_description()}
 			headingRef={state.heading}
 		>
-			<FormFeedback
-				message={state.confirm ? "" : state.message}
-				pending={state.pending && !state.confirm}
-				kind={state.failed ? "error" : "success"}
-				reserveLine={false}
-			/>
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				<div className="relative w-full sm:max-w-xs">
 					<SearchIcon

@@ -211,15 +211,6 @@ for (const locale of ["en", "fr"] as const) {
 				{ exact: true },
 			)
 			.selectOption("viewer");
-		await table
-			.getByRole("button", {
-				name: m.save_grant_for(
-					{ email: "preferences-member@example.invalid" },
-					opt,
-				),
-				exact: true,
-			})
-			.click();
 		await expect
 			.poll(
 				async () =>

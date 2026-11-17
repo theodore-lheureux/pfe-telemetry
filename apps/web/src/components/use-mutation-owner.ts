@@ -94,6 +94,7 @@ export function useMutationOwner(userId: string) {
 				unavailable: string,
 				afterRefresh?: (navigate: NavigateFn) => Promise<void>,
 				transientNotice = false,
+				success = saved,
 			) {
 				if (!current()) return false;
 				const notice = publishNotice(saved, transientNotice);
@@ -108,7 +109,7 @@ export function useMutationOwner(userId: string) {
 						notice.update(unavailable);
 						return false;
 					}
-					notice.clear();
+					notice.settle(success);
 					return true;
 				} catch (error) {
 					if (ownsRefresh()) notice.update(unavailable);

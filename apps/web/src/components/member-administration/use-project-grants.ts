@@ -14,7 +14,7 @@ import { usePageConfirmation } from "../use-page-confirmation";
 
 export function useProjectGrants(project: ProjectSummary, userId: string) {
 	const heading = useRef<HTMLHeadingElement>(null);
-	const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
+	const confirmationTrigger = useRef<HTMLElement | null>(null);
 	const [confirmation, setConfirmation] = usePageConfirmation<{
 		memberId: string;
 		role: ProjectRole | null;
@@ -37,6 +37,7 @@ export function useProjectGrants(project: ProjectSummary, userId: string) {
 		saved: m.your_project_grant_change_was_saved(),
 		refreshFailed: m.your_project_grant_change_was_saved_but_the(),
 		unknown: m.the_grant_change_could_not_be_completed_refresh(),
+		toastErrors: true,
 	});
 	async function change(member: MemberSummary, role: ProjectRole | null) {
 		const saved = await mutation.submit({ member, role });
@@ -61,7 +62,8 @@ export function useProjectGrants(project: ProjectSummary, userId: string) {
 				? m.project_grant_saved()
 				: m.explicit_project_grant_removed_organization_owner_and_administrator(),
 		);
-		if (refreshed) heading.current?.focus();
+		// Removing a grant can remove its row; inline role changes keep focus.
+		if (refreshed && !role) heading.current?.focus();
 	}
 	return {
 		projectId: project.id,
@@ -69,15 +71,13 @@ export function useProjectGrants(project: ProjectSummary, userId: string) {
 		confirmationTrigger,
 		pending: mutation.pending,
 		disabled: mutation.disabled,
-		message: mutation.message,
-		failed: mutation.kind !== "success",
 		confirmation,
 		setConfirmation,
 		change,
 		requestConfirmation(
 			memberId: string,
 			role: ProjectRole | null,
-			trigger: HTMLButtonElement | null,
+			trigger: HTMLElement | null,
 		) {
 			confirmationTrigger.current = trigger;
 			mutation.clearMessage();

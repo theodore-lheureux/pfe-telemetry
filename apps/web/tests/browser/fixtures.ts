@@ -74,18 +74,11 @@ export async function openMemberActions(
 		.click();
 }
 
-export async function editMemberRole(
-	page: Page,
-	email: string,
-	locale: Locale = "en",
-) {
-	await openMemberActions(page, email, locale);
-	await page
-		.getByRole("menuitem", {
-			name: m.settings_change_role({}, { locale }),
-			exact: true,
-		})
-		.click();
+/** Picks a value in an auto-saving select and waits for its save to settle. */
+export async function chooseAndSave(page: Page, label: string, value: string) {
+	const select = page.getByLabel(label, { exact: true });
+	await select.selectOption(value);
+	await expect(select).not.toHaveAttribute("aria-busy", "true");
 }
 
 export async function openInvitationForm(page: Page, locale: Locale = "en") {

@@ -9,7 +9,6 @@ import {
 	chooseOrganization,
 	chooseProject,
 	data,
-	editMemberRole,
 	expect,
 	openInvitationForm,
 	openMemberActions,
@@ -778,12 +777,8 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 				"organization-members",
 			),
 		);
-		await editMemberRole(page, "target@example.invalid");
 		await expect(
-			page.getByRole("button", {
-				name: "Save role for target@example.invalid",
-				exact: true,
-			}),
+			page.getByLabel("Role for target@example.invalid", { exact: true }),
 		).toBeEnabled();
 		const rpc = await workspace.serverFunctionPath(
 			page,
@@ -812,12 +807,6 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 		await page
 			.getByLabel("Role for target@example.invalid", { exact: true })
 			.selectOption("admin");
-		await page
-			.getByRole("button", {
-				name: "Save role for target@example.invalid",
-				exact: true,
-			})
-			.click();
 		await ready;
 		if (transition === "dismiss-then-navigate")
 			await page
@@ -848,11 +837,8 @@ for (const transition of ["stay", "navigate", "dismiss-then-navigate"]) {
 					.filter({ hasText: "Your membership change was saved." }),
 			).toBeVisible();
 			await expect(
-				page
-					.getByLabel("Role for target@example.invalid", { exact: true })
-					.locator("xpath=ancestor::form")
-					.locator('button[type="submit"]'),
-			).toBeDisabled();
+				page.getByLabel("Role for target@example.invalid", { exact: true }),
+			).toHaveAttribute("aria-busy", "true");
 		}
 		release();
 		await finished;
@@ -951,16 +937,9 @@ test("a saved membership write is acknowledged when its refresh becomes not-foun
 			.where(eq(member.id, ownerMember.id));
 		await route.fulfill({ response });
 	});
-	await editMemberRole(page, "target@example.invalid");
 	await page
 		.getByLabel("Role for target@example.invalid", { exact: true })
 		.selectOption("admin");
-	await page
-		.getByRole("button", {
-			name: "Save role for target@example.invalid",
-			exact: true,
-		})
-		.click();
 	await expect(
 		page.getByRole("heading", { name: "Page not found", exact: true }),
 	).toBeVisible();

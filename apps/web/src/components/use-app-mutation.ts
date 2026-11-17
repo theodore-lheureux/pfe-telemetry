@@ -10,6 +10,7 @@ import {
 	unwrapOperation,
 } from "../lib/operation-result";
 import { useLocaleChangeBlocker } from "./locale-safety";
+import { useMutationNotice } from "./mutation-feedback";
 import { useMutationOwner } from "./use-mutation-owner";
 
 type DomainError = NonNullable<OperationResult<never>["error"]>;
@@ -45,9 +46,12 @@ export function useAppMutation<Input, Data>(options: {
 	receiptBacked?: boolean;
 	transientNotice?: boolean;
 	errorMessage?: (error: DomainError) => string;
+	/** Reports failures as toasts, for controls with no room for inline feedback. */
+	toastErrors?: boolean;
 }) {
 	const hydrated = useHydrated();
 	const { router, begin } = useMutationOwner(options.userId);
+	const publishNotice = useMutationNotice();
 	const mutation = useMutation({
 		retry: false,
 		networkMode: "always",
@@ -98,15 +102,33 @@ export function useAppMutation<Input, Data>(options: {
 	const unknown = mutation.variables
 		? unknownFor(mutation.variables.input)
 		: m.the_response_was_lost_the_action_may_have();
-	const message = acknowledgement?.message ?? errorMessage();
+	const message = inlineMessage();
+	function inlineMessage() {
+		// Confirmations are toasts; only problems stay next to the form.
+		if (options.toastErrors || feedbackKind(status) === "success") return "";
+		return acknowledgement?.message ?? errorMessage();
+	}
 	function errorMessage() {
 		if (!mutation.isError) return "";
 		if (!failure) return unknown;
+		return failureMessage(failure);
+	}
+	function failureMessage(failure: DomainError) {
 		return options.errorMessage?.(failure) ?? operationMessage(failure);
 	}
 	useLocaleChangeBlocker(
 		pending || status === "uncertain" || status === "refresh-failed",
 	);
+
+	async function toastFailure(failure: DomainError | null, unknown: string) {
+		publishNotice(
+			failure ? failureMessage(failure) : unknown,
+			true,
+			failure ? "error" : "warning",
+		);
+		// Without inline feedback, show what the server holds after a lost response.
+		if (!failure) await router.invalidate({ sync: true }).catch(() => {});
+	}
 
 	async function run(input: Input, attempt: "initial" | "retry") {
 		if (!hydrated) return;
@@ -143,7 +165,10 @@ export function useAppMutation<Input, Data>(options: {
 			});
 		} catch (error) {
 			operation.finish();
-			return operation.current() && error instanceof MutationFailure
+			const answered = error instanceof MutationFailure;
+			if (options.toastErrors && operation.current())
+				await toastFailure(answered ? error.failure : null, unknown);
+			return operation.current() && answered
 				? { error: error.failure }
 				: undefined;
 		}
@@ -171,7 +196,13 @@ export function useAppMutation<Input, Data>(options: {
 				);
 				report("refreshing", saved, data);
 				const refreshed = await operation
-					.refresh(saved, unavailable, afterRefresh, options.transientNotice)
+					.refresh(
+						saved,
+						unavailable,
+						afterRefresh,
+						options.transientNotice,
+						success,
+					)
 					.catch(() => false);
 				operation.finish();
 				if (!operation.current()) return false;

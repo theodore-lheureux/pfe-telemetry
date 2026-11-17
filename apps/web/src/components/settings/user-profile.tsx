@@ -129,7 +129,7 @@ export function UserProfile() {
 				);
 			} else {
 				completedDeletion.current = removedId ?? null;
-				setMessage(m.account_security_updated());
+				setFeedback(m.account_security_updated());
 				setDeleteId(null);
 				setRenameId(null);
 				if (kind === "sessions")

@@ -73,8 +73,8 @@ export function EmailChangeConfirmation({
 			</h1>
 			<p>{m.profile_email_change_link_help()}</p>
 			<FormFeedback
-				message={saved ? m.profile_email_change_saved() : message}
-				kind={saved ? "success" : "error"}
+				message={saved ? "" : message}
+				kind="error"
 				pending={pending}
 			/>
 			{!saved && (

@@ -8,7 +8,6 @@ import { gate as createGate } from "../gate";
 import {
 	closePreferences,
 	data,
-	editMemberRole,
 	expect,
 	openInvitationForm,
 	openMemberActions,
@@ -340,25 +339,12 @@ for (const locale of ["en", "fr"] as const) {
 				body: { organizationId, userId: collaborator.userId, role: "member" },
 			});
 			await page.goto(settingsUrl(orgURL, "organization-members"));
-			await editMemberRole(page, "collaborator@example.invalid", locale);
 			const role = page.getByLabel(
 				m.role_for({ email: "collaborator@example.invalid" }, options),
 				{ exact: true },
 			);
 			await expect(role).toHaveValue("member");
-			await role.focus();
-			await page.keyboard.press("ArrowUp");
-			await page.keyboard.press("ArrowDown");
 			await role.selectOption("admin");
-			await page
-				.getByRole("button", {
-					name: m.save_role_for(
-						{ email: "collaborator@example.invalid" },
-						options,
-					),
-					exact: true,
-				})
-				.click();
 			await expect(
 				page.getByText(text(m.member_role_updated), { exact: true }),
 			).toBeVisible();
@@ -398,19 +384,17 @@ for (const locale of ["en", "fr"] as const) {
 			await expect(
 				page.getByText(text(m.project_grant_saved), { exact: true }),
 			).toBeVisible();
-			const removeGrant = page.getByRole("button", {
-				name: m.remove_grant_named(
-					{ email: "collaborator@example.invalid" },
-					options,
-				),
-				exact: true,
-			});
-			await removeGrant.click();
+			const grant = page.getByLabel(
+				m.project_role_for({ email: "collaborator@example.invalid" }, options),
+				{ exact: true },
+			);
+			await grant.selectOption("none");
 			await expect(
 				page.getByRole("button", { name: text(m.keep_current_access) }),
 			).toBeFocused();
 			await page.keyboard.press("Escape");
-			await expect(removeGrant).toBeFocused();
+			await expect(grant).toBeFocused();
+			await expect(grant).toHaveValue("viewer");
 			await page.goto(settingsUrl(orgURL, "organization-members"));
 			await openInvitationForm(page, locale);
 			await page

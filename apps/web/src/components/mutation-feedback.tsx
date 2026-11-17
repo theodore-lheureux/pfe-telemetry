@@ -29,7 +29,10 @@ function NoticeToast({
 }) {
 	return (
 		<div className="flex w-[min(24rem,calc(100vw-2rem))] items-start gap-3 rounded-md border bg-card p-3 text-sm text-card-foreground shadow-lg">
-			<p role="status" className="flex min-w-0 flex-1 items-start gap-2">
+			<p
+				role={kind === "success" ? "status" : "alert"}
+				className="flex min-w-0 flex-1 items-start gap-2"
+			>
 				{kind === "success" ? (
 					<CircleCheckIcon
 						aria-hidden="true"
@@ -52,12 +55,21 @@ function NoticeToast({
 
 interface MutationNotice {
 	update: (message: string, kind?: FeedbackKind) => void;
+	/** Turns the notice into a confirmation that dismisses itself. */
+	settle: (message?: string) => void;
 	clear: () => void;
 }
 
+// Long enough to read a short confirmation; failures stay until dismissed.
+const CONFIRMATION_MS = 5000;
+
 const FeedbackContext = createContext<{
 	setMessage: (message: string | null, kind?: FeedbackKind) => void;
-	publish: (message: string, transient?: boolean) => MutationNotice;
+	publish: (
+		message: string,
+		transient?: boolean,
+		kind?: FeedbackKind,
+	) => MutationNotice;
 	capture: () => AbortSignal | null;
 } | null>(null);
 
@@ -69,7 +81,13 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 		phase: "ready" as "ready" | "hidden" | "restoring",
 	});
 	const [notices, setNotices] = useState<
-		{ id: number; message: string; kind: FeedbackKind; origin?: string }[]
+		{
+			id: number;
+			message: string;
+			kind: FeedbackKind;
+			origin?: string;
+			settled?: boolean;
+		}[]
 	>([]);
 	const capture = useCallback(
 		() =>
@@ -174,7 +192,7 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 			document.current.controller.abort("document");
 		};
 	}, [router]);
-	useLocaleChangeBlocker(notices.length > 0);
+	useLocaleChangeBlocker(notices.some((notice) => !notice.settled));
 	// Notices render as toasts; the state stays authoritative so updates and
 	// navigation-scoped clearing keep working.
 	const shown = useRef(new Set<number>());
@@ -187,7 +205,6 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 				setNotices((previous) =>
 					previous.filter((entry) => entry.id !== notice.id),
 				);
-			// Acknowledgements stay until dismissed, like the banner they replace.
 			toast.custom(
 				() => (
 					<NoticeToast
@@ -196,22 +213,41 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 						onDismiss={forget}
 					/>
 				),
-				{ id: `notice-${notice.id}`, duration: Number.POSITIVE_INFINITY },
+				{
+					id: `notice-${notice.id}`,
+					duration: notice.settled ? CONFIRMATION_MS : Number.POSITIVE_INFINITY,
+					onAutoClose: forget,
+				},
 			);
 		}
 		shown.current = current;
 	}, [notices]);
 	function setMessage(message: string | null, kind: FeedbackKind = "success") {
-		setNotices(message ? [{ id: ++nextId.current, message, kind }] : []);
+		setNotices(
+			message
+				? [
+						{
+							id: ++nextId.current,
+							message,
+							kind,
+							settled: kind === "success",
+						},
+					]
+				: [],
+		);
 	}
-	function publish(message: string, transient = false): MutationNotice {
+	function publish(
+		message: string,
+		transient = false,
+		kind: FeedbackKind = "success",
+	): MutationNotice {
 		const id = ++nextId.current;
 		setNotices((previous) => [
 			...previous,
 			{
 				id,
 				message,
-				kind: "success",
+				kind,
 				origin: transient ? router.state.location.href : undefined,
 			},
 		]);
@@ -221,6 +257,19 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 				setNotices((previous) =>
 					previous.map((notice) =>
 						notice.id === id ? { ...notice, message, kind } : notice,
+					),
+				),
+			settle: (message) =>
+				setNotices((previous) =>
+					previous.map((notice) =>
+						notice.id === id
+							? {
+									...notice,
+									message: message ?? notice.message,
+									kind: "success",
+									settled: true,
+								}
+							: notice,
 					),
 				),
 			clear: () =>
