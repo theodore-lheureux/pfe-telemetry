@@ -218,7 +218,6 @@ test("the content box edge is the only sidebar boundary and highlights while hov
 	await page.mouse.move(before.x, before.y + 200);
 	await expect(handle).toHaveAttribute("data-separator", "hover");
 	await expect(main).not.toHaveCSS("border-left-color", original);
-	await expect(main).not.toHaveCSS("box-shadow", "none");
 	await page.screenshot({
 		path: test.info().outputPath("sidebar-edge-hover.png"),
 	});

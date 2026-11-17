@@ -82,6 +82,11 @@ for (const locale of ["en", "fr"] as const) {
 		await confirm().click();
 		await expect(
 			page
+				.locator("section", {
+					has: page.getByRole("heading", {
+						name: m.profile_email_change_title({}, options),
+					}),
+				})
 				.getByRole("status")
 				.filter({ hasText: m.profile_email_change_saved({}, options) }),
 		).toBeVisible();

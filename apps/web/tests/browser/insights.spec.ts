@@ -129,6 +129,10 @@ test("Insights shows the Node health template and charts discovered metrics in E
 				exact: true,
 			})
 			.click();
+		await page
+			.getByRole("dialog")
+			.getByRole("button", { name: "Save", exact: true })
+			.click();
 		await expect(page).toHaveURL(/\/dashboards\/[^/]+$/);
 		await expect(
 			page.getByRole("button", { name: "Add insights", exact: true }),

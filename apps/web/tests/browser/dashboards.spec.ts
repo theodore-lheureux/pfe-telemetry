@@ -254,7 +254,9 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			.click();
 		await expect(page).toHaveURL(/filters=/);
 		await page.getByRole("button", { name: /^Breakdown:/ }).click();
-		const breakdownSearch = page.getByRole("dialog").getByRole("combobox");
+		const breakdownSearch = page
+			.getByRole("dialog")
+			.getByPlaceholder("Search attributes");
 		await breakdownSearch.fill("Host name");
 		await expect(
 			page.getByRole("option", { name: /^Host name/ }),
@@ -265,7 +267,9 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await expect(page.getByText("Unsaved filters: 2")).toBeVisible();
 		// Its info lists each unsaved change, from the saved value to the current one.
 		await page.getByRole("button", { name: "Unsaved changes" }).click();
-		const changes = page.locator('[data-slot="hover-card-content"]');
+		const changes = page
+			.locator('[data-slot="hover-card-content"]')
+			.filter({ hasText: "Unsaved changes" });
 		await expect(changes.getByText("No date range override")).toBeVisible();
 		await expect(changes.getByText("Last 24 hours")).toBeVisible();
 		await expect(changes.getByText("Host name", { exact: true })).toBeVisible();
