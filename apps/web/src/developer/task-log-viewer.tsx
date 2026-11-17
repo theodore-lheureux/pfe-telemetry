@@ -1,12 +1,21 @@
 import { LazyLog } from "@melloware/react-logviewer";
 import { m } from "@recount/i18n/messages";
+import { cn } from "cn";
 
-export default function TaskLogViewer({ text }: { text: string }) {
+/** Fills its container; the default size suits the toolbar panel. */
+export default function TaskLogViewer({
+	text,
+	className,
+}: {
+	text: string;
+	className?: string;
+}) {
 	return (
-		<div className="h-[360px] overflow-hidden rounded-lg border">
+		<div
+			className={cn("h-[360px] overflow-hidden rounded-lg border", className)}
+		>
 			<LazyLog
 				text={text}
-				height={360}
 				enableSearch
 				enableLineNumbers
 				selectableLines

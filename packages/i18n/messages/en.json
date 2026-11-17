@@ -21,6 +21,7 @@
   "developer_log_filter": "Show matching lines",
   "developer_log_previous": "Previous match",
   "developer_log_next": "Next match",
+  "developer_log_full_screen": "Full screen",
   "developer_move_toolbar": "Move toolbar",
   "developer_drag_role": "Movable panel",
   "developer_drag_instruction": "Press Space to pick up the toolbar, use the arrow keys to move it, then press Space to place it. Press Escape to cancel.",

@@ -21,6 +21,7 @@
   "developer_log_filter": "Afficher les lignes correspondantes",
   "developer_log_previous": "Correspondance précédente",
   "developer_log_next": "Correspondance suivante",
+  "developer_log_full_screen": "Plein écran",
   "developer_move_toolbar": "Déplacer la barre",
   "developer_drag_role": "Panneau déplaçable",
   "developer_drag_instruction": "Appuyez sur Espace pour saisir la barre, utilisez les flèches pour la déplacer, puis appuyez sur Espace pour la poser. Échap annule le déplacement.",
