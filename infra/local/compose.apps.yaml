@@ -106,6 +106,8 @@ services:
       RECOUNT_ANALYTICS_ORGANIZATION_CONCURRENCY: ${RECOUNT_ANALYTICS_ORGANIZATION_CONCURRENCY:-4}
       RECOUNT_LIVE_GATEWAY_URL: http://live:3002
       RECOUNT_LIVE_GATEWAY_SECRET: ${RECOUNT_LIVE_GATEWAY_SECRET:?Set a shared Live gateway secret}
+      RECOUNT_POSTHOG_PROJECT_TOKEN: ${RECOUNT_POSTHOG_PROJECT_TOKEN:-}
+      RECOUNT_POSTHOG_HOST: ${RECOUNT_POSTHOG_HOST:-}
     networks: [authority, analytics, live-access, outbound]
     tmpfs: ["/tmp:rw,nosuid,size=32m"]
     healthcheck:

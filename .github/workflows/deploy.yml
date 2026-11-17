@@ -63,13 +63,17 @@ jobs:
           ANSIBLE_CONFIG: infra/oracle-stack/ansible/ansible.cfg
           ANSIBLE_HOST_KEY_CHECKING: "true"
           REPOSITORY: ${{ github.repository }}
+          # Environment settings belong to the deployment, not the build.
+          POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
         run: |
           digest=$(cut -d' ' -f1 "assets/recount-stack-$ARCH.tar.gz.sha256")
           printf '[recount_ingestion]\n%s\n' "$DEPLOY_HOST" > "$RUNNER_TEMP/inventory.ini"
           uv run --locked ansible-playbook infra/oracle-stack/ansible/deploy.yml \
             --inventory "$RUNNER_TEMP/inventory.ini" \
             --user recount-deploy --private-key "$HOME/.ssh/deploy" \
-            --extra-vars "recount_release=$RELEASE recount_arch=$ARCH recount_release_sha256=$digest recount_repository=$REPOSITORY"
+            --extra-vars "recount_release=$RELEASE recount_arch=$ARCH recount_release_sha256=$digest recount_repository=$REPOSITORY" \
+            --extra-vars "$(jq -n '{recount_posthog_project_token: env.POSTHOG_PROJECT_TOKEN, recount_posthog_host: env.POSTHOG_HOST}')"
       - name: Remove this runner's deployment key
         if: always()
         run: rm -f "$HOME/.ssh/deploy"
