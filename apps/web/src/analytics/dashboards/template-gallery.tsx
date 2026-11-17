@@ -1,7 +1,11 @@
 import { m } from "@recount/i18n/messages";
-import { Button } from "../../components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import type { MetricDefinition } from "../contracts";
 import { type TemplateChoice, templateCoverage } from "../dashboard-templates";
+
+const BLANK = "blank";
+const CARD =
+	"h-auto w-full flex-col items-start justify-start gap-1 whitespace-normal p-3 text-left data-[state=on]:border-primary data-[state=on]:bg-muted";
 
 export function TemplateGallery({
 	choices,
@@ -17,19 +21,22 @@ export function TemplateGallery({
 	onSelect: (id: string) => void;
 }) {
 	return (
-		<section
+		<ToggleGroup
+			type="single"
+			variant="outline"
+			orientation="vertical"
 			aria-label={m.dashboard_templates_gallery()}
-			className="flex flex-col gap-3"
+			className="w-full items-stretch gap-3"
+			value={selected || BLANK}
+			disabled={disabled}
+			// A single-choice gallery always keeps one option selected.
+			onValueChange={(value) => {
+				if (value) onSelect(value === BLANK ? "" : value);
+			}}
 		>
-			<Button
-				type="button"
-				variant={selected === "" ? "secondary" : "outline"}
-				aria-pressed={selected === ""}
-				disabled={disabled}
-				onClick={() => onSelect("")}
-			>
-				{m.dashboard_templates_blank()}
-			</Button>
+			<ToggleGroupItem value={BLANK} className={CARD}>
+				<span className="font-medium">{m.dashboard_templates_blank()}</span>
+			</ToggleGroupItem>
 			{(["built-in", "project"] as const).map((scope) => (
 				<div key={scope} className="flex flex-col gap-2">
 					<h3 className="text-sm font-medium">
@@ -41,31 +48,23 @@ export function TemplateGallery({
 						{choices
 							.filter((choice) => choice.scope === scope)
 							.map(({ id, template }) => (
-								<Button
-									key={id}
-									type="button"
-									variant={selected === id ? "secondary" : "outline"}
-									aria-pressed={selected === id}
-									disabled={disabled}
-									className="h-auto flex-col items-start whitespace-normal p-3 text-left"
-									onClick={() => onSelect(id)}
-								>
+								<ToggleGroupItem key={id} value={id} className={CARD}>
 									<span className="font-medium">{template.name}</span>
-									<span className="text-xs text-muted-foreground">
+									<span className="text-xs font-normal text-muted-foreground">
 										{template.description}
 									</span>
-									<span className="text-xs text-muted-foreground">
+									<span className="text-xs font-normal text-muted-foreground">
 										{metrics
 											? m.dashboard_template_coverage(
 													templateCoverage(template, metrics),
 												)
 											: m.dashboard_templates_coverage_loading()}
 									</span>
-								</Button>
+								</ToggleGroupItem>
 							))}
 					</div>
 				</div>
 			))}
-		</section>
+		</ToggleGroup>
 	);
 }

@@ -74,13 +74,13 @@ for (const locale of ["en", "fr"] as const) {
 			exact: true,
 		});
 		await expect(
-			dialog.getByRole("button", {
+			dialog.getByRole("radio", {
 				name: m.dashboard_templates_blank({}, options),
 				exact: true,
 			}),
-		).toHaveAttribute("aria-pressed", "true");
+		).toHaveAttribute("aria-checked", "true");
 		await dialog
-			.getByRole("button", {
+			.getByRole("radio", {
 				name: new RegExp(`^${m.dashboard_template_node_health({}, options)}`),
 			})
 			.click();
@@ -179,7 +179,7 @@ for (const locale of ["en", "fr"] as const) {
 			name: m.dashboard_new({}, options),
 			exact: true,
 		});
-		await dialog.getByRole("button", { name: /^Reusable fleet/ }).click();
+		await dialog.getByRole("radio", { name: /^Reusable fleet/ }).click();
 		await expect(
 			dialog.getByRole("region", {
 				name: m.dashboard_templates_preview({}, options),
@@ -217,7 +217,7 @@ for (const locale of ["en", "fr"] as const) {
 			exact: true,
 		});
 		await dialog
-			.getByRole("button", {
+			.getByRole("radio", {
 				name: m.dashboard_templates_blank({}, options),
 				exact: true,
 			})
