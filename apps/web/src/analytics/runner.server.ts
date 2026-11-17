@@ -9,6 +9,7 @@ import {
 	DEFAULT_SERIES_LIMIT,
 	INTERVALS,
 	MAX_SERIES,
+	type MetricDefinition,
 	type QueryResult,
 	type SeriesResult,
 } from "./contracts";
@@ -234,12 +235,20 @@ LIMIT 500`,
 	}
 }
 
+export interface RunQueryOptions {
+	/** The measures' definitions when the caller already read them. */
+	definitions?: Map<string, MetricDefinition>;
+	/** Set to false to skip reading node coverage. */
+	coverage?: boolean;
+}
+
 /** Runs a validated query for an already authorized project. */
 export async function runQuery(
 	projectId: string,
 	input: AnalyticsQuery,
 	signal?: AbortSignal,
 	connection: ClickHouseClient = getTelemetryClient(),
+	options: RunQueryOptions = {},
 ): Promise<QueryResult> {
 	if (signal?.aborted)
 		throw new OperationError("CANCELLED", "Analytics request cancelled");
@@ -266,12 +275,14 @@ export async function runQuery(
 	const deadline = AbortSignal.timeout(10_000);
 	const abort = signal ? AbortSignal.any([signal, deadline]) : deadline;
 	try {
-		const definitions = await metricDefinitions(
-			connection,
-			projectId,
-			query.measures.map((measure) => measure.metric),
-			abort,
-		);
+		const definitions =
+			options.definitions ??
+			(await metricDefinitions(
+				connection,
+				projectId,
+				query.measures.map((measure) => measure.metric),
+				abort,
+			));
 		const scopes = query.measures.map((measure) => {
 			const definition = definitions.get(measure.metric);
 			if (!definition)
@@ -317,7 +328,9 @@ export async function runQuery(
 			from,
 			to,
 			coverage:
-				query.shape === "timeseries" && query.interval
+				query.shape === "timeseries" &&
+				query.interval &&
+				options.coverage !== false
 					? await coverage(
 							connection,
 							projectId,

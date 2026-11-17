@@ -83,6 +83,10 @@ test("values name what they count without UCUM annotations and keep small magnit
 	expect(formatValue(30, auto, stored("{process}"), "en")).toBe("30");
 	expect(formatValue(0.0015, auto, stored("{process}"), "en")).toBe("0.0015");
 	expect(formatValue(0.55, auto, stored("ms"), "en")).toBe("0.55 ms");
+	// Byte rates scale like bytes; CPU seconds per second stay a plain number of cores.
+	const rate = (unit: string) => ({ unit, calculation: "rate" as const });
+	expect(formatValue(1_048_576, auto, rate("By"), "en")).toBe("1 MiB/s");
+	expect(formatValue(1.5, auto, rate("s"), "en")).toBe("1.5");
 });
 
 test("a chosen unit formats every value, including custom text around it", () => {

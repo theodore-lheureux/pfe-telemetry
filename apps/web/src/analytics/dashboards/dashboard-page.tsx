@@ -417,7 +417,7 @@ export function DashboardPage({
 					<>
 						{preview?.actions}
 						<RefreshControl
-							dashboardId={dashboard.id}
+							storageId={dashboard.id}
 							refreshedAt={now}
 							progress={load.progress}
 							disabled={!hydrated || !tiles.length}

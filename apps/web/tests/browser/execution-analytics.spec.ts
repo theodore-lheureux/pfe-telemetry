@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer, request } from "node:http";
 import type { Page } from "@playwright/test";
+import { m } from "@recount/i18n/messages";
 import { defaultStringifySearch } from "@tanstack/react-router";
 import { addTiles, saveDashboard } from "../../src/analytics/dashboards.server";
 import {
@@ -9,9 +10,11 @@ import {
 	encodeDraft,
 	newSeries,
 } from "../../src/analytics/insight/draft";
+import { formatValue } from "../../src/analytics/insight/labels";
 import { saveInsight } from "../../src/analytics/saved-insights.server";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
+import { createTestNode } from "../collector-node";
 import { executionParticipant } from "../execution-participant";
 import { createPointFixture, insertPoints } from "../telemetry/fixture";
 import { test as base, data, expect } from "./fixtures";
@@ -245,3 +248,254 @@ test("execution filters and breakdowns survive saved insights, dashboard overrid
 		fullPage: true,
 	});
 });
+
+for (const locale of ["en", "fr"] as const)
+	test(`execution page shows member process measurements by machine and instant (${locale})`, async ({
+		page,
+		workspace,
+		telemetry,
+	}, testInfo) => {
+		const actor = await workspace.signIn(
+			page,
+			`execution-measurements-${locale}@example.invalid`,
+		);
+		const organization = data(
+			await workspace.operations(actor.headers, () =>
+				createOrganization(workspace.auth, actor.headers, {
+					name: "Execution measurements",
+					slug: `execution-measurements-${locale}`,
+				}),
+			),
+		);
+		const project = data(
+			await workspace.operations(actor.headers, (actor) =>
+				createProject(workspace.database.db, actor, {
+					requestId: randomUUID(),
+					organizationId: organization.id,
+					name: "Processes",
+				}),
+			),
+		);
+		const reference = {
+			organizationId: organization.id,
+			projectId: project.id,
+		};
+		const nodes = {
+			a: (
+				await createTestNode(workspace.database.db, reference, {
+					hostname: "compute-a",
+					machineId: "compute-a",
+				})
+			).nodeId,
+			b: (
+				await createTestNode(workspace.database.db, reference, {
+					hostname: "compute-b",
+					machineId: "compute-b",
+				})
+			).nodeId,
+		};
+		const second = 1_000_000_000n;
+		const start =
+			BigInt(Math.floor((Date.now() - 300_000) / 60_000) * 60_000) * 1_000_000n;
+		const sample = (
+			node: string,
+			resource: string,
+			metric: "process.cpu.time" | "recount.process.memory.rss",
+			at: bigint,
+			value: number,
+		) =>
+			telemetry.client.command({
+				query: insertPoints({
+					resource_id: "{resource:String}",
+					resource_kind: "toUInt8(4)",
+					metric_name: `'${metric}'`,
+					...(metric === "process.cpu.time"
+						? {
+								metric_kind: "toUInt8(2)",
+								temporality: "toUInt8(2)",
+								monotonic: "CAST(1, 'Nullable(UInt8)')",
+								unit: "'s'",
+							}
+						: { metric_kind: "toUInt8(1)", unit: "'By'" }),
+				}),
+				query_params: {
+					project: project.id,
+					source: node,
+					host: node,
+					resource,
+					time: (start + at * second).toString(),
+					integer: String(value),
+					sample: randomUUID(),
+					stream: `${node}/${resource}/${metric}`,
+					epoch: "epoch",
+				},
+			});
+		for (const [at, value] of [
+			[0n, 0],
+			[10n, 2],
+			[20n, 4],
+		] as const)
+			await sample(nodes.a, "process-a", "process.cpu.time", at, value);
+		await sample(nodes.a, "process-a", "recount.process.memory.rss", 10n, 1024);
+		await sample(nodes.b, "process-b", "recount.process.memory.rss", 10n, 2048);
+		const facts = [
+			// compute-a is still running; compute-b ended at 30 s.
+			{ node: nodes.a, resource: "process-a", pid: 42, ended: null },
+			{ node: nodes.b, resource: "process-b", pid: 7, ended: 30n },
+		].flatMap(({ node, resource, pid, ended }) => {
+			const lifecycle = {
+				...executionParticipant(project.id, "run:measured", {
+					nodeId: node,
+					firstSeen: start,
+				}),
+				last_seen_unix_nano: (start + 25n * second).toString(),
+				ended_unix_nano:
+					ended === null ? null : (start + ended * second).toString(),
+			};
+			return [
+				lifecycle,
+				{
+					...lifecycle,
+					fact_id: randomUUID(),
+					kind: 2,
+					process_resource_id: resource,
+					process_namespace_id: "pidns:1",
+					process_pid: pid,
+					process_start_time_ticks: "100",
+					execution_name: null,
+					workload_version: null,
+					parameters: [],
+				},
+			];
+		});
+		await telemetry.client.insert({
+			table: "execution_participants",
+			format: "JSONEachRow",
+			values: facts,
+		});
+		await page
+			.context()
+			.addCookies([
+				{ name: "recount_locale", value: locale, url: workspace.origin },
+			]);
+		await page.goto(
+			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/executions/${encodeURIComponent("run:measured")}`,
+		);
+		await expect(
+			page.getByRole("button", {
+				name: m.execution_timeline_live({}, { locale }),
+				exact: true,
+			}),
+		).toBeVisible();
+		for (const label of [
+			m.metric_process_cpu_time({}, { locale }),
+			m.metric_process_memory_rss({}, { locale }),
+		])
+			await expect(
+				page.getByRole("heading", { name: label, exact: true }),
+			).toBeVisible();
+		const measurements = page.getByRole("region", {
+			name: m.execution_timeline_measurements({}, { locale }),
+		});
+		await expect(measurements).toHaveAttribute("aria-busy", "false");
+		const values = page.getByRole("table", {
+			name: m.execution_timeline_values({}, { locale }),
+		});
+		const row = (metric: string, machine: string) =>
+			values
+				.getByRole("row")
+				.filter({ hasText: metric })
+				.filter({ hasText: machine });
+		const cpu = m.metric_process_cpu_time({}, { locale });
+		const memory = m.metric_process_memory_rss({}, { locale });
+		const missing = m.no_recorded_value({}, { locale });
+		// The latest values come from the last bucket with data: 20 s, where only CPU was read.
+		await expect(values.getByRole("row")).toHaveCount(5);
+		await expect(row(cpu, "compute-a")).toContainText(
+			m.execution_timeline_unit_cores({}, { locale }),
+		);
+		await expect(row(cpu, "compute-a")).not.toContainText(missing);
+		await expect(row(memory, "compute-a")).toContainText(missing);
+		await expect(row(memory, "compute-b")).toContainText(missing);
+		// The instant slider is keyboard operable and stored in the URL.
+		const slider = page.getByRole("slider", {
+			name: m.execution_timeline_instant({}, { locale }),
+		});
+		await slider.focus();
+		await page.keyboard.press("Home");
+		await expect(page).toHaveURL(
+			new RegExp(
+				`[?&]at=${encodeURIComponent(new Date(Number(start / 1_000_000n)).toISOString())}`,
+			),
+		);
+		await expect(row(cpu, "compute-a")).toContainText(missing);
+		for (let step = 0; step < 5; step++)
+			await page.keyboard.press("ArrowRight");
+		const tenSeconds = new Date(
+			Number(start / 1_000_000n) + 10_000,
+		).toISOString();
+		await expect(page).toHaveURL(
+			new RegExp(`[?&]at=${encodeURIComponent(tenSeconds)}`),
+		);
+		await expect(row(memory, "compute-a")).toContainText(
+			formatValue(
+				1024,
+				{ unit: "auto" },
+				{ unit: "By", calculation: "last" },
+				locale,
+			),
+		);
+		// Two CPU seconds over the 2-second bucket that ends the 10-second step.
+		await expect(
+			row(cpu, "compute-a")
+				.getByRole("cell")
+				.nth(2)
+				.getByText(
+					formatValue(
+						1,
+						{ unit: "auto" },
+						{ unit: "s", calculation: "rate" },
+						locale,
+					),
+					{ exact: true },
+				),
+		).toBeVisible();
+		await expect(row(memory, "compute-a")).toContainText(
+			m.unit_bytes({}, { locale }),
+		);
+		await expect(row(memory, "compute-b")).not.toContainText(missing);
+		// Selecting a machine narrows the charts and values to it.
+		await page
+			.getByRole("button", {
+				name: m.execution_timeline_select_machine(
+					{ node: "compute-b" },
+					{ locale },
+				),
+			})
+			.click();
+		await expect(page).toHaveURL(new RegExp(`[?&]node=${nodes.b}`));
+		await expect(measurements).toHaveAttribute("aria-busy", "false");
+		// The charts' legends name only the selected machine once its result loads.
+		await expect(measurements).not.toContainText("compute-a");
+		await expect(
+			page.getByText(
+				m.execution_timeline_scope_node({ node: "compute-b" }, { locale }),
+			),
+		).toBeVisible();
+		await expect(values.getByRole("row")).toHaveCount(3);
+		await expect(row(memory, "compute-b")).not.toContainText(missing);
+		await expect(values).not.toContainText("compute-a");
+		await page
+			.getByRole("button", { name: m.execution_timeline_next({}, { locale }) })
+			.click();
+		await expect(page).toHaveURL(
+			new RegExp(
+				`[?&]at=${encodeURIComponent(new Date(Number(start / 1_000_000n) + 12_000).toISOString())}`,
+			),
+		);
+		await expect(row(memory, "compute-b")).toContainText(missing);
+		await page.screenshot({
+			path: testInfo.outputPath(`execution-measurements-${locale}.png`),
+			fullPage: true,
+		});
+	});

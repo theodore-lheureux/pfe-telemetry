@@ -28,17 +28,17 @@ interface AutoRefresh {
 }
 const DEFAULT_AUTO: AutoRefresh = { on: false, seconds: 60 };
 
-function storageKey(dashboardId: string) {
-	return `recount.dashboard-refresh.${dashboardId}`;
+function storageKey(storageId: string) {
+	return `recount.auto-refresh.${storageId}`;
 }
 
-/** This viewer's auto refresh choice for a dashboard, kept in this browser only. */
-function useAutoRefresh(dashboardId: string) {
+/** This viewer's auto refresh choice for a page, kept in this browser only. */
+function useAutoRefresh(storageId: string) {
 	const [auto, setAuto] = useState(DEFAULT_AUTO);
 	useEffect(() => {
 		try {
 			const stored = JSON.parse(
-				localStorage.getItem(storageKey(dashboardId)) ?? "null",
+				localStorage.getItem(storageKey(storageId)) ?? "null",
 			) as Partial<AutoRefresh> | null;
 			if (
 				stored &&
@@ -51,11 +51,11 @@ function useAutoRefresh(dashboardId: string) {
 		} catch {
 			// Unavailable storage leaves auto refresh off.
 		}
-	}, [dashboardId]);
+	}, [storageId]);
 	const change = (next: AutoRefresh) => {
 		setAuto(next);
 		try {
-			localStorage.setItem(storageKey(dashboardId), JSON.stringify(next));
+			localStorage.setItem(storageKey(storageId), JSON.stringify(next));
 		} catch {
 			// The choice still applies until the page closes.
 		}
@@ -73,24 +73,28 @@ function intervalText(seconds: IntervalSeconds) {
 }
 
 /**
- * When the tiles were last refreshed, a button to refresh them all, and auto refresh,
+ * When the page's data was last refreshed, a button to refresh it all, and auto refresh,
  * which runs only while the page is visible.
  */
 export function RefreshControl({
-	dashboardId,
+	storageId,
+	label = m.dashboard_refresh_all(),
 	refreshedAt,
 	progress,
 	disabled,
 	onRefresh,
 }: {
-	dashboardId: string;
+	/** Keys the viewer's auto refresh choice, such as a dashboard's ID. */
+	storageId: string;
+	/** The refresh button's text. */
+	label?: string;
 	refreshedAt: Date;
 	/** Tiles loading together, while any are. */
 	progress: { done: number; total: number } | null;
 	disabled: boolean;
 	onRefresh: () => void;
 }) {
-	const [auto, setAuto] = useAutoRefresh(dashboardId);
+	const [auto, setAuto] = useAutoRefresh(storageId);
 	// A tick while tiles still load is skipped, so slow queries aren't restarted.
 	const loading = useRef(false);
 	loading.current = progress !== null;
@@ -126,7 +130,7 @@ export function RefreshControl({
 			<ButtonGroup>
 				<Button variant="outline" disabled={disabled} onClick={onRefresh}>
 					<RefreshCwIcon aria-hidden="true" />
-					{m.dashboard_refresh_all()}
+					{label}
 					{auto.on && (
 						<span
 							className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground"
