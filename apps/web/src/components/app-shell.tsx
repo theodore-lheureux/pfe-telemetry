@@ -223,7 +223,7 @@ function AppShellContent({
 					<SidebarInset
 						id="main-content"
 						tabIndex={-1}
-						className="min-h-0 min-w-0 overflow-y-auto bg-background transition-[border-color,box-shadow] focus-visible:outline-none md:my-1 md:mr-1 md:rounded-lg md:border md:group-has-[[data-sidebar-resize]:hover]/shell:border-l-sidebar-ring md:group-has-[[data-sidebar-resize]:hover]/shell:shadow-[inset_2px_0_0_var(--sidebar-ring)] md:group-has-[[data-sidebar-resize][data-separator=active]]/shell:border-l-sidebar-ring md:group-has-[[data-sidebar-resize][data-separator=active]]/shell:shadow-[inset_2px_0_0_var(--sidebar-ring)] md:group-has-[[data-sidebar-resize]:focus-visible]/shell:border-l-sidebar-ring md:group-has-[[data-sidebar-resize]:focus-visible]/shell:shadow-[inset_2px_0_0_var(--sidebar-ring)]"
+						className="min-h-0 min-w-0 overflow-y-auto bg-background transition-[border-color] focus-visible:outline-none md:my-1 md:mr-1 md:rounded-lg md:border md:group-has-[[data-sidebar-resize]:hover]/shell:border-l-sidebar-ring md:group-has-[[data-sidebar-resize][data-separator=active]]/shell:border-l-sidebar-ring md:group-has-[[data-sidebar-resize]:focus-visible]/shell:border-l-sidebar-ring"
 					>
 						{isMobile && (
 							<SidebarTrigger
