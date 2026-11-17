@@ -6,10 +6,24 @@ import {
 	calculatedCatalogMetric,
 } from "../../src/analytics/calculated-metrics";
 import { calculatedPlan } from "../../src/analytics/calculated-plan";
-import type { MetricDefinition } from "../../src/analytics/contracts";
 import {
+	MAX_FILTER_VALUES,
+	MAX_RANGE_SECONDS,
+	type MetricDefinition,
+} from "../../src/analytics/contracts";
+import {
+	decodeDashboardFilters,
+	decodeTileOverrides,
+	MAX_DASHBOARD_FILTERS_LENGTH,
+	tileDraft,
+} from "../../src/analytics/dashboard-filters";
+import {
+	builtInDashboardTemplates,
 	dashboardTemplate,
+	executionPeriod,
+	executionTemplate,
 	fillTemplateVariables,
+	MAX_EXECUTION_NODES,
 	nodeHealthTemplate,
 	parameterizeTemplateNode,
 	previewDashboard,
@@ -21,6 +35,7 @@ import {
 } from "../../src/analytics/dashboard-templates-validation";
 import { decodeDraft, toQuery } from "../../src/analytics/insight/draft";
 import { parseSavedDraft } from "../../src/analytics/saved-insights-validation";
+import { parseQuery } from "../../src/analytics/validation";
 
 function metric(
 	name: string,
@@ -215,16 +230,25 @@ test("creation variables are typed values and become ordinary filters without ch
 			values: { $node: "injected" },
 		}),
 	).toThrow();
-	expect(() =>
-		parseCreateTemplateDashboard({
-			...reference,
-			values: { $execution: node },
-		}),
-	).toThrow();
+	for (const values of [
+		{ $execution: "not a key" },
+		{ $execution: 42 },
+		{ $cluster: node },
+	])
+		expect(() =>
+			parseCreateTemplateDashboard({ ...reference, values }),
+		).toThrow();
 	expect(
 		parseCreateTemplateDashboard({ ...reference, values: { $node: node } })
 			.values,
 	).toEqual({ $node: node });
+	expect(
+		parseCreateTemplateDashboard({
+			...reference,
+			templateId: "execution",
+			values: { $execution: "slurm:48213", $node: null },
+		}).values,
+	).toEqual({ $execution: "slurm:48213", $node: null });
 });
 
 test("a project snapshot can ask for a node while retaining other dashboard and tile settings", () => {
@@ -261,4 +285,213 @@ test("a project snapshot can ask for a node while retaining other dashboard and 
 	expect(() =>
 		parseSaveDashboardTemplate({ ...input, parameterizeNode: "yes" }),
 	).toThrow();
+});
+
+const executionRaw = [
+	metric("process.cpu.time", "counter"),
+	metric("recount.process.memory.rss", "gauge"),
+	metric("process.disk.io", "counter"),
+	metric("recount.node.cpu.time", "counter"),
+	metric("recount.node.memory.total", "gauge"),
+	metric("recount.node.memory.available", "gauge"),
+	metric("system.disk.io", "counter"),
+];
+
+test("the Execution template's panels are saved drafts over its processes, their nodes and the cluster", () => {
+	const template = executionTemplate();
+	expect(template.variables).toEqual([
+		{ name: "$execution", field: "execution" },
+	]);
+	expect(
+		builtInDashboardTemplates().find((choice) => choice.id === "execution")
+			?.template,
+	).toEqual(template);
+	const now = new Date("2026-11-15T12:00:00Z");
+	const drafts = template.tiles.map((tile) => {
+		expect(JSON.parse(parseSavedDraft(tile.insight.draft))).toEqual(
+			JSON.parse(tile.insight.draft),
+		);
+		const query = toQuery(decodeDraft(tile.insight.draft), now, "UTC", "en");
+		if (!query) throw new Error("Missing query");
+		return { tile, query, overrides: decodeTileOverrides(tile.overrides) };
+	});
+	const stats = drafts.filter(
+		({ tile }) => decodeDraft(tile.insight.draft).display.type === "stat",
+	);
+	expect(stats).toHaveLength(4);
+	for (const { query, overrides } of stats) {
+		// Totals cover the whole range, never only its latest bucket.
+		expect(query.shape).toBe("table");
+		expect(overrides).toEqual({});
+	}
+	const process = drafts.filter(({ query }) =>
+		query.measures.every((measure) =>
+			/^(process\.|recount\.process\.)/.test(measure.metric),
+		),
+	);
+	const context = drafts.filter((entry) => !process.includes(entry));
+	expect(process).toHaveLength(7);
+	expect(context).toHaveLength(5);
+	for (const { tile, overrides } of process) {
+		expect(overrides.ignoreFilters).toBeUndefined();
+		expect(tile.executionNodes).toBeUndefined();
+	}
+	for (const { tile, query, overrides } of context) {
+		expect(overrides).toEqual({ ignoreFilters: ["execution"] });
+		expect(tile.executionNodes ?? false).toBe(query.groupBy?.[0] === "node");
+	}
+	expect(
+		context.filter(({ query }) => query.groupBy?.[0] === "node"),
+	).toHaveLength(3);
+	expect(templateCoverage(template, catalog(executionRaw))).toMatchObject({
+		count: 12,
+		total: 12,
+		recommended: true,
+	});
+	expect(
+		templateCoverage(template, catalog(executionRaw.slice(0, 3))).count,
+	).toBe(7);
+	expect(String(m.dashboard_template_execution({}, { locale: "fr" }))).toBe(
+		"Exécution",
+	);
+});
+
+test("filling $execution filters the processes, sets its period and names its nodes as context", () => {
+	const template = executionTemplate();
+	const nodes = ["node-b", "node-a"];
+	const execution = {
+		nodes,
+		firstSeen: new Date("2026-11-03T10:00:15.250Z"),
+		lastSeen: new Date("2026-11-03T11:00:30.500Z"),
+	};
+	const filled = fillTemplateVariables(
+		template,
+		{ $execution: "slurm:48213" },
+		execution,
+	);
+	expect(filled.variables).toEqual([]);
+	const filters = decodeDashboardFilters(filled.filters);
+	// Whole minutes around the period, so no rate bucket is cut to a sliver.
+	expect(filters).toEqual({
+		range: {
+			kind: "between",
+			from: "2026-11-03T10:00:00.000Z",
+			to: "2026-11-03T11:01:00.000Z",
+		},
+		filters: [{ field: "execution", op: "eq", values: ["slurm:48213"] }],
+	});
+	if (!filters) throw new Error("Unreadable filters");
+	for (const [index, tile] of filled.tiles.entries()) {
+		const source = template.tiles[index];
+		expect(tile).not.toHaveProperty("executionNodes");
+		expect(tile.insight).toEqual(source.insight);
+		const shown = tileDraft(
+			decodeDraft(tile.insight.draft),
+			filters,
+			decodeTileOverrides(tile.overrides),
+		);
+		expect(shown.range).toEqual({
+			kind: "between",
+			from: new Date("2026-11-03T10:00:00.000Z"),
+			to: new Date("2026-11-03T11:01:00.000Z"),
+		});
+		const fields = shown.filters.map((filter) => filter.field);
+		expect(fields.includes("execution")).toBe(
+			decodeTileOverrides(source.overrides).ignoreFilters === undefined,
+		);
+		expect(shown.filters.filter((filter) => filter.field === "node")).toEqual(
+			source.executionNodes ? [{ field: "node", op: "in", values: nodes }] : [],
+		);
+	}
+	const many = Array.from({ length: 150 }, () => crypto.randomUUID());
+	const capped = fillTemplateVariables(
+		template,
+		{ $execution: "slurm:48213" },
+		{ ...execution, nodes: many },
+	);
+	const scoped = capped.tiles.find(
+		(_, index) => template.tiles[index].executionNodes,
+	);
+	expect(decodeTileOverrides(scoped?.overrides ?? "{}").filters).toEqual([
+		{ field: "node", op: "in", values: many.slice(0, MAX_EXECUTION_NODES) },
+	]);
+	// Room remains for members' own overrides on the same tile.
+	expect(MAX_EXECUTION_NODES).toBeLessThanOrEqual(MAX_FILTER_VALUES);
+	expect(scoped?.overrides.length ?? 0).toBeLessThan(
+		MAX_DASHBOARD_FILTERS_LENGTH / 2,
+	);
+	// Without an execution, nothing is narrowed and no period is chosen.
+	const empty = fillTemplateVariables(template, {}, execution);
+	expect(empty.filters).toBe("{}");
+	expect(empty.tiles.map((tile) => tile.overrides)).toEqual(
+		template.tiles.map((tile) => tile.overrides),
+	);
+});
+
+test("an execution's period is in whole minutes and keeps its last 30 days", () => {
+	const minute = (iso: string) => new Date(iso);
+	expect(
+		executionPeriod({
+			nodes: [],
+			firstSeen: minute("2026-11-03T10:00:15.250Z"),
+			lastSeen: minute("2026-11-03T10:00:15.250Z"),
+		}),
+	).toEqual({
+		from: minute("2026-11-03T10:00:00.000Z"),
+		to: minute("2026-11-03T10:01:00.000Z"),
+		clamped: false,
+	});
+	const lastSeen = minute("2026-11-03T10:00:30.000Z");
+	const exactly = executionPeriod({
+		nodes: [],
+		firstSeen: new Date(lastSeen.getTime() + 30_000 - MAX_RANGE_SECONDS * 1000),
+		lastSeen,
+	});
+	expect(exactly.clamped).toBe(false);
+	const long = executionPeriod({
+		nodes: [],
+		firstSeen: minute("2026-08-01T00:00:00.000Z"),
+		lastSeen,
+	});
+	expect(long).toEqual({
+		from: new Date(
+			minute("2026-11-03T10:01:00.000Z").getTime() - MAX_RANGE_SECONDS * 1000,
+		),
+		to: minute("2026-11-03T10:01:00.000Z"),
+		clamped: true,
+	});
+	// The clamped range is still one the query validator accepts.
+	const filled = fillTemplateVariables(
+		executionTemplate(),
+		{ $execution: "slurm:long" },
+		{ nodes: [], firstSeen: minute("2026-08-01T00:00:00.000Z"), lastSeen },
+	);
+	for (const tile of filled.tiles) {
+		const draft = tileDraft(
+			decodeDraft(tile.insight.draft),
+			decodeDashboardFilters(filled.filters) ?? {},
+			decodeTileOverrides(tile.overrides),
+		);
+		const query = toQuery(draft, lastSeen, "UTC", "en");
+		expect(() => parseQuery(query)).not.toThrow();
+	}
+});
+
+test("Execution totals say they cover the observed period, in English and French", () => {
+	expect(
+		executionTemplate()
+			.tiles.slice(0, 4)
+			.map((tile) => tile.insight.description),
+	).toEqual([
+		m.dashboard_template_execution_cpu_time_description(),
+		"",
+		m.dashboard_template_execution_disk_read_description(),
+		m.dashboard_template_execution_disk_written_description(),
+	]);
+	for (const locale of ["en", "fr"] as const)
+		expect(
+			String(
+				m.dashboard_template_execution_cpu_time_description({}, { locale }),
+			),
+		).toContain(locale === "en" ? "observed period" : "période observée");
 });

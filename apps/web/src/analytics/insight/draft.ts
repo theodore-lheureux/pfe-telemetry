@@ -94,6 +94,8 @@ export interface Display {
 	spread?: Spread;
 	/** The axis-free chart behind a Number insight. */
 	numberChart?: "none" | "line" | "area" | "bar";
+	/** A Number insight's one value over the whole range instead of its latest bucket. */
+	wholeRange?: boolean;
 }
 
 export const MAX_AXIS_LABEL = 60;
@@ -221,8 +223,11 @@ export function toQuery(
 	const from = resolved.from,
 		to = resolved.to ?? now;
 	const interval = effectiveInterval(draft.interval, from, to);
-	// A table shows one value per series over the whole range; every other view is a timeseries.
-	const table = draft.display.type === "table";
+	// A table, or a Number over the whole range, has one value per series; every other
+	// view is a timeseries.
+	const table =
+		draft.display.type === "table" ||
+		(draft.display.type === "stat" && !!draft.display.wholeRange);
 	const grouped = draft.display.type !== "stat" && !!draft.groupBy;
 	return {
 		shape: table ? "table" : "timeseries",

@@ -1,3 +1,4 @@
+import { parseExecutionKey } from "../executions/validation";
 import { parseName, parseUuid } from "../lib/input";
 import { InputError } from "../lib/input-error";
 import { parseProjectReference } from "../organizations/validation";
@@ -5,6 +6,8 @@ import {
 	builtInDashboardTemplates,
 	type CreateTemplateDashboardInput,
 	type SaveDashboardTemplateInput,
+	type TemplateValues,
+	type TemplateVariable,
 } from "./dashboard-templates";
 import { parseSaveDashboard } from "./dashboards-validation";
 
@@ -38,21 +41,34 @@ export function parseCreateTemplateDashboard(
 	};
 }
 
-function parseTemplateValues(value: unknown) {
+const VARIABLE_VALUE: Record<
+	TemplateVariable["name"],
+	(value: unknown) => string
+> = {
+	$node: (value) => parseUuid(value, "node identifier"),
+	$execution: (value) => {
+		try {
+			return parseExecutionKey(value);
+		} catch {
+			throw new InputError("INVALID_QUERY", "Invalid execution key");
+		}
+	},
+};
+
+function parseTemplateValues(value: unknown): TemplateValues {
 	if (value === undefined) return {};
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		throw new InputError("INVALID_QUERY", "Invalid template variables");
-	const input = value as Record<string, unknown>;
-	if (Object.keys(input).some((key) => key !== "$node"))
-		throw new InputError("INVALID_QUERY", "Unknown template variable");
-	return input.$node === undefined
-		? {}
-		: {
-				$node:
-					input.$node === null
-						? null
-						: parseUuid(input.$node, "node identifier"),
-			};
+	const values: TemplateValues = {};
+	for (const [name, entry] of Object.entries(value)) {
+		if (!Object.hasOwn(VARIABLE_VALUE, name))
+			throw new InputError("INVALID_QUERY", "Unknown template variable");
+		const variable = name as TemplateVariable["name"];
+		if (entry !== undefined)
+			values[variable] =
+				entry === null ? null : VARIABLE_VALUE[variable](entry);
+	}
+	return values;
 }
 
 export function parseSaveDashboardTemplate(

@@ -16,6 +16,7 @@ import {
 	INTERVALS,
 	type Interval,
 	MAX_BUCKETS,
+	MAX_FILTER_VALUES,
 	MAX_FILTERS,
 	MAX_FORMULAS,
 	MAX_GROUP_BY,
@@ -123,7 +124,7 @@ export function parseFilter(value: unknown): Filter {
 	const op = input.op as FilterOperator;
 	if (op === "exists" || op === "not_exists")
 		return { field: input.field as string, op };
-	const values = list(input.values, 100, "filter values");
+	const values = list(input.values, MAX_FILTER_VALUES, "filter values");
 	if (
 		!values.length ||
 		((op === "eq" || op === "neq") && values.length !== 1) ||

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
 	dashboardTemplate,
+	executionTemplate,
 	nodeHealthTemplate,
 } from "../../src/analytics/dashboard-templates";
 import {
@@ -48,6 +49,11 @@ import {
 	member,
 	projectMember,
 } from "../../src/db/schema";
+import { getExecution } from "../../src/executions/executions.server";
+import type {
+	readExecutionFacts,
+	readExecutions,
+} from "../../src/executions/participants.server";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
 import { trustedActor } from "../auth-actors";
@@ -637,4 +643,170 @@ test("members arrange dashboards of their project's insights; viewers only open 
 	expect(
 		await getProjectHomeChoice(db, { id: writer.id }, reference),
 	).toBeNull();
+});
+
+test("execution dashboards resolve the execution in its own project, after access checks and before saving", async () => {
+	const headers = new Headers({ origin: "http://localhost:3001" });
+	const actor = (name: string) =>
+		trustedActor(
+			auth,
+			`execution-dashboards-${name}-${randomUUID()}@example.invalid`,
+			(email) => codes.get(email),
+			headers,
+		);
+	const [owner, writer, viewer, outsider] = await Promise.all(
+		["owner", "writer", "viewer", "outsider"].map(actor),
+	);
+	const organization = await createOrganization(auth, owner.headers, {
+		name: "Execution dashboards",
+		slug: `execution-dashboards-${randomUUID()}`,
+	});
+	const createIn = (name: string) =>
+		createProject(
+			database.db,
+			{ id: owner.id },
+			{ requestId: randomUUID(), organizationId: organization.id, name },
+		);
+	const project = await createIn("Runs");
+	const other = await createIn("Other runs");
+	const reference = { organizationId: organization.id, projectId: project.id };
+	for (const [account, role] of [
+		[writer, "member"],
+		[viewer, "viewer"],
+	] as const) {
+		const memberId = randomUUID();
+		await database.db.insert(member).values({
+			id: memberId,
+			organizationId: organization.id,
+			userId: account.id,
+			role: "member",
+			createdAt: new Date(),
+		});
+		await database.db
+			.insert(projectMember)
+			.values({ ...reference, memberId, role });
+	}
+	const entry = {
+		executionKey: "slurm:48213",
+		name: "Distributed job",
+		workloadVersion: null,
+		parameters: {},
+		nodeCount: 2,
+		participantCount: 2,
+		environmentVariables: ["SLURM_JOB_ID"],
+		firstSeen: new Date("2026-11-03T10:00:00Z"),
+		lastSeen: new Date("2026-11-03T11:00:00Z"),
+	};
+	const nodes = [randomUUID(), randomUUID()].sort();
+	let reads = 0;
+	// The execution exists only in the first project.
+	const read: typeof readExecutions = async (projectId, selector = {}) => {
+		reads++;
+		return projectId === project.id &&
+			selector.executionKey === entry.executionKey
+			? [entry]
+			: [];
+	};
+	const readFacts: typeof readExecutionFacts = async (projectId, key) => {
+		reads++;
+		expect([projectId, key]).toEqual([project.id, entry.executionKey]);
+		return nodes.map((nodeId) => ({
+			nodeId,
+			participantId: randomUUID(),
+			factId: randomUUID(),
+			kind: 2,
+			processResourceId: "process",
+			namespaceId: null,
+			pid: 1,
+			startTimeTicks: null,
+			ownerUid: null,
+			environmentVariable: "SLURM_JOB_ID",
+			firstSeen: entry.firstSeen,
+			lastSeen: entry.lastSeen,
+			ended: null,
+		}));
+	};
+	const resolve: typeof getExecution = (db, account, input) =>
+		getExecution(db, account, input, undefined, read, readFacts);
+	const db = database.db;
+	const target = {
+		...reference,
+		dashboardId: randomUUID(),
+		templateId: "execution",
+		values: { $execution: entry.executionKey },
+	};
+	const create = (id: string, input = target) =>
+		createTemplateDashboard(db, { id }, input, resolve);
+
+	// Viewers read the execution the dashboard is built from, but cannot save one.
+	expect(
+		(
+			await getExecution(
+				db,
+				{ id: viewer.id },
+				{ ...reference, executionKey: entry.executionKey },
+				undefined,
+				read,
+				readFacts,
+			)
+		).facts,
+	).toHaveLength(2);
+	reads = 0;
+	await expect(create(viewer.id)).rejects.toMatchObject({ code: "FORBIDDEN" });
+	await expect(create(outsider.id)).rejects.toMatchObject({
+		code: "NOT_FOUND",
+	});
+	await expect(
+		create(writer.id, { ...target, projectId: other.id }),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await expect(
+		create(writer.id, { ...target, values: { $execution: null } as never }),
+	).rejects.toMatchObject({ reason: "INVALID_QUERY" });
+	expect(reads).toBe(0);
+	// Another project's key and an unknown key are not found, and nothing is saved.
+	await expect(
+		create(owner.id, { ...target, projectId: other.id }),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	await expect(
+		create(writer.id, { ...target, values: { $execution: "slurm:missing" } }),
+	).rejects.toMatchObject({ code: "NOT_FOUND" });
+	expect(await listDashboards(db, { id: owner.id }, reference)).toEqual([]);
+	expect(
+		await listDashboards(
+			db,
+			{ id: owner.id },
+			{ ...reference, projectId: other.id },
+		),
+	).toEqual([]);
+
+	const created = await create(writer.id);
+	const template = executionTemplate();
+	expect(created.name).toBe(template.name);
+	expect(JSON.parse(created.filters)).toEqual({
+		range: {
+			kind: "between",
+			from: "2026-11-03T10:00:00.000Z",
+			to: "2026-11-03T11:01:00.000Z",
+		},
+		filters: [{ field: "execution", op: "eq", values: [entry.executionKey] }],
+	});
+	expect(created.tiles).toHaveLength(template.tiles.length);
+	for (const [index, tile] of created.tiles.entries()) {
+		const source = template.tiles[index];
+		expect(
+			sameDraft(
+				decodeDraft(tile.insight.draft),
+				decodeDraft(source.insight.draft),
+			),
+		).toBe(true);
+		const overrides = JSON.parse(source.overrides);
+		expect(JSON.parse(tile.overrides)).toEqual(
+			source.executionNodes
+				? {
+						...overrides,
+						filters: [{ field: "node", op: "in", values: nodes }],
+					}
+				: overrides,
+		);
+	}
 });

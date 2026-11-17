@@ -36,6 +36,14 @@ rows, 256 MiB read/memory, one thread, six seconds of server execution and an
 eight-MiB result. Limit, storage and cancellation failures are errors, not empty
 or silently truncated pages. Internal RPC timestamps remain native `Date` values.
 
+## Execution dashboard
+
+An execution's page links to its dashboard: the built-in Execution template with
+`$execution` set to the key, over the execution's period, with its nodes and the
+cluster as context. The view is not saved and checks project access like the
+detail page. Members can create a saved dashboard from it. The
+[template reference](dashboard-templates.md#execution-template) lists its panels.
+
 ## Running and validating
 
 Provision `RECOUNT_PARTICIPANT_TOPIC` and `RECOUNT_PARTICIPANT_PARTITIONS` on a

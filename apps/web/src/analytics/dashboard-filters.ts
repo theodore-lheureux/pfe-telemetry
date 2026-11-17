@@ -135,16 +135,41 @@ export function changedFilterCount(
 	return changed + filters;
 }
 
-/** A tile's own overrides: they apply over the dashboard's, or alone when it ignores them. */
-export type TileOverrides = DashboardFilters & { ignoreDashboard?: true };
+/**
+ * A tile's own overrides: they apply over the dashboard's, or alone when it ignores them.
+ * `ignoreFilters` keeps the dashboard's range and settings but drops its filters on these
+ * fields, as context tiles beside an execution's processes do.
+ */
+export type TileOverrides = DashboardFilters & {
+	ignoreDashboard?: true;
+	ignoreFilters?: string[];
+};
+
+function parseIgnoredFields(value: unknown) {
+	if (
+		!Array.isArray(value) ||
+		!value.length ||
+		value.length > MAX_FILTERS ||
+		new Set(value).size !== value.length
+	)
+		invalid();
+	for (const field of value) parseField(field);
+	return value as string[];
+}
 
 export function parseTileOverrides(value: unknown): TileOverrides {
 	if (!value || typeof value !== "object" || Array.isArray(value)) invalid();
-	const { ignoreDashboard, ...rest } = value as Record<string, unknown>;
+	const { ignoreDashboard, ignoreFilters, ...rest } = value as Record<
+		string,
+		unknown
+	>;
 	if (ignoreDashboard !== undefined && typeof ignoreDashboard !== "boolean")
 		invalid();
 	return {
 		...(ignoreDashboard ? { ignoreDashboard: true as const } : {}),
+		...(ignoreFilters === undefined
+			? {}
+			: { ignoreFilters: parseIgnoredFields(ignoreFilters) }),
 		...parseDashboardFilters(rest),
 	};
 }
@@ -161,15 +186,28 @@ export function encodeTileOverrides(overrides: TileOverrides) {
 	return JSON.stringify(parseTileOverrides(overrides));
 }
 
+/** The dashboard's overrides that reach a tile. */
+export function inheritedFilters(
+	dashboard: DashboardFilters,
+	tile: TileOverrides,
+): DashboardFilters {
+	if (tile.ignoreDashboard) return {};
+	const ignored = tile.ignoreFilters;
+	if (!ignored || !dashboard.filters) return dashboard;
+	const { filters, ...rest } = dashboard;
+	const kept = filters.filter((filter) => !ignored.includes(filter.field));
+	return kept.length ? { ...rest, filters: kept } : rest;
+}
+
 /** A tile's draft as its dashboard shows it: the dashboard's overrides, then its own. */
 export function tileDraft(
 	draft: InsightDraft,
 	dashboard: DashboardFilters,
 	tile: TileOverrides,
 ): InsightDraft {
-	const { ignoreDashboard, ...own } = tile;
-	const base = ignoreDashboard
-		? draft
-		: applyDashboardFilters(draft, dashboard);
-	return applyDashboardFilters(base, own);
+	const { ignoreDashboard: _, ignoreFilters: __, ...own } = tile;
+	return applyDashboardFilters(
+		applyDashboardFilters(draft, inheritedFilters(dashboard, tile)),
+		own,
+	);
 }

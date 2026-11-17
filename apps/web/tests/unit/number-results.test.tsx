@@ -82,3 +82,49 @@ test("Number results show a current headline and its comparison, not a second nu
 		);
 	}
 });
+
+test("a Number over the whole range shows its one value without a background chart", () => {
+	const result: QueryResult = {
+		shape: "table",
+		from: new Date(0),
+		to: new Date(60_000),
+		bucketSeconds: null,
+		groupBy: [],
+		measures: [
+			{
+				name: "A",
+				metric: "custom.metric",
+				unit: "1",
+				calculation: "increase",
+			},
+		],
+		formulas: [],
+		series: [
+			{ measure: "A", group: [], points: [{ bucketMs: null, value: 42 }] },
+		],
+		limited: false,
+		compared: null,
+		coverage: null,
+	};
+	const render = (wholeRange: boolean) => {
+		const display = {
+			...DEFAULT_DISPLAY,
+			type: "stat" as const,
+			numberChart: "area" as const,
+			wholeRange,
+		};
+		return renderToStaticMarkup(
+			<NumberResults
+				view={seriesView(result, display, (value) => value ?? "—", {}, "en")}
+				display={display}
+				pointsOf={() => [{ bucketMs: 0, value: 42 }]}
+				bucketSeconds={60}
+				compact
+				height="h-72"
+			/>,
+		);
+	};
+	expect(render(true)).toContain(">42</span>");
+	expect(render(true)).not.toContain("recharts");
+	expect(render(false)).toContain("recharts");
+});

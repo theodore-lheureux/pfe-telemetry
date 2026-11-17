@@ -4,7 +4,11 @@ import { readFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { finished } from "node:stream/promises";
 import { promisify } from "node:util";
-import { ClickHouseLogLevel, createClient } from "@clickhouse/client";
+import {
+	type ClickHouseClient,
+	ClickHouseLogLevel,
+	createClient,
+} from "@clickhouse/client";
 
 const execute = promisify(execFile);
 
@@ -238,4 +242,57 @@ export function insertPoints(
 		.map(([key, value]) => `${value} AS ${key}`)
 		.join(",")})
     FROM (SELECT * FROM fixture WHERE metric_name='recount.node.memory.available' AND resource_kind=1) AS seed ${tail}`;
+}
+
+/** One node or process point; counters are cumulative and monotonic. */
+export function insertMetricPoint(
+	client: ClickHouseClient,
+	point: {
+		project: string;
+		node: string;
+		metric: string;
+		time: bigint;
+		value: number;
+		resource?: string;
+		counter?: boolean;
+		attributes?: Record<string, string>;
+	},
+) {
+	const attributes = Object.entries(point.attributes ?? {});
+	return client.command({
+		query: insertPoints({
+			metric_name: "{metric:String}",
+			metric_kind: point.counter ? "toUInt8(2)" : "toUInt8(1)",
+			...(point.counter
+				? {
+						temporality: "toUInt8(2)",
+						monotonic: "CAST(1, 'Nullable(UInt8)')",
+					}
+				: {}),
+			...(point.resource
+				? { resource_id: "{resource:String}", resource_kind: "toUInt8(4)" }
+				: {}),
+			point_attributes: `[${attributes.map(([name], index) => stringNode(`/${name}`, `{text${index}:String}`)).join(",")}]`,
+		}),
+		query_params: {
+			project: point.project,
+			source: point.node,
+			host: point.node,
+			resource: point.resource ?? point.node,
+			metric: point.metric,
+			time: point.time.toString(),
+			integer: String(point.value),
+			sample: randomUUID(),
+			stream: JSON.stringify([
+				point.node,
+				point.resource,
+				point.metric,
+				attributes,
+			]),
+			epoch: "epoch",
+			...Object.fromEntries(
+				attributes.map(([, text], index) => [`text${index}`, text]),
+			),
+		},
+	});
 }

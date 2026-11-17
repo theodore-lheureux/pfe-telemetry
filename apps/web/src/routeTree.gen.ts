@@ -42,6 +42,7 @@ import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecut
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionKey'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/attributes/index'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsMetricsMetricRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/metrics/$metric'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionKey_/dashboard'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesScopeKeyRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key'
 
 const AppRouteRoute = AppRouteRouteImport.update({
@@ -275,6 +276,15 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsMetrics
         AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRoute,
     } as any,
   )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRouteImport.update(
+    {
+      id: '/executions/$executionKey_/dashboard',
+      path: '/executions/$executionKey/dashboard',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute,
+    } as any,
+  )
 const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesScopeKeyRoute =
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesScopeKeyRouteImport.update(
     {
@@ -316,6 +326,7 @@ export interface FileRoutesByFullPath {
   '/organizations/$organizationId/projects/$projectId/definitions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsIndexRoute
   '/organizations/$organizationId/projects/$projectId/executions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
   '/organizations/$organizationId/projects/$projectId/definitions/metrics/$metric': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsMetricsMetricRoute
+  '/organizations/$organizationId/projects/$projectId/executions/$executionKey/dashboard': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRoute
   '/organizations/$organizationId/projects/$projectId/definitions/attributes/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesIndexRoute
   '/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesScopeKeyRoute
 }
@@ -346,6 +357,7 @@ export interface FileRoutesByTo {
   '/organizations/$organizationId/projects/$projectId/definitions': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsIndexRoute
   '/organizations/$organizationId/projects/$projectId/executions': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
   '/organizations/$organizationId/projects/$projectId/definitions/metrics/$metric': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsMetricsMetricRoute
+  '/organizations/$organizationId/projects/$projectId/executions/$executionKey/dashboard': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRoute
   '/organizations/$organizationId/projects/$projectId/definitions/attributes': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesIndexRoute
   '/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesScopeKeyRoute
 }
@@ -383,6 +395,7 @@ export interface FileRoutesById {
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsIndexRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/metrics/$metric': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsMetricsMetricRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionKey_/dashboard': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/attributes/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesIndexRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsAttributesScopeKeyRoute
 }
@@ -419,6 +432,7 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/projects/$projectId/definitions/'
     | '/organizations/$organizationId/projects/$projectId/executions/'
     | '/organizations/$organizationId/projects/$projectId/definitions/metrics/$metric'
+    | '/organizations/$organizationId/projects/$projectId/executions/$executionKey/dashboard'
     | '/organizations/$organizationId/projects/$projectId/definitions/attributes/'
     | '/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key'
   fileRoutesByTo: FileRoutesByTo
@@ -449,6 +463,7 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/projects/$projectId/definitions'
     | '/organizations/$organizationId/projects/$projectId/executions'
     | '/organizations/$organizationId/projects/$projectId/definitions/metrics/$metric'
+    | '/organizations/$organizationId/projects/$projectId/executions/$executionKey/dashboard'
     | '/organizations/$organizationId/projects/$projectId/definitions/attributes'
     | '/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key'
   id:
@@ -485,6 +500,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/metrics/$metric'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionKey_/dashboard'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/attributes/'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key'
   fileRoutesById: FileRoutesById
@@ -734,6 +750,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsMetricsMetricRouteImport
       parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsRouteRoute
     }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionKey_/dashboard': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionKey_/dashboard'
+      path: '/executions/$executionKey/dashboard'
+      fullPath: '/organizations/$organizationId/projects/$projectId/executions/$executionKey/dashboard'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRoute
+    }
     '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key': {
       id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/attributes/$scope/$key'
       path: '/attributes/$scope/$key'
@@ -797,6 +820,7 @@ interface AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChil
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsIndexRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRoute
 }
 
 const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren: AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren =
@@ -821,6 +845,8 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteChildren
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsIndexRoute,
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute:
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsIndexRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyDashboardRoute,
   }
 
 const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdRouteRouteWithChildren =

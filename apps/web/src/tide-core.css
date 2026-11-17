@@ -165,6 +165,10 @@ html[data-variant="core"]
 	font-size: var(--body-size);
 	font-weight: var(--ui-weight);
 }
+/* Buttons sized `h-auto`, such as multi-line choice cards, keep their content height. */
+html[data-variant="core"] [data-slot="button"].h-auto {
+	height: auto;
+}
 html[data-variant="core"] :is([data-slot="input"], [data-slot="textarea"]) {
 	border-radius: var(--radius);
 }

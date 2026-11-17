@@ -1,21 +1,14 @@
 import { m } from "@recount/i18n/messages";
 import { useQuery } from "@tanstack/react-query";
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Button } from "../../components/ui/button";
-import { Label } from "../../components/ui/label";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "../../components/ui/select";
 import { useAppMutation } from "../../components/use-app-mutation";
 import type { ProjectReference } from "../../organizations/contracts";
 import { useAnalyticsCatalog } from "../catalog";
 import {
 	builtInDashboardTemplates,
 	type CreateTemplateDashboardInput,
+	type TemplateValues,
 } from "../dashboard-templates";
 import { createDashboardFromTemplate } from "../dashboard-templates.functions";
 import { templatesQuery } from "../dashboard-templates-query";
@@ -23,23 +16,27 @@ import { saveDashboard } from "../dashboards.functions";
 import { DashboardDialog } from "./dashboard-dialog";
 import { TemplateGallery } from "./template-gallery";
 import { TemplatePreview } from "./template-preview";
+import { TemplateVariableField } from "./template-variable-field";
 
 export function TemplateCreateDialog({
 	open,
 	userId,
 	reference,
 	initialTemplateId = "",
+	initialName,
+	initialValues = {},
 	onClose,
 }: {
 	open: boolean;
 	userId: string;
 	reference: ProjectReference;
 	initialTemplateId?: string;
+	initialName?: string;
+	initialValues?: TemplateValues;
 	onClose: () => void;
 }) {
-	const id = useId();
 	const [selected, setSelected] = useState(initialTemplateId);
-	const [node, setNode] = useState("-all");
+	const [values, setValues] = useState(initialValues);
 	const [dashboardId] = useState(() => crypto.randomUUID());
 	const projects = useQuery({
 		...templatesQuery(userId, reference),
@@ -60,14 +57,16 @@ export function TemplateCreateDialog({
 		},
 	});
 	const submit = async (value: { name: string; description: string }) => {
-		const values = choice?.template.variables?.length
-			? { $node: node === "-all" ? null : node }
-			: {};
 		const result = await mutation.submit({
 			...reference,
 			dashboardId,
 			templateId: selected,
-			values,
+			values: Object.fromEntries(
+				(choice?.template.variables ?? []).map(({ name }) => [
+					name,
+					values[name] ?? null,
+				]),
+			),
 			...value,
 		});
 		if (!result || result.error) return;
@@ -82,12 +81,17 @@ export function TemplateCreateDialog({
 			onClose();
 	};
 	const failed = projects.isError || catalog.isError;
+	const initial = choice?.template ?? { name: "", description: "" };
+	const named =
+		initialName && selected === initialTemplateId
+			? { ...initial, name: initialName }
+			: initial;
 	return (
 		<DashboardDialog
 			wide
 			open={open}
 			title={m.dashboard_new()}
-			initial={choice?.template ?? { name: "", description: "" }}
+			initial={named}
 			pending={mutation.pending}
 			submitDisabled={mutation.disabled}
 			error={mutation.kind === "success" ? "" : mutation.message}
@@ -101,7 +105,7 @@ export function TemplateCreateDialog({
 				disabled={mutation.disabled}
 				onSelect={(next) => {
 					setSelected(next);
-					setNode("-all");
+					setValues(initialValues);
 					mutation.clearMessage();
 				}}
 			/>
@@ -135,30 +139,16 @@ export function TemplateCreateDialog({
 				/>
 			)}
 			{choice?.template.variables?.map((variable) => (
-				<div key={variable.name} className="flex flex-col gap-2">
-					<Label htmlFor={`${id}-node`}>
-						{m.dashboard_templates_node_variable()}
-					</Label>
-					<Select
-						value={node}
-						disabled={mutation.disabled || !catalog.data}
-						onValueChange={setNode}
-					>
-						<SelectTrigger id={`${id}-node`}>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="-all">
-								{m.dashboard_templates_all_nodes()}
-							</SelectItem>
-							{catalog.data?.nodes.map((item) => (
-								<SelectItem key={item.id} value={item.id}>
-									{item.hostname || item.id}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</div>
+				<TemplateVariableField
+					key={variable.name}
+					variable={variable}
+					value={values[variable.name]}
+					nodes={catalog.data?.nodes}
+					disabled={mutation.disabled}
+					onChange={(value) =>
+						setValues((current) => ({ ...current, [variable.name]: value }))
+					}
+				/>
 			))}
 		</DashboardDialog>
 	);
