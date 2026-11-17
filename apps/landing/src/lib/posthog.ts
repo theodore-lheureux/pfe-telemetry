@@ -1,7 +1,8 @@
 import posthog from "posthog-js";
-// Bundle the session recorder: content blockers often block the
-// lazy-recorder.js that posthog-js would otherwise download, even through our proxy.
+// Bundle the extensions this site uses: content blockers often block the files
+// posthog-js would otherwise download by name, even through our proxy.
 import "posthog-js/dist/posthog-recorder";
+import "posthog-js/dist/dead-clicks-autocapture";
 
 // Product analytics for recount.cloud only, so previews and local builds are not counted.
 const token = import.meta.env.PUBLIC_POSTHOG_PROJECT_TOKEN;
