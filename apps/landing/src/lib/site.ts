@@ -18,6 +18,8 @@ export const GITHUB_URL = "https://github.com/theodore-lheureux/pfe-telemetry";
 // Shared with Starlight so the landing page and docs keep the same theme choice:
 // "light", "dark", or "" to follow the system.
 export const THEME_KEY = "starlight-theme";
+/** Whether the app last reported a session, so app links show the right label at once. */
+export const SIGNED_IN_KEY = "recount-signed-in";
 
 // Icons are Lucide (lucide.dev, ISC licence), the icon set the Tide Core kit uses; each is
 // the inner markup of a 24×24 stroke SVG.

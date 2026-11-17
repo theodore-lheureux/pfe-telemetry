@@ -2,7 +2,7 @@
 import { type Lang, switchPath } from "../i18n";
 import { localeInitializationScript } from "../i18n/preference-script.mjs";
 import { analyticsScript } from "../lib/analytics.mjs";
-import { THEME_KEY } from "../lib/site";
+import { SIGNED_IN_KEY, THEME_KEY } from "../lib/site";
 import "../styles/global.css";
 
 interface Props {
@@ -96,29 +96,22 @@ const alternate = translated ? switchPath(Astro.url.pathname, other) : null;
 				document.documentElement.dataset.theme = mode === "dark" ? "tide-dark" : "tide";
 			})();
 		</script>
+		<script is:inline define:vars={{ signedInKey: SIGNED_IN_KEY }}>
+			// The last known answer, before the first paint, so app links never switch labels in view.
+			try {
+				if (localStorage.getItem(signedInKey) === "1") document.documentElement.toggleAttribute("data-signed-in", true);
+			} catch {}
+		</script>
 	</head>
 	<body>
 		<slot />
 		<script>
-			import { APP_URL } from "../lib/site";
+			import { APP_URL, SIGNED_IN_KEY } from "../lib/site";
 
 			// Links into the app say "Open Recount" for people who are signed in. The app's session
-			// cookie isn't readable here, so ask the app; the last answer is reused to avoid a flash.
-			const appLinks = document.querySelectorAll<HTMLElement>("[data-app-link]");
-			const STATUS_KEY = "recount-signed-in";
-
-			function showSignedIn(signedIn: boolean) {
-				for (const link of appLinks) {
-					link.dataset.signedOutLabel ??= link.textContent?.trim() ?? "";
-					link.textContent = signedIn ? (link.dataset.signedInLabel ?? "") : link.dataset.signedOutLabel;
-				}
-			}
-
+			// cookie isn't readable here, so ask the app; the head script applied the last answer.
 			// Without an app URL the links go to the coming soon page and keep their labels.
-			if (APP_URL && appLinks.length) {
-				try {
-					if (localStorage.getItem(STATUS_KEY) === "1") showSignedIn(true);
-				} catch {}
+			if (APP_URL && document.querySelector("[data-app-link]")) {
 				fetch(new URL("/api/auth/get-session", APP_URL), {
 					credentials: "include",
 					signal: AbortSignal.timeout(4000),
@@ -127,9 +120,9 @@ const alternate = translated ? switchPath(Astro.url.pathname, other) : null;
 					.then((data) => {
 						const signedIn = Boolean(data?.session);
 						try {
-							localStorage.setItem(STATUS_KEY, signedIn ? "1" : "0");
+							localStorage.setItem(SIGNED_IN_KEY, signedIn ? "1" : "0");
 						} catch {}
-						showSignedIn(signedIn);
+						document.documentElement.toggleAttribute("data-signed-in", signedIn);
 					})
 					.catch(() => {
 						// Keep the last known labels if the app cannot be reached.

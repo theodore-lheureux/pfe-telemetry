@@ -2,6 +2,7 @@
 import { LANG_LABELS, LANGS, type Lang, localePath, switchPath } from "../i18n";
 import { strings } from "../i18n/strings";
 import { appHref, GITHUB_URL, icons } from "../lib/site";
+import AppLinkLabel from "./AppLinkLabel.astro";
 import Container from "./Container.astro";
 import GitHubIcon from "./GitHubIcon.astro";
 import Icon from "./Icon.astro";
@@ -80,11 +81,14 @@ const active =
 							<li>
 								<a
 									href={link.href}
-									data-app-link={"signedInLabel" in link ? "" : undefined}
-									data-signed-in-label={"signedInLabel" in link ? link.signedInLabel : undefined}
+									data-app-link={link.signedInLabel ? "" : undefined}
 									class="transition-colors hover:text-foreground"
 								>
-									{link.label}
+									{link.signedInLabel ? (
+										<AppLinkLabel signedOut={link.label} signedIn={link.signedInLabel} class="justify-items-start" />
+									) : (
+										link.label
+									)}
 								</a>
 							</li>
 						))}

@@ -1,5 +1,6 @@
 ---
 import { buttonClass, icons } from "../lib/site";
+import AppLinkLabel from "./AppLinkLabel.astro";
 import Icon from "./Icon.astro";
 
 interface Props {
@@ -51,9 +52,8 @@ const { icon, title, text, badge, price, note, points, cta } = Astro.props;
 	<a
 	href={cta.href}
 	data-app-link={cta.signedInLabel ? "" : undefined}
-	data-signed-in-label={cta.signedInLabel}
 	class={buttonClass(cta.variant, "mt-6 self-start")}
 >
-	{cta.label}
+	{cta.signedInLabel ? <AppLinkLabel signedOut={cta.label} signedIn={cta.signedInLabel} /> : cta.label}
 </a>
 </div>

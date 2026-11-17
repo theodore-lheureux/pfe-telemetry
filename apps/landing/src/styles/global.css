@@ -168,3 +168,14 @@
 		font-weight: 500;
 	}
 }
+
+/* Links into the app read "Open Recount" for people signed in to it. */
+.app-label-signed-in {
+	visibility: hidden;
+}
+:root[data-signed-in] .app-label-signed-in {
+	visibility: visible;
+}
+:root[data-signed-in] .app-label-signed-out {
+	visibility: hidden;
+}

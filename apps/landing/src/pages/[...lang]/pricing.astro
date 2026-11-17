@@ -1,4 +1,5 @@
 ---
+import AppLinkLabel from "../../components/AppLinkLabel.astro";
 import Container from "../../components/Container.astro";
 import Faq from "../../components/Faq.astro";
 import Footer from "../../components/Footer.astro";
@@ -70,10 +71,9 @@ const plans = [
 							<a
 								href={plan.href}
 								data-app-link={"signedIn" in plan ? "" : undefined}
-								data-signed-in-label={"signedIn" in plan ? plan.signedIn : undefined}
 								class={buttonClass(plan.primary ? "primary" : "outline", "mt-6 w-full")}
 							>
-								{plan.cta}
+								{"signedIn" in plan ? <AppLinkLabel signedOut={plan.cta} signedIn={plan.signedIn} /> : plan.cta}
 							</a>
 							<ul class="mt-6 flex flex-col gap-2 border-t pt-6">
 								{plan.points.map((point) => (

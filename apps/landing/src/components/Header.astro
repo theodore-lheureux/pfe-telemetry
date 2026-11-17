@@ -2,6 +2,7 @@
 import { type Lang, localePath } from "../i18n";
 import { strings } from "../i18n/strings";
 import { appHref, buttonClass, GITHUB_URL, icons } from "../lib/site";
+import AppLinkLabel from "./AppLinkLabel.astro";
 import BrandLogo from "./BrandLogo.astro";
 import Container from "./Container.astro";
 import GitHubIcon from "./GitHubIcon.astro";
@@ -45,7 +46,9 @@ const iconButton =
 					<GitHubIcon />
 				</a>
 			</div>
-			<a href={appHref(lang)} data-app-link data-signed-in-label={t.openApp} class={buttonClass("outline", "ml-2")}>{t.getStarted}</a>
+			<a href={appHref(lang)} data-app-link class={buttonClass("outline", "ml-2")}>
+				<AppLinkLabel signedOut={t.getStarted} signedIn={t.openApp} />
+			</a>
 			<button
 				type="button"
 				data-menu-button

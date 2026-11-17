@@ -1,0 +1,20 @@
+---
+// Both labels share one grid cell, so a link keeps the wider label's width and
+// switching labels moves nothing. The data-signed-in attribute on <html> picks
+// the visible one; the hidden one is also hidden from assistive technology.
+interface Props {
+	signedOut: string;
+	signedIn: string;
+	class?: string;
+}
+const {
+	signedOut,
+	signedIn,
+	class: className = "justify-items-center",
+} = Astro.props;
+---
+
+<span class:list={["inline-grid", className]}>
+	<span class="app-label-signed-out [grid-area:1/1]">{signedOut}</span>
+	<span class="app-label-signed-in [grid-area:1/1]">{signedIn}</span>
+</span>

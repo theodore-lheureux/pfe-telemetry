@@ -2,6 +2,7 @@
 import { type Lang, localePath } from "../i18n";
 import { strings } from "../i18n/strings";
 import { appHref, buttonClass } from "../lib/site";
+import AppLinkLabel from "./AppLinkLabel.astro";
 import Container from "./Container.astro";
 
 interface Props {
@@ -17,8 +18,8 @@ const t = strings[lang].getStarted;
 		<h2 id="get-started" class="font-medium text-[28px] tracking-tight">{t.title}</h2>
 		<p class="mt-3 max-w-[46ch] text-base text-muted-foreground leading-relaxed">{t.text}</p>
 		<div class="mt-8 flex flex-wrap justify-center gap-2">
-			<a href={appHref(lang)} data-app-link data-signed-in-label={strings[lang].nav.openApp} class={buttonClass("primary")}>
-				{t.signIn}
+			<a href={appHref(lang)} data-app-link class={buttonClass("primary")}>
+				<AppLinkLabel signedOut={t.signIn} signedIn={strings[lang].nav.openApp} />
 			</a>
 			<a href={localePath(lang, "/docs/quick-start/")} class={buttonClass("outline")}>{t.quickStart}</a>
 		</div>
