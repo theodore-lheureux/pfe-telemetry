@@ -1,41 +1,47 @@
 @startuml
 !include diagram-style.iuml
 
-title PFE Telemetry - Architecture
-skinparam nodesep 70
+title Recount - Architecture
+skinparam nodesep 60
 skinparam ranksep 60
 skinparam defaultTextAlignment left
 
-rectangle "Compute nodes" as nodes <<zone>> {
-  rectangle "<b>Collectors</b>\n[Rust]\n\nCollectent les métriques\ndes nodes et processus" as collector [[ingestion-and-reliability.md]]
-}
-
-rectangle "Backend" as backend <<zone>> {
-  rectangle "<b>Ingestion API</b>\n[Rust / Tonic]\n\nValide et accepte\nles batches" as ingestion [[ingestion-server.md]]
-  queue "<b>Kafka</b>\n\nConserve les batches\npour le replay" as kafka [[broker-options.md]]
-  rectangle "<b>Processing worker</b>\n[Rust]\n\nTransforme les métriques,\ngère la déduplication" as worker [[ingestion-and-reliability.md]]
-  database "<b>Storage</b>\n[DuckDB / Parquet envisagés]\n\nHistorique des métriques" as storage <<ouvert>> [[serialization.md]]
-}
-
-rectangle "Web" as webzone <<zone>> {
-  rectangle "<b>Web app</b>\n[TanStack Start]\n\nDashboard, permissions\net export" as web [[architecture.md]]
-}
-
 actor "User" as user
 
-collector -right-> ingestion : Envoie les batches\n[OTLP / gRPC]
-ingestion -right-> kafka : Publie\n[Protobuf]
-kafka -down-> worker : Consomme
-worker -left-> storage : Écrit
-web -right[$read]-> storage : Query
-user -up-> web : Consulte\n[HTTPS / JSON]
+rectangle "Compute nodes" <<zone>> {
+  rectangle "<b>Collector</b>\n[Rust]\n\nNode, process and\nGPU (DCGM) metrics" as collector
+  rectangle "<b>Launcher</b>\n[recount run]\n\nLabels a command\nwith an execution key" as launcher
+}
 
-collector -[hidden]down-> web
-ingestion -[hidden]down-> storage
+rectangle "Ingestion" <<zone>> {
+  rectangle "<b>Ingestion API</b>\n[Rust / gRPC]\n\nAuthenticates and\nvalidates submissions" as ingestion
+  queue "<b>Kafka</b>\n\nRaw, normalized and\nparticipant topics" as kafka
+  rectangle "<b>Normalizer</b>\n[Rust]\n\nOne point per record" as normalizer
+}
+
+rectangle "Storage" <<zone>> {
+  database "<b>ClickHouse</b>\n\nMetric points and\nexecution participants" as clickhouse
+  database "<b>PostgreSQL</b>\n\nUsers, organizations,\nprojects, nodes" as postgres
+}
+
+rectangle "Application" <<zone>> {
+  rectangle "<b>Web application</b>\n[TanStack Start]\n\nInsights, dashboards,\nexecutions, settings" as web
+  rectangle "<b>Live gateway</b>\n[Bun]\n\nStreams incoming points" as live
+}
+
+launcher -down-> collector : Environment label
+collector -right-> ingestion : Metrics and participants\n[OTLP / gRPC, TLS]
+collector -down-> web : Enrollment and tokens\n[HTTPS]
+ingestion -right-> kafka : Publishes
+kafka -down-> normalizer : Raw records
+normalizer -up-> kafka : Normalized points
+kafka -down-> clickhouse : Kafka engine
+ingestion -down-> postgres : Revoked nodes
+web -down-> clickhouse : Authorized queries
+web -down-> postgres : Sessions and access
+live -up-> kafka : Live topic
+web -right-> live : Activity feed
+user -down-> web : [HTTPS]
 
 hide stereotype
-
-legend top right
-  <back:$open>      </back> Choix à confirmer
-endlegend
 @enduml

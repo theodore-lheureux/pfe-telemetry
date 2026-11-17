@@ -2,39 +2,42 @@
 !pragma teoz true
 !include diagram-style.iuml
 
-title PFE Telemetry - Flux de données
+title Recount - Telemetry flow
 skinparam style strictuml
 hide footbox
 
 participant "Collector" as collector
 participant "Ingestion API" as ingestion
 queue "Kafka" as kafka
-participant "Processing worker" as worker
-database "Storage" as storage
-participant "Web app" as web
+participant "Normalizer" as normalizer
+database "ClickHouse" as clickhouse
+participant "Web application" as web
 actor "User" as user
 
 == Ingestion ==
-collector -> ingestion ++ : OTLP Export (gRPC / Protobuf)
-ingestion -> ingestion : Authenticate and validate
-ingestion -> kafka ++ : Produce batch
-kafka --> ingestion -- : Producer ACK
-ingestion --> collector -- : OTLP response: OK
+collector -> ingestion ++ : OTLP export (node token)
+ingestion -> ingestion : Verify token and validate
+ingestion -> kafka ++ : Publish raw record
+kafka --> ingestion -- : Acknowledged
+ingestion --> collector -- : OK
+collector -> collector : Remove batch from queue
 
-== Processing (async) ==
-worker -> kafka : Poll records
-activate worker
-kafka --> worker : Telemetry batch
-worker -> worker : Process batch
-worker -> storage ++ : Idempotent write
-storage --> worker -- : Write confirmed
-worker -> kafka : Commit offset
-deactivate worker
+== Normalization ==
+normalizer -> kafka ++ : Read raw records
+kafka --> normalizer -- : Raw record
+normalizer -> normalizer : Revalidate and split into points
+normalizer -> kafka : Publish normalized points
+normalizer -> kafka : Commit offset
 
-== Dashboard ==
+== Storage ==
+clickhouse -> kafka ++ : Kafka engine reads points
+kafka --> clickhouse -- : Points
+clickhouse -> clickhouse : Insert into metric_points
+
+== Query ==
 user -> web ++ : Open dashboard
-web -> web : Check permissions
-web -> storage ++ : Query metrics
-storage --> web -- : Query results
-web --> user -- : JSON response
+web -> web : Check project access
+web -> clickhouse ++ : Read-only query
+clickhouse --> web -- : Rows
+web --> user -- : Charts
 @enduml

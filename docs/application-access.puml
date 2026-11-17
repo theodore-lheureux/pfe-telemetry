@@ -1,0 +1,44 @@
+@startuml
+!include diagram-style.iuml
+
+title Recount - Organizations and project access
+hide circle
+hide methods
+skinparam classAttributeIconSize 0
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #222222
+}
+
+class User
+class Organization
+class "Organization member" as OrgMember {
+  role: owner | admin | member
+}
+class Project
+class "Project grant" as Grant {
+  role: viewer | member | admin
+}
+class "Collector node" as Node
+class "Dashboard" as Dashboard
+class "Saved insight" as Insight
+
+User "1" -- "*" OrgMember
+Organization "1" -- "*" OrgMember
+Organization "1" -- "*" Project
+OrgMember "1" -- "*" Grant
+Project "1" -- "*" Grant
+Project "1" -- "*" Node
+Project "1" -- "*" Dashboard
+Project "1" -- "*" Insight
+Dashboard "*" -- "*" Insight : tiles
+
+note bottom of OrgMember
+  Owners and admins are admins
+  of every project in the organization.
+end note
+note bottom of Grant
+  Members see only the projects
+  they are granted.
+end note
+@enduml

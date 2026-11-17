@@ -68,4 +68,14 @@ Validate semantic fixtures separately from real Kafka/MV replay, poison, checkpo
 
 ## Local diagram sources
 
-Editable [current-architecture](current-architecture.puml), [telemetry-flow](telemetry-flow.puml) and [telemetry-retry](telemetry-retry.puml) PlantUML drafts and their rendered files are retained with shared styling in `diagram-style.iuml`. Rendering tools are not managed by this repository. Those drafts predate the current implementation and must be updated before being used as architecture references; the flow above describes the current services.
+PlantUML sources and their rendered PNG/SVG files share styling in `diagram-style.iuml`. Rendering tools are not managed by this repository.
+
+| Diagram                                               | Shows                                                     |
+| ----------------------------------------------------- | --------------------------------------------------------- |
+| [current-architecture](current-architecture.puml)     | Components and their connections                          |
+| [deployment](deployment.puml)                         | Where each component runs                                 |
+| [telemetry-flow](telemetry-flow.puml)                 | One upload from collector to dashboard                    |
+| [telemetry-retry](telemetry-retry.puml)               | A retried upload stored once                              |
+| [execution-participants](execution-participants.puml) | How a labelled process joins an execution                 |
+| [application-access](application-access.puml)         | Organizations, projects, roles and their resources        |
+| [delivery-pipeline](delivery-pipeline.puml)           | Checks, tests, build and approved deployment after a push |
