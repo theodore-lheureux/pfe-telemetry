@@ -268,3 +268,48 @@ new arrivals were stopped during drain. These results support finite current-sch
 catch-up, not a sustained fleet rate or a 24-hour
 guarantee. The outage duration, admitted aggregate load and disk allocation
 remain owner decisions.
+
+### Normalizer peak RSS during catch-up
+
+Run this measurement explicitly; the routine normalizer command skips it. See
+the [test guide](../tests/README.md#backend-settings-and-isolation).
+
+On 16 November 2026, `backlog_catchup_peak_rss_stays_bounded` queued copies of
+the 15-point raw fixture across three partitions of the reused local broker,
+then started one normalizer with default settings (two workers). `ps -o rss=`
+sampled the process every 20 ms until every raw checkpoint was committed.
+Sampling can miss spikes shorter than the interval. The host was an Apple M4
+with 10 cores and 16 GiB of memory running macOS; Kafka 4.3.1 ran in Docker with
+10 CPUs and 3.9 GiB.
+
+| Queued inputs | Raw payload | Samples | Peak RSS, release build | Catch-up, release build |
+| ------------- | ----------- | ------- | ----------------------- | ----------------------- |
+| 300           | 0.67 MiB    | 4,500   | 9.4 MiB                 | 3.5 s                   |
+| 900           | 2.0 MiB     | 13,500  | 10.2 MiB                | 5.5 s                   |
+| 3,000         | 6.7 MiB     | 45,000  | 16.8 MiB                | 14.4 s                  |
+| 9,000         | 20.0 MiB    | 135,000 | 22.6 MiB                | 39.5 s                  |
+| 18,000        | 40.0 MiB    | 270,000 | 22.6 MiB                | 75.0 s                  |
+
+In both larger runs, RSS reached its plateau within the first 2.5 seconds and
+did not rise further, although the second backlog was twice as large. In four
+debug-build runs, both backlogs peaked between 23.4 and 25.1 MiB. The test fails
+if the larger backlog's peak exceeds the smaller one's by more than 25%. These
+are small fixtures: inputs at the structural limits, wider records and more
+partitions need their own measurements.
+
+### Owned-broker faults
+
+The `owned_broker` normalizer cases and the ingestion `tests::kafka_faults` case
+start their own Kafka container behind Toxiproxy; see the
+[test guide](../tests/README.md#owned-fault-broker) for settings:
+
+```sh
+cargo test --locked -p recount-normalizer --test kafka owned_broker \
+  -- --ignored --test-threads=1 --nocapture
+cargo test --locked -p recount-ingestion-api --lib tests::kafka_faults \
+  -- --ignored --nocapture
+```
+
+The broker is killed with `SIGKILL` and restarted from the same container
+filesystem, so acknowledged records survive. This shows process restart
+behavior on one broker, not disk loss or replicated failover.

@@ -20,6 +20,7 @@ use tokio::{
     sync::{Notify, oneshot},
 };
 use tonic::{Code, metadata::MetadataMap};
+mod kafka_faults;
 mod live;
 mod participants;
 

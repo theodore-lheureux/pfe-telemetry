@@ -20,7 +20,10 @@ Use the explicit [backend allocation settings](../tests/README.md#backend-settin
 Keep credentials and machine-specific endpoints in ignored local configuration.
 The participant storage case requires the current `executions.proto` mounted in
 ClickHouse. The normalizer case requires three empty, three-partition topics and
-a fresh group under `<namespace>.normalizer.`.
+a fresh group under `<namespace>.normalizer.`. The other normalizer cases create
+their own topics under the namespace. The `owned_broker` and `tests::kafka_faults`
+cases start a disposable Kafka container behind Toxiproxy with the
+[owned fault broker settings](../tests/README.md#owned-fault-broker).
 
 Run the collector command inside an already running Linux build container, using
 this checkout's sources and the existing named Cargo volumes:
@@ -36,25 +39,33 @@ cargo test --locked -p recount-telemetry-validation --test participants
 cargo test --locked -p recount-ingestion-api --lib tests::participants
 cargo test --locked -p recount-ingestion-api --lib tests::live::signed_node_tokens_revocation_bindings_and_outage_are_live -- --ignored --exact
 cargo test --locked -p recount-ingestion-api --test participants -- --ignored
-cargo test --locked -p recount-normalizer --test kafka real_kafka_bootstrap_replay_rebalance_and_global_handler_poison -- --ignored --exact
+cargo test --locked -p recount-normalizer --test kafka real_kafka_first_start_replay_rebalance_and_global_handler_poison -- --ignored --exact
+cargo test --locked -p recount-normalizer --test kafka in_flight_rebalance_never_commits_past_unfinished_work -- --ignored --exact
+cargo test --locked -p recount-normalizer --test kafka out_of_order_event_times_split_recent_and_late_with_exact_identities -- --ignored --exact
+cargo test --locked -p recount-normalizer --test kafka owned_broker -- --ignored --test-threads=1
+cargo test --locked -p recount-ingestion-api --lib tests::kafka_faults -- --ignored
 bun --no-env-file test --timeout 30000 apps/web/tests/integration/executions.test.ts apps/web/tests/integration/activity.test.ts
 node node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts execution-ui.spec.ts
 ```
 
 ## Scenarios and expected results
 
-| Scenario                               | Fixture and assertion                                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| PID reuse, boot and namespace changes  | Persist a membership, close its queue, change one identity field and rediscover the same PID. The new process reads its own label and gets a fresh fact ID at revision 1. The old membership ends without transferring coverage. Analytical process resource IDs differ for each changed identity.                                                                             |
-| Fork and exec                          | A real Linux shell and inherited child produce independent memberships. A shell that execs with a cleared environment retains its cached incarnation decision; a fresh discovery sees it as unlabelled.                                                                                                                                                                        |
-| Unknown or missed processes            | An unlabelled process, an unreadable environment and a labelled process removed before the scan produce no participant facts. Existing identity-recheck tests discard a process replaced during its environment read.                                                                                                                                                          |
-| Collector restart and ingestion outage | Metric queue tests recover the same batch ID, creation time and payload. Participant export reopens SQLite after an uncertain acknowledgement, retries identical lifecycle bytes through another `UNAVAILABLE`, and sends exactly one membership only after lifecycle confirmation. Both queues drain without local loss.                                                      |
-| Clock offsets and connection cuts      | Existing collector cases detect backward/large forward readings, invalidate continuity and reconnect after a dropped proxy socket without changing queued bytes. Admission rejects stale claims and future ends instead of retiming them.                                                                                                                                      |
-| Normalizer restart                     | Kill the owned normalizer after a confirmed prefix, publish a new batch while it is stopped, then restart with the same group. Every expected new sample appears; immutable replay preserves original rows and IDs. Poison input stops the owned consumers without publishing a suffix or advancing its checkpoint.                                                            |
-| ClickHouse consumer restart            | Detach only the disposable participant Kafka table at offset 12, publish a new lifecycle revision and an old membership replay, then attach it again. Stored facts and the checkpoint remain unchanged while stopped; the checkpoint reaches 14 after recovery. `FINAL` returns three facts, including the higher-revision retraction. Process resource identity is unchanged. |
-| Denied node claims                     | Real signed expired and revoked node tokens return `UNAUTHENTICATED`. Foreign project/node/host claims return `PERMISSION_DENIED`. Malformed revisions, kinds, provenance and times return `INVALID_ARGUMENT`. Rejections do not publish.                                                                                                                                      |
-| Private execution reads                | Canonical access checks reject sibling-project, foreign-organization and mismatched organization/project references before analytics reads. Identical execution keys grant no authority.                                                                                                                                                                                       |
-| Browser and direct HTTP access         | Two viewers each receive one project grant; the organization owner acts as operator. Both projects use the same execution key and different private metadata. The operator reads both; each viewer reads only their own page and RPC result. Unauthorized Live requests return a failure before a gateway heartbeat can be forwarded.                                          |
+| Scenario                               | Fixture and assertion                                                                                                                                                                                                                                                                                                                                                               |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PID reuse, boot and namespace changes  | Persist a membership, close its queue, change one identity field and rediscover the same PID. The new process reads its own label and gets a fresh fact ID at revision 1. The old membership ends without transferring coverage. Analytical process resource IDs differ for each changed identity.                                                                                  |
+| Fork and exec                          | A real Linux shell and inherited child produce independent memberships. A shell that execs with a cleared environment retains its cached incarnation decision; a fresh discovery sees it as unlabelled.                                                                                                                                                                             |
+| Unknown or missed processes            | An unlabelled process, an unreadable environment and a labelled process removed before the scan produce no participant facts. Existing identity-recheck tests discard a process replaced during its environment read.                                                                                                                                                               |
+| Collector restart and ingestion outage | Metric queue tests recover the same batch ID, creation time and payload. Participant export reopens SQLite after an uncertain acknowledgement, retries identical lifecycle bytes through another `UNAVAILABLE`, and sends exactly one membership only after lifecycle confirmation. Both queues drain without local loss.                                                           |
+| Clock offsets and connection cuts      | Existing collector cases detect backward/large forward readings, invalidate continuity and reconnect after a dropped proxy socket without changing queued bytes. Admission rejects stale claims and future ends instead of retiming them.                                                                                                                                           |
+| Normalizer restart                     | Kill the owned normalizer after a confirmed prefix, publish a new batch while it is stopped, then restart with the same group. Every expected new sample appears; immutable replay preserves original rows and IDs. Poison input stops the owned consumers without publishing a suffix or advancing its checkpoint.                                                                 |
+| In-flight rebalance                    | Queue 1,800 inputs, then add a member, kill the first without a LeaveGroup and terminate the second as a third joins. No observed checkpoint passes an input whose samples are not all published; the final output has all 27,000 samples, and each duplicate is a byte-identical replay.                                                                                           |
+| Lost Kafka acknowledgements            | Drop broker responses through Toxiproxy. A commit that reached Kafka unacknowledged causes no loss. A normalizer whose publications were written but unacknowledged fails before settling them, and a replacement replays them identically. The ingestion API returns `UNAVAILABLE` for a record Kafka kept; resending the batch adds a raw record with the same sample identities. |
+| Broker restart                         | Kill and restart the owned broker during a normalizer backlog and between ingestion exports. Acknowledged raw input survives; normalizer processing, with a replacement if a member fails fast, and a resent export complete without missing samples.                                                                                                                               |
+| Unordered event times                  | Two sources publish points from 200 hours before to 48 hours after the current time, unordered within and across partitions. Points within 24 hours of the process clock reach the normalized topic and the rest the late topic, each once with its expected bytes.                                                                                                                 |
+| ClickHouse consumer restart            | Detach only the disposable participant Kafka table at offset 12, publish a new lifecycle revision and an old membership replay, then attach it again. Stored facts and the checkpoint remain unchanged while stopped; the checkpoint reaches 14 after recovery. `FINAL` returns three facts, including the higher-revision retraction. Process resource identity is unchanged.      |
+| Denied node claims                     | Real signed expired and revoked node tokens return `UNAUTHENTICATED`. Foreign project/node/host claims return `PERMISSION_DENIED`. Malformed revisions, kinds, provenance and times return `INVALID_ARGUMENT`. Rejections do not publish.                                                                                                                                           |
+| Private execution reads                | Canonical access checks reject sibling-project, foreign-organization and mismatched organization/project references before analytics reads. Identical execution keys grant no authority.                                                                                                                                                                                            |
+| Browser and direct HTTP access         | Two viewers each receive one project grant; the organization owner acts as operator. Both projects use the same execution key and different private metadata. The operator reads both; each viewer reads only their own page and RPC result. Unauthorized Live requests return a failure before a gateway heartbeat can be forwarded.                                               |
 
 ## Recorded outcomes
 
@@ -82,6 +93,22 @@ compilers were active. With compilation finished, all three browser cases passed
 without increasing readiness, assertion or test timeouts. No product defect was
 confirmed in these scenarios.
 
+Later runs on the same day added the rebalance, acknowledgement-loss, broker
+restart and event-time cases, each against a separate namespace:
+
+| Check                                          | Result                                                                                                                                       |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| In-flight rebalance, 1,800 inputs              | Passed 3 of 3; all 27,000 samples, 180–570 byte-identical replays                                                                            |
+| Unordered event times                          | Passed 5 of 5; 14 recent and 10 late samples, no duplicates                                                                                  |
+| Normalizer lost commit and publication replies | Passed 3 of 3 with the shutdown watchdog; 30 written but unsettled samples replayed identically; `state=fatal reason=shutdown_deadline` exit |
+| Normalizer broker restart                      | Passed 8 of 9; one member replacement and all 14,400 samples in each passing run                                                             |
+| Ingestion lost acknowledgement and restart     | Passed 6 of 6; four raw records for three batches, three logical samples                                                                     |
+| Normalizer `kafka` and `storage` suites        | 6 and 7 passed in each of three full runs; the routine `kafka` command, which now skips the RSS case, passed 5 of 5 tests once more          |
+
+The failed broker-restart run was a test defect: its observer client was still
+reconnecting when it read offsets after the restart. The case now creates a new
+observer after the broker is ready, and the following seven runs passed.
+
 ## Evaluation boundary
 
 Collector outage tests use controlled gRPC receivers and real SQLite queues.
@@ -95,3 +122,12 @@ recovered. An uncertain acknowledgement permits immutable redelivery; logical
 replacement is distinct from a physical exactly-once delivery guarantee. A detached
 fixture consumer tests downstream recovery without restarting the shared
 ClickHouse service.
+
+The owned-broker cases run one Kafka broker whose container filesystem survives
+the restart; they do not test disk loss or replicated failover. Their retried
+ingestion batch is checked at sample identity through the shared validation
+projection, not through native ClickHouse. A normalizer that cannot reach Kafka is
+forced to exit by its shutdown watchdog rather than by closing its consumer. The web application does not show the delay between
+acceptance and queryable samples. Recovery holds only while unprocessed records
+remain retained, and the supported outage window is a deployment sizing choice
+rather than a guarantee.

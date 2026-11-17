@@ -15,6 +15,8 @@ const KAFKA_NETWORK_TIMEOUT: Duration = Duration::from_secs(3);
 const KAFKA_SESSION_TIMEOUT: Duration = Duration::from_secs(6);
 const KAFKA_ASSIGNMENT_HEADROOM: Duration = Duration::from_secs(12);
 const PRODUCER_QUEUE_MESSAGES: usize = 128;
+const FLUSH_TIMEOUT: Duration = Duration::from_secs(3);
+const EXIT_MARGIN: Duration = Duration::from_secs(2);
 
 #[derive(Clone)]
 struct RunState {
@@ -121,7 +123,7 @@ fn app(config: Config) -> impl App {
     let broker = KafkaBroker::new([config.bootstrap.clone()])
         .connect_timeout(KAFKA_NETWORK_TIMEOUT)
         .assignment_timeout(assignment_timeout)
-        .flush_timeout(Duration::from_secs(3))
+        .flush_timeout(FLUSH_TIMEOUT)
         .config("allow.auto.create.topics", "false")
         .config(
             "socket.timeout.ms",
@@ -195,8 +197,17 @@ fn app(config: Config) -> impl App {
         eprintln!("state=ready checks=initial_snapshot offset_reset=earliest");
         Ok::<_, Infallible>(())
     })
-    .on_shutdown(async |_: Arc<RunState>| {
+    .on_shutdown(async |state: Arc<RunState>| {
         eprintln!("state=stopping");
+        // Dropping the rdkafka consumer waits for the group close without a deadline,
+        // so an unreachable broker would otherwise keep the process alive. Unfinished
+        // input stays unsettled, so a forced exit loses nothing.
+        let limit = state.config.shutdown + FLUSH_TIMEOUT + EXIT_MARGIN;
+        std::thread::spawn(move || {
+            std::thread::sleep(limit);
+            eprintln!("state=fatal reason=shutdown_deadline");
+            std::process::exit(1);
+        });
         Ok::<_, Infallible>(())
     })
     .with_broker(broker, move |b| {
