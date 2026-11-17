@@ -256,6 +256,36 @@ test("closed registration rejects uninvited addresses and admits pending invitat
 	);
 	expect(expired.status).toBe(403);
 });
+
+test("closed registration rejects account creation when the invitation ends after the code was sent", async () => {
+	await signIn(auth(), "revoker@example.invalid");
+	const closed = auth(false);
+	await database.db.execute(sql`
+		WITH org AS (
+			INSERT INTO app.organization (id, name, slug, created_at)
+			VALUES ('org-revoked-invite', 'Revoked invite', 'revoked-invite', now())
+			RETURNING id
+		)
+		INSERT INTO app.invitation (id, organization_id, email, role, status, expires_at, inviter_id)
+		SELECT 'invite-revoked', org.id, 'revoked@example.invalid', 'member', 'pending',
+			now() + interval '1 day', u.id
+		FROM org, app."user" u WHERE u.email = 'revoker@example.invalid'
+	`);
+	const code = await requestCode(closed, "revoked@example.invalid");
+	await database.db.execute(
+		sql`UPDATE app.invitation SET status = 'canceled' WHERE id = 'invite-revoked'`,
+	);
+
+	const response = await closed.handler(
+		post("/sign-in/email-otp", { email: "revoked@example.invalid", otp: code }),
+	);
+	expect(response.status).toBe(403);
+	expect((await response.json()).code).toBe("SIGN_UP_DISABLED");
+	const { rows } = await database.db.execute(
+		sql`SELECT id FROM app."user" WHERE email = 'revoked@example.invalid'`,
+	);
+	expect(rows).toHaveLength(0);
+});
 test("email delivery errors are owned and sanitized while HTTP acknowledgements stay generic", async () => {
 	let failures = 0;
 	const delivery = createAuthEmailDelivery(() => {
