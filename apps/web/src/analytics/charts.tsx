@@ -118,7 +118,7 @@ function TooltipCard({
 	const row = payload[0]?.payload as Record<string, number | null>;
 	const locale = getLocale();
 	return (
-		<div className="grid min-w-44 gap-1.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+		<div className="grid min-w-0 max-w-full gap-1.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
 			<p className="font-medium">
 				{new Intl.DateTimeFormat(locale, {
 					dateStyle: "medium",
@@ -136,23 +136,23 @@ function TooltipCard({
 						key={entry.key}
 						className="flex items-center justify-between gap-4"
 					>
-						<span className="flex items-center gap-1.5 text-muted-foreground">
+						<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
 							<span
 								aria-hidden="true"
 								className={cn(
-									"h-0.5 w-3 rounded-full",
+									"h-0.5 w-3 shrink-0 rounded-full",
 									entry.comparison && "opacity-50",
 								)}
 								style={{ background: entry.color }}
 							/>
-							{entry.label}
+							<span className="truncate">{entry.label}</span>
 						</span>
 						{value === null ? (
-							<span className="text-muted-foreground italic">
+							<span className="shrink-0 text-muted-foreground italic">
 								{gapLabel?.(entry.key, label) ?? "—"}
 							</span>
 						) : (
-							<span className="font-mono tabular-nums">
+							<span className="shrink-0 font-mono tabular-nums">
 								{format(value)}
 								{band && (
 									<span className="ml-1.5 text-muted-foreground">
@@ -574,6 +574,8 @@ export function TimeseriesChart({
 					)}
 					<Tooltip
 						isAnimationActive={false}
+						// Keeps a wide tooltip inside narrow tiles instead of scrolling them.
+						wrapperStyle={{ maxWidth: "100%" }}
 						cursor={{ stroke: "var(--border)", strokeWidth: 1 }}
 						content={(props) => (
 							<TooltipCard
