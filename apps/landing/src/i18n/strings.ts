@@ -57,25 +57,25 @@ const en = {
 				title: "Reliable",
 				text: "A dropped connection doesn't mean lost data. It catches up once you're back online.",
 			},
-			standards: {
-				title: "Open standards",
-				text: "Works with the tools you already use instead of locking you in.",
+			gpu: {
+				title: "GPU, unit by unit",
+				text: "See how busy each GPU really is, down to its tensor, FP16, FP32 and FP64 units, not just a utilization percentage.",
 			},
 			secure: {
 				title: "Secure",
 				text: "Only the machines and people you allow can send or see your data.",
 			},
-			accurate: {
-				title: "Accurate",
-				text: "You see what was measured. Nothing is filled in or smoothed over.",
+			jobs: {
+				title: "Follows every job",
+				text: "Jobs launched with Slurm or recount run are tracked across nodes, with the CPU, memory and GPU each one used.",
 			},
 			teams: {
 				title: "Made for teams",
 				text: "Projects keep work organized, and everyone sees the same picture.",
 			},
-			setup: {
-				title: "Simple to set up",
-				text: "No changes to your code or workflows. Install the collector and it does the rest.",
+			clusters: {
+				title: "Built for clusters",
+				text: "One collector per node, on bare metal, VMs or the cloud. No changes to your code or workflows.",
 			},
 		},
 	},
@@ -425,25 +425,25 @@ const fr: Strings = {
 				title: "Fiable",
 				text: "Une connexion perdue ne veut pas dire des données perdues. Tout est rattrapé au retour en ligne.",
 			},
-			standards: {
-				title: "Normes ouvertes",
-				text: "Fonctionne avec les outils que vous utilisez déjà, sans vous enfermer.",
+			gpu: {
+				title: "Le GPU, unité par unité",
+				text: "Voyez à quel point chaque GPU est réellement occupé, jusqu’à ses unités tensorielles, FP16, FP32 et FP64, et pas seulement un pourcentage d’utilisation.",
 			},
 			secure: {
 				title: "Sécurisé",
 				text: "Seules les machines et les personnes que vous autorisez peuvent envoyer ou voir vos données.",
 			},
-			accurate: {
-				title: "Exact",
-				text: "Vous voyez ce qui a été mesuré. Rien n’est inventé ni lissé.",
+			jobs: {
+				title: "Suit chaque tâche",
+				text: "Les tâches lancées avec Slurm ou recount run sont suivies sur tous les nœuds, avec le CPU, la mémoire et le GPU utilisés par chacune.",
 			},
 			teams: {
 				title: "Pensé pour les équipes",
 				text: "Les projets gardent le travail organisé, et tout le monde voit la même chose.",
 			},
-			setup: {
-				title: "Simple à installer",
-				text: "Aucun changement à votre code ni à vos façons de faire. Installez le collecteur, il s’occupe du reste.",
+			clusters: {
+				title: "Conçu pour les grappes",
+				text: "Un collecteur par nœud, sur serveurs physiques, VM ou infonuagique. Aucun changement à votre code ni à vos flux de travail.",
 			},
 		},
 	},

@@ -31,6 +31,9 @@ export const icons = {
 	users:
 		'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />',
 	check: '<path d="M20 6 9 17l-5-5" />',
+	cpu: '<rect width="16" height="16" x="4" y="4" rx="2" /><rect width="6" height="6" x="9" y="9" rx="1" /><path d="M15 2v2" /><path d="M15 20v2" /><path d="M2 15h2" /><path d="M2 9h2" /><path d="M20 15h2" /><path d="M20 9h2" /><path d="M9 2v2" /><path d="M9 20v2" />',
+	listChecks:
+		'<path d="m3 17 2 2 4-4" /><path d="m3 7 2 2 4-4" /><path d="M13 6h8" /><path d="M13 12h8" /><path d="M13 18h8" />',
 	cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />',
 	server:
 		'<rect width="20" height="8" x="2" y="2" rx="2" ry="2" /><rect width="20" height="8" x="2" y="14" rx="2" ry="2" /><line x1="6" x2="6.01" y1="6" y2="6" /><line x1="6" x2="6.01" y1="18" y2="18" />',
@@ -52,11 +55,11 @@ export const icons = {
 
 export const features = [
 	{ key: "reliable", icon: icons.refresh },
-	{ key: "standards", icon: icons.code },
+	{ key: "gpu", icon: icons.cpu },
 	{ key: "secure", icon: icons.lock },
-	{ key: "accurate", icon: icons.target },
+	{ key: "jobs", icon: icons.listChecks },
 	{ key: "teams", icon: icons.users },
-	{ key: "setup", icon: icons.check },
+	{ key: "clusters", icon: icons.server },
 ] as const;
 
 export function buttonClass(variant: "primary" | "outline", extra = "") {
