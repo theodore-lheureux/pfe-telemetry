@@ -1,5 +1,5 @@
 import { m } from "@recount/i18n/messages";
-import { Link, useHydrated } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import {
 	type ColumnDef,
 	type ColumnFiltersState,
@@ -14,20 +14,19 @@ import {
 	tableFeatures,
 	useTable,
 } from "@tanstack/react-table";
-import { PanelsTopLeftIcon, PlusIcon } from "lucide-react";
+import { PanelsTopLeftIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { DataTable, SortableHeader } from "../../components/data-table";
 import { FormFeedback } from "../../components/form-feedback";
 import { SearchField } from "../../components/search-field";
 import { TimeDisplay } from "../../components/time-display";
-import { Button } from "../../components/ui/button";
 import { IconEmptyState } from "../../components/workspace";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AnalyticsHeader } from "../analytics-header";
 import type { DashboardSummary } from "../dashboards";
 import { CreatorCell } from "../saved/saved-columns";
 import { useDashboardActions } from "./dashboard-actions";
-import { TemplateSuggestions } from "./template-suggestions";
+import { NewDashboardButton } from "./new-dashboard-button";
 
 const features = tableFeatures({
 	rowSortingFeature,
@@ -142,7 +141,6 @@ export function DashboardList({
 	canWrite: boolean;
 	dashboards: DashboardSummary[];
 }) {
-	const hydrated = useHydrated();
 	const [sorting, setSorting] = useState<SortingState>([
 		{ id: "updatedAt", desc: true },
 	]);
@@ -174,17 +172,15 @@ export function DashboardList({
 	const search = (filters.find((filter) => filter.id === "name")?.value ??
 		"") as string;
 	const create = canWrite && (
-		<Button disabled={!hydrated} onClick={actions.create}>
-			<PlusIcon aria-hidden="true" />
-			{m.dashboard_new()}
-		</Button>
+		<NewDashboardButton
+			userId={userId}
+			reference={reference}
+			onCreate={actions.create}
+		/>
 	);
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
 			<AnalyticsHeader section="dashboards" />
-			{canWrite && (
-				<TemplateSuggestions userId={userId} reference={reference} />
-			)}
 			{dashboards.length === 0 ? (
 				<IconEmptyState
 					icon={<PanelsTopLeftIcon aria-hidden="true" />}

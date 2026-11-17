@@ -1,5 +1,4 @@
 import { m } from "@recount/i18n/messages";
-import { useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
@@ -13,12 +12,9 @@ import {
 import { useAppMutation } from "../../components/use-app-mutation";
 import type { ProjectReference } from "../../organizations/contracts";
 import { useAnalyticsCatalog } from "../catalog";
-import {
-	builtInDashboardTemplates,
-	type CreateTemplateDashboardInput,
-} from "../dashboard-templates";
+import type { CreateTemplateDashboardInput } from "../dashboard-templates";
 import { createDashboardFromTemplate } from "../dashboard-templates.functions";
-import { templatesQuery } from "../dashboard-templates-query";
+import { useTemplateChoices } from "../dashboard-templates-query";
 import { saveDashboard } from "../dashboards.functions";
 import { DashboardDialog } from "./dashboard-dialog";
 import { TemplateGallery } from "./template-gallery";
@@ -41,12 +37,8 @@ export function TemplateCreateDialog({
 	const [selected, setSelected] = useState(initialTemplateId);
 	const [node, setNode] = useState("-all");
 	const [dashboardId] = useState(() => crypto.randomUUID());
-	const projects = useQuery({
-		...templatesQuery(userId, reference),
-		enabled: open,
-	});
+	const { choices, projects } = useTemplateChoices(userId, reference, open);
 	const catalog = useAnalyticsCatalog(userId, reference, open);
-	const choices = [...builtInDashboardTemplates(), ...(projects.data ?? [])];
 	const choice = choices.find((item) => item.id === selected);
 	const mutation = useAppMutation<
 		CreateTemplateDashboardInput & { name: string; description: string },

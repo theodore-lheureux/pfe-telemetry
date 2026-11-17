@@ -61,7 +61,6 @@
   "dashboard_template_network_throughput": "Network throughput",
   "dashboard_template_nodes": "Nodes",
   "dashboard_template_create_dashboard": "Create dashboard from template",
-  "dashboard_template_suggested_templates": "Suggested templates",
   "dashboard_template_coverage": "{count} of {total} panels have matching metrics.",
   "dashboard_template_preview_notice": "Built-in template preview. Create a dashboard to save and customize its insights.",
   "dashboard_template_panel_unavailable": "Waiting for matching metrics",
@@ -1548,5 +1547,6 @@
   "dashboard_template_gpu_power": "Power",
   "dashboard_template_gpu_temperature": "Temperature",
   "dashboard_template_gpu_sm_clock": "SM clock",
-  "dashboard_template_gpu_nodes": "GPU nodes"
+  "dashboard_template_gpu_nodes": "GPU nodes",
+  "dashboard_new_from_template": "New dashboard from a template"
 }

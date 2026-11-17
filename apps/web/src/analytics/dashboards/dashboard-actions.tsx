@@ -37,7 +37,7 @@ interface Named {
 }
 
 type Action =
-	| { kind: "create" }
+	| { kind: "create"; templateId?: string }
 	| { kind: "edit"; dashboard: Named }
 	| { kind: "template"; dashboard: Named }
 	| { kind: "delete"; dashboard: Named };
@@ -163,6 +163,7 @@ export function useDashboardActions(
 					open
 					userId={userId}
 					reference={reference}
+					initialTemplateId={action.templateId}
 					onClose={close}
 				/>
 			)}
@@ -224,6 +225,6 @@ export function useDashboardActions(
 		menu,
 		dialogs,
 		error: action ? "" : error,
-		create: () => open({ kind: "create" }),
+		create: (templateId?: string) => open({ kind: "create", templateId }),
 	};
 }

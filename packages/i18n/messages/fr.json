@@ -61,7 +61,6 @@
   "dashboard_template_network_throughput": "Débit réseau",
   "dashboard_template_nodes": "Nœuds",
   "dashboard_template_create_dashboard": "Créer un tableau de bord depuis le modèle",
-  "dashboard_template_suggested_templates": "Modèles suggérés",
   "dashboard_template_coverage": "{count} panneaux sur {total} disposent de métriques correspondantes.",
   "dashboard_template_preview_notice": "Aperçu du modèle intégré. Créez un tableau de bord pour enregistrer et personnaliser ses analyses.",
   "dashboard_template_panel_unavailable": "En attente de métriques correspondantes",
@@ -1548,5 +1547,6 @@
   "dashboard_template_gpu_power": "Puissance",
   "dashboard_template_gpu_temperature": "Température",
   "dashboard_template_gpu_sm_clock": "Fréquence des SM",
-  "dashboard_template_gpu_nodes": "Nœuds GPU"
+  "dashboard_template_gpu_nodes": "Nœuds GPU",
+  "dashboard_new_from_template": "Nouveau tableau de bord à partir d’un modèle"
 }

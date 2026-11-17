@@ -113,12 +113,16 @@ test("Insights shows the Node health template and charts discovered metrics in E
 			.getByRole("link", { name: "Dashboards", exact: true })
 			.first()
 			.click();
+		await page
+			.getByRole("button", {
+				name: "New dashboard from a template",
+				exact: true,
+			})
+			.click();
 		await expect(
-			page.getByRole("region", { name: "Suggested templates" }),
-		).toContainText("Node health");
-		await expect(
-			page.getByRole("region", { name: "Suggested templates" }),
+			page.getByRole("menuitem", { name: /^Node health/ }),
 		).toContainText("4 of 6 panels");
+		await page.keyboard.press("Escape");
 		await page.getByRole("link", { name: "Overview", exact: true }).click();
 		await expect(
 			page.getByRole("heading", { name: "Node health", level: 1, exact: true }),

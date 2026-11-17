@@ -1,5 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { TriangleAlertIcon } from "lucide-react";
+import { Card } from "../../components/ui/card";
 import { cn } from "../../lib/utils";
 import type { MetricDefinition } from "../contracts";
 import {
@@ -40,11 +41,11 @@ export function TemplatePreview({
 					const Icon = DISPLAY_ICON[type];
 					const unavailable = coverage && !coverage.available[index];
 					return (
-						<div
+						<Card
 							key={tile.id}
 							title={DISPLAY_LABEL[type]()}
 							className={cn(
-								"flex min-w-0 items-start gap-1.5 rounded-md border bg-card px-2 py-1.5 text-xs",
+								"min-w-0 flex-row items-start gap-1.5 rounded-md px-2 py-1.5 text-xs shadow-none",
 								TILE_WIDTH_CLASS[tile.width],
 								TILE_HEIGHT_CLASS[tile.height],
 								tile.column && TILE_COLUMN_CLASS[tile.column],
@@ -63,7 +64,7 @@ export function TemplatePreview({
 								/>
 							)}
 							<span className="truncate">{tile.insight.name}</span>
-						</div>
+						</Card>
 					);
 				})}
 			</div>
