@@ -1,7 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { Link, useHydrated } from "@tanstack/react-router";
-import { LineChartIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
+import { LineChartIcon, RefreshCwIcon } from "lucide-react";
 import {
 	type HTMLAttributes,
 	type ReactNode,
@@ -12,6 +12,7 @@ import {
 	useState,
 } from "react";
 import { LoadingBar } from "../../components/loading-bar";
+import { QueryUnavailable } from "../../components/query-unavailable";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import {
@@ -21,8 +22,6 @@ import {
 } from "../../components/ui/tooltip";
 import { useNearView } from "../../components/use-near-view";
 import { IconEmptyState } from "../../components/workspace";
-import { operationMessage } from "../../lib/operation-message";
-import { MutationFailure } from "../../lib/operation-result";
 import type { taskQueue } from "../../lib/task-queue";
 import { formatCompactTime } from "../../lib/time-display";
 import { cn } from "../../lib/utils";
@@ -334,15 +333,9 @@ function TileBody({
 		);
 	if (error)
 		return (
-			<IconEmptyState
-				icon={<TriangleAlertIcon aria-hidden="true" />}
+			<QueryUnavailable
 				title={m.insight_unavailable()}
-				description={
-					error instanceof MutationFailure
-						? operationMessage(error.failure)
-						: undefined
-				}
-				alert
+				error={error}
 				heading="h3"
 				className="h-full"
 			/>

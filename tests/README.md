@@ -75,6 +75,10 @@ ClickHouse replay and committed offsets, and removes its own database and topic
 on success. Execution reader tests in `apps/web/tests/telemetry/executions.test.ts`
 use the shared ClickHouse fixture to check project predicates, latest revisions,
 retractions, key pagination and unchanged point/series identities.
+`apps/web/tests/telemetry/execution-overlaps.test.ts` checks that overlaps need
+a shared node and time in the same project, read the project's facts once and
+are bounded, and that the load split's delta and cumulative CPU and memory
+exclude another project's processes on the same host.
 
 Storage cases send one bare point per Kafka record through `ProtobufSingle`;
 the shared fixture's multirow file output uses standard delimited `Protobuf`
