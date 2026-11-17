@@ -30,6 +30,8 @@ export const MAX_BUCKETS = 600;
 /** Series letters A–Z. */
 export const MAX_MEASURES = 26;
 export const MAX_FILTERS = 8;
+/** The most values one `in` or `not_in` filter names. */
+export const MAX_FILTER_VALUES = 100;
 export const MAX_GROUP_BY = 2;
 export const MAX_SERIES = 50;
 export const DEFAULT_SERIES_LIMIT = 25;

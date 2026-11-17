@@ -67,3 +67,32 @@ test("a tile's overrides apply over the dashboard's, or alone when it ignores th
 	expect(alone.groupBy).toBe("node");
 	expect(() => parseTileOverrides({ ignoreDashboard: 1 })).toThrow();
 });
+
+test("a tile can drop the dashboard's filters on chosen fields and keep its range", () => {
+	const dashboard = {
+		range: { kind: "last" as const, count: 7, unit: "days" as const },
+		filters: [
+			{ field: "execution", op: "eq" as const, values: ["slurm:1"] },
+			{ field: "host", op: "eq" as const, values: ["b"] },
+		],
+	};
+	const context = tileDraft(insight, dashboard, {
+		ignoreFilters: ["execution"],
+	});
+	expect(context.range).toEqual(dashboard.range);
+	expect(context.filters).toEqual([
+		...insight.filters,
+		{ field: "host", op: "eq", values: ["b"] },
+	]);
+	expect(tileDraft(insight, dashboard, {}).filters).toHaveLength(3);
+	expect(parseTileOverrides({ ignoreFilters: ["execution"] })).toEqual({
+		ignoreFilters: ["execution"],
+	});
+	for (const ignoreFilters of [
+		[],
+		["execution", "execution"],
+		["no such field"],
+		"execution",
+	])
+		expect(() => parseTileOverrides({ ignoreFilters })).toThrow();
+});

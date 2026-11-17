@@ -47,7 +47,7 @@ export function NumberResults({
 	compact: boolean;
 	height: string;
 }) {
-	const chart = display.numberChart ?? "area";
+	const chart = display.wholeRange ? "none" : (display.numberChart ?? "area");
 	const series = view.charted[0];
 	if (!series) return null;
 	const value = stats(series).latest;

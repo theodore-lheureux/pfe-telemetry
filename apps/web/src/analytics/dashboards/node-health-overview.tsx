@@ -1,18 +1,7 @@
 import { m } from "@recount/i18n/messages";
-import { useHydrated } from "@tanstack/react-router";
-import { FormFeedback } from "../../components/form-feedback";
-import { Skeleton } from "../../components/ui/skeleton";
-import { operationMessage } from "../../lib/operation-message";
-import { MutationFailure } from "../../lib/operation-result";
 import type { ProjectReference } from "../../organizations/contracts";
-import { useAnalyticsCatalog } from "../catalog";
-import {
-	nodeHealthTemplate,
-	previewDashboard,
-	templateCoverage,
-} from "../dashboard-templates";
-import { DashboardPage } from "./dashboard-page";
-import { TemplateCreateButton } from "./template-create-button";
+import { nodeHealthTemplate } from "../dashboard-templates";
+import { TemplateDashboard } from "./template-dashboard";
 
 export function NodeHealthOverview({
 	userId,
@@ -27,51 +16,17 @@ export function NodeHealthOverview({
 	urlFilters: string | undefined;
 	onFilters: (filters: string | undefined) => void;
 }) {
-	const catalog = useAnalyticsCatalog(userId, reference, useHydrated());
-	if (catalog.error)
-		return (
-			<FormFeedback
-				kind="error"
-				message={
-					catalog.error instanceof MutationFailure
-						? operationMessage(catalog.error.failure)
-						: m.insight_unavailable()
-				}
-			/>
-		);
-	if (!catalog.data) return <Skeleton className="h-96 w-full" />;
-	const template = nodeHealthTemplate();
-	const dashboard = previewDashboard(
-		template,
-		`${reference.projectId}/node-health`,
-	);
-	const coverage = templateCoverage(template, catalog.data.metrics);
 	return (
-		<DashboardPage
+		<TemplateDashboard
 			userId={userId}
 			reference={reference}
-			canWrite={false}
-			dashboard={{ ...dashboard, nodes: catalog.data.nodes }}
+			canWrite={canWrite}
 			urlFilters={urlFilters}
 			onFilters={onFilters}
-			preview={{
-				unavailable: dashboard.tiles
-					.filter((_, index) => !coverage.available[index])
-					.map((tile) => tile.id),
-				notice: (
-					<p className="text-sm text-muted-foreground">
-						{m.dashboard_template_preview_notice()}{" "}
-						{m.dashboard_template_coverage(coverage)}
-					</p>
-				),
-				actions: canWrite && (
-					<TemplateCreateButton
-						userId={userId}
-						reference={reference}
-						templateId="node-health"
-					/>
-				),
-			}}
+			id={`${reference.projectId}/node-health`}
+			templateId="node-health"
+			template={nodeHealthTemplate()}
+			notice={m.dashboard_template_preview_notice()}
 		/>
 	);
 }

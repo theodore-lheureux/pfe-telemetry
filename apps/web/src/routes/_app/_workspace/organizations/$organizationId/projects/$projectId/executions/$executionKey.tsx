@@ -1,7 +1,9 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { PanelsTopLeftIcon } from "lucide-react";
 import { TimeDisplay } from "@/components/time-display";
+import { Button } from "@/components/ui/button";
 import { PageHeading } from "@/components/workspace";
 import { getExecution } from "@/executions/execution.functions";
 import { ExecutionParticipants } from "@/executions/execution-participants";
@@ -36,6 +38,15 @@ function Execution() {
 			<PageHeading title={entry.name}>
 				{m.execution_key()}: <code>{entry.executionKey}</code>
 			</PageHeading>
+			<Button asChild variant="outline" className="self-start">
+				<Link
+					to="/organizations/$organizationId/projects/$projectId/executions/$executionKey/dashboard"
+					params={entry}
+				>
+					<PanelsTopLeftIcon aria-hidden="true" />
+					{m.execution_dashboard_open()}
+				</Link>
+			</Button>
 			{entry.workloadVersion && (
 				<p>
 					{m.execution_workload_version()}: {entry.workloadVersion}

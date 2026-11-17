@@ -28,6 +28,7 @@ import {
 	encodeDashboardFilters,
 	encodeTileOverrides,
 	hasDashboardFilters,
+	inheritedFilters,
 	type TileOverrides,
 	tileDraft,
 } from "../dashboard-filters";
@@ -124,6 +125,8 @@ export function DashboardPage({
 		unavailable: string[];
 		notice: ReactNode;
 		actions: ReactNode;
+		/** Replaces the link back to the dashboard list. */
+		back?: ReactNode;
 	};
 }) {
 	const hydrated = useHydrated();
@@ -185,10 +188,11 @@ export function DashboardPage({
 	}, [tiles, filtersText, overrides]);
 	/** Whether a tile shows something other than its insight as saved. */
 	const overridden = (tile: DashboardTile) => {
-		const { ignoreDashboard, ...own } = overridesOf(tile);
+		const tileOverrides = overridesOf(tile);
+		const { ignoreDashboard: _, ignoreFilters: __, ...own } = tileOverrides;
 		return (
 			hasDashboardFilters(own) ||
-			(!ignoreDashboard && hasDashboardFilters(filters))
+			hasDashboardFilters(inheritedFilters(filters, tileOverrides))
 		);
 	};
 
@@ -393,11 +397,13 @@ export function DashboardPage({
 
 	const heading = (
 		<div className="flex min-w-0 flex-auto items-center gap-2">
-			<Button asChild variant="ghost" size="icon-sm">
-				<Link to={LIST} params={reference} aria-label={m.dashboard_back()}>
-					<ArrowLeftIcon aria-hidden="true" />
-				</Link>
-			</Button>
+			{preview?.back ?? (
+				<Button asChild variant="ghost" size="icon-sm">
+					<Link to={LIST} params={reference} aria-label={m.dashboard_back()}>
+						<ArrowLeftIcon aria-hidden="true" />
+					</Link>
+				</Button>
+			)}
 			<PanelsTopLeftIcon
 				aria-hidden="true"
 				className="size-5 shrink-0 text-primary"
@@ -569,6 +575,7 @@ export function DashboardPage({
 						: []
 				}
 				open={overriding !== null}
+				dashboardFields={(filters.filters ?? []).map((filter) => filter.field)}
 				supportsBreakdown={
 					!overriding ||
 					(drafts.get(overriding.id) ?? decodeDraft(overriding.insight.draft))

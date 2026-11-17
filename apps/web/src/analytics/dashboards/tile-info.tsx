@@ -27,7 +27,11 @@ import {
 import { usePinnedOpen } from "../../components/use-pinned-open";
 import { cn } from "../../lib/utils";
 import type { QueryResult } from "../contracts";
-import type { DashboardFilters, TileOverrides } from "../dashboard-filters";
+import {
+	type DashboardFilters,
+	inheritedFilters,
+	type TileOverrides,
+} from "../dashboard-filters";
 import type { DashboardTile } from "../dashboards";
 import { filterKey, filterText } from "../filter-chips";
 import { groupFieldLabel } from "../group-by-picker";
@@ -142,14 +146,14 @@ export function TileInfo({
 	const warned = result ? thinPercentiles(result).length > 0 : false;
 	const Icon = warned ? TriangleAlertIcon : InfoIcon;
 	// A tile's own override wins; the dashboard's applies unless the tile ignores it.
+	const inherited = inheritedFilters(filters, overrides);
 	const source = (key: keyof DashboardFilters): Source => {
 		if (overrides[key] !== undefined) return "tile";
-		if (!overrides.ignoreDashboard && filters[key] !== undefined)
-			return "dashboard";
+		if (inherited[key] !== undefined) return "dashboard";
 		return null;
 	};
 	const added = new Map<string, Source>([
-		...(overrides.ignoreDashboard ? [] : (filters.filters ?? [])).map(
+		...(inherited.filters ?? []).map(
 			(filter) => [filterKey(filter), "dashboard"] as const,
 		),
 		...(overrides.filters ?? []).map(

@@ -127,3 +127,31 @@ test("Number insights keep exactly one output, including in raw query drafts", (
 		withDisplay({ ...formula, formulas: [] }, display).series,
 	).toHaveLength(1);
 });
+
+test("a Number over the whole range asks for one value per series, without a chart", () => {
+	const number = withDisplay(draft, {
+		...draft.display,
+		type: "stat",
+		wholeRange: true,
+	});
+	expect(decodeDraft(encodeDraft(number))).toEqual(number);
+	const query = toQuery(number, now, "UTC", "en");
+	expect(query?.shape).toBe("table");
+	expect(query?.interval).toBeUndefined();
+	const latest = toQuery(
+		{ ...number, display: { ...number.display, wholeRange: false } },
+		now,
+		"UTC",
+		"en",
+	);
+	expect(latest?.shape).toBe("timeseries");
+	// Only a Number has one whole-range value; other views keep their buckets.
+	expect(
+		toQuery(
+			{ ...number, display: { ...number.display, type: "line" } },
+			now,
+			"UTC",
+			"en",
+		)?.shape,
+	).toBe("timeseries");
+});

@@ -6,6 +6,7 @@ import {
 	dashboardTile,
 	savedInsight,
 } from "../db/schema";
+import { getExecution } from "../executions/executions.server";
 import { InputError } from "../lib/input-error";
 import { OperationError } from "../lib/operation-error";
 import { type Actor, requireProject } from "../organizations/access.server";
@@ -16,6 +17,7 @@ import {
 	builtInDashboardTemplates,
 	type CreateTemplateDashboardInput,
 	dashboardTemplate,
+	executionContext,
 	fillTemplateVariables,
 	parameterizeTemplateNode,
 	type SaveDashboardTemplateInput,
@@ -91,6 +93,7 @@ export async function createTemplateDashboard(
 	database: Database,
 	actor: Actor,
 	input: CreateTemplateDashboardInput,
+	resolveExecution: typeof getExecution = getExecution,
 ) {
 	await requireProject(database, actor, input, "write");
 	let found = builtInDashboardTemplates().find(
@@ -125,7 +128,26 @@ export async function createTemplateDashboard(
 		)
 	)
 		throw new InputError("INVALID_QUERY", "Unknown project node");
-	const template = fillTemplateVariables(found.template, input.values);
+	const executionKey = input.values?.$execution;
+	if (
+		variables.some((variable) => variable.name === "$execution") &&
+		!executionKey
+	)
+		throw new InputError("INVALID_QUERY", "Choose an execution");
+	const execution = executionKey
+		? executionContext(
+				await resolveExecution(database, actor, {
+					organizationId: input.organizationId,
+					projectId: input.projectId,
+					executionKey,
+				}),
+			)
+		: undefined;
+	const template = fillTemplateVariables(
+		found.template,
+		input.values,
+		execution,
+	);
 	await database.transaction(async (transaction) => {
 		const [created] = await transaction
 			.insert(dashboard)

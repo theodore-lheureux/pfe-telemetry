@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { getLocale } from "@recount/i18n/runtime";
 import { useEffect, useId, useState } from "react";
 import {
 	DEFAULT_RANGE,
@@ -31,7 +32,7 @@ import { useQueryAttributes } from "../catalog";
 import { INTERVALS, type Interval } from "../contracts";
 import type { TileOverrides } from "../dashboard-filters";
 import { FilterChips, withFilter } from "../filter-chips";
-import { GroupByPicker } from "../group-by-picker";
+import { GroupByPicker, groupFieldLabel } from "../group-by-picker";
 import { MAX_RANGE_DAYS } from "../insight/draft";
 import { COMPARISONS, comparisonKey } from "../insight/insight-toolbar";
 import { INTERVAL_LABEL } from "../insight/labels";
@@ -57,6 +58,7 @@ export function TileOverridesDialog({
 	name,
 	initial,
 	supportsBreakdown,
+	dashboardFields,
 	metrics,
 	userId,
 	reference,
@@ -69,6 +71,8 @@ export function TileOverridesDialog({
 	name: string;
 	initial: TileOverrides;
 	supportsBreakdown: boolean;
+	/** Fields the dashboard's own filters use. */
+	dashboardFields: string[];
 	metrics: string[];
 	userId: string;
 	reference: ProjectReference;
@@ -98,6 +102,10 @@ export function TileOverridesDialog({
 			return value === undefined ? rest : { ...rest, [key]: value };
 		});
 	const range = overrides.range && parseSerializedRange(overrides.range);
+	// Fields whose dashboard filters this tile can drop, including ones it drops already.
+	const ignorable = [
+		...new Set([...(initial.ignoreFilters ?? []), ...dashboardFields]),
+	];
 	return (
 		<Dialog
 			open={open}
@@ -141,6 +149,25 @@ export function TileOverridesDialog({
 							{m.tile_ignore_dashboard_hint()}
 						</p>
 					</div>
+					{ignorable.length > 0 && !overrides.ignoreDashboard && (
+						<div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+							<Label htmlFor={`${id}-ignore-fields`}>
+								{m.tile_ignore_dashboard_fields({
+									fields: new Intl.ListFormat(getLocale()).format(
+										ignorable.map(groupFieldLabel),
+									),
+								})}
+							</Label>
+							<Switch
+								id={`${id}-ignore-fields`}
+								checked={!!overrides.ignoreFilters}
+								disabled={pending}
+								onCheckedChange={(on) =>
+									set("ignoreFilters", on ? ignorable : undefined)
+								}
+							/>
+						</div>
+					)}
 					<Section title={m.dashboard_info_range()} />
 					<div className="flex flex-wrap items-end gap-4">
 						<DateRangePicker

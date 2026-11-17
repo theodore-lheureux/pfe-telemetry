@@ -1,0 +1,538 @@
+{
+  "name": "dashboard_template_execution",
+  "description": "dashboard_template_execution_description",
+  "filters": {},
+  "variables": [
+    {
+      "name": "$execution",
+      "field": "execution"
+    }
+  ],
+  "tiles": [
+    {
+      "width": 3,
+      "height": 1,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_cpu_time",
+        "description": "dashboard_template_execution_cpu_time_description",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "process.cpu.time",
+              "calculation": "increase",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "stat",
+            "unit": "seconds",
+            "logScale": false,
+            "beginAtZero": true,
+            "wholeRange": true
+          }
+        }
+      }
+    },
+    {
+      "width": 3,
+      "height": 1,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_peak_memory",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.process.memory.rss",
+              "calculation": "max",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "stat",
+            "unit": "bytes",
+            "logScale": false,
+            "beginAtZero": true,
+            "wholeRange": true
+          }
+        }
+      }
+    },
+    {
+      "width": 3,
+      "height": 1,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_disk_read",
+        "description": "dashboard_template_execution_disk_read_description",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "process.disk.io",
+              "calculation": "increase",
+              "combine": "sum",
+              "filters": [
+                {
+                  "field": "attributes[\"disk.io.direction\"]",
+                  "op": "eq",
+                  "values": ["read"]
+                }
+              ]
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "stat",
+            "unit": "bytes",
+            "logScale": false,
+            "beginAtZero": true,
+            "wholeRange": true
+          }
+        }
+      }
+    },
+    {
+      "width": 3,
+      "height": 1,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_disk_written",
+        "description": "dashboard_template_execution_disk_written_description",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "process.disk.io",
+              "calculation": "increase",
+              "combine": "sum",
+              "filters": [
+                {
+                  "field": "attributes[\"disk.io.direction\"]",
+                  "op": "eq",
+                  "values": ["write"]
+                }
+              ]
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "stat",
+            "unit": "bytes",
+            "logScale": false,
+            "beginAtZero": true,
+            "wholeRange": true
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_cpu",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "process.cpu.time",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "none",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {
+        "ignoreFilters": ["execution"]
+      },
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_node_cpu",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.node.cpu.time",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": [
+                {
+                  "field": "attributes[\"cpu.mode\"]",
+                  "op": "neq",
+                  "values": ["idle"]
+                }
+              ]
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "none",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      },
+      "executionNodes": true
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_memory",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.process.memory.rss",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "bytes",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {
+        "ignoreFilters": ["execution"]
+      },
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_node_memory",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.node.memory.total",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            },
+            {
+              "name": "B",
+              "metric": "recount.node.memory.available",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [
+            {
+              "expression": "A - B"
+            }
+          ],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "bytes",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      },
+      "executionNodes": true
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_disk",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "process.disk.io",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {
+        "ignoreFilters": ["execution"]
+      },
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_node_disk",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "system.disk.io",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      },
+      "executionNodes": true
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {
+        "ignoreFilters": ["execution"]
+      },
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_cluster_cpu",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.node.cpu.time",
+              "calculation": "rate",
+              "combine": "sum",
+              "filters": [
+                {
+                  "field": "attributes[\"cpu.mode\"]",
+                  "op": "neq",
+                  "values": ["idle"]
+                }
+              ]
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "none",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    },
+    {
+      "width": 6,
+      "height": 2,
+      "column": null,
+      "overrides": {
+        "ignoreFilters": ["execution"]
+      },
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_execution_cluster_memory",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.node.memory.total",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            },
+            {
+              "name": "B",
+              "metric": "recount.node.memory.available",
+              "calculation": "last",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [
+            {
+              "expression": "A - B"
+            }
+          ],
+          "filters": [],
+          "limit": 25,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "line",
+            "unit": "bytes",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
+    }
+  ]
+}
