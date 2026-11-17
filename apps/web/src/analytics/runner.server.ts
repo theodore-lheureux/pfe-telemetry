@@ -22,7 +22,7 @@ import {
 
 // Analyses may read more rows than the point reader, but time, memory and threads stay
 // within the telemetry_read profile's constraints, which ClickHouse enforces anyway.
-const SETTINGS = {
+export const ANALYTICS_SETTINGS = {
 	max_execution_time: 6,
 	max_threads: 4,
 	max_memory_usage: "268435456",
@@ -125,7 +125,7 @@ async function readWindow(
 			format: "JSONEachRow",
 			query_params: compiled.params,
 			abort_signal: abort,
-			clickhouse_settings: SETTINGS,
+			clickhouse_settings: ANALYTICS_SETTINGS,
 		});
 		for (const row of await result.json<
 			Record<string, string | number | null>
@@ -215,7 +215,7 @@ LIMIT 500`,
 				heartbeat: HEARTBEAT,
 			},
 			abort_signal: signal,
-			clickhouse_settings: SETTINGS,
+			clickhouse_settings: ANALYTICS_SETTINGS,
 		});
 		const rows = await result.json<{ node: string; buckets: string[] }>();
 		// No heartbeat at all means this project's sources don't send one, not that every
