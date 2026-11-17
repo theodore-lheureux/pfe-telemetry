@@ -109,7 +109,12 @@ export function MemberRow({
 				<TableCell>
 					<div className="flex items-center gap-2" aria-busy={changingRole}>
 						<Badge variant="outline">{roleLabel(role)}</Badge>
-						{changingRole && <Spinner aria-label={m.saving()} />}
+						{changingRole && (
+							<Spinner
+								aria-label={m.saving()}
+								className="text-muted-foreground"
+							/>
+						)}
 					</div>
 				</TableCell>
 				<TableCell>

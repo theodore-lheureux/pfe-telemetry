@@ -39,7 +39,7 @@ export function AutoSaveSelect<Value extends string>({
 	const [shown, show] = useOptimistic(value);
 	const [saving, startSaving] = useTransition();
 	return (
-		<div className={cn("flex items-center gap-2", className)}>
+		<div className={cn("relative", className)}>
 			<NativeSelect
 				id={id}
 				aria-label={label}
@@ -47,7 +47,11 @@ export function AutoSaveSelect<Value extends string>({
 				value={shown}
 				// Stays enabled while saving so keyboard focus is not lost.
 				disabled={disabled || !hydrated}
-				className="min-w-36 flex-1"
+				// The spinner takes the chevron's place while saving.
+				className={cn(
+					"w-full min-w-36",
+					saving && "[&_[data-slot=native-select-icon]]:invisible",
+				)}
 				onChange={(event) => {
 					if (saving) return;
 					const select = event.currentTarget;
@@ -64,9 +68,12 @@ export function AutoSaveSelect<Value extends string>({
 					</NativeSelectOption>
 				))}
 			</NativeSelect>
-			<span className="flex size-4 shrink-0">
-				{saving && <Spinner aria-label={m.saving()} />}
-			</span>
+			{saving && (
+				<Spinner
+					aria-label={m.saving()}
+					className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground"
+				/>
+			)}
 		</div>
 	);
 }

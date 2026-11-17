@@ -1,7 +1,13 @@
 import { m } from "@recount/i18n/messages";
 import { useRouter } from "@tanstack/react-router";
 import { getGlobalBroadcastChannel } from "better-auth/client";
-import { CircleCheckIcon, TriangleAlertIcon } from "lucide-react";
+import { cn } from "cn";
+import {
+	CircleCheckIcon,
+	OctagonXIcon,
+	TriangleAlertIcon,
+	XIcon,
+} from "lucide-react";
 import {
 	createContext,
 	type ReactNode,
@@ -18,6 +24,18 @@ import { useLocaleChangeBlocker } from "./locale-safety";
 import { Button } from "./ui/button";
 import { Toaster } from "./ui/sonner";
 
+const NOTICE_ICON = {
+	success: CircleCheckIcon,
+	warning: TriangleAlertIcon,
+	error: OctagonXIcon,
+};
+const NOTICE_TONE = {
+	success: "text-primary",
+	warning: "text-amber-700 dark:text-amber-400",
+	error: "text-destructive",
+};
+
+// Styled like Sonner's toasts, but keeps status and alert roles for announcements.
 function NoticeToast({
 	kind,
 	message,
@@ -27,27 +45,27 @@ function NoticeToast({
 	message: string;
 	onDismiss: () => void;
 }) {
+	const Icon = NOTICE_ICON[kind];
 	return (
-		<div className="flex w-[min(24rem,calc(100vw-2rem))] items-start gap-3 rounded-md border bg-card p-3 text-sm text-card-foreground shadow-lg">
+		<div className="flex w-[min(var(--width,356px),calc(100vw-2rem))] items-center gap-2.5 rounded-lg border bg-popover py-3 pr-2 pl-4 text-sm text-popover-foreground shadow-lg">
+			<Icon
+				aria-hidden="true"
+				className={cn("size-4 shrink-0", NOTICE_TONE[kind])}
+			/>
 			<p
 				role={kind === "error" ? "alert" : "status"}
-				className="flex min-w-0 flex-1 items-start gap-2"
+				className="min-w-0 flex-1"
 			>
-				{kind === "success" ? (
-					<CircleCheckIcon
-						aria-hidden="true"
-						className="mt-0.5 size-4 shrink-0 text-primary"
-					/>
-				) : (
-					<TriangleAlertIcon
-						aria-hidden="true"
-						className="mt-0.5 size-4 shrink-0"
-					/>
-				)}
 				{message}
 			</p>
-			<Button type="button" variant="ghost" size="sm" onClick={onDismiss}>
-				{m.dismiss_notice()}
+			<Button
+				type="button"
+				variant="ghost"
+				size="icon-xs"
+				aria-label={m.dismiss_notice()}
+				onClick={onDismiss}
+			>
+				<XIcon aria-hidden="true" />
 			</Button>
 		</div>
 	);
