@@ -4,8 +4,8 @@ TanStack Start with SSR, TanStack Query, TanStack Form, React, TypeScript, Tailw
 
 The [developer toolbar](../../docs/developer-toolbar.md) delegates approved collector
 workflows to Semaphore and is disabled unless explicitly configured for developer
-user IDs. Its setup reference includes the current native task-runner metadata
-permission blocker.
+user IDs. Its setup reference covers private Unix-socket transport, native
+task-runner permissions and validated public workflow results.
 
 ## Development
 

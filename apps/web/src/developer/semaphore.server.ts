@@ -13,6 +13,8 @@ import {
 	type WorkflowInput,
 	workflowFleet,
 } from "./contracts";
+import { publicTaskOutput } from "./public-results.server";
+import { surveyNames, validActionMetadata } from "./template-metadata.server";
 
 type TaskLabGuard = (
 	lab: string,
@@ -27,6 +29,7 @@ const templateSchema = z.object({
 	environment_ids: z.array(z.number().int().positive()).min(1),
 	arguments: z.string().nullable().optional(),
 	working_directory: z.string().nullable().optional(),
+	survey_vars: z.unknown().optional(),
 });
 type Template = z.infer<typeof templateSchema>;
 const taskSchema = z.object({
@@ -118,6 +121,7 @@ export class Semaphore {
 				`${this.config.baseUrl.replace(/\/$/, "")}/api/project/${this.config.projectId}/${path}`,
 				{
 					method: body ? "POST" : "GET",
+					...(this.config.unixSocket ? { unix: this.config.unixSocket } : {}),
 					headers: {
 						Authorization: `Bearer ${this.config.token}`,
 						"Content-Type": "application/json",
@@ -153,7 +157,8 @@ export class Semaphore {
 					!action ||
 					template.project_id !== this.config.projectId ||
 					template.working_directory ||
-					(template.arguments && template.arguments !== "[]")
+					(template.arguments && template.arguments !== "[]") ||
+					!validActionMetadata(action, template.survey_vars)
 				)
 					continue;
 				if (await this.matchesProject(template, projectId, action))
@@ -191,6 +196,9 @@ export class Semaphore {
 			!("DEMO_PROJECT" in vars) &&
 			!("DEMO_ENROLLMENT_KEY" in env) &&
 			!("DEMO_ENROLLMENT_KEY" in vars) &&
+			!surveyNames.some(
+				(name) => Object.hasOwn(env, name) || Object.hasOwn(vars, name),
+			) &&
 			(isLoadAction(action) ||
 				group.secrets.some(
 					(secret) =>
@@ -198,7 +206,9 @@ export class Semaphore {
 				)) &&
 			!group.secrets.some(
 				(secret) =>
-					secret.name === "DEMO_PROJECT_ID" || secret.name === "DEMO_PROJECT",
+					secret.name === "DEMO_PROJECT_ID" ||
+					secret.name === "DEMO_PROJECT" ||
+					surveyNames.includes(secret.name),
 			)
 		);
 	}
@@ -239,7 +249,11 @@ export class Semaphore {
 				action: match.action,
 				status: task.status,
 				created: task.created ?? null,
-				nativeUrl: `${this.config.baseUrl.replace(/\/$/, "")}/project/${this.config.projectId}/history?t=${task.id}`,
+				...(match.action === "list"
+					? {}
+					: {
+							nativeUrl: `${this.config.uiUrl.replace(/\/$/, "")}/project/${this.config.projectId}/history?t=${task.id}`,
+						}),
 			});
 		}
 		return visible;
@@ -252,20 +266,7 @@ export class Semaphore {
 				values &&
 				typeof values === "object" &&
 				!Array.isArray(values) &&
-				Object.keys(values).every((key) =>
-					[
-						"DEMO_LAB",
-						"DEMO_FLEET",
-						"DEMO_COUNT",
-						"DEMO_TTL",
-						"DEMO_COST",
-						"DEMO_PRESET",
-						"DEMO_WORKLOAD",
-						"DEMO_DURATION",
-						"DEMO_DISCARD",
-						"DEMO_CONFIRM",
-					].includes(key),
-				)
+				Object.keys(values).every((key) => surveyNames.includes(key))
 			);
 		} catch {
 			return false;
@@ -351,6 +352,7 @@ export class Semaphore {
 			: undefined;
 		if (
 			!task.success ||
+			task.data.id !== taskId ||
 			task.data.project_id !== this.config.projectId ||
 			!this.taskProjectSafe(task.data.environment) ||
 			!match ||
@@ -358,22 +360,19 @@ export class Semaphore {
 		)
 			throw new OperationError("NOT_FOUND", "Task not found");
 		await this.authorizeTaskLab(task.data, match.action, guard);
+		if (!match.action.startsWith("create") && !isLoadAction(match.action))
+			return "";
 		const result = z
 			.array(z.object({ output: z.string() }))
 			.safeParse(await this.request(`tasks/${taskId}/output`));
 		if (!result.success) return unavailable();
-		return result.data
-			.slice(-500)
-			.map(({ output }) => publicLogLine(output, match.action))
-			.join("\n");
+		return publicTaskOutput(
+			result.data.slice(-500).map(({ output }) => output),
+			{
+				action: match.action,
+				projectId,
+				survey: JSON.parse(task.data.environment || "{}"),
+			},
+		);
 	}
-}
-
-export function publicLogLine(line: string, action: WorkflowAction = "list") {
-	// Arbitrary Ansible output can contain unknown secrets. Only full, bounded
-	// public contract lines cross the boundary; never attempt to scrub secret values.
-	if (!action.startsWith("create")) return "[redacted]";
-	if (/^RECOUNT_PUBLIC lab=demo-[a-z0-9-]{1,19}$/.test(line)) return line;
-	if (/^RECOUNT_PUBLIC ttl=(15m|30m|1h|2h|4h)$/.test(line)) return line;
-	return "[redacted]";
 }

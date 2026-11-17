@@ -75,7 +75,16 @@ export function developerOperations(deps: DeveloperDependencies = defaults) {
 			reference: ProjectReference,
 		) {
 			if (!deps.allowed(actor.id)) return null;
-			await deps.authorize(database, actor, reference, "admin");
+			try {
+				await deps.authorize(database, actor, reference, "admin");
+			} catch (error) {
+				if (
+					error instanceof OperationError &&
+					["FORBIDDEN", "NOT_FOUND"].includes(error.code)
+				)
+					return null;
+				throw error;
+			}
 			if (!deps.connector()) return null;
 			return {
 				enabled: true as const,

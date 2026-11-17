@@ -112,7 +112,7 @@ export type WorkflowInput = ReturnType<typeof parseWorkflow>;
 
 export function survey(input: WorkflowInput) {
 	const values: Record<string, string> = {};
-	if (input.lab) values.DEMO_LAB = input.lab;
+	if (input.lab && input.action !== "list") values.DEMO_LAB = input.lab;
 	if (input.action.startsWith("create")) {
 		Object.assign(values, {
 			DEMO_COUNT: input.count,

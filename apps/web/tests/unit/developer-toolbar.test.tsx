@@ -17,8 +17,8 @@ import {
 	type DeveloperDependencies,
 	developerOperations,
 } from "../../src/developer/developer.server";
+import { publicTaskOutput } from "../../src/developer/public-results.server";
 import {
-	publicLogLine,
 	Semaphore,
 	taskScopeMessage,
 } from "../../src/developer/semaphore.server";
@@ -26,6 +26,7 @@ import { TaskStatus } from "../../src/developer/task-status";
 import { DeveloperToolbar } from "../../src/developer/toolbar";
 import { ttlLabels } from "../../src/developer/workflow-labels";
 import { OperationError } from "../../src/lib/operation-error";
+import { nativeSurvey } from "./developer-template-fixtures";
 
 const reference = {
 	organizationId: "org-one",
@@ -34,6 +35,7 @@ const reference = {
 const otherProject = "22222222-2222-4222-8222-222222222222";
 const config = {
 	baseUrl: "https://semaphore.invalid",
+	uiUrl: "https://semaphore-ui.invalid",
 	projectId: 7,
 	token: "private-api-token",
 	gpuEnabled: false,
@@ -62,7 +64,7 @@ const task = {
 	id: 20,
 	template_id: 4,
 	project_id: 7,
-	status: "running",
+	status: "running" as const,
 	created: "2026-11-17T12:00:00Z",
 	environment: "{}",
 	message: taskScopeMessage(
@@ -95,6 +97,15 @@ function upstream(overrides: Record<string, unknown> = {}) {
 		],
 		...overrides,
 	};
+	if (Array.isArray(routes.templates))
+		routes.templates = routes.templates.map((entry) => {
+			const action = (Object.keys(playbooks) as WorkflowAction[]).find(
+				(key) => playbooks[key] === entry.playbook,
+			);
+			return action && !Object.hasOwn(entry, "survey_vars")
+				? { ...entry, survey_vars: nativeSurvey(action) }
+				: entry;
+		});
 	const transport = (async (
 		url: string | URL | Request,
 		init?: RequestInit,
@@ -195,6 +206,20 @@ describe("developer boundary", () => {
 			await expect(run()).rejects.toMatchObject({ code: "NOT_FOUND" });
 		expect(authorizations).toHaveLength(0);
 		expect(calls).toHaveLength(0);
+	});
+	test("capability is null for allowlisted users without project administration and does not contact Semaphore", async () => {
+		for (const code of ["FORBIDDEN", "NOT_FOUND"] as const) {
+			const { connector, calls } = upstream();
+			const { api } = operations(connector, {
+				authorize: async () => {
+					throw new OperationError(code, "Project inaccessible");
+				},
+			});
+			expect(
+				await api.capability(database as never, actor, reference),
+			).toBeNull();
+			expect(calls).toHaveLength(0);
+		}
 	});
 	test("existing lab operations require a server grant and source authorization", async () => {
 		const { connector, calls } = upstream();
@@ -428,6 +453,102 @@ describe("survey allowlist", () => {
 });
 
 describe("pinned Semaphore API connector", () => {
+	test("action metadata must have the exact current survey names, targets and enum choices", async () => {
+		const current = nativeSurvey("create-cpu");
+		for (const survey_vars of [
+			undefined,
+			null,
+			[],
+			current.slice(1),
+			[...current, current[0]],
+			current.map((item) =>
+				item.name === "DEMO_LAB" ? { ...item, required: true } : item,
+			),
+			current.map((item) =>
+				item.name === "DEMO_LAB"
+					? { ...item, default_value: "fallback-lab" }
+					: item,
+			),
+			current.map((item) =>
+				item.name === "DEMO_COUNT" ? { ...item, target: "" } : item,
+			),
+			current.map((item) =>
+				item.name === "DEMO_PRESET"
+					? { ...item, values: [{ value: "arbitrary-instance" }] }
+					: item,
+			),
+			[
+				...current,
+				{ name: "DEMO_PROJECT_ID", target: "env", default_value: otherProject },
+			],
+		]) {
+			const { connector, calls } = upstream({
+				templates: [{ ...template, survey_vars }],
+			});
+			await expect(connector.run(input())).rejects.toMatchObject({
+				code: "UNAVAILABLE",
+			});
+			expect(calls.some((call) => call.init?.method === "POST")).toBe(false);
+		}
+	});
+	test("List never fetches fleet-wide output even when its template is project-bound; Destroy still requires a lab grant", async () => {
+		const environment = "{}";
+		const listed = {
+			...task,
+			environment,
+			message: taskScopeMessage(
+				config.token,
+				reference.projectId,
+				4,
+				environment,
+				"list",
+			),
+		};
+		const { connector, calls } = upstream({
+			templates: [{ ...template, playbook: playbooks.list }],
+			"tasks/20": listed,
+			"tasks/last?count=30": [listed],
+		});
+		expect(await connector.recent(reference.projectId)).toEqual([
+			{ id: 20, action: "list", status: task.status, created: task.created },
+		]);
+		expect(await connector.output(reference.projectId, 20)).toBe("");
+		expect(calls.some((call) => call.path.endsWith("/output"))).toBe(false);
+		const denied = operations(connector, { labGrant: () => null }).api;
+		await expect(
+			denied.run(
+				database,
+				actor,
+				input({ action: "destroy", lab: "demo-lab" }),
+			),
+		).rejects.toMatchObject({ code: "FORBIDDEN" });
+		expect(calls.some((call) => call.init?.method === "POST")).toBe(false);
+	});
+	test("project groups cannot supply fallbacks or overrides for signed survey fields", async () => {
+		for (const changes of [
+			{
+				env: JSON.stringify({
+					...JSON.parse(group.env),
+					DEMO_LAB: "other-lab",
+				}),
+			},
+			{ json: JSON.stringify({ DEMO_TTL: "4h" }) },
+			{
+				secrets: [
+					...group.secrets,
+					{ name: "DEMO_COST", type: "env", secret: "unknown" },
+				],
+			},
+		]) {
+			const { connector, calls } = upstream({
+				"environment/9": { ...group, ...changes },
+			});
+			await expect(connector.run(input())).rejects.toMatchObject({
+				code: "UNAVAILABLE",
+			});
+			expect(calls.some((call) => call.init?.method === "POST")).toBe(false);
+		}
+	});
 	test("real local HTTP transport carries bearer auth but never follows upstream redirects", async () => {
 		const credentials: (string | null)[] = [];
 		let redirected = 0;
@@ -546,7 +667,7 @@ describe("pinned Semaphore API connector", () => {
 				action: "create-cpu",
 				status: "running",
 				created: task.created,
-				nativeUrl: "https://semaphore.invalid/project/7/history?t=20",
+				nativeUrl: "https://semaphore-ui.invalid/project/7/history?t=20",
 			},
 		]);
 	});
@@ -627,7 +748,7 @@ describe("pinned Semaphore API connector", () => {
 		const allowed = operations(fixture().connector).api;
 		expect(
 			await allowed.output(database, actor, { ...reference, taskId: 20 }),
-		).toBe("[redacted]\n[redacted]");
+		).toBe("");
 	});
 	test("logs with tokens, enrollment keys, variable groups or injected HTML never cross the boundary", async () => {
 		for (const line of [
@@ -637,14 +758,15 @@ describe("pinned Semaphore API connector", () => {
 			'{"secret":"value"}',
 			"RECOUNT_PUBLIC ttl=15m token=secret",
 		])
-			expect(publicLogLine(line, "create-cpu")).toBe("[redacted]");
-		expect(publicLogLine("RECOUNT_PUBLIC lab=demo-other-project", "list")).toBe(
-			"[redacted]",
-		);
+			expect(
+				publicTaskOutput([line], {
+					action: "create-cpu",
+					projectId: reference.projectId,
+					survey: {},
+				}),
+			).toBe("");
 		const { connector } = upstream();
-		expect(await connector.output(reference.projectId, 20)).toBe(
-			"[redacted]\nRECOUNT_PUBLIC ttl=15m",
-		);
+		expect(await connector.output(reference.projectId, 20)).toBe("");
 	});
 	test("cannot fetch output from another template or project", async () => {
 		const { connector, calls } = upstream({
@@ -654,6 +776,37 @@ describe("pinned Semaphore API connector", () => {
 			connector.output(reference.projectId, 20),
 		).rejects.toMatchObject({ code: "NOT_FOUND" });
 		expect(calls.some((call) => call.path.endsWith("/output"))).toBe(false);
+	});
+	test("connector publishes Create metadata only from an authorized task with a matching signed survey", async () => {
+		const environment = JSON.stringify(survey(input()));
+		const message = taskScopeMessage(
+			config.token,
+			reference.projectId,
+			4,
+			environment,
+			"create-cpu",
+		);
+		const payload = { lab_id: "demo-0123456789abcdef", ttl: "15m" };
+		const marker = `"msg": "RECOUNT_PUBLIC_CREATE ${Buffer.from(JSON.stringify(payload)).toString("base64")}"`;
+		const { connector, calls } = upstream({
+			"tasks/20": { ...task, environment, message },
+			"tasks/20/output": [
+				{ output: `private diagnostic\n    ${marker}\nsecret token` },
+			],
+		});
+		expect(JSON.parse(await connector.output(reference.projectId, 20))).toEqual(
+			payload,
+		);
+		expect(calls.some((call) => call.path.endsWith("/output"))).toBe(true);
+		const mismatched = upstream({
+			"tasks/20": { ...task, id: 21, environment, message },
+		});
+		await expect(
+			mismatched.connector.output(reference.projectId, 20),
+		).rejects.toMatchObject({ code: "NOT_FOUND" });
+		expect(mismatched.calls.some((call) => call.path.endsWith("/output"))).toBe(
+			false,
+		);
 	});
 	test("historical rebinding, unsigned tasks and modified survey data cannot cross project reads", async () => {
 		for (const altered of [

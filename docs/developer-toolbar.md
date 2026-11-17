@@ -19,16 +19,39 @@ configuration. Do not use `VITE_` variables or commit real values.
 | Setting                         | Value                                                                                          |
 | ------------------------------- | ---------------------------------------------------------------------------------------------- |
 | `RECOUNT_DEVELOPER_USER_IDS`    | Comma-separated canonical Better Auth user IDs; configure Theodore's actual user ID explicitly |
-| `RECOUNT_SEMAPHORE_URL`         | Trusted HTTPS Semaphore root URL, without `/api`, credentials, query or fragment               |
+| `RECOUNT_SEMAPHORE_UNIX_SOCKET` | Absolute private Unix socket path; preferred host-local transport                              |
+| `RECOUNT_SEMAPHORE_URL`         | Explicit HTTPS API root URL when not using a Unix socket                                       |
+| `RECOUNT_SEMAPHORE_UI_URL`      | Required separate HTTPS native UI root URL; never inferred from the API transport              |
 | `RECOUNT_SEMAPHORE_PROJECT_ID`  | Positive native Semaphore project ID                                                           |
 | `RECOUNT_SEMAPHORE_TOKEN`       | Bearer API token for a dedicated non-admin native account                                      |
 | `RECOUNT_SEMAPHORE_GPU_ENABLED` | Defaults to disabled; only the exact value `true` enables GPU creation                         |
 | `RECOUNT_DEVELOPER_LAB_GRANTS`  | Optional server-owned JSON object granting existing-lab operations, described below            |
 
 Missing allowlist or invalid connector configuration hides the entry point.
+An allowlisted user without current project-admin access also receives a null
+capability; developer discovery does not break ordinary project navigation.
 Ordinary users receive a null capability, no task payload and no upstream request.
 Organization administration, email domains and application environment mode never
 grant developer access.
+
+### Private transport
+
+Prefer the host-local Unix socket exposed by the deployment's systemd proxy. The
+connector uses Bun's `fetch(url, { unix: socketPath })`, fixed internal authority
+`http://localhost`, and its ordinary scoped bearer token. It does not create the
+socket, proxy, service account or deployment wiring.
+
+Socket paths must be absolute, normalized, non-root paths without control
+characters, whitespace or a trailing slash, using at most 107 printable ASCII
+bytes. Configure
+exactly one of the socket and HTTPS API URL. An empty/invalid socket setting or
+mixed transport settings disables the connector; socket errors never fall back
+to external HTTP. Redirects are rejected in either mode. No Cloudflare hostname,
+service token or privileged proxy is required by this implementation.
+
+Native task links use only the separately configured HTTPS UI URL, with the
+viewer's own native sign-in. The private socket path, internal authority, API
+transport URL, bearer token and request headers are not returned to the browser.
 
 Existing-lab operations need an explicit server-owned grant:
 
@@ -61,25 +84,35 @@ Use a dedicated native account with `task_runner` membership only in the approve
 Semaphore project. Do not use an initial administrator password, cloud credentials,
 the account of a human administrator, or paid permission features.
 
-**Integration blocker in 2.20.23:** native task execution requires
-`CanRunProjectTasks`, but
-[`GET /api/project/{id}/environment/{environmentId}`](https://github.com/semaphoreui/semaphore/blob/v2.20.23/api/router.go)
-requires `CanManageProjectResources`. A native `task_runner` cannot inspect the
-variable-group metadata needed to prove the template's target. The connector
-therefore reports unavailable with that account. Do not elevate it to manager to
-make the toolbar work. A reviewed read-only metadata capability in the upstream
-integration is needed before enabling live use. No privileged metadata proxy or
-alternate credential is implemented here.
+Native task execution requires `CanRunProjectTasks`. The pinned
+[`environment/{environmentId}` route](https://github.com/semaphoreui/semaphore/blob/v2.20.23/api/router.go)
+applies `EnvironmentMiddleware` without the resource-management permission check
+previously attributed to it.
+
+Operational verification with a dedicated non-admin bearer confirmed the exact
+project membership, HTTP 200 for the effective variable group's metadata, encrypted
+key names/types without secret values, and denial of instance-administrator
+operations. Private Unix-socket bearer transport was also probed from the published
+Bun image. No account identifiers or credentials are needed in this reference.
+Keep the native `task_runner` role; no privilege elevation or alternate admin
+credential is needed. A denied or malformed response still fails closed rather than
+skipping project-binding verification.
 
 For each approved template, the connector verifies:
 
 - Native `app` is `ansible`, project ID matches, the playbook is an exact allowlisted
   path, no alternate working directory is configured, and arguments are empty.
+- The native survey has exactly the expected current names, environment targets,
+  required/optional flags, types and enum values, with no duplicate or additional
+  fields. An optional Create lab cannot have a nonempty default. Missing required
+  metadata or conflicting action metadata cannot queue a task. An omitted
+  `required` flag is false, matching Semaphore's JSON serialization.
 - Exactly one native variable group is selected. Multiple groups fail closed rather
   than guessing effective secret precedence.
 - That group's native ID and project match. Its public environment variables contain
   `DEMO_PROJECT_ID` equal to the authorized Recount project and a valid `DEMO_PROJECT`
-  label. Ordinary JSON variables cannot shadow either.
+  label. Ordinary JSON variables cannot shadow either, and the group cannot define
+  task survey fields as environment variables, JSON variables or secrets.
 - Non-load templates require `DEMO_ENROLLMENT_KEY` as native secret-env metadata.
   Load templates require only the public project-group metadata, not an enrollment
   secret. Public enrollment keys and secret project-label/project-ID overrides are
@@ -87,7 +120,7 @@ For each approved template, the connector verifies:
 - Exactly one template matches the requested action and project. Duplicate matching
   copies are ambiguous; display names are never authorization.
 
-Attach the appropriate project group to List and Destroy templates too; the empty
+Use project-specific List and Destroy templates with the appropriate project group; the empty
 bootstrap group is not accepted. Treat approved templates and their project groups
 as stable bindings: create a new project-specific template rather than repointing
 one with task history.
@@ -174,38 +207,55 @@ Application authentication also clears the shared QueryClient on identity change
 Selecting a task opens its output beside the list on wider screens. On mobile it
 opens a separate output view with a Back control. The on-demand
 `@melloware/react-logviewer` component provides search, line numbers, selection and
-virtualized scrolling. It receives only already-redacted text, never an upstream
+virtualized scrolling. It receives only reserialized validated public results, never an upstream
 URL or credentials; remote loading, link detection and global search hotkeys are
 not enabled. Authorized task links use Semaphore's native
 `/project/{id}/history?t={taskId}` route and require the viewer's own Semaphore
 sign-in, never the connector token.
 
 Arbitrary Ansible output may contain secrets unknown to the web application.
-Replacing known tokens is not sufficient redaction. The browser therefore receives
-`[redacted]` for every raw output line except these complete bounded public lines
-from Create tasks:
+Raw output is never forwarded. The parser accepts only full-line native debug
+JSON key/value records, with optional surrounding whitespace:
 
 ```text
-RECOUNT_PUBLIC lab=demo-example
-RECOUNT_PUBLIC ttl=15m
+"msg": "RECOUNT_PUBLIC_CREATE <canonical base64>"
+"msg": "RECOUNT_PUBLIC_LOAD <canonical base64>"
 ```
 
-These lines are an **integration proposal**, not an implemented infrastructure
-output contract. No arbitrary output, HTML, headers, variable groups or secret
-values are forwarded. Logs are rendered as text, never HTML.
+Only syntactically valid SGR colour sequences are stripped. Cursor-control
+sequences, OSC, backspaces, partial escapes, arbitrary prefixes/suffixes, noncanonical
+base64 and invalid UTF-8/JSON are rejected. Decoded payloads are capped at 65,536
+bytes. Unknown object fields are rejected at every level. Accepted records are
+reserialized as JSON; the raw line, base64 and surrounding logs are never returned.
 
-List is a workflow, not a fleet API. The current human-readable List output is
-withheld; no VM counts, remaining TTL or fleet ownership are inferred from it.
-Useful inventory display still needs a reviewed structured public-output contract
-containing project-qualified lab ownership, VM identifiers and remaining TTL, with
-explicit secret exclusions and bounded records. Enrolled Recount nodes are not VM
-inventory. No infrastructure changes are included with the toolbar.
+`RECOUNT_PUBLIC_CREATE` is accepted only for Create CPU/GPU. The strict payload is
+`{lab_id, ttl}`. TTL must match the task's signed survey. An explicit lab must match
+exactly; an automatically generated lab must be `demo-` followed by 16 lowercase hex
+digits. This payload has no project field: project authority comes from the verified
+template/group and task scope marker.
 
-Load output and partial/final results are likewise withheld: native human output
-is not a browser-safe results contract. A future public contract must bind the
-Recount project, lab, fleet, workload profile and shared execution/job ID, define
-bounded checkpoint/shard/reduced-result records and exclude secrets. The toolbar
-does not infer completed load results from task success or parse human logs.
+`RECOUNT_PUBLIC_LOAD` is accepted only for the four load actions and follows the
+current `recount_demo_load.py` public summary: job/lab/project/fleet/profile/duration,
+aggregate state, bounded node checkpoints and CPU-only reduction. Decoded project
+must match the currently authorized Recount project, and lab/fleet must match the
+task's signed survey. Starts also match the signed profile and cannot exceed the
+requested duration; a shorter executor-clamped duration is valid.
+
+Node cardinality, unique names, states, elapsed-time/counter bounds, CPU reduction
+totals and pi estimates, GPU profiler fields and exit statuses are validated.
+Native task success is not interpreted as job completion. Repeated snapshots may
+update one job; conflicting job or generated-lab identities withhold the result.
+No valid record means no public output. Task scope, canonical project access and
+current load lab grants are checked before output is parsed.
+
+List currently enumerates the entire demo fleet. Its output remains entirely
+withheld, even when the native template is project-bound: a project group alone
+does not establish per-VM ownership. List has no native output link in the
+toolbar. List and all other unsupported output actions
+do not fetch raw task output. No VM counts, TTL or fleet ownership are inferred.
+Exposing List requires executor-verified per-project ownership and an agreed
+structured inventory contract. Destroy retains its explicit existing-lab grant
+and project checks. No infrastructure changes are included with the toolbar.
 
 ## Validate
 
