@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { ArrowLeftIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
@@ -35,6 +36,8 @@ export function TemplateCreateDialog({
 }) {
 	const id = useId();
 	const [selected, setSelected] = useState(initialTemplateId);
+	// Choose a starting point, then name it; a template opened directly skips the choice.
+	const [choosing, setChoosing] = useState(!initialTemplateId);
 	const [node, setNode] = useState("-all");
 	const [dashboardId] = useState(() => crypto.randomUUID());
 	const { choices, projects } = useTemplateChoices(userId, reference, open);
@@ -85,34 +88,52 @@ export function TemplateCreateDialog({
 			error={mutation.kind === "success" ? "" : mutation.message}
 			onClose={onClose}
 			onSubmit={(value) => void submit(value)}
+			step={
+				choosing && (
+					<div className="flex flex-col gap-4">
+						<TemplateGallery
+							choices={choices}
+							selected={selected}
+							metrics={catalog.data?.metrics}
+							disabled={mutation.disabled}
+							onSelect={(next) => {
+								setSelected(next);
+								setNode("-all");
+								mutation.clearMessage();
+								setChoosing(false);
+							}}
+						/>
+						{failed && (
+							<div role="alert" className="flex items-center gap-2 text-sm">
+								{m.dashboard_templates_load_error()}
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => {
+										void projects.refetch();
+										void catalog.refetch();
+									}}
+								>
+									{m.try_again()}
+								</Button>
+							</div>
+						)}
+					</div>
+				)
+			}
 		>
-			<TemplateGallery
-				choices={choices}
-				selected={selected}
-				metrics={catalog.data?.metrics}
-				disabled={mutation.disabled}
-				onSelect={(next) => {
-					setSelected(next);
-					setNode("-all");
-					mutation.clearMessage();
-				}}
-			/>
-			{failed && (
-				<div role="alert" className="flex items-center gap-2 text-sm">
-					{m.dashboard_templates_load_error()}
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={() => {
-							void projects.refetch();
-							void catalog.refetch();
-						}}
-					>
-						{m.try_again()}
-					</Button>
-				</div>
-			)}
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				className="self-start"
+				disabled={mutation.pending}
+				onClick={() => setChoosing(true)}
+			>
+				<ArrowLeftIcon aria-hidden="true" />
+				{m.go_back()}
+			</Button>
 			{choice && (
 				<TemplatePreview
 					template={choice.template}
