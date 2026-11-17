@@ -11,6 +11,7 @@ import {
 	ReferenceArea,
 	ReferenceLine,
 	Tooltip,
+	usePlotArea,
 	XAxis,
 	YAxis,
 } from "recharts";
@@ -114,11 +115,16 @@ function TooltipCard({
 	gapLabel?: (key: string, bucketMs: number) => string | null;
 	timeZone: string;
 }) {
+	// Recharts keeps a tooltip inside the plot only when it fits; a wider one overflows the tile.
+	const plot = usePlotArea();
 	if (!active || !payload?.length || typeof label !== "number") return null;
 	const row = payload[0]?.payload as Record<string, number | null>;
 	const locale = getLocale();
 	return (
-		<div className="grid min-w-0 max-w-full gap-1.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
+		<div
+			className="grid min-w-0 gap-1.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md"
+			style={{ maxWidth: plot?.width }}
+		>
 			<p className="font-medium">
 				{new Intl.DateTimeFormat(locale, {
 					dateStyle: "medium",
@@ -452,7 +458,7 @@ export function TimeseriesChart({
 					margin={{
 						left: yLabel ? 16 : 4,
 						right: 12,
-						top: showValues ? 18 : 8,
+						top: showValues ? 18 : 12,
 						bottom: xLabel ? 16 : 0,
 					}}
 					onMouseDown={(state) => {
@@ -574,8 +580,6 @@ export function TimeseriesChart({
 					)}
 					<Tooltip
 						isAnimationActive={false}
-						// Keeps a wide tooltip inside narrow tiles instead of scrolling them.
-						wrapperStyle={{ maxWidth: "100%" }}
 						cursor={{ stroke: "var(--border)", strokeWidth: 1 }}
 						content={(props) => (
 							<TooltipCard

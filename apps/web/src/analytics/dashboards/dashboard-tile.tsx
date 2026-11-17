@@ -361,7 +361,7 @@ function TileBody({
 			/>
 		);
 	return (
-		<div className="min-h-0 flex-1 overflow-auto">
+		<div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
 			<ChartBody
 				result={data}
 				view={view}
