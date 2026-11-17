@@ -222,6 +222,10 @@ once in root-owned mode-0600 `/etc/recount/ingestion.env`. Web uses `recount_web
 not the PostgreSQL bootstrap account; ingestion receives the existing SELECT-only
 grants. Sign-up remains disabled.
 
+Activation appends `/etc/recount/web.local.yaml` when it exists. This optional
+root-owned mode-0600 Compose overlay holds host-specific `web` settings, such as
+the [developer toolbar](../../docs/developer-toolbar.md) socket mount and settings file.
+
 Explicit initialization reuses the existing empty-data helpers, records all
 three database identities and creates topics only on an empty broker. Partial
 data without a recorded identity fails for inspection; reruns never reset it.
