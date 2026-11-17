@@ -54,9 +54,13 @@ export function AutoSaveSelect<Value extends string>({
 					if (saving) return;
 					const select = event.currentTarget;
 					const next = select.value as Value;
+					// A handler that opens a confirmation returns nothing; keep that out of the
+					// transition, which would otherwise own the dialog it opens.
+					const save = onSave(next, select);
+					if (!save) return;
 					startSaving(async () => {
 						show(next);
-						await onSave(next, select);
+						await save;
 					});
 				}}
 			>

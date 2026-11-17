@@ -5,7 +5,7 @@ import type { createAuth } from "../../src/auth/create-auth.server";
 import { session } from "../../src/db/schema";
 import { gate } from "../gate";
 import { authenticatorCode } from "../totp";
-import { expect, test } from "./fixtures";
+import { expect, notices, test } from "./fixtures";
 
 async function deliverStepUpCodes(
 	page: Page,
@@ -304,7 +304,7 @@ test("a recovered verification does not automatically perform the queued securit
 		.getByRole("button", { name: "Verify and continue", exact: true })
 		.click();
 	await expect(verify).toHaveCount(0);
-	await expect(page.getByRole("status")).toContainText(
+	await expect(notices(page)).toContainText(
 		"the previous action was not performed",
 	);
 	expect(writes).toBe(0);

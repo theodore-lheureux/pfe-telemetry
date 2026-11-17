@@ -51,6 +51,8 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 	const [notices, setNotices] = useState<
 		{
 			id: number;
+			/** The toast slot; a notice that replaces a confirmation reuses its slot. */
+			toast: number;
 			message: string;
 			kind: FeedbackKind;
 			origin?: string;
@@ -165,7 +167,7 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 	// navigation-scoped clearing keep working.
 	const shown = useRef(new Set<number>());
 	useEffect(() => {
-		const current = new Set(notices.map((notice) => notice.id));
+		const current = new Set(notices.map((notice) => notice.toast));
 		for (const id of shown.current)
 			if (!current.has(id)) toast.dismiss(`notice-${id}`);
 		for (const notice of notices) {
@@ -174,7 +176,7 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 					previous.filter((entry) => entry.id !== notice.id),
 				);
 			SHOW_NOTICE[notice.kind](notice.message, {
-				id: `notice-${notice.id}`,
+				id: `notice-${notice.toast}`,
 				duration: notice.settled ? CONFIRMATION_MS : Number.POSITIVE_INFINITY,
 				closeButton: true,
 				onDismiss: forget,
@@ -189,6 +191,7 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 				? [
 						{
 							id: ++nextId.current,
+							toast: nextId.current,
 							message,
 							kind,
 							settled: kind === "success",
@@ -203,11 +206,13 @@ export function MutationFeedback({ children }: { children: ReactNode }) {
 		kind: FeedbackKind = "success",
 	): MutationNotice {
 		const id = ++nextId.current;
-		// A new notice replaces confirmations that are still on screen.
+		// A new notice replaces confirmations still on screen, updating their toast in
+		// place so two identical toasts never animate at once.
 		setNotices((previous) => [
 			...previous.filter((notice) => !notice.settled),
 			{
 				id,
+				toast: previous.find((notice) => notice.settled)?.toast ?? id,
 				message,
 				kind,
 				origin: transient ? router.state.location.href : undefined,
