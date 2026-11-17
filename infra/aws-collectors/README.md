@@ -44,6 +44,12 @@ root-only `/run` storage, then removed after `node.json` exists. Node keys and
 queues persist privately under `/var/lib/recount-collector`; reruns and release
 updates never reset them.
 
+Each VM is named after its EC2 `Name` tag, such as `recount-collector-first`,
+which is how the Nodes page lists it; cloud-init is told to keep that hostname.
+When the name changes, the playbook removes `node.json` so the collector enrolls
+again: the same machine ID updates its existing node and keeps its history and
+queue.
+
 The service has a 256-MiB cap on the 512-MiB host. Measure actual memory pressure
 before adding workloads. `RestartSec=75` avoids exhausting five starts in five
 minutes during temporary enrollment connectivity failures.
@@ -104,6 +110,10 @@ private `infra/aws-collectors/.state/ansible-vars.json` containing:
 - `recount_collector_release_sha256`: its attested SHA-256.
 
 After the owner pushes and approves infrastructure CD apply:
+
+On a macOS controller, also set `no_proxy='*'`: without it, Ansible's forked
+workers can crash ("A worker was found in a dead state") while macOS looks up
+proxy settings for the AWS clients.
 
 ```sh
 AWS_PROFILE=pfe \

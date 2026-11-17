@@ -22,6 +22,7 @@
           - recount_collector_release_sha256 is match('^[a-f0-9]{64}$')
           - recount_collector_endpoint == "https://ingest.recount.cloud"
           - recount_collector_enrollment_url == "https://app.recount.cloud"
+          - ec2_tags.Name is match('^recount-collector-[a-z0-9-]+$')
         quiet: true
 
     - name: Wait for the minimal cloud-init bootstrap
@@ -102,6 +103,30 @@
         owner: root
         group: root
         mode: "0644"
+      notify: Restart the collector
+
+    # Nodes are listed by hostname, so use the instance's Name tag instead of the
+    # EC2 default ip-… name; cloud-init would otherwise reset it at boot.
+    - name: Keep the hostname set below across reboots
+      ansible.builtin.copy:
+        content: "preserve_hostname: true\n"
+        dest: /etc/cloud/cloud.cfg.d/99-recount-hostname.cfg
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Name the host after its instance
+      ansible.builtin.hostname:
+        name: "{{ ec2_tags.Name }}"
+      register: recount_hostname
+
+    # Enrolling again with the same machine ID updates the existing node, keeping
+    # its history; the node keeps its queue under /var/lib/recount-collector.
+    - name: Re-enroll so the node reports its new hostname
+      ansible.builtin.file:
+        path: /var/lib/recount-collector/node/node.json
+        state: absent
+      when: recount_hostname is changed
       notify: Restart the collector
 
     - name: Enable the collector and preserve its existing identity and queue
