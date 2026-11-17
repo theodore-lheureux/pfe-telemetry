@@ -14,10 +14,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ingestion-release-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   build:
     if: github.ref == 'refs/heads/main'
@@ -100,6 +96,7 @@ jobs:
     environment: ingestion-deploy
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    # One deploy at a time; a newer push's deploy replaces one still awaiting approval.
     concurrency:
       group: ingestion-deploy
       cancel-in-progress: false
