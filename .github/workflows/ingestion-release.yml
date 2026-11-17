@@ -46,6 +46,12 @@ jobs:
         with:
           just-version: "1.58.0"
       - run: rustup show active-toolchain
+      # Release-only keys written only from main; the cache holds downloaded crates and
+      # compiled dependencies, while workspace crates always rebuild from this commit.
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2 zizmor: ignore[cache-poisoning]
+        with:
+          shared-key: release-${{ matrix.arch }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
       - name: Compile on the native Linux host
         run: |
