@@ -148,6 +148,8 @@ function RootDocument({ children }: { children: ReactNode }) {
 						apiKey={posthogToken}
 						options={{
 							api_host: posthogHost,
+							// The API host may be a reverse proxy; links and the toolbar use the app.
+							ui_host: "https://us.posthog.com",
 							capture_exceptions: true,
 							tracing_headers:
 								typeof window === "undefined" ? [] : [window.location.hostname],

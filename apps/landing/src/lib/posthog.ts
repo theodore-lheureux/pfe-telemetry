@@ -9,6 +9,8 @@ export function startAnalytics() {
 	if (!enabled || posthog.__loaded) return;
 	posthog.init(token, {
 		api_host: host,
+		// The API host is a reverse proxy; links and the toolbar use the app.
+		ui_host: "https://us.posthog.com",
 	});
 }
 
