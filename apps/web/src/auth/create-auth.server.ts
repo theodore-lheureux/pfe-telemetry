@@ -172,7 +172,10 @@ export function createAuth(
 		databaseHooks: {
 			user: {
 				create: {
-					before: async (newUser) => {
+					before: async (newUser, context) => {
+						// Without an endpoint context the account is created by trusted
+						// server code, such as operator provisioning, not by sign-up.
+						if (!context) return;
 						await assertAccountCreationAllowed(
 							database,
 							config.allowSignUp,
