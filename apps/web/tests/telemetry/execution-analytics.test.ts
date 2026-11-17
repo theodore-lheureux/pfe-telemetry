@@ -4,6 +4,7 @@ import { readPoints } from "../../src/activity/points.server";
 import type { AnalyticsQuery, Filter } from "../../src/analytics/contracts";
 import { listAttributeValues } from "../../src/analytics/discovery.server";
 import { runQuery } from "../../src/analytics/runner.server";
+import { readExecutionMeasurements } from "../../src/executions/measurements.server";
 import { readExecutionFacts } from "../../src/executions/participants.server";
 import { executionParticipant } from "../execution-participant";
 import { createPointFixture, from, insertPoints, ns } from "./fixture";
@@ -413,4 +414,136 @@ test("lifecycle-only facts never attribute measurements and detail returns lates
 	expect(
 		await readExecutionFacts(project, "run:shared", undefined, fixture.reader),
 	).toHaveLength(1);
+});
+
+test("execution measurements chart only member processes and never bridge counter segments", async () => {
+	const project = randomUUID(),
+		node = randomUUID(),
+		otherNode = randomUUID();
+	const sample = async (
+		source: string,
+		resource: string,
+		metric: "process.cpu.time" | "recount.process.memory.rss",
+		at: bigint,
+		value: number,
+		stream: string,
+	) =>
+		fixture.client.command({
+			query: insertPoints(
+				metric === "process.cpu.time"
+					? {
+							resource_id: "{resource:String}",
+							resource_kind: "toUInt8(4)",
+							metric_name: "'process.cpu.time'",
+							metric_kind: "toUInt8(2)",
+							temporality: "toUInt8(2)",
+							monotonic: "CAST(1, 'Nullable(UInt8)')",
+							unit: "'s'",
+						}
+					: {
+							resource_id: "{resource:String}",
+							resource_kind: "toUInt8(4)",
+							metric_name: "'recount.process.memory.rss'",
+							metric_kind: "toUInt8(1)",
+							unit: "'By'",
+						},
+			),
+			query_params: {
+				project,
+				source,
+				host: source,
+				resource,
+				time: (ns + at * second).toString(),
+				integer: String(value),
+				sample: randomUUID(),
+				stream,
+				// A new stream stands for a new collection epoch or counter segment.
+				epoch: stream,
+			},
+		});
+	// The counter restarts at a lower value in a new segment between 10 s and 20 s.
+	for (const [at, value, stream] of [
+		[0n, 10, "epoch-1"],
+		[10n, 20, "epoch-1"],
+		[20n, 5, "epoch-2"],
+		[30n, 15, "epoch-2"],
+	] as const)
+		await sample(node, "process-a", "process.cpu.time", at, value, stream);
+	await sample(
+		node,
+		"process-a",
+		"recount.process.memory.rss",
+		10n,
+		4096,
+		"rss",
+	);
+	// Unassociated load on the same node and a member on a second node.
+	await sample(node, "process-b", "process.cpu.time", 0n, 0, "other-1");
+	await sample(node, "process-b", "process.cpu.time", 10n, 1000, "other-1");
+	await sample(otherNode, "process-c", "process.cpu.time", 0n, 0, "second-1");
+	await sample(otherNode, "process-c", "process.cpu.time", 10n, 30, "second-1");
+	const facts = [
+		membership(project, node, "process-a"),
+		membership(project, otherNode, "process-c"),
+	].map((row) => ({
+		...row,
+		last_seen_unix_nano: (ns + 30n * second).toString(),
+	}));
+	await insert(facts);
+	const read = await readExecutionFacts(
+		project,
+		"run:shared",
+		undefined,
+		fixture.reader,
+	);
+	const result = await readExecutionMeasurements(
+		project,
+		"run:shared",
+		read,
+		undefined,
+		undefined,
+		fixture.reader,
+	);
+	if (!result) throw new Error("Expected measurements");
+	// Disk I/O was never reported, so it is left out rather than failing the read.
+	expect(
+		result.measures.map((measure) => [measure.name, measure.unit]),
+	).toEqual([
+		["cpu", "s"],
+		["memory", "By"],
+	]);
+	expect(result.bucketSeconds).toBe(2);
+	const bucket = (at: bigint) => from.getTime() + Number(at) * 1000;
+	const values = (measure: string, source: string) =>
+		Object.fromEntries(
+			(
+				result.series.find(
+					(series) => series.measure === measure && series.group[0] === source,
+				)?.points ?? []
+			).map((point) => [point.bucketMs, point.value]),
+		);
+	expect(values("cpu", node)).toEqual({ [bucket(10n)]: 5, [bucket(30n)]: 5 });
+	expect(values("cpu", otherNode)).toEqual({ [bucket(10n)]: 15 });
+	expect(values("memory", node)).toEqual({ [bucket(10n)]: 4096 });
+	const selected = await readExecutionMeasurements(
+		project,
+		"run:shared",
+		read,
+		otherNode,
+		undefined,
+		fixture.reader,
+	);
+	expect([
+		...new Set(selected?.series.map((series) => series.group[0])),
+	]).toEqual([otherNode]);
+	expect(
+		await readExecutionMeasurements(
+			randomUUID(),
+			"run:shared",
+			read,
+			undefined,
+			undefined,
+			fixture.reader,
+		),
+	).toBeNull();
 });

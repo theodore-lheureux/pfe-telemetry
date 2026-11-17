@@ -6,6 +6,7 @@ import {
 	Bar,
 	CartesianGrid,
 	ComposedChart,
+	type DotItemDotProps,
 	LabelList,
 	Line,
 	ReferenceArea,
@@ -18,6 +19,14 @@ import { useDisplayTimeZone } from "../components/time-display";
 import { type ChartConfig, ChartContainer } from "../components/ui/chart";
 import { cn } from "../lib/utils";
 import { movingAveragePoints, trendPoints } from "./chart-overlays";
+import {
+	dragPointer,
+	isolated,
+	type PointerHandlers,
+	type PointerSelection,
+	pressPointer,
+	releasePointer,
+} from "./chart-pointer";
 
 export interface ChartPoint {
 	bucketMs: number;
@@ -168,6 +177,72 @@ function TooltipCard({
 	);
 }
 
+/**
+ * Pointer handling for a chart: dragging across buckets zooms to them, and a click picks
+ * the bucket under the pointer.
+ */
+function useBucketPointer(bucketSeconds: number, handlers: PointerHandlers) {
+	const [selection, setSelection] = useState<PointerSelection | null>(null);
+	const bucketAt = (state: { activeLabel?: unknown } | null | undefined) => {
+		const at = Number(state?.activeLabel);
+		return Number.isFinite(at) ? at : null;
+	};
+	return {
+		active: handlers.onZoom !== undefined || handlers.onSelect !== undefined,
+		selection,
+		handlers: {
+			onMouseDown: (state: { activeLabel?: unknown } | null) =>
+				setSelection(pressPointer(bucketAt(state), handlers)),
+			onMouseMove: (state: { activeLabel?: unknown } | null) =>
+				setSelection(dragPointer(selection, bucketAt(state), handlers)),
+			onMouseUp: () => {
+				releasePointer(selection, bucketSeconds, handlers);
+				setSelection(null);
+			},
+			onMouseLeave: () => setSelection(null),
+		},
+	};
+}
+
+/** Times read in the display time zone, like every other time in the app. */
+function axisTimeFormat(locale: string, timeZone: string, span: number) {
+	if (span > 86_400_000)
+		return new Intl.DateTimeFormat(locale, {
+			timeZone,
+			month: "short",
+			day: "numeric",
+		});
+	// Short spans, such as a brief execution, would repeat the same minute.
+	return new Intl.DateTimeFormat(locale, {
+		timeZone,
+		hour: "2-digit",
+		minute: "2-digit",
+		...(span > 0 && span <= 600_000 ? { second: "2-digit" as const } : {}),
+	});
+}
+
+/** A dot for a value between two gaps, which a line alone would not draw. */
+function IsolatedDot({
+	cx,
+	cy,
+	index,
+	points,
+	stroke,
+	strokeOpacity,
+}: DotItemDotProps) {
+	if (cx == null || cy == null || !isolated(points, index)) return null;
+	return (
+		<circle
+			key={`isolated-${index}`}
+			cx={cx}
+			cy={cy}
+			r={2.5}
+			fill={stroke}
+			fillOpacity={strokeOpacity}
+		/>
+	);
+}
+
 export type ChartType = "auto" | "line" | "area" | "bar" | "stacked";
 const MAX_VALUE_LABELS = 16;
 
@@ -186,6 +261,8 @@ export function TimeseriesChart({
 	bandLabel,
 	gapLabel,
 	onZoom,
+	onSelect,
+	marker,
 	legend = true,
 	legendPosition = "bottom",
 	showValues = false,
@@ -218,6 +295,10 @@ export function TimeseriesChart({
 	gapLabel?: (key: string, bucketMs: number) => string | null;
 	/** Dragging across the chart selects a span, from the first bucket's start to the last one's end. */
 	onZoom?: (from: number, to: number) => void;
+	/** Clicking the chart picks the bucket under the pointer. */
+	onSelect?: (bucketMs: number) => void;
+	/** A vertical line at a picked instant. */
+	marker?: number;
 	/** Lists the series beside the chart; off when a table already names them. */
 	legend?: boolean;
 	legendPosition?: "bottom" | "right";
@@ -243,22 +324,8 @@ export function TimeseriesChart({
 	// Opacity for a series: faded while another one is highlighted.
 	const emphasis = (key: string) =>
 		highlight === null || highlight === key ? 1 : 0.15;
-	const [selection, setSelection] = useState<{
-		start: number;
-		end: number;
-	} | null>(null);
-	const bucketAt = (state: { activeLabel?: unknown } | null | undefined) => {
-		const at = Number(state?.activeLabel);
-		return Number.isFinite(at) ? at : null;
-	};
-	const finishZoom = () => {
-		if (selection && selection.start !== selection.end)
-			onZoom?.(
-				Math.min(selection.start, selection.end),
-				Math.max(selection.start, selection.end) + bucketSeconds * 1000,
-			);
-		setSelection(null);
-	};
+	const pointer = useBucketPointer(bucketSeconds, { onZoom, onSelect });
+	const selection = pointer.selection;
 	const locale = getLocale();
 	const now = Date.now();
 	const current = series.filter((entry) => !entry.comparison);
@@ -315,13 +382,7 @@ export function TimeseriesChart({
 	const span = rows.length
 		? (rows.at(-1)?.bucketMs ?? 0) - (rows[0]?.bucketMs ?? 0)
 		: 0;
-	// Times read in the display time zone, like every other time in the app.
-	const time = new Intl.DateTimeFormat(locale, {
-		timeZone,
-		...(span > 86_400_000
-			? { month: "short", day: "numeric" }
-			: { hour: "2-digit", minute: "2-digit" }),
-	});
+	const time = axisTimeFormat(locale, timeZone, span);
 	const config = Object.fromEntries(
 		drawn.map((entry) => [
 			entry.key,
@@ -401,7 +462,7 @@ export function TimeseriesChart({
 					strokeWidth={2}
 					fill={current.length === 1 ? `url(#${gradient})` : entry.color}
 					fillOpacity={(current.length === 1 ? 1 : 0.12) * emphasis(entry.key)}
-					dot={false}
+					dot={IsolatedDot}
 					activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
 					isAnimationActive={false}
 				>
@@ -416,7 +477,7 @@ export function TimeseriesChart({
 				stroke={entry.color}
 				strokeOpacity={emphasis(entry.key)}
 				strokeWidth={2}
-				dot={false}
+				dot={IsolatedDot}
 				activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
 				isAnimationActive={false}
 			>
@@ -439,7 +500,7 @@ export function TimeseriesChart({
 					// Beside a legend on the right it shares the row; stacked, it keeps its height.
 					legend && legendPosition === "right" && "flex-1",
 					height,
-					onZoom && "cursor-crosshair select-none",
+					pointer.active && "cursor-crosshair select-none",
 				)}
 				role="img"
 				aria-label={label}
@@ -455,17 +516,7 @@ export function TimeseriesChart({
 						top: showValues ? 18 : 8,
 						bottom: xLabel ? 16 : 0,
 					}}
-					onMouseDown={(state) => {
-						const at = bucketAt(state);
-						if (onZoom && at !== null) setSelection({ start: at, end: at });
-					}}
-					onMouseMove={(state) => {
-						const at = bucketAt(state);
-						if (selection && at !== null)
-							setSelection({ ...selection, end: at });
-					}}
-					onMouseUp={finishZoom}
-					onMouseLeave={() => setSelection(null)}
+					{...pointer.handlers}
 				>
 					<defs>
 						<linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
@@ -564,6 +615,15 @@ export function TimeseriesChart({
 								: undefined
 						}
 					/>
+					{marker !== undefined && (
+						<ReferenceLine
+							x={marker}
+							stroke="var(--foreground)"
+							strokeOpacity={0.6}
+							strokeDasharray="3 3"
+							ifOverflow="hidden"
+						/>
+					)}
 					{goal !== undefined && Number.isFinite(goal) && (
 						<ReferenceLine
 							y={goal}

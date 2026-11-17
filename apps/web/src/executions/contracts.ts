@@ -30,6 +30,12 @@ export interface ExecutionFact {
 }
 export interface ExecutionDetail extends ExecutionSummary {
 	facts: ExecutionFact[];
+	/** Hostnames of the execution's enrolled nodes, by node ID. */
+	nodeNames: Record<string, string>;
+}
+export interface ExecutionMeasurementsInput extends ExecutionReference {
+	/** Narrows the measurements to one of the execution's nodes. */
+	node?: string;
 }
 export interface TelemetryPoint {
 	bucketMs: number;

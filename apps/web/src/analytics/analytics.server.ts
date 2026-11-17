@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import type { getDatabase } from "../db/client.server";
 import { collectorNode } from "../db/schema";
 import {
@@ -39,8 +39,17 @@ type Database = ReturnType<typeof getDatabase>;
 const MAX_NODE_NAMES = 1000;
 
 // Revoked and deleted nodes keep their names so older telemetry stays readable.
-/** The project's node names, for labelling results grouped by node. */
-export function nodeNames(database: Database, input: ProjectReference) {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The project's node names, for labelling results grouped by node; only the given nodes
+ * when `ids` is set. Telemetry source IDs that are not enrolled node UUIDs have no name.
+ */
+export function nodeNames(
+	database: Database,
+	input: ProjectReference,
+	ids?: string[],
+) {
 	return database
 		.select({ id: collectorNode.id, hostname: collectorNode.hostname })
 		.from(collectorNode)
@@ -48,6 +57,12 @@ export function nodeNames(database: Database, input: ProjectReference) {
 			and(
 				eq(collectorNode.organizationId, input.organizationId),
 				eq(collectorNode.projectId, input.projectId),
+				ids === undefined
+					? undefined
+					: inArray(
+							collectorNode.id,
+							ids.filter((id) => UUID.test(id)),
+						),
 			),
 		)
 		.orderBy(asc(collectorNode.hostname))

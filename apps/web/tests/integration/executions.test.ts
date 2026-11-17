@@ -2,7 +2,12 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { actorService } from "../../src/auth/actor.server";
 import { createAuth } from "../../src/auth/create-auth.server";
+import type {
+	ExecutionFact,
+	ExecutionMeasurementsInput,
+} from "../../src/executions/contracts";
 import * as executions from "../../src/executions/executions.server";
+import type { readExecutionMeasurements } from "../../src/executions/measurements.server";
 import type {
 	readExecutionFacts,
 	readExecutions,
@@ -11,6 +16,7 @@ import type { OperationResult } from "../../src/lib/operation-result";
 import * as organizations from "../../src/organizations/organizations.server";
 import * as projects from "../../src/organizations/projects.server";
 import { trustedActor } from "../auth-actors";
+import { createTestNode } from "../collector-node";
 import { createTestDatabase } from "../database";
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -336,4 +342,114 @@ test("identical execution keys do not grant reads in another project or organiza
 		}
 	}
 	expect(f.reads()).toBe(0);
+});
+
+test("execution measurements authorize before reading facts and stay within the execution's nodes", async () => {
+	const f = await scenario();
+	const ref = { ...f.reference, executionKey: f.entry.executionKey };
+	const { nodeId } = await createTestNode(database.db, f.reference, {
+		hostname: "compute-a",
+		machineId: "compute-a",
+	});
+	// Another enrolled node of the project is not named on this execution's page.
+	await createTestNode(database.db, f.reference, {
+		hostname: "idle",
+		machineId: "idle",
+	});
+	const facts: ExecutionFact[] = [
+		{
+			nodeId,
+			participantId: "participant-a",
+			factId: "participant-a",
+			kind: 1,
+			processResourceId: null,
+			namespaceId: null,
+			pid: null,
+			startTimeTicks: null,
+			ownerUid: null,
+			environmentVariable: "SLURM_JOB_ID",
+			firstSeen: f.entry.firstSeen,
+			lastSeen: f.entry.lastSeen,
+			ended: null,
+		},
+	];
+	let factReads = 0;
+	const measured: (string | undefined)[] = [];
+	const readFacts: typeof readExecutionFacts = async (projectId, key) => {
+		factReads++;
+		expect(projectId).toBe(f.reference.projectId);
+		return key === f.entry.executionKey ? facts : [];
+	};
+	const measure: typeof readExecutionMeasurements = async (
+		projectId,
+		key,
+		read,
+		node,
+	) => {
+		expect(projectId).toBe(f.reference.projectId);
+		expect(key).toBe(f.entry.executionKey);
+		expect(read).toBe(facts);
+		measured.push(node);
+		return null;
+	};
+	const run = (
+		headers: Headers,
+		input: ExecutionMeasurementsInput = ref,
+		project = f.reference,
+	) =>
+		requests(headers, (actor) =>
+			executions.getExecutionMeasurements(
+				database.db,
+				actor,
+				{ ...input, ...project },
+				undefined,
+				readFacts,
+				measure,
+			),
+		);
+	for (const reader of [f.owner, f.viewer])
+		expect(data(await run(reader.headers, { ...ref, node: nodeId }))).toBe(
+			null,
+		);
+	expect(measured).toEqual([nodeId, nodeId]);
+	const sibling = data(
+		await requests(f.owner.headers, (actor) =>
+			projects.createProject(database.db, actor, {
+				requestId: randomUUID(),
+				organizationId: f.reference.organizationId,
+				name: "Sibling",
+			}),
+		),
+	);
+	const reads = factReads;
+	for (const [headers, project, code] of [
+		[f.outsider.headers, f.reference, "NOT_FOUND"],
+		[new Headers(), f.reference, "UNAUTHENTICATED"],
+		[f.viewer.headers, { ...f.reference, projectId: sibling.id }, "NOT_FOUND"],
+	] as const)
+		expect((await run(headers, ref, project)).error?.code).toBe(code);
+	expect(factReads).toBe(reads);
+	// A node outside the execution and a key without facts never reach the measurement read.
+	expect(
+		(await run(f.owner.headers, { ...ref, node: "node-b" })).error?.code,
+	).toBe("NOT_FOUND");
+	expect(
+		(await run(f.owner.headers, { ...ref, executionKey: "missing" })).error
+			?.code,
+	).toBe("NOT_FOUND");
+	expect(measured).toHaveLength(2);
+	expect(
+		data(
+			await requests(f.viewer.headers, (actor) =>
+				executions.getExecution(
+					database.db,
+					actor,
+					ref,
+					undefined,
+					f.read,
+					readFacts,
+				),
+			),
+		).nodeNames,
+	).toEqual({ [nodeId]: "compute-a" });
 });

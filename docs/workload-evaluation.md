@@ -200,9 +200,10 @@ python3 -m unittest discover -s infra/lab/workloads -p 'test_*.py' -v
 - Discovery can miss short-lived processes and the beginning/end of counters.
   Tool exit results are external evidence; collector disappearance is not an
   exit status. See the [participant contract](execution-participants.md).
-- The current execution UI shows labels, provenance, times and participant/node
-  counts, not execution-scoped resource charts. Resource behavior here is
-  calculated from the same stored process points; no custom UI was added.
+- The results here were calculated from the stored process points directly.
+  The execution page charts the same points: CPU, memory and disk I/O of the
+  member processes by node, described in
+  [execution telemetry](execution-telemetry.md#execution-detail-page).
 - [SeBS](https://github.com/spcl/serverless-benchmarks) supplies FaaS applications,
   automatic deployment and measurement, including a Docker-based local backend.
   It is useful for a later serverless study, but would add a platform/deployment

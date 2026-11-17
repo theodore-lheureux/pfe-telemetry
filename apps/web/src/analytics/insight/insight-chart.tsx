@@ -6,25 +6,11 @@ import { type ChartSeries, TimeseriesChart } from "../charts";
 import type { QueryResult, SeriesResult } from "../contracts";
 import { ComputedAt, RefreshButton } from "../refresh-status";
 import type { Display } from "./draft";
-import { bucketGrid, offlineBands, onGrid, online } from "./grid";
+import { bucketGrid, gapReason, offlineBands, onGrid } from "./grid";
 import { type FormulaNames, plottedTitle } from "./labels";
 import { NumberResults } from "./number-results";
 import { PercentileWarning } from "./percentile-warning";
 import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
-
-/** Why a series has no value in a bucket: its node, or any node when not grouped by node. */
-function gapReason(
-	result: QueryResult,
-	series: SeriesResult,
-	bucketMs: number,
-) {
-	if (series.comparison) return m.insight_gap_unknown();
-	const node =
-		result.groupBy[0] === "node" && !series.other ? series.group[0] : undefined;
-	const state = online(result.coverage, bucketMs, node);
-	if (state === null) return m.insight_gap_unknown();
-	return state ? m.insight_gap_online() : m.insight_gap_offline();
-}
 
 /** The chart or stat cards for a query result, with when it was computed. */
 export function InsightChart({
@@ -96,6 +82,8 @@ export function ChartBody({
 	display,
 	hydrated,
 	onZoom,
+	onSelect,
+	marker,
 	highlight,
 	height = "h-72",
 	fill = false,
@@ -105,6 +93,10 @@ export function ChartBody({
 	display: Display;
 	hydrated: boolean;
 	onZoom?: (from: Date, to: Date) => void;
+	/** Clicking the chart picks the bucket under the pointer, in ms. */
+	onSelect?: (bucketMs: number) => void;
+	/** A vertical line at a picked bucket, in ms. */
+	marker?: number;
 	highlight: string | null;
 	/** The chart's height class; `h-full` fills a sized parent. */
 	height?: string;
@@ -179,6 +171,8 @@ export function ChartBody({
 			height={height}
 			className={height}
 			onZoom={onZoom && ((from, to) => onZoom(new Date(from), new Date(to)))}
+			onSelect={onSelect}
+			marker={marker}
 			// Off unless chosen: the results table and the tooltip already name the lines.
 			legend={display.legend !== undefined}
 			legendPosition={display.legend}

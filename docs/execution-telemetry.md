@@ -36,6 +36,35 @@ rows, 256 MiB read/memory, one thread, six seconds of server execution and an
 eight-MiB result. Limit, storage and cancellation failures are errors, not empty
 or silently truncated pages. Internal RPC timestamps remain native `Date` values.
 
+## Execution detail page
+
+The timeline places each node's participant lifecycles and process memberships
+on one time axis. An open interval ends at its last observation with a dashed
+tail; it never extends to the current time. An execution is live while any fact
+has no end, and its page then offers the shared manual and automatic refresh
+control instead of streaming. Collectors do not yet report clock
+synchronization, so the page marks it as unknown: times from different nodes
+may be offset, and no offset is estimated or corrected.
+
+Measurements chart CPU time (rate, in cores), resident memory (latest, in bytes)
+and disk I/O (rate, in bytes per second) of the member processes, by node. Only
+metrics the project has reported are shown. The server derives the range from
+the execution's own facts: from the first observation to just past the latest
+end or last observation, widened to whole buckets and limited to the latest 30
+days. Each read checks project access first, then uses the analytics runner with
+an `execution` filter, so lifecycle facts never attribute node-wide load.
+Counter rates stay within one continuity segment, as in
+[series and calculations](telemetry-semantic-model.md#series-and-calculations).
+
+The `node` and `at` search parameters select a machine and an instant, so a
+view can be shared. A selected node must belong to the execution. Clicking a
+chart, moving the instant slider or selecting a timeline bar sets the instant;
+the values table lists each measure per node in that bucket with its unit. A
+missing value reads "No recorded value", with whether the node was offline,
+online without data or unknown, and is never shown as zero. Each measure covers at
+most the 50 machines with the largest values; the page says when others were left
+out and lists them as not shown until one is selected.
+
 ## Running and validating
 
 Provision `RECOUNT_PARTICIPANT_TOPIC` and `RECOUNT_PARTICIPANT_PARTITIONS` on a

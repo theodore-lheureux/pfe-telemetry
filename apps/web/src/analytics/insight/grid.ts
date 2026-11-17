@@ -1,4 +1,6 @@
+import { m } from "@recount/i18n/messages";
 import type { ChartPoint } from "../charts";
+import type { QueryResult, SeriesResult } from "../contracts";
 
 // Charts span the whole requested range on the interval's bucket grid, so a missing
 // bucket shows as a gap instead of the axis shrinking to where data happens to exist.
@@ -54,4 +56,18 @@ export function offlineBands(grid: number[], coverage: Coverage, step: number) {
 		else bands.push({ from: bucket, to: bucket + step });
 	}
 	return bands;
+}
+
+/** Why a series has no value in a bucket: its node, or any node when not grouped by node. */
+export function gapReason(
+	result: QueryResult,
+	series: SeriesResult,
+	bucketMs: number,
+) {
+	if (series.comparison) return m.insight_gap_unknown();
+	const node =
+		result.groupBy[0] === "node" && !series.other ? series.group[0] : undefined;
+	const state = online(result.coverage, bucketMs, node);
+	if (state === null) return m.insight_gap_unknown();
+	return state ? m.insight_gap_online() : m.insight_gap_offline();
 }

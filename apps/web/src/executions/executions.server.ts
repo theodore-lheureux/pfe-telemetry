@@ -1,3 +1,4 @@
+import { nodeNames } from "../analytics/analytics.server";
 import { withAnalyticsSlot } from "../analytics/capacity.server";
 import type { getDatabase } from "../db/client.server";
 import { OperationError } from "../lib/operation-error";
@@ -5,9 +6,11 @@ import { type Actor, requireProject } from "../organizations/access.server";
 import type { ProjectReference } from "../organizations/contracts";
 import type {
 	ExecutionDetail,
+	ExecutionMeasurementsInput,
 	ExecutionReference,
 	ExecutionSummary,
 } from "./contracts";
+import { readExecutionMeasurements } from "./measurements.server";
 import { readExecutionFacts, readExecutions } from "./participants.server";
 
 type Database = ReturnType<typeof getDatabase>;
@@ -45,14 +48,58 @@ export async function getExecution(
 	readFacts: typeof readExecutionFacts = readExecutionFacts,
 ): Promise<ExecutionDetail> {
 	await requireProject(database, actor, input);
+	const detail = await withAnalyticsSlot(
+		database,
+		input.organizationId,
+		signal,
+		async () => {
+			const [entry] = await read(
+				input.projectId,
+				{ executionKey: input.executionKey },
+				signal,
+			);
+			if (!entry) throw new OperationError("NOT_FOUND", "Execution not found");
+			const facts = await readFacts(
+				input.projectId,
+				input.executionKey,
+				signal,
+			);
+			return { ...input, ...entry, facts };
+		},
+	);
+	const names = await nodeNames(database, input, [
+		...new Set(detail.facts.map((fact) => fact.nodeId)),
+	]);
+	return {
+		...detail,
+		nodeNames: Object.fromEntries(
+			names.map((node) => [node.id, node.hostname]),
+		),
+	};
+}
+
+/** Measurements are read over the span of the execution's own facts, never a caller's range. */
+export async function getExecutionMeasurements(
+	database: Database,
+	actor: Actor,
+	input: ExecutionMeasurementsInput,
+	signal?: AbortSignal,
+	readFacts: typeof readExecutionFacts = readExecutionFacts,
+	measure: typeof readExecutionMeasurements = readExecutionMeasurements,
+) {
+	await requireProject(database, actor, input);
 	return withAnalyticsSlot(database, input.organizationId, signal, async () => {
-		const [entry] = await read(
+		const facts = await readFacts(input.projectId, input.executionKey, signal);
+		if (!facts.length)
+			throw new OperationError("NOT_FOUND", "Execution not found");
+		if (input.node && !facts.some((fact) => fact.nodeId === input.node))
+			throw new OperationError("NOT_FOUND", "Node not found in execution");
+		return measure(
 			input.projectId,
-			{ executionKey: input.executionKey },
+			input.executionKey,
+			facts,
+			input.node,
 			signal,
 		);
-		if (!entry) throw new OperationError("NOT_FOUND", "Execution not found");
-		const facts = await readFacts(input.projectId, input.executionKey, signal);
-		return { ...input, ...entry, facts };
 	});
 }

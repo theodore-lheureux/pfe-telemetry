@@ -18,6 +18,8 @@ interface Row {
 	environmentVariables: string[];
 	firstSeenNs: string;
 	lastSeenNs: string;
+	/** Whether the process membership reported an end. */
+	ended?: boolean;
 }
 const test = base.extend<{ executionRows: Row[] }>({
 	// biome-ignore lint/correctness/noEmptyPattern: Playwright requires destructured fixture arguments.
@@ -78,7 +80,7 @@ const test = base.extend<{ executionRows: Row[] }>({
 							environmentVariable: "RECOUNT_EXECUTION",
 							firstSeenNs: row.firstSeenNs,
 							lastSeenNs: row.lastSeenNs,
-							endedNs: null,
+							endedNs: row.ended ? "1793700001500000000" : null,
 						},
 					]);
 				response.end(
@@ -167,22 +169,97 @@ for (const locale of ["en", "fr"] as const) {
 		await expect(page.getByText("<node>", { exact: true })).toBeVisible();
 		await expect(
 			page.getByRole("heading", {
-				name: m.execution_memberships({}, { locale }),
+				name: m.execution_timeline_title({}, { locale }),
 			}),
 		).toBeVisible();
-		await expect(page.getByText("compute-a", { exact: true })).toBeVisible();
 		await expect(
-			page.getByText("process-resource-a", { exact: true }),
+			page.getByRole("button", {
+				name: m.execution_timeline_live({}, { locale }),
+				exact: true,
+			}),
 		).toBeVisible();
 		await expect(
-			page.getByText(m.execution_interval_end({}, { locale }), { exact: true }),
-		).toHaveCount(2);
-		await expect(
-			page.locator('time[datetime="2026-11-03T10:00:02.000Z"]'),
+			page.getByRole("button", {
+				name: m.execution_timeline_clock_unknown({}, { locale }),
+			}),
 		).toBeVisible();
+		// A live execution refreshes on demand; the page does not stream.
 		await expect(
-			page.getByText(m.execution_end_unknown({}, { locale }), { exact: true }),
+			page.getByRole("button", {
+				name: m.overview_refresh({}, { locale }),
+				exact: true,
+			}),
 		).toBeVisible();
+		// Every value is unavailable here, and the page says so instead of showing zeros.
+		await expect(
+			page.getByRole("heading", {
+				name: m.execution_timeline_no_measurements({}, { locale }),
+			}),
+		).toBeVisible();
+		const machine = page.getByRole("button", {
+			name: m.execution_timeline_select_machine(
+				{ node: "compute-a" },
+				{ locale },
+			),
+		});
+		await expect(machine).toHaveAttribute("aria-pressed", "false");
+		const lifecycle = page.getByRole("button", {
+			name: new RegExp(
+				`^${m.execution_lifecycle({}, { locale })}, .* · compute-a$`,
+			),
+		});
+		await lifecycle.focus();
+		const tooltip = page.getByRole("tooltip");
+		await expect(tooltip).toContainText(
+			m.execution_interval_end({}, { locale }),
+		);
+		await expect(tooltip).not.toContainText(
+			m.execution_timeline_still_observed({}, { locale }),
+		);
+		// Keyboard focus moves to the process membership, which is still open.
+		await page.keyboard.press("Tab");
+		const process = page.getByRole("button", {
+			name: /^PID 42, .* · compute-a$/,
+		});
+		await expect(process).toBeFocused();
+		const openSuffix = m
+			.execution_timeline_open_interval(
+				{ name: "", from: "", to: "" },
+				{ locale },
+			)
+			.split(", ")
+			.at(-1);
+		await expect(process).toHaveAccessibleName(
+			new RegExp(`, ${openSuffix} · compute-a$`),
+		);
+		await expect(lifecycle).not.toHaveAccessibleName(
+			new RegExp(`, ${openSuffix} · compute-a$`),
+		);
+		const processTooltip = page
+			.getByRole("tooltip")
+			.filter({ hasText: "process-resource-a" });
+		await expect(processTooltip).toBeVisible();
+		await expect(processTooltip).toContainText(
+			m.execution_timeline_still_observed({}, { locale }),
+		);
+		await page.keyboard.press("Enter");
+		await expect(page).toHaveURL(/[?&]node=compute-a/);
+		await expect(page).toHaveURL(/[?&]at=2026-11-03T10%3A00%3A00.000Z/);
+		await expect(machine).toHaveAttribute("aria-pressed", "true");
+		await expect(
+			page.getByText(
+				m.execution_timeline_scope_node({ node: "compute-a" }, { locale }),
+			),
+		).toBeVisible();
+		await page.reload();
+		await expect(machine).toHaveAttribute("aria-pressed", "true");
+		await page
+			.getByRole("button", {
+				name: m.execution_timeline_all_machines({}, { locale }),
+			})
+			.click();
+		await expect(page).not.toHaveURL(/[?&]node=/);
+		await expect(page).toHaveURL(/[?&]at=/);
 		await expect(
 			page.getByRole("button", {
 				name: m.record_execution({}, { locale }),
@@ -199,6 +276,31 @@ for (const locale of ["en", "fr"] as const) {
 			path: testInfo.outputPath(`execution-key-${locale}.png`),
 			fullPage: true,
 		});
+		executionRows.push({
+			...executionRows[0],
+			executionKey: "run:ended",
+			name: "Ended job",
+			ended: true,
+		});
+		await page.goto(`${url}/${encodeURIComponent("run:ended")}`);
+		await expect(
+			page.getByRole("button", {
+				name: m.execution_timeline_ended({}, { locale }),
+				exact: true,
+			}),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", {
+				name: m.execution_timeline_live({}, { locale }),
+				exact: true,
+			}),
+		).toHaveCount(0);
+		await expect(
+			page.getByRole("button", {
+				name: m.overview_refresh({}, { locale }),
+				exact: true,
+			}),
+		).toHaveCount(0);
 		await workspace.signIn(
 			page,
 			`execution-outsider-${locale}@example.invalid`,

@@ -232,6 +232,8 @@ export function formatValueDetails(
 	if (stored.calculation === "rate") {
 		// Seconds per second (such as CPU time) is a plain ratio, roughly busy cores.
 		if (storedUnit === "s" || !storedUnit) return number();
+		if (storedUnit === "By")
+			return formatMeasurement(value, "By/s", locale, minimumFractionDigits);
 		return affixed(number(), "", ` ${storedUnit}/s`);
 	}
 	if (storedUnit === "%") return affixed(number(1), "", " %");
