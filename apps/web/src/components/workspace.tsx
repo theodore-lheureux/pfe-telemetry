@@ -68,7 +68,7 @@ export function IconEmptyState({
 	/** Actions under the text, such as a link to where items are made. */
 	children?: ReactNode;
 	/** The title's level, so it fits under the section it appears in. */
-	heading?: "h2" | "h3";
+	heading?: "h2" | "h3" | "h4";
 }) {
 	return (
 		<Empty

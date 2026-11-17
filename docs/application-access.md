@@ -20,6 +20,8 @@ Any project reader can read all executions in that project. Participant ownershi
 
 The same project scope applies to [execution metadata and participant telemetry](execution-telemetry.md). Execution reads independently check current project membership. Claims use enrolled node authority, never a browser session. Direct operator SQL is not a tenant-authorized application interface.
 
+[Overlapping workloads](execution-telemetry.md#overlapping-workloads) follow the project boundary. An execution page lists every execution of the same project that shared one of its nodes at the same time, with its name, version, shared nodes and overlap span, and splits the nodes' process load between that execution, the project's other executions and the project's processes that belong to no execution. The last share is an aggregate without process details. Workloads that other projects report from the same host are never read, so they are neither shown, counted nor inferable from the totals. Every project role, including organization owners and admins, sees the same data, and the server functions apply this policy themselves; the page only renders their results. As with Explore and Activity, metadata and points from other projects are unavailable through every application interface.
+
 ## Application interfaces
 
 `apps/web/src/organizations/organization.functions.ts` provides these Start server functions:

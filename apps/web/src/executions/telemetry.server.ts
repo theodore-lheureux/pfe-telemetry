@@ -12,6 +12,32 @@ import type {
 	TelemetrySeries,
 } from "./contracts";
 
+/** Limits for bounded execution participant reads; each read sets its own result cap. */
+export const PARTICIPANT_READ_SETTINGS = {
+	max_execution_time: 6,
+	max_threads: 1,
+	max_memory_usage: "268435456",
+	max_rows_to_read: "100000",
+	max_bytes_to_read: "268435456",
+	read_overflow_mode: "throw",
+	max_rows_to_group_by: "100000",
+	group_by_overflow_mode: "throw",
+	max_bytes_before_external_group_by: "0",
+	max_bytes_before_external_sort: "0",
+	max_result_bytes: "8388608",
+	result_overflow_mode: "throw",
+	output_format_json_quote_64bit_integers: 1,
+} as const;
+
+/** A request signal limited to the participant read deadline. */
+export function readDeadline(signal?: AbortSignal) {
+	const deadline = AbortSignal.timeout(10000);
+	return signal ? AbortSignal.any([signal, deadline]) : deadline;
+}
+
+export const nanosecondDate = (ns: string) =>
+	new Date(Number(BigInt(ns) / 1_000_000n));
+
 export interface TelemetryScope {
 	projectId: string;
 	sourceId: string;

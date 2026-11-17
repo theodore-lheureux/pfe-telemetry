@@ -3,14 +3,14 @@ import { getLocale } from "@recount/i18n/runtime";
 import { useDebouncedValue } from "@tanstack/react-pacer";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useHydrated } from "@tanstack/react-router";
-import { LineChartIcon, TriangleAlertIcon } from "lucide-react";
+import { LineChartIcon } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { LoadingBar } from "../../components/loading-bar";
+import { QueryUnavailable } from "../../components/query-unavailable";
 import { useDisplayTimeZone } from "../../components/time-display";
 import { Skeleton } from "../../components/ui/skeleton";
 import { IconEmptyState } from "../../components/workspace";
-import { operationMessage } from "../../lib/operation-message";
-import { MutationFailure, unwrapOperation } from "../../lib/operation-result";
+import { unwrapOperation } from "../../lib/operation-result";
 import type { ProjectReference } from "../../organizations/contracts";
 import { runAnalyticsQuery } from "../analytics.functions";
 import { AnalyticsHeader } from "../analytics-header";
@@ -207,15 +207,9 @@ function ResultState({
 		);
 	if (error)
 		return (
-			<IconEmptyState
-				icon={<TriangleAlertIcon aria-hidden="true" />}
+			<QueryUnavailable
 				title={m.insight_unavailable()}
-				description={
-					error instanceof MutationFailure
-						? operationMessage(error.failure)
-						: undefined
-				}
-				alert
+				error={error}
 				className="h-80"
 			/>
 		);
