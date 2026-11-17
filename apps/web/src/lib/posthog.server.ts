@@ -2,19 +2,21 @@ import { PostHog } from "posthog-node";
 import { InputError } from "./input-error";
 import { OperationError } from "./operation-error";
 
+export type PostHogConfig = { token: string; host: string };
+
+/** Runtime settings, so one build can be promoted between environments. */
+export function readPostHogConfig(): PostHogConfig | null {
+	const token = process.env.RECOUNT_POSTHOG_PROJECT_TOKEN;
+	const host = process.env.RECOUNT_POSTHOG_HOST;
+	return token && host ? { token, host } : null;
+}
+
 let client: PostHog | null | undefined;
 
-// The browser's public project token and host, baked in at build time, also
-// configure server capture; the environment can override them.
 function posthog() {
 	if (client !== undefined) return client;
-	const token =
-		process.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN ??
-		import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
-	const host =
-		process.env.VITE_PUBLIC_POSTHOG_HOST ??
-		import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
-	client = token && host ? new PostHog(token, { host }) : null;
+	const config = readPostHogConfig();
+	client = config ? new PostHog(config.token, { host: config.host }) : null;
 	return client;
 }
 

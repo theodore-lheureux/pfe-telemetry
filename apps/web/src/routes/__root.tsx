@@ -26,6 +26,7 @@ import { StepUpAuthentication } from "../components/step-up-authentication";
 import { TimeDisplayProvider } from "../components/time-display";
 import { AppearanceContext } from "../lib/appearance";
 import { clearValidation, localizeValidation } from "../lib/input-validation";
+import { loadPostHogConfig } from "../lib/posthog.functions";
 import {
 	getInitialTheme,
 	type Theme,
@@ -38,7 +39,10 @@ export const Route = createRootRouteWithContext<{
 	queryClient: QueryClient;
 	authentication: AuthenticationController;
 }>()({
-	beforeLoad: () => ({ theme: getInitialTheme() }),
+	beforeLoad: async () => ({
+		theme: getInitialTheme(),
+		posthog: await loadPostHogConfig(),
+	}),
 	head: () => ({
 		meta: [
 			{ charSet: "utf-8" },
@@ -71,11 +75,8 @@ const MODE_THEME: Record<ThemeMode, Theme> = {
 	light: "tide",
 };
 
-const posthogToken = import.meta.env.VITE_PUBLIC_POSTHOG_PROJECT_TOKEN;
-const posthogHost = import.meta.env.VITE_PUBLIC_POSTHOG_HOST;
-
 function RootDocument({ children }: { children: ReactNode }) {
-	const { theme: initialTheme } = Route.useRouteContext();
+	const { theme: initialTheme, posthog } = Route.useRouteContext();
 	const [theme, setTheme] = useState(initialTheme ?? "tide");
 	const hydrated = useHydrated();
 	const appMatch = useMatch({
@@ -143,11 +144,11 @@ function RootDocument({ children }: { children: ReactNode }) {
 				onInputCapture={(event) => clearValidation(event.target)}
 				onChangeCapture={(event) => clearValidation(event.target)}
 			>
-				{posthogToken && posthogHost ? (
+				{posthog ? (
 					<PostHogProvider
-						apiKey={posthogToken}
+						apiKey={posthog.token}
 						options={{
-							api_host: posthogHost,
+							api_host: posthog.host,
 							// The API host may be a reverse proxy; links and the toolbar use the app.
 							ui_host: "https://us.posthog.com",
 							capture_exceptions: true,

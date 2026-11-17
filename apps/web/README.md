@@ -101,16 +101,17 @@ Better Auth provides PostgreSQL-backed sessions, passkeys and six-digit email co
 
 Set these server-only values in `apps/web/.env` before using authentication:
 
-| Setting                      | Value                                                                                                                      |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `BETTER_AUTH_SECRET`         | At least 32 random characters; generate with `openssl rand -hex 32`. Keep stable across restarts and replicas.             |
-| `BETTER_AUTH_URL`            | Public application origin, such as `https://telemetry.example.com`. Use `http://localhost:3001` locally.                   |
-| `RECOUNT_AUTH_ALLOW_SIGN_UP` | Explicitly `true` or `false`. With `false`, existing users can sign in but unknown email addresses cannot create accounts. |
-| `SMTP_HOST`                  | SMTP server; `smtp.resend.com` for Resend.                                                                                 |
-| `SMTP_PORT`                  | `465` for implicit TLS, or the provider's STARTTLS port, commonly `587`.                                                   |
-| `SMTP_USER`                  | SMTP username; `resend` for Resend.                                                                                        |
-| `SMTP_PASSWORD`              | SMTP credential supplied by the email provider.                                                                            |
-| `EMAIL_FROM`                 | A sender address on a domain verified with the provider.                                                                   |
+| Setting                                                 | Value                                                                                                                                                                  |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BETTER_AUTH_SECRET`                                    | At least 32 random characters; generate with `openssl rand -hex 32`. Keep stable across restarts and replicas.                                                         |
+| `BETTER_AUTH_URL`                                       | Public application origin, such as `https://telemetry.example.com`. Use `http://localhost:3001` locally.                                                               |
+| `RECOUNT_AUTH_ALLOW_SIGN_UP`                            | Explicitly `true` or `false`. With `false`, existing users can sign in but unknown email addresses cannot create accounts.                                             |
+| `RECOUNT_POSTHOG_PROJECT_TOKEN`, `RECOUNT_POSTHOG_HOST` | Optional PostHog project token and API host. Read at runtime, so the same build works in every environment; analytics and error tracking are off when either is unset. |
+| `SMTP_HOST`                                             | SMTP server; `smtp.resend.com` for Resend.                                                                                                                             |
+| `SMTP_PORT`                                             | `465` for implicit TLS, or the provider's STARTTLS port, commonly `587`.                                                                                               |
+| `SMTP_USER`                                             | SMTP username; `resend` for Resend.                                                                                                                                    |
+| `SMTP_PASSWORD`                                         | SMTP credential supplied by the email provider.                                                                                                                        |
+| `EMAIL_FROM`                                            | A sender address on a domain verified with the provider.                                                                                                               |
 
 Run `just db-migrate` before starting the application. For a new installation, enable registration to create the first account, then disable it if public registration is not wanted. Organization invitations do not bypass closed registration; an unknown invited user still needs registration enabled to create an account. There is no administrator backdoor or default user.
 
