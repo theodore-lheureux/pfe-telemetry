@@ -2,6 +2,11 @@
 
 TanStack Start with SSR, TanStack Query, TanStack Form, React, TypeScript, Tailwind CSS, and shadcn/ui.
 
+The [developer toolbar](../../docs/developer-toolbar.md) delegates approved collector
+workflows to Semaphore and is disabled unless explicitly configured for developer
+user IDs. Its setup reference includes the current native task-runner metadata
+permission blocker.
+
 ## Development
 
 Run these commands from the repository root with the Bun version in `.bun-version`:
