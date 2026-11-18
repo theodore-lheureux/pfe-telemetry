@@ -291,13 +291,13 @@
       "id": 16,
       "type": "stat",
       "title": "Ingestion freshness · sampled p95",
-      "description": "API receipt to ClickHouse new-part write, using regular telemetry. Requires at least 20 sampled points. Does not measure collector or dashboard latency. Compare with backlog when ingestion stalls.",
+      "description": "API receipt to ClickHouse new-part write, using regular telemetry. Shows the last valid sample of at least 20 points while the sampler is healthy and the newest write in that sample is less than two minutes old. Compare with backlog when ingestion stalls.",
       "gridPos": { "x": 0, "y": 5, "w": 12, "h": 5 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "recount_ingestion_freshness_p95_seconds and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (time() - recount_ingestion_freshness_last_sample_timestamp_seconds < 120)",
+          "expr": "last_over_time(recount_ingestion_freshness_p95_seconds[2m]) and on() (time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m]) < 120) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1)",
           "instant": true
         }
       ],
@@ -309,13 +309,13 @@
     {
       "id": 17,
       "type": "stat",
-      "title": "Freshness sample count",
+      "title": "Points in the p95 sample",
       "gridPos": { "x": 12, "y": 5, "w": 6, "h": 5 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "recount_ingestion_freshness_samples and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "expr": "last_over_time(recount_ingestion_freshness_p95_samples[2m]) and on() (time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m]) < 120) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1)",
           "instant": true
         }
       ],
@@ -325,13 +325,13 @@
     {
       "id": 18,
       "type": "stat",
-      "title": "Newest sampled write age",
+      "title": "Newest write in the p95 sample",
       "gridPos": { "x": 18, "y": 5, "w": 6, "h": 5 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
           "refId": "A",
-          "expr": "(time() - recount_ingestion_freshness_last_sample_timestamp_seconds) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "expr": "(time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m])) and on() (time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m]) < 120) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1)",
           "instant": true
         }
       ],

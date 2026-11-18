@@ -157,6 +157,8 @@ def freshness_metrics():
         samples.sort()
         index = (95 * len(samples) + 99) // 100 - 1
         yield f"recount_ingestion_freshness_p95_seconds {samples[index]}"
+        yield f"recount_ingestion_freshness_p95_samples {len(samples)}"
+        yield f"recount_ingestion_freshness_p95_write_timestamp_seconds {newest / 1e9}"
 
 
 def snapshot():

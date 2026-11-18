@@ -32,6 +32,8 @@ class SamplerTest(unittest.TestCase):
                 "recount_ingestion_freshness_samples 20",
                 "recount_ingestion_freshness_last_sample_timestamp_seconds 1800000000.0",
                 "recount_ingestion_freshness_p95_seconds 19.0",
+                "recount_ingestion_freshness_p95_samples 20",
+                "recount_ingestion_freshness_p95_write_timestamp_seconds 1800000000.0",
             ])
         with patch.object(sample, "freshness_query", return_value=""):
             self.assertEqual(list(sample.freshness_metrics()), ["recount_ingestion_freshness_samples 0"])
