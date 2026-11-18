@@ -323,8 +323,15 @@ Open [Recount ingestion health](http://127.0.0.1:3303/d/recount-ingestion).
 The dashboard shows arrivals, committed progress and lag by stage and partition.
 If raw lag rises, investigate the normalizer. If raw lag stays low but normalized
 or late lag rises, investigate the corresponding ClickHouse consumer. An absent
-series is unknown, not zero. The rates count Kafka messages, not telemetry
-points, and do not measure end-to-end freshness or CPU and disk pressure.
+series is unknown, not zero. The lag counts are neutral; use the backlog growth
+trend and retained offset headroom to tell whether a queue needs attention.
+
+A host timer samples ClickHouse CPU throttling, data-volume request latency and
+server-wide read latency and failures. These reads include monitoring and are
+not specific to dashboards. The points-written panel counts rows in new
+ClickHouse parts, excluding merges but including possible replays; Kafka rates
+count messages instead. Neither measures collector-to-query freshness, which
+requires an authorized end-to-end probe.
 
 Failure leaves staged releases and data intact. There is no automatic cleanup
 or rollback. Read the Ansible output in the workflow log and inspect the host;

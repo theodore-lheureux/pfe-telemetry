@@ -12,6 +12,21 @@ x-restrictions: &restrictions
     options: { max-size: 2m, max-file: "3" }
 
 services:
+  host-metrics:
+    <<: *restrictions
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    entrypoint: [/bin/busybox, httpd, -f, -p, "9101", -h, /export]
+    user: "65534:65534"
+    volumes:
+      - type: bind
+        source: ${RECOUNT_MONITORING_HOST_METRICS_DIRECTORY:-/var/lib/recount/monitoring}
+        target: /export
+        read_only: true
+        bind: { create_host_path: false }
+    cpus: 0.05
+    mem_limit: 32m
+    networks: [scrape]
+
   kafka-exporter:
     <<: *restrictions
     image: danielqsj/kafka-exporter:v1.9.0@sha256:4150e46b2e9697ac30e4be8de03ec1704b4bdc7037577b83b8d35a32be298c16

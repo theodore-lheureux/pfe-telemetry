@@ -1,0 +1,14 @@
+[Unit]
+Description=Sample local ClickHouse CPU, disk and query counters
+After=docker.service
+ConditionPathExists=/opt/recount/current/monitoring/sample-host.py
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/recount/current/monitoring/sample-host.py
+TimeoutStartSec=25
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/recount/monitoring

@@ -27,9 +27,13 @@ bun --no-env-file /opt/recount/backend/infra/local/data.ts start
 docker compose config --quiet
 docker compose run --rm --no-deps kafka-topics verify
 monitoring=(env -u COMPOSE_ENV_FILES docker compose --project-name recount-ingestion-monitoring --env-file /dev/null -f "$directory/monitoring/compose.yaml")
+install -d -m 0755 /var/lib/recount/monitoring
 "${monitoring[@]}" config --quiet
 "${monitoring[@]}" up --no-build --detach --wait --wait-timeout 120
 docker image load --input images.tar.zst
 docker compose up --no-build --no-deps --pull never --detach --wait --wait-timeout 180 ingestion-api normalizer live web
 ln -sfn "$directory" /opt/recount/current
+install -m 0644 "$directory/monitoring/recount-ingestion-sample.service" "$directory/monitoring/recount-ingestion-sample.timer" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now recount-ingestion-sample.timer
 printf 'Activated ingestion release %s\n' "$(cat release)"

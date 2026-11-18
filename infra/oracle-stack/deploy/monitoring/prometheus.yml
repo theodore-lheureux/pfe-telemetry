@@ -3,6 +3,10 @@ global:
   scrape_timeout: 8s
 
 scrape_configs:
+  - job_name: host
+    fallback_scrape_protocol: PrometheusText0.0.4
+    static_configs:
+      - targets: [host-metrics:9101]
   - job_name: kafka
     static_configs:
       - targets: [kafka-exporter:9308]
