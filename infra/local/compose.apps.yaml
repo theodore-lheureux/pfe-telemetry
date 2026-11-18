@@ -68,7 +68,7 @@ services:
     image: recount-normalizer:local
     environment:
       <<: [*raw, *limits]
-      RECOUNT_NORMALIZED_TOPIC: ${RECOUNT_NORMALIZED_TOPIC:-recount.metrics.normalized}
+      RECOUNT_NORMALIZED_TOPIC: ${RECOUNT_NORMALIZED_TOPIC:-recount.metrics.normalized-packed}
       RECOUNT_LATE_TOPIC: ${RECOUNT_LATE_TOPIC:-recount.metrics.late}
       RECOUNT_NORMALIZED_PARTITIONS: ${RECOUNT_NORMALIZED_PARTITIONS:-3}
       RECOUNT_NORMALIZED_BROKER_MAX_BYTES: ${RECOUNT_NORMALIZED_BROKER_MAX_BYTES:-2097152}

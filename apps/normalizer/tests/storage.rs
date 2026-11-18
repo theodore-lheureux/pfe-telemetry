@@ -239,7 +239,9 @@ impl Storage {
     async fn publish(&self, body: &[u8]) -> i64 {
         let mut first = None;
         for row in decode(body) {
-            let offset = self.publish_wire(&projection::serialize(&row)).await;
+            let offset = self
+                .publish_wire(&row.encode_length_delimited_to_vec())
+                .await;
             first.get_or_insert(offset);
         }
         first.expect("nonempty file fixture")
@@ -362,8 +364,8 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
     let message = reader.poll(Duration::from_secs(10)).unwrap().unwrap();
     assert_eq!(
         message.payload().unwrap(),
-        projection::serialize(&decode(&body)[0]),
-        "bare point record changed bytes"
+        decode(&body)[0].encode_length_delimited_to_vec(),
+        "length-delimited point record changed bytes"
     );
     assert_eq!(
         storage
@@ -468,7 +470,9 @@ async fn native_batching_preserves_rows_and_reduces_initial_part_creation() {
         let mut row = seed.clone();
         row.time_unix_nano += index;
         row.sample_id = vec![index as u8; 32];
-        storage.publish_wire(&projection::serialize(&row)).await;
+        storage
+            .publish_wire(&row.encode_length_delimited_to_vec())
+            .await;
     }
     storage
         .wait("batched rows not fully visible", 30, || {
@@ -571,7 +575,7 @@ async fn worker_outage_catches_up_current_schema_points_without_offset_loss() {
     for index in 0..count {
         let mut row = seed.clone();
         row.sample_id[..8].copy_from_slice(&(index as u64).to_be_bytes());
-        let wire = projection::serialize(&row);
+        let wire = row.encode_length_delimited_to_vec();
         payload_bytes += wire.len();
         storage.publish_wire(&wire).await;
     }

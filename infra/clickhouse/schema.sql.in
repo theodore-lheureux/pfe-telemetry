@@ -35,6 +35,7 @@ ENGINE = Kafka
 SETTINGS
 __KAFKA_SETTINGS__
     kafka_topic_list = '__NORMALIZED_TOPIC__',
+    kafka_format = 'Protobuf',
     kafka_group_name = '__CONSUMER_GROUP__',
     kafka_max_block_size = __RECENT_BLOCK_ROWS__,
     kafka_poll_max_batch_size = __RECENT_POLL_MESSAGES__,
@@ -52,6 +53,7 @@ ENGINE = Kafka
 SETTINGS
 __KAFKA_SETTINGS__
     kafka_topic_list = '__LATE_TOPIC__',
+    kafka_format = 'ProtobufSingle',
     kafka_group_name = '__LATE_CONSUMER_GROUP__',
     kafka_max_block_size = __BLOCK_ROWS__,
     kafka_poll_max_batch_size = __POLL_MESSAGES__,

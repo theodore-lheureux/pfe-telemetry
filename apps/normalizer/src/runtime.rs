@@ -11,6 +11,10 @@ use std::{
 };
 use tokio::sync::Semaphore;
 
+mod packing;
+#[cfg(test)]
+mod packing_replay;
+
 const KAFKA_NETWORK_TIMEOUT: Duration = Duration::from_secs(3);
 const KAFKA_SESSION_TIMEOUT: Duration = Duration::from_secs(6);
 const KAFKA_ASSIGNMENT_HEADROOM: Duration = Duration::from_secs(12);
@@ -20,6 +24,7 @@ const PRODUCER_QUEUE_MESSAGES: usize = 128;
 struct RunState {
     config: Config,
     preparation: Arc<Semaphore>,
+    packed_recent: bool,
 }
 impl FromRef<RunState> for RunState {
     fn from_ref(state: &RunState) -> Self {
@@ -74,6 +79,12 @@ async fn normalize(
     // partition.
     // Points far from now take the late topic, which ClickHouse reads in small blocks.
     let now = unix_nanos();
+    let records = if state.packed_recent {
+        packing::pack_recent(records, now, state.config.normalized_broker_max_bytes)
+            .expect("packed normalized record exceeds broker budget")
+    } else {
+        records
+    };
     let points: Vec<(Point, i32, &str)> = records
         .into_iter()
         .map(|record| {
@@ -112,7 +123,7 @@ fn unix_nanos() -> u64 {
     u64::try_from(elapsed.as_nanos()).expect("system clock within u64 nanoseconds")
 }
 
-fn app(config: Config) -> impl App {
+fn app(config: Config, packed_recent: bool) -> impl App {
     let budget = ConsumerBudget::raw(config.raw_broker_max_bytes).expect("validated raw budget");
     // A killed Kafka group member sends no LeaveGroup, so replacement assignment
     // can wait a full session. Additional startup headroom covers rejoining and
@@ -189,6 +200,7 @@ fn app(config: Config) -> impl App {
         Ok::<_, std::io::Error>(RunState {
             config,
             preparation: Arc::new(Semaphore::new(1)),
+            packed_recent,
         })
     })
     .after_startup(async |_: Arc<RunState>| {
@@ -223,7 +235,7 @@ pub async fn run(config: Config) -> Result<(), String> {
     #[cfg(unix)]
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         .map_err(|error| error.to_string())?;
-    app(config)
+    app(config, true)
         .run_until(async {
             #[cfg(unix)]
             tokio::select! { _ = term.recv() => {}, _ = tokio::signal::ctrl_c() => {} }

@@ -91,7 +91,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 					".",
 					"..",
 					"recount.metrics.raw",
-					"recount.metrics.normalized",
+					"recount.metrics.normalized-packed",
 					"recount.metrics.late",
 					"recount.participants",
 				].includes(topic),

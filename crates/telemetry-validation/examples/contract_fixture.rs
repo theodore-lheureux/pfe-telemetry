@@ -76,7 +76,7 @@ fn main() {
         return;
     }
     // Multirow file/HTTP interchange uses Protobuf's delimited stream format;
-    // Kafka producers send each individual row through ProtobufSingle instead.
+    // Recent Kafka messages use the same delimiters; late messages are bare rows.
     for row in rows {
         std::io::stdout()
             .write_all(&row.encode_length_delimited_to_vec())

@@ -16,7 +16,9 @@ pub use opentelemetry_proto::tonic::{
     metrics::v1 as metrics, resource::v1 as resource,
 };
 pub const RAW_TOPIC: &str = "recount.metrics.raw";
-pub const NORMALIZED_TOPIC: &str = "recount.metrics.normalized";
+pub const NORMALIZED_TOPIC: &str = "recount.metrics.normalized-packed";
+pub const PACKED_POINTS: usize = 128;
+pub const PACKED_BYTES: usize = 128 * 1024;
 pub const NORMALIZER_GROUP: &str = "recount-normalizer";
 pub const CLICKHOUSE_GROUP: &str = "recount-clickhouse";
 /// Points outside the recent window, kept apart so they cannot spread one ClickHouse insert

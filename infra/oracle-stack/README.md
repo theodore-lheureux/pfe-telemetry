@@ -303,6 +303,27 @@ Live and web with `--no-deps --pull never`; it never restarts shared backends. A
 backend/schema change fails for separate maintenance review instead of replacing
 mounted schemas under running consumers.
 
+### Switch to packed recent Kafka messages
+
+The recent writer and reader must switch together. Prepare the attested backend
+bundle and create `recount.metrics.normalized-packed` with the existing normalized
+topic's partition count and transport bounds. Do not reuse the original topic.
+
+1. Stop the old normalizer gracefully. Leave the ingestion API accepting raw
+   submissions into Kafka. Verify that all partitions of the original recent
+   topic have committed through their log-end offsets.
+2. Switch the normalized Kafka source to the new topic and its `Protobuf`
+   reader. Preserve the destination table, ingest view, late reader and their
+   data. Confirm the new consumer is assigned to all partitions.
+3. Set the normalizer's `RECOUNT_NORMALIZED_TOPIC` to the new topic and
+   activate the corresponding release with the existing raw consumer group.
+   Check raw offset progress, packed-topic commits and Grafana freshness
+   before starting a load test.
+
+Do not reset offsets or delete the old topic during cutover. Before returning
+to the old writer, stop the packed writer and drain the packed topic using its
+matching reader. Never publish either encoding into the other topic.
+
 After health checks, inspect normalizer assignment, independent native consumer
 lag and a synthetic authorized collector-to-query round trip. Test HTTPS gRPC,
 auth/passkeys, SSE and proxy forwarding through the real hostnames. Container

@@ -87,7 +87,7 @@ pub fn attributes(attrs: &[KeyValue]) -> Result<Vec<AttributeNode>, &'static str
     Ok(PreparedAttributes::new(attrs)?.nodes)
 }
 
-// Kafka carries one bare message, consumed by ClickHouse ProtobufSingle.
+// Serialize the point before the normalizer chooses its Kafka lane and framing.
 pub fn serialize(row: &AnalyticalPoint) -> Vec<u8> {
     row.encode_to_vec()
 }

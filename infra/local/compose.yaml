@@ -13,7 +13,7 @@ x-topic-interface: &topic-interface
   <<: *console-environment
   RECOUNT_KAFKA_BOOTSTRAP: kafka:9092
   RECOUNT_RAW_TOPIC: ${RECOUNT_RAW_TOPIC:-recount.metrics.raw}
-  RECOUNT_NORMALIZED_TOPIC: ${RECOUNT_NORMALIZED_TOPIC:-recount.metrics.normalized}
+  RECOUNT_NORMALIZED_TOPIC: ${RECOUNT_NORMALIZED_TOPIC:-recount.metrics.normalized-packed}
   RECOUNT_LATE_TOPIC: ${RECOUNT_LATE_TOPIC:-recount.metrics.late}
   RECOUNT_PARTICIPANT_TOPIC: ${RECOUNT_PARTICIPANT_TOPIC:-recount.participants}
   RECOUNT_PARTICIPANT_PARTITIONS: ${RECOUNT_PARTICIPANT_PARTITIONS:-3}

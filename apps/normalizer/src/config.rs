@@ -91,6 +91,11 @@ impl Cli {
         {
             return Err(invalid("raw, normalized and late topics must differ"));
         }
+        if config.normalized_topic == "recount.metrics.normalized" {
+            return Err(invalid(
+                "packed records require a separate normalized topic",
+            ));
+        }
         config.validate_transport().map_err(invalid)?;
         Ok(config)
     }
@@ -124,7 +129,12 @@ impl Config {
     pub fn validate_transport(&self) -> Result<(), &'static str> {
         transport::body_fits(self.limits.decoded_bytes, self.raw_broker_max_bytes)?;
         transport::body_fits(
-            self.limits.normalized_record_bytes,
+            self.limits
+                .normalized_record_bytes
+                .checked_add(prost::length_delimiter_len(
+                    self.limits.normalized_record_bytes,
+                ))
+                .ok_or("normalized record framing exceeds the transport budget")?,
             self.normalized_broker_max_bytes,
         )
     }
@@ -258,7 +268,7 @@ mod tests {
             "--raw-broker-max-bytes",
             "4259840",
             "--normalized-broker-max-bytes",
-            "1114112",
+            "1114115",
             "--normalized-max-output-bytes",
             "1048576",
         ])

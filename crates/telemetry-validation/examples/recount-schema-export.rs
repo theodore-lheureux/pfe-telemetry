@@ -230,7 +230,8 @@ fn prepare(options: &Options) -> Result<()> {
         "late_topic": options.late_topic, "late_consumer_group": options.late_group,
         "participant_topic": options.participant_topic, "participant_consumer_group": options.participant_group,
         "recent_block_rows": RECENT_BLOCK_ROWS,
-        "kafka_format": "ProtobufSingle", "point_rows": 1,
+        "kafka_format": "Protobuf", "point_rows": recount_telemetry_schema::PACKED_POINTS,
+        "late_kafka_format": "ProtobufSingle",
         "normalized_broker_max_bytes": options.normalized_broker_max_bytes,
         "kafka_receive_bytes": budget.receive_bytes,
         "poll_ms": options.poll, "flush_ms": options.flush, "sha256": hashes,
@@ -388,8 +389,11 @@ mod tests {
         assert_eq!(manifest["poll_messages"], 1);
         assert_eq!(manifest["maximum_block_rows"], 64);
         assert_eq!(manifest["consumer_group"], "recount.test.consumer");
-        assert_eq!(manifest["point_rows"], 1);
-        assert_eq!(manifest["kafka_format"], "ProtobufSingle");
+        assert_eq!(
+            manifest["point_rows"],
+            recount_telemetry_schema::PACKED_POINTS
+        );
+        assert_eq!(manifest["kafka_format"], "Protobuf");
         assert!(
             fs::read_to_string(first.output.join("schema.sql"))
                 .unwrap()
