@@ -80,9 +80,10 @@ jobs:
           shared-key: release-${{ matrix.arch }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: bun --no-env-file install --frozen-lockfile --ignore-scripts
+      - name: Build the web application
+        run: bun run --filter @recount/web build
       - name: Compile on the native Linux host
         run: |
-          bun run --filter @recount/web build
           mkdir -p .state
           cargo build --locked --release --workspace --bins --examples --message-format=json > .state/build.jsonl
           bun --no-env-file tests/ci/stage-artifacts.ts "$ARCH" .state/build.jsonl

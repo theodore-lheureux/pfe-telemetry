@@ -32,7 +32,7 @@ tests/                  Cross-component validation scenarios
 
 ## Development setup
 
-Application development needs [Bun](https://bun.sh/) 1.4.2 (pinned in `.bun-version`), [just](https://just.systems/) 1.58.0 and [Rust through rustup](https://www.rust-lang.org/tools/install), pinned in `rust-toolchain.toml`. Host builds of the ingestion API and normalizer also need Make and a C/C++ compiler for librdkafka. Docker Compose supplies reusable PostgreSQL/Kafka/ClickHouse backends. Host Node runs Playwright. Optional lab work additionally needs uv 0.12.23, Vagrant and VirtualBox; `just lab setup` installs its locked Ansible dependencies. See [runtime preparation](infra/README.md#prepare-runtime-artifacts).
+Application development needs [Bun](https://bun.sh/) 1.4.4 (pinned in `.bun-version`), [just](https://just.systems/) 1.58.0 and [Rust through rustup](https://www.rust-lang.org/tools/install), pinned in `rust-toolchain.toml`. Host builds of the ingestion API and normalizer also need Make and a C/C++ compiler for librdkafka. Docker Compose supplies reusable PostgreSQL/Kafka/ClickHouse backends. Host Node runs Playwright. Optional lab work additionally needs uv 0.12.23, Vagrant and VirtualBox; `just lab setup` installs its locked Ansible dependencies. See [runtime preparation](infra/README.md#prepare-runtime-artifacts).
 
 On Windows, follow the [Windows setup guide](docs/windows-setup.md) instead. The test environment runs from Ubuntu on WSL2 because Ansible does not run on native Windows.
 
