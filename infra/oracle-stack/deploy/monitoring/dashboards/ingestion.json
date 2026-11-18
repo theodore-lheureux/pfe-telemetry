@@ -1,0 +1,124 @@
+{
+  "uid": "recount-ingestion",
+  "title": "Recount ingestion health",
+  "schemaVersion": 39,
+  "editable": false,
+  "refresh": "30s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Kafka metrics",
+      "description": "Scrape health only. Missing group data is unknown, not zero lag.",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        { "refId": "A", "expr": "up{job=\"kafka\"}", "instant": true }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Unknown",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": { "text": "Unavailable", "color": "red" },
+                "1": { "text": "Scraping", "color": "green" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Queued records by stage",
+      "description": "Raw records are submissions; normalized records are Kafka messages. Do not add these quantities across stages.",
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (consumergroup) (kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized|late)|participants)\"} >= 0)",
+          "legendFormat": "{{consumergroup}}",
+          "instant": true
+        }
+      ],
+      "fieldConfig": { "defaults": { "noValue": "Unknown", "decimals": 0 } }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Backlog trend by stage",
+      "description": "Rising lag identifies the stage where demand exceeds progress.",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (consumergroup) (kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized|late)|participants)\"} >= 0)",
+          "legendFormat": "{{consumergroup}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Lag by partition",
+      "description": "A single rising line can reveal partition skew hidden by totals.",
+      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized|late)|participants)\"} >= 0",
+          "legendFormat": "{{consumergroup}} / {{partition}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Normalizer · arrival vs committed progress",
+      "description": "Raw Kafka records per second, estimated from the slope of offsets over two minutes.",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(clamp_min(deriv(kafka_topic_partition_current_offset{topic=\"recount.metrics.raw\"}[2m]), 0))",
+          "legendFormat": "Arriving"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(clamp_min(deriv(kafka_consumergroup_current_offset{consumergroup=\"recount-normalizer\",topic=\"recount.metrics.raw\"}[2m]), 0))",
+          "legendFormat": "Committed"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "rps" } }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "ClickHouse · arrival vs committed progress",
+      "description": "Kafka messages per second, not telemetry points per second or query freshness.",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (topic) (clamp_min(deriv(kafka_topic_partition_current_offset{topic=~\"recount[.]metrics[.](normalized|late)\"}[2m]), 0))",
+          "legendFormat": "{{topic}} · arriving"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (topic) (clamp_min(deriv(kafka_consumergroup_current_offset{consumergroup=~\"recount-clickhouse(-late)?\",topic=~\"recount[.]metrics[.](normalized|late)\"}[2m]), 0))",
+          "legendFormat": "{{topic}} · committed"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "rps" } }
+    }
+  ]
+}

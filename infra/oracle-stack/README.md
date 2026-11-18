@@ -308,6 +308,24 @@ lag and a synthetic authorized collector-to-query round trip. Test HTTPS gRPC,
 auth/passkeys, SSE and proxy forwarding through the real hostnames. Container
 health alone does not prove freshness, completeness or capacity.
 
+### View ingestion health
+
+Release activation starts a separate Grafana, Prometheus and Kafka exporter
+Compose project. It does not restart Kafka or ClickHouse to enable monitoring.
+Only Grafana publishes a port, bound to Oracle's loopback interface. Open an SSH
+forward using an authorized operator account:
+
+```sh
+ssh -N -L 127.0.0.1:3303:127.0.0.1:3003 <oracle-ssh-host>
+```
+
+Open [Recount ingestion health](http://127.0.0.1:3303/d/recount-ingestion).
+The dashboard shows arrivals, committed progress and lag by stage and partition.
+If raw lag rises, investigate the normalizer. If raw lag stays low but normalized
+or late lag rises, investigate the corresponding ClickHouse consumer. An absent
+series is unknown, not zero. The rates count Kafka messages, not telemetry
+points, and do not measure end-to-end freshness or CPU and disk pressure.
+
 Failure leaves staged releases and data intact. There is no automatic cleanup
 or rollback. Read the Ansible output in the workflow log and inspect the host;
 failed activation can leave some application containers updated. Reactivating an older application is safe only after checking its

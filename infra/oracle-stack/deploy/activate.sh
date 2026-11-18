@@ -26,6 +26,9 @@ fi
 bun --no-env-file /opt/recount/backend/infra/local/data.ts start
 docker compose config --quiet
 docker compose run --rm --no-deps kafka-topics verify
+monitoring=(env -u COMPOSE_ENV_FILES docker compose --project-name recount-ingestion-monitoring --env-file /dev/null -f "$directory/monitoring/compose.yaml")
+"${monitoring[@]}" config --quiet
+"${monitoring[@]}" up --no-build --detach --wait --wait-timeout 120
 docker image load --input images.tar.zst
 docker compose up --no-build --no-deps --pull never --detach --wait --wait-timeout 180 ingestion-api normalizer live web
 ln -sfn "$directory" /opt/recount/current

@@ -1,0 +1,12 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 8s
+
+scrape_configs:
+  - job_name: kafka
+    static_configs:
+      - targets: [kafka-exporter:9308]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: kafka_(consumergroup_(current_offset|lag|members)|topic_partition_(current_offset|oldest_offset)|brokers)
+        action: keep

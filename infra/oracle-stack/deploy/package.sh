@@ -28,6 +28,7 @@ cp infra/local/compose.apps.yaml "$bundle/"
 cp infra/oracle-stack/deploy/compose.yaml "$bundle/compose.release.yaml"
 cp infra/oracle-stack/deploy/activate.sh "$bundle/"
 cp infra/oracle-stack/deploy/check-storage.sh "$bundle/"
+cp -R infra/oracle-stack/deploy/monitoring "$bundle/monitoring"
 printf '%s\n' "$release" > "$bundle/release"
 printf '%s\n' "$arch" > "$bundle/arch"
 for service in ingestion-api normalizer web; do
