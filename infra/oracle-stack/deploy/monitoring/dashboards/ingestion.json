@@ -73,7 +73,7 @@
       "type": "timeseries",
       "title": "Backlog trend by stage",
       "description": "Rising lag identifies the stage where demand exceeds progress.",
-      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -88,7 +88,7 @@
       "type": "timeseries",
       "title": "Lag by partition",
       "description": "A single rising line can reveal partition skew hidden by totals.",
-      "gridPos": { "x": 12, "y": 5, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -103,7 +103,7 @@
       "type": "timeseries",
       "title": "Normalizer · arrival vs committed progress",
       "description": "Raw Kafka records per second, estimated from the slope of offsets over two minutes.",
-      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -124,7 +124,7 @@
       "type": "timeseries",
       "title": "ClickHouse · arrival vs committed progress",
       "description": "Kafka messages per second, not telemetry points per second or query freshness.",
-      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -145,7 +145,7 @@
       "type": "timeseries",
       "title": "Backlog growth by stage",
       "description": "Five-minute slope in Kafka messages per second. Positive values mean the queue is growing; a brief spike is not a sustained backlog.",
-      "gridPos": { "x": 0, "y": 21, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 26, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -161,7 +161,7 @@
       "type": "timeseries",
       "title": "Retained offset headroom · worst partition",
       "description": "Committed offset minus the oldest retained offset on the closest partition. Negative means the checkpoint is behind retained data. Not a time-to-expiry estimate.",
-      "gridPos": { "x": 12, "y": 21, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 26, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -176,7 +176,7 @@
       "type": "timeseries",
       "title": "ClickHouse CPU quota hit",
       "description": "Percentage of cgroup scheduling periods throttled. This measures how often throttling occurs, not how much CPU time was lost.",
-      "gridPos": { "x": 0, "y": 29, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 34, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -194,7 +194,7 @@
       "type": "timeseries",
       "title": "Data volume latency",
       "description": "Mean completed read and write request latency on ClickHouse’s data device, including other workloads that share that device.",
-      "gridPos": { "x": 12, "y": 29, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 34, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -215,7 +215,7 @@
       "type": "timeseries",
       "title": "ClickHouse reads · mean latency",
       "description": "All ClickHouse SELECTs, including monitoring. Not dashboard-only latency or a percentile.",
-      "gridPos": { "x": 0, "y": 37, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 42, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -231,7 +231,7 @@
       "type": "timeseries",
       "title": "ClickHouse reads · failures",
       "description": "Failed SELECTs per second across ClickHouse, not just dashboard requests.",
-      "gridPos": { "x": 12, "y": 37, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 42, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -247,7 +247,7 @@
       "type": "timeseries",
       "title": "Telemetry points written per second",
       "description": "Rows in new metric_points parts over two minutes. Excludes merges, includes possible replayed rows, and is delayed by ClickHouse part-log flushing.",
-      "gridPos": { "x": 0, "y": 45, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 50, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -262,7 +262,7 @@
       "type": "stat",
       "title": "Host metric sources",
       "description": "A stopped sampler or a failed source is not evidence of healthy ingestion.",
-      "gridPos": { "x": 12, "y": 45, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 50, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
       "targets": [
         {
@@ -285,6 +285,59 @@
             }
           ]
         }
+      }
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Ingestion freshness · sampled p95",
+      "description": "API receipt to ClickHouse new-part write, using regular telemetry. Requires at least 20 sampled points. Does not measure collector or dashboard latency. Compare with backlog when ingestion stalls.",
+      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "recount_ingestion_freshness_p95_seconds and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (time() - recount_ingestion_freshness_last_sample_timestamp_seconds < 120)",
+          "instant": true
+        }
+      ],
+      "options": { "colorMode": "none" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "noValue": "No recent data" }
+      }
+    },
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "Freshness sample count",
+      "gridPos": { "x": 12, "y": 5, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "recount_ingestion_freshness_samples and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "instant": true
+        }
+      ],
+      "options": { "colorMode": "none" },
+      "fieldConfig": { "defaults": { "noValue": "Unknown" } }
+    },
+    {
+      "id": 18,
+      "type": "stat",
+      "title": "Newest sampled write age",
+      "gridPos": { "x": 18, "y": 5, "w": 6, "h": 5 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(time() - recount_ingestion_freshness_last_sample_timestamp_seconds) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "instant": true
+        }
+      ],
+      "options": { "colorMode": "none" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "noValue": "No recent data" }
       }
     }
   ]

@@ -6,7 +6,7 @@ ConditionPathExists=/opt/recount/current/monitoring/sample-host.py
 [Service]
 Type=oneshot
 ExecStart=/usr/bin/python3 /opt/recount/current/monitoring/sample-host.py
-TimeoutStartSec=25
+TimeoutStartSec=30
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

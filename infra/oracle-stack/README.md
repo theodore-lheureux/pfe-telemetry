@@ -330,8 +330,15 @@ A host timer samples ClickHouse CPU throttling, data-volume request latency and
 server-wide read latency and failures. These reads include monitoring and are
 not specific to dashboards. The points-written panel counts rows in new
 ClickHouse parts, excluding merges but including possible replays; Kafka rates
-count messages instead. Neither measures collector-to-query freshness, which
-requires an authorized end-to-end probe.
+count messages instead.
+
+**Ingestion freshness · sampled p95** compares the ingestion API's receipt
+timestamp with ClickHouse's new-part write timestamp for regular telemetry. It
+samples up to four recent, still-active insert parts and requires at least 20
+valid points. Merged parts are excluded, so the result is an estimate for
+sampled writes, not a percentile over all points. The sample count and age are
+shown alongside it; compare with Kafka lag because pending points cannot
+contribute. The panel does not measure collector-side or dashboard latency.
 
 Failure leaves staged releases and data intact. There is no automatic cleanup
 or rollback. Read the Ansible output in the workflow log and inspect the host;

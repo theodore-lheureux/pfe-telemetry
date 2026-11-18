@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import time
@@ -69,6 +70,95 @@ def point_metrics():
     yield f"recount_clickhouse_points_written_per_second {int(value) / 120}"
 
 
+def lineage_received_ns(data):
+    """Read PointLineage.received_unix_nano (fixed64 field 4), not nested fields."""
+    position = 0
+
+    def varint():
+        nonlocal position
+        value = 0
+        for shift in range(0, 70, 7):
+            byte = data[position]
+            position += 1
+            value |= (byte & 127) << shift
+            if byte < 128:
+                return value
+        raise ValueError("Invalid protobuf varint")
+
+    try:
+        while position < len(data):
+            tag = varint()
+            kind = tag & 7
+            if tag == 33:
+                if position + 8 > len(data):
+                    break
+                return int.from_bytes(data[position:position + 8], "little")
+            if kind == 0:
+                varint()
+            elif kind == 1:
+                position += 8
+            elif kind == 2:
+                length = varint()
+                position += length
+            elif kind == 5:
+                position += 4
+            else:
+                break
+    except IndexError:
+        pass
+    return None
+
+
+def freshness_query(sql):
+    return command("docker", "exec", CONTAINER, "clickhouse-client",
+                   "--max_execution_time=2", "--max_threads=1", "--readonly=2", "--query", sql)
+
+
+def freshness_metrics():
+    # NewPart excludes background merges; only original parts still readable can
+    # contribute. Bound both the candidate parts and the amount scanned.
+    parts = freshness_query(
+        "SELECT l.part_name, toUnixTimestamp64Nano(max(l.event_time_microseconds)) "
+        "FROM system.part_log AS l INNER JOIN "
+        "(SELECT name, uuid FROM system.tables WHERE database='telemetry' AND name='metric_points') AS t "
+        "ON l.table_uuid=t.uuid "
+        "WHERE l.event_date >= today()-1 AND l.event_time > now()-120 "
+        "AND l.database='telemetry' AND l.table='metric_points' AND l.event_type='NewPart' "
+        "AND l.error=0 "
+        "AND l.part_name IN (SELECT name FROM system.parts WHERE database='telemetry' "
+        "AND table='metric_points' AND active AND rows <= 50000) "
+        "GROUP BY l.part_name ORDER BY max(l.event_time_microseconds) DESC LIMIT 4 FORMAT TSV"
+    )
+    inserted = {}
+    for part, raw in (line.split("\t") for line in parts.splitlines()):
+        if not re.fullmatch(r"[0-9]+(?:_[0-9]+){3,4}", part):
+            raise ValueError("Unexpected telemetry part name")
+        inserted[part] = int(raw)
+    samples = []
+    newest = 0
+    if inserted:
+        selected = ",".join(f"'{part}'" for part in inserted)
+        points = freshness_query(
+            "SELECT _part, hex(lineage) FROM telemetry.metric_points "
+            f"PREWHERE _part IN ({selected}) AND cityHash64(sample_id) % 32 = 0 "
+            "WHERE length(lineage) BETWEEN 1 AND 4096 LIMIT 8192 "
+            "SETTINGS max_rows_to_read=220000,max_bytes_to_read=67108864,max_block_size=4096 FORMAT TSV"
+        )
+        for part, encoded in (line.split("\t") for line in points.splitlines()):
+            received = lineage_received_ns(bytes.fromhex(encoded))
+            written = inserted[part]
+            if received and received <= written:
+                samples.append((written - received) / 1e9)
+                newest = max(newest, written)
+    yield f"recount_ingestion_freshness_samples {len(samples)}"
+    if samples:
+        yield f"recount_ingestion_freshness_last_sample_timestamp_seconds {newest / 1e9}"
+    if len(samples) >= 20:
+        samples.sort()
+        index = (95 * len(samples) + 99) // 100 - 1
+        yield f"recount_ingestion_freshness_p95_seconds {samples[index]}"
+
+
 def snapshot():
     lines = [f"recount_ingestion_host_sample_timestamp_seconds {int(time.time())}"]
     try:
@@ -84,6 +174,7 @@ def snapshot():
         ("disk", lambda: disk_metrics(data_path) if data_path else ()),
         ("queries", query_metrics),
         ("points", point_metrics),
+        ("freshness", freshness_metrics),
     ):
         try:
             values = list(collect())
