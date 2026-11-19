@@ -1,8 +1,11 @@
 use crate::{config::Config, kafka, prepare};
 use futures_util::future::join_all;
-use recount_telemetry_schema::recent;
+use recount_telemetry_schema::{RAW_RECEIVED_MS_HEADER, recent};
 use recount_telemetry_validation::transport::ConsumerBudget;
-use ruststream_rdkafka::{context::keys::Key, prelude::*};
+use ruststream_rdkafka::{
+    context::keys::{Key, TimestampMillis},
+    prelude::*,
+};
 use std::{
     convert::Infallible,
     future::Future,
@@ -48,6 +51,7 @@ struct Normalized;
 async fn normalize(
     frame: &Frame<'_>,
     Ctx(key): Ctx<Key>,
+    Ctx(timestamp): Ctx<TimestampMillis>,
     State(state): State<RunState>,
     Out(out): Out<impl Publisher<Options = KafkaOptions>, Normalized>,
 ) -> HandlerOutcome {
@@ -75,6 +79,16 @@ async fn normalize(
     })
     .await
     .expect("preparation failed");
+    // Packing is per raw delivery. Keep its receive time separate from the
+    // output timestamp so a delayed replay does not shorten normalized retention.
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        RAW_RECEIVED_MS_HEADER,
+        timestamp
+            .expect("raw Kafka timestamp required")
+            .to_string()
+            .into_bytes(),
+    );
     // Points far from now take the late topic, which ClickHouse reads in small blocks.
     let now = unix_nanos();
     let records = if state.packed_recent {
@@ -104,6 +118,7 @@ async fn normalize(
         out.message(point)
             .to(*topic)
             .partition(*partition)
+            .with_headers(headers.clone())
             .publish()
     }))
     .await

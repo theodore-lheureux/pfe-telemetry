@@ -6,10 +6,12 @@ use rdkafka::{
     ClientConfig, Offset, TopicPartitionList,
     admin::{AdminClient, AdminOptions, NewTopic, TopicReplication},
     consumer::{BaseConsumer, Consumer},
+    message::{Headers, Message as KafkaMessage},
     producer::{FutureProducer, FutureRecord},
 };
 use recount_telemetry_schema::{
-    ExportMetricsServiceRequest, identity, metrics::metric::Data, wire::AnalyticalPoint,
+    ExportMetricsServiceRequest, RAW_RECEIVED_MS_HEADER, identity, metrics::metric::Data,
+    wire::AnalyticalPoint,
 };
 use ruststream_rdkafka::prelude::*;
 use std::{
@@ -268,6 +270,7 @@ async fn scenario_with_linger(
     let timeout = Duration::from_secs(3);
     let mut expected = Vec::new();
     let start = Instant::now();
+    let received_ms = (unix_nanos() / 1_000_000) as i64 - 60_000;
     let mut delays = Vec::new();
     for (index, bytes) in input.iter().enumerate() {
         let key = identity::raw_routing_key(
@@ -283,7 +286,11 @@ async fn scenario_with_linger(
         let sent = Instant::now();
         producer
             .send(
-                FutureRecord::to(&raw).partition(0).key(&key).payload(bytes),
+                FutureRecord::to(&raw)
+                    .partition(0)
+                    .key(&key)
+                    .payload(bytes)
+                    .timestamp(received_ms + index as i64),
                 timeout,
             )
             .await
@@ -338,6 +345,40 @@ async fn scenario_with_linger(
                 expected.len() as i64
             }
         )
+    );
+    let mut assignment = TopicPartitionList::new();
+    assignment
+        .add_partition_offset(&recent, 0, Offset::Beginning)
+        .unwrap();
+    observer.assign(&assignment).unwrap();
+    let records = if packed { input.len() } else { expected.len() };
+    let mut stamps = Vec::new();
+    for _ in 0..records {
+        let message = observer.poll(timeout).expect("normalized record").unwrap();
+        let stamp = message
+            .headers()
+            .unwrap()
+            .iter()
+            .find(|header| header.key == RAW_RECEIVED_MS_HEADER)
+            .unwrap();
+        stamps.push(
+            std::str::from_utf8(stamp.value.unwrap())
+                .unwrap()
+                .parse::<i64>()
+                .unwrap(),
+        );
+        assert!(message.timestamp().to_millis().unwrap() >= received_ms + 60_000);
+    }
+    assert!(
+        stamps
+            .iter()
+            .all(|stamp| (received_ms..received_ms + input.len() as i64).contains(stamp))
+    );
+    stamps.sort_unstable();
+    stamps.dedup();
+    assert_eq!(
+        stamps,
+        (received_ms..received_ms + input.len() as i64).collect::<Vec<_>>()
     );
     assert_eq!(
         observer.fetch_watermarks(&late, 0, timeout).unwrap(),

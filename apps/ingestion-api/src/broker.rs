@@ -118,7 +118,10 @@ impl Sink for KafkaSink {
         let delivery = self
             .producer
             .send(
-                FutureRecord::to(&self.topic).key(&key).payload(&bytes),
+                FutureRecord::to(&self.topic)
+                    .key(&key)
+                    .payload(&bytes)
+                    .timestamp((raw.received_unix_nano / 1_000_000) as i64),
                 Timeout::After(Duration::from_millis(100)),
             )
             .await
