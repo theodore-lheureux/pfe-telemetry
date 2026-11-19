@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Root } from "protobufjs/light";
+import protobuf from "protobufjs/light.js";
 import type {
 	ActivityNode,
 	JsonObject,
@@ -7,9 +7,9 @@ import type {
 	LiveEvent,
 	PacketDetail,
 } from "./contracts";
-import generated from "./generated/descriptors.json";
+import generated from "./generated/descriptors.json" with { type: "json" };
 
-const root = Root.fromJSON(generated.schema);
+const root = protobuf.Root.fromJSON(generated.schema);
 const rawType = root.lookupType("recount.telemetry.RawRecord");
 const requestType = root.lookupType(
 	"opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",

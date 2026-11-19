@@ -12,6 +12,32 @@ survives. It does not protect against broker disk loss, node loss, corruption or
 disk exhaustion. `acks=all` and producer idempotence do not add a second replica
 or deduplicate fresh application resends.
 
+## Replay metric data after a hard VM crash
+
+The metric point, series and delivery tables sync part directories but do not
+sync data files on every insert. After a hard VM crash, ClickHouse can lose
+recent writes even if Kafka has committed the corresponding offsets. An
+ordinary graceful restart does not require a rewind.
+
+1. On the recovered VM, pause the normalized and late metric consumers. Wait
+   until their groups (`recount-clickhouse` and `recount-clickhouse-late` by
+   default) are inactive. Save current offsets and check the retained ranges
+   for both topics. Do not reset the raw normalizer or participant groups.
+2. For each affected partition, plan to replay roughly one minute of Kafka
+   record time before the last committed position at the crash. If using a
+   timestamp-based reset, dry-run first and check every proposed offset against
+   the saved checkpoint: never advance a lagging partition. Widen the replay
+   window if observed loss or clock uncertainty requires it. Use the retained
+   earliest offset if the target has expired, and report the gap.
+3. Apply the verified reset to the two metric consumer groups only, read back
+   the committed offsets, and resume consumption. Verify catch-up and affected
+   measurement windows. `ReplacingMergeTree` deduplicates replayed points and
+   deliveries; `AggregatingMergeTree` combines repeated series bounds. Dashboard
+   reads use `FINAL` to deduplicate points before background merges finish.
+
+This recovers only data still retained in Kafka. It does not recover a lost
+Kafka disk or guarantee that a minute covers every crash.
+
 ## Capacity budget
 
 Local measurements supplied for this workload are approximately 12 MiB per

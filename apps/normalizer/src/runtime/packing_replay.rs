@@ -10,8 +10,8 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord},
 };
 use recount_telemetry_schema::{
-    ExportMetricsServiceRequest, RAW_RECEIVED_MS_HEADER, ddl::Schema, identity, metrics::metric::Data,
-    series,
+    ExportMetricsServiceRequest, RAW_RECEIVED_MS_HEADER, ddl::Schema, identity,
+    metrics::metric::Data, series,
 };
 use ruststream_rdkafka::prelude::*;
 use std::{

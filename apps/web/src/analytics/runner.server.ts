@@ -203,7 +203,7 @@ async function coverage(
 		const result = await connection.query({
 			query: `SELECT source_id AS node,
   arraySort(groupUniqArray(toString(intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64}))) AS buckets
-FROM (${seriesPointSource(`${SERIES_WINDOW} AND metric_name = {heartbeat:String}`, POINT_WINDOW, "s.source_id")})
+FROM (${seriesPointSource(`${SERIES_WINDOW} AND metric_name = {heartbeat:String}`, POINT_WINDOW, "s.source_id", "AND metric_name = {heartbeat:String}")})
 GROUP BY node
 LIMIT 500`,
 			format: "JSONEachRow",

@@ -187,11 +187,22 @@ async function readWatermark(signal: AbortSignal) {
 }
 
 const CACHE_MS = 5_000;
-let cached: { expires: number; value: Promise<Date | null> } | undefined;
+let cached:
+	| { key: string; expires: number; value: Promise<Date | null> }
+	| undefined;
 
 export function pipelineIngestedThrough() {
 	const now = Date.now();
-	if (cached && now < cached.expires) return cached.value;
+	const key = JSON.stringify([
+		process.env.RECOUNT_ACTIVITY_KAFKA_BROKERS,
+		process.env.RECOUNT_RAW_TOPIC,
+		process.env.RECOUNT_NORMALIZED_TOPIC,
+		process.env.RECOUNT_LATE_TOPIC,
+		process.env.RECOUNT_NORMALIZER_GROUP,
+		process.env.RECOUNT_CLICKHOUSE_GROUP,
+		process.env.RECOUNT_CLICKHOUSE_LATE_GROUP,
+	]);
+	if (cached?.key === key && now < cached.expires) return cached.value;
 	const deadline = new AbortController();
 	const { promise, resolve } = Promise.withResolvers<null>();
 	const timeout = setTimeout(() => {
@@ -202,6 +213,6 @@ export function pipelineIngestedThrough() {
 		readWatermark(deadline.signal).catch(() => null),
 		promise,
 	]).finally(() => clearTimeout(timeout));
-	cached = { expires: now + CACHE_MS, value };
+	cached = { key, expires: now + CACHE_MS, value };
 	return value;
 }

@@ -1,18 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-	AssignerProtocol,
-	CompressionCodecs,
-	CompressionTypes,
-	type Consumer,
-	Kafka,
-	logLevel,
-} from "kafkajs";
+import kafkaJs, { type Consumer, type Kafka as KafkaClient } from "kafkajs";
 import * as z from "zod";
 import { integer, readEnv } from "../lib/env.server";
 import { OperationError } from "../lib/operation-error";
 import { decodePacket } from "./codec.server";
 import type { PacketInput } from "./contracts";
 import { ownLiveConnection } from "./live-connection.server";
+
+const {
+	AssignerProtocol,
+	CompressionCodecs,
+	CompressionTypes,
+	Kafka,
+	logLevel,
+} = kafkaJs;
 
 // The ingestion API produces ZSTD batches; kafkajs ships no ZSTD codec, so
 // reading raw packets crashed the consumer. Bun provides ZSTD natively.
@@ -78,7 +79,7 @@ export function liveKafkaSettings() {
 
 // Ephemeral readers use explicit assignments without joining pipeline groups.
 export function partitionConsumer(
-	kafka: Kafka,
+	kafka: KafkaClient,
 	topic: string,
 	partitions: number[],
 	raw = false,
@@ -138,7 +139,7 @@ export async function stopConsumer(consumer: Consumer) {
 }
 
 export function readRawPacket(
-	kafka: Kafka,
+	kafka: KafkaClient,
 	input: PacketInput,
 	signal: AbortSignal,
 	topic = liveKafkaSettings().rawTopic,

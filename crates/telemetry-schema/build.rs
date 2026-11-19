@@ -397,7 +397,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             SERIES_FIELDS
                 .iter()
                 .filter(|name| !matches!(**name, "project_id" | "series_id" | "metric_name"))
-                .map(|name| format!("frame.{name} = series.{name}.clone();"))
+                .map(|name| {
+                    let field = messages[".recount.telemetry.AnalyticalPoint"]
+                        .field
+                        .iter()
+                        .find(|field| field.name() == *name)
+                        .unwrap();
+                    let clone = if field.label() == Label::Repeated
+                        || matches!(field.r#type(), Type::String | Type::Bytes | Type::Message)
+                    {
+                        ".clone()"
+                    } else {
+                        ""
+                    };
+                    format!("frame.{name} = series.{name}{clone};")
+                })
                 .collect::<Vec<_>>()
                 .join("\n")
         ),

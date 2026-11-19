@@ -117,45 +117,6 @@ def active_node_metrics():
     yield f"recount_ingestion_active_nodes {int(count)}"
 
 
-def lineage_received_ns(data):
-    """Read PointLineage.received_unix_nano (fixed64 field 4), not nested fields."""
-    position = 0
-
-    def varint():
-        nonlocal position
-        value = 0
-        for shift in range(0, 70, 7):
-            byte = data[position]
-            position += 1
-            value |= (byte & 127) << shift
-            if byte < 128:
-                return value
-        raise ValueError("Invalid protobuf varint")
-
-    try:
-        while position < len(data):
-            tag = varint()
-            kind = tag & 7
-            if tag == 33:
-                if position + 8 > len(data):
-                    break
-                return int.from_bytes(data[position:position + 8], "little")
-            if kind == 0:
-                varint()
-            elif kind == 1:
-                position += 8
-            elif kind == 2:
-                length = varint()
-                position += length
-            elif kind == 5:
-                position += 4
-            else:
-                break
-    except IndexError:
-        pass
-    return None
-
-
 def clickhouse_query(sql):
     return command("docker", "exec", CONTAINER, "clickhouse-client",
                    "--max_execution_time=2", "--max_threads=1", "--readonly=2", "--query", sql)
@@ -186,13 +147,13 @@ def freshness_metrics():
     if inserted:
         selected = ",".join(f"'{part}'" for part in inserted)
         points = clickhouse_query(
-            "SELECT _part, hex(lineage) FROM telemetry.metric_points "
-            f"PREWHERE _part IN ({selected}) AND cityHash64(sample_id) % 32 = 0 "
-            "WHERE length(lineage) BETWEEN 1 AND 4096 LIMIT 8192 "
+            "SELECT _part, received_unix_nano FROM telemetry.metric_points "
+            f"PREWHERE _part IN ({selected}) AND cityHash64(series_id, stream_id, time_unix_nano) % 32 = 0 "
+            "WHERE received_unix_nano != 0 LIMIT 8192 "
             "SETTINGS max_rows_to_read=220000,max_bytes_to_read=67108864,max_block_size=4096 FORMAT TSV"
         )
         for part, encoded in (line.split("\t") for line in points.splitlines()):
-            received = lineage_received_ns(bytes.fromhex(encoded))
+            received = int(encoded)
             written = inserted[part]
             if received and received <= written:
                 samples.append((written - received) / 1e9)
