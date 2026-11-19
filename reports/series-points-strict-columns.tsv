@@ -37,7 +37,7 @@ metric_points	value_kind		Enum8('ABSENT' = 0, 'INTEGER' = 1, 'DOUBLE' = 2)		0.00
 metric_points	zero_count	Nullable(UInt64)	UInt64	0.040095	0.000632
 metric_points	zero_threshold	Nullable(Float64)	Float64	0.040095	0.000632
 metric_series	description	String	String	0.000075	0.000075
-metric_series	device_id	Nullable(String)		0.00138	
+metric_series	device_id	Nullable(String)	—	0.00138	—
 metric_series	first_seen_unix_nano	SimpleAggregateFunction(min, UInt64)	SimpleAggregateFunction(min, UInt64)	0.190082	0.190082
 metric_series	host_id	Nullable(String)	String	0.088973	0.088787
 metric_series	last_seen_unix_nano	SimpleAggregateFunction(max, UInt64)	SimpleAggregateFunction(max, UInt64)	0.190023	0.190023
