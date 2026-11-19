@@ -62,8 +62,8 @@ test("without Kafka, use the project's latest stored heartbeat bucket", () => {
 			fallback,
 		),
 	).toEqual([
-		{ from: step, to: 3 * step, kind: "missing" },
-		{ from: 3 * step, to: 6 * step, kind: "arriving" },
+		{ from: step, to: 4 * step, kind: "missing" },
+		{ from: 4 * step, to: 6 * step, kind: "arriving" },
 	]);
 	expect(coverageBands([step], {}, step, null)).toEqual([]);
 });
