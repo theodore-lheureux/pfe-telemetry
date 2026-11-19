@@ -3,10 +3,15 @@ pub mod execution;
 pub mod identity;
 pub mod point;
 pub mod projection;
+pub mod series;
 pub const ANALYTICAL_COLUMNS: &str =
     include_str!(concat!(env!("OUT_DIR"), "/analytical-columns.sql"));
 pub const PARTICIPANT_COLUMNS: &str =
     include_str!(concat!(env!("OUT_DIR"), "/participant-columns.sql"));
+pub const POINT_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/point-columns.sql"));
+pub const POINT_NAMES: &str = include_str!(concat!(env!("OUT_DIR"), "/point-names.sql"));
+pub const SERIES_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/series-columns.sql"));
+pub const SERIES_NAMES: &str = include_str!(concat!(env!("OUT_DIR"), "/series-names.sql"));
 pub mod wire {
     include!(concat!(env!("OUT_DIR"), "/recount.telemetry.rs"));
 }

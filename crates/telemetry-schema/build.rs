@@ -3,7 +3,59 @@ use prost_types::{
     DescriptorProto, FieldDescriptorProto, FileDescriptorSet,
     field_descriptor_proto::{Label, Type},
 };
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
+
+const SERIES_FIELDS: &[&str] = &[
+    "project_id",
+    "source_id",
+    "resource_id",
+    "resource_kind",
+    "host_id",
+    "device_id",
+    "metric_name",
+    "unit",
+    "metric_kind",
+    "resource_present",
+    "scope_present",
+    "scope_name",
+    "scope_version",
+    "resource_schema_url",
+    "scope_schema_url",
+    "resource_attributes",
+    "scope_attributes",
+    "point_attributes",
+    "metric_metadata",
+    "temporality",
+    "monotonic",
+    "description",
+    "resource_dropped_attributes_count",
+    "scope_dropped_attributes_count",
+    "resource_entity_refs",
+    "series_id",
+    "logical_series_id",
+    "first_seen_unix_nano",
+    "last_seen_unix_nano",
+];
+
+fn write_projection(out: &Path, name: &str, fields: &[(&str, String)]) -> std::io::Result<()> {
+    let mut columns = Vec::new();
+    for (key, ty) in fields {
+        columns.push(format!("    {key} {ty}"));
+    }
+    fs::write(out.join(format!("{name}-columns.sql")), columns.join(",\n"))?;
+    fs::write(
+        out.join(format!("{name}-names.sql")),
+        fields
+            .iter()
+            .map(|(key, _)| *key)
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
+}
 
 fn sql_type(
     owner: &str,
@@ -95,10 +147,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let columns = messages[message]
             .field
             .iter()
-            .map(|f| format!("    {} {}", f.name(), sql_type(message, f, &messages)))
-            .collect::<Vec<_>>()
-            .join(",\n");
-        fs::write(out.join(file), columns)?;
+            .map(|f| (f.name(), sql_type(message, f, &messages)))
+            .collect::<Vec<_>>();
+        write_projection(&out, file.trim_end_matches("-columns.sql"), &columns)?;
+        if file == "analytical-columns.sql" {
+            let points: Vec<_> = columns
+                .iter()
+                .filter(|(name, _)| {
+                    matches!(*name, "project_id" | "series_id") || !SERIES_FIELDS.contains(name)
+                })
+                .cloned()
+                .collect();
+            let series: Vec<_> = columns
+                .into_iter()
+                .filter(|(name, _)| SERIES_FIELDS.contains(name))
+                .map(|(name, ty)| {
+                    (
+                        name,
+                        match name {
+                            "first_seen_unix_nano" => "SimpleAggregateFunction(min, UInt64)".into(),
+                            "last_seen_unix_nano" => "SimpleAggregateFunction(max, UInt64)".into(),
+                            _ => ty,
+                        },
+                    )
+                })
+                .collect();
+            write_projection(&out, "point", &points)?;
+            write_projection(&out, "series", &series)?;
+        }
     }
     Ok(())
 }

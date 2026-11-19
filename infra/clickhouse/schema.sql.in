@@ -2,31 +2,24 @@ CREATE DATABASE IF NOT EXISTS __DATABASE__;
 
 CREATE TABLE __CREATE_GUARD____DATABASE__.metric_points
 (
-__ANALYTICAL_COLUMNS__,
-    -- One logical series: everything that tells streams apart except continuity markers,
-    -- which counter calculations follow through stream_id. Computed once on insert so
-    -- analyses never read the attribute arrays just to group points into series.
-    series_id UInt64 MATERIALIZED cityHash64(tuple(source_id, resource_id, resource_kind, host_id, device_id,
-        scope_name, scope_version, metric_name, unit,
-        arraySort(a -> a.1, arrayMap(a -> tuple(a.path, a.kind, a.string_value, a.int_value,
-            if(isNull(a.double_value), NULL, reinterpretAsUInt64(assumeNotNull(a.double_value))),
-            a.bool_value, a.bytes_value),
-            arrayFilter(a -> a.path NOT IN ('/recount.host.boot_id', '/recount.collection.epoch_id'), resource_attributes))),
-        arraySort(a -> a.1, arrayMap(a -> tuple(a.path, a.kind, a.string_value, a.int_value,
-            if(isNull(a.double_value), NULL, reinterpretAsUInt64(assumeNotNull(a.double_value))),
-            a.bool_value, a.bytes_value), scope_attributes)),
-        arraySort(a -> a.1, arrayMap(a -> tuple(a.path, a.kind, a.string_value, a.int_value,
-            if(isNull(a.double_value), NULL, reinterpretAsUInt64(assumeNotNull(a.double_value))),
-            a.bool_value, a.bytes_value),
-            arrayFilter(a -> a.path != '/recount.counter.segment_id', point_attributes)))))
+__POINT_COLUMNS__
 )
 ENGINE = ReplacingMergeTree
 PARTITION BY event_day
-ORDER BY (project_id, source_id, resource_id, metric_name, time_unix_nano, sample_id)
-SETTINGS index_granularity = 256, fsync_after_insert = 1, fsync_part_directory = 1;
+ORDER BY (project_id, series_id, time_unix_nano, sample_id)
+SETTINGS index_granularity = 1024, fsync_after_insert = 1, fsync_part_directory = 1;
 
--- Recent points span at most a few days, so their inserts can be large. Late points may
--- each fall on a different day, so their inserts stay within the partition guard.
+-- Non-key dimensions are immutable for a storage series_id. Only the bounds aggregate.
+CREATE TABLE __CREATE_GUARD____DATABASE__.metric_series
+(
+__SERIES_COLUMNS__
+)
+ENGINE = AggregatingMergeTree
+ORDER BY (project_id, metric_name, series_id)
+SETTINGS fsync_after_insert = 1, fsync_part_directory = 1;
+
+-- Each packet is self-contained: its first frame for a series carries the
+-- dimensions and the packet's event-time bounds; other frames carry only points.
 CREATE TABLE __CREATE_GUARD____DATABASE__.normalized_kafka
 (
 __ANALYTICAL_COLUMNS__
@@ -42,9 +35,14 @@ __KAFKA_SETTINGS__
     kafka_poll_timeout_ms = __POLL_MS__,
     kafka_flush_interval_ms = __FLUSH_MS__;
 
-CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_points
-TO __DATABASE__.metric_points AS SELECT * FROM __DATABASE__.normalized_kafka;
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_series
+TO __DATABASE__.metric_series AS SELECT __SERIES_NAMES__ FROM __DATABASE__.normalized_kafka
+WHERE last_seen_unix_nano != 0;
 
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_points
+TO __DATABASE__.metric_points AS SELECT __POINT_NAMES__ FROM __DATABASE__.normalized_kafka;
+
+-- Late packets are singletons so a poll can't exceed the event-day partition guard.
 CREATE TABLE __CREATE_GUARD____DATABASE__.late_kafka
 (
 __ANALYTICAL_COLUMNS__
@@ -60,82 +58,9 @@ __KAFKA_SETTINGS__
     kafka_poll_timeout_ms = __POLL_MS__,
     kafka_flush_interval_ms = __FLUSH_MS__;
 
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_metric_series
+TO __DATABASE__.metric_series AS SELECT __SERIES_NAMES__ FROM __DATABASE__.late_kafka
+WHERE last_seen_unix_nano != 0;
+
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_metric_points
-TO __DATABASE__.metric_points AS SELECT * FROM __DATABASE__.late_kafka;
-
--- Discovery catalog: which metrics and attributes each project has sent. Materialized
--- views aggregate as points arrive, so discovery adds no ingestion write path.
-CREATE TABLE __CREATE_GUARD____DATABASE__.metric_definitions
-(
-    project_id String,
-    metric_name String,
-    metric_kind UInt8,
-    temporality UInt8,
-    monotonic_state UInt8,
-    unit String,
-    description SimpleAggregateFunction(anyLast, String),
-    first_seen_unix_nano SimpleAggregateFunction(min, UInt64),
-    last_seen_unix_nano SimpleAggregateFunction(max, UInt64)
-)
-ENGINE = AggregatingMergeTree
-ORDER BY (project_id, metric_name, metric_kind, temporality, monotonic_state, unit);
-
-CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.discover_metric_definitions
-TO __DATABASE__.metric_definitions AS
-SELECT
-    project_id,
-    metric_name,
-    metric_kind,
-    temporality,
-    ifNull(monotonic, 2) AS monotonic_state,
-    unit,
-    anyLast(description) AS description,
-    min(time_unix_nano) AS first_seen_unix_nano,
-    max(time_unix_nano) AS last_seen_unix_nano
-FROM __DATABASE__.metric_points
-GROUP BY project_id, metric_name, metric_kind, temporality, monotonic_state, unit;
-
-CREATE TABLE __CREATE_GUARD____DATABASE__.attribute_definitions
-(
-    project_id String,
-    metric_name String,
-    scope LowCardinality(String),
-    attribute_key String,
-    value_kind UInt8,
-    last_seen_unix_nano SimpleAggregateFunction(max, UInt64)
-)
-ENGINE = AggregatingMergeTree
-ORDER BY (project_id, metric_name, scope, attribute_key, value_kind);
-
--- Only top-level scalar attributes. Continuity markers are internal and never offered.
-CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.discover_point_attributes
-TO __DATABASE__.attribute_definitions AS
-SELECT
-    project_id,
-    metric_name,
-    'point' AS scope,
-    substring(attribute.path, 2) AS attribute_key,
-    attribute.kind AS value_kind,
-    max(time_unix_nano) AS last_seen_unix_nano
-FROM __DATABASE__.metric_points
-ARRAY JOIN point_attributes AS attribute
-WHERE attribute.kind BETWEEN 2 AND 6
-    AND position(substring(attribute.path, 2), '/') = 0
-    AND attribute.path != '/recount.counter.segment_id'
-GROUP BY project_id, metric_name, scope, attribute_key, value_kind;
-
-CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.discover_resource_attributes
-TO __DATABASE__.attribute_definitions AS
-SELECT
-    project_id,
-    metric_name,
-    'resource' AS scope,
-    substring(attribute.path, 2) AS attribute_key,
-    attribute.kind AS value_kind,
-    max(time_unix_nano) AS last_seen_unix_nano
-FROM __DATABASE__.metric_points
-ARRAY JOIN resource_attributes AS attribute
-WHERE attribute.kind BETWEEN 2 AND 6
-    AND position(substring(attribute.path, 2), '/') = 0
-    AND attribute.path NOT IN ('/recount.host.boot_id', '/recount.collection.epoch_id')
-GROUP BY project_id, metric_name, scope, attribute_key, value_kind;
+TO __DATABASE__.metric_points AS SELECT __POINT_NAMES__ FROM __DATABASE__.late_kafka;

@@ -138,6 +138,10 @@ message PointLineage {
   ResourceAccess access = 7;
   DeliveryContext delivery = 8;
 }
+message ContinuityNode {
+  uint32 ordinal = 1;
+  AttributeNode node = 2;
+}
 message AnalyticalPoint {
   string project_id = 1;
   string source_id = 2;
@@ -191,4 +195,10 @@ message AnalyticalPoint {
   repeated bytes exemplars = 49;
   repeated bytes resource_entity_refs = 50;
   bytes lineage = 51;
+  fixed64 series_id = 52;
+  fixed64 logical_series_id = 53;
+  fixed64 first_seen_unix_nano = 54;
+  fixed64 last_seen_unix_nano = 55;
+  repeated ContinuityNode resource_continuity = 56;
+  repeated ContinuityNode point_continuity = 57;
 }

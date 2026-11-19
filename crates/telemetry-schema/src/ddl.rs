@@ -174,6 +174,10 @@ impl Schema<'_> {
                 .to_owned(),
             ),
             ("__ANALYTICAL_COLUMNS__", columns.to_owned()),
+            ("__POINT_COLUMNS__", crate::POINT_COLUMNS.to_owned()),
+            ("__POINT_NAMES__", crate::POINT_NAMES.to_owned()),
+            ("__SERIES_COLUMNS__", crate::SERIES_COLUMNS.to_owned()),
+            ("__SERIES_NAMES__", crate::SERIES_NAMES.to_owned()),
             ("__KAFKA_BOOTSTRAP__", self.bootstrap.to_owned()),
             ("__NORMALIZED_TOPIC__", self.topic.to_owned()),
             ("__CONSUMER_GROUP__", self.group.to_owned()),
@@ -247,7 +251,11 @@ mod tests {
         assert!(sql.contains("kafka_topic_list = 'test.late'"));
         assert!(sql.contains("kafka_group_name = 'test.late-consumer'"));
         assert!(sql.contains("CREATE TABLE disposable.late_kafka"));
-        assert!(sql.contains("TO disposable.metric_points AS SELECT * FROM disposable.late_kafka"));
+        assert!(sql.contains(&format!(
+            "TO disposable.metric_points AS SELECT {} FROM disposable.late_kafka",
+            crate::POINT_NAMES
+        )));
+        assert!(sql.contains("CREATE TABLE disposable.metric_series"));
         assert!(sql.contains("kafka_max_block_size = 16384"));
         assert!(sql.contains("kafka_max_block_size = 64,"));
         assert_eq!(sql.matches("kafka_format = 'ProtobufSingle'").count(), 1);
