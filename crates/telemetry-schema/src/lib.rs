@@ -28,6 +28,8 @@ pub const RAW_TOPIC: &str = "recount.metrics.raw";
 pub const NORMALIZED_TOPIC: &str = "recount.metrics.normalized-packed";
 pub const RAW_RECEIVED_MS_HEADER: &str = "recount-raw-received-ms";
 pub const PACKED_POINTS: usize = 128;
+/// Reader pruning must tolerate this maximum interval in event time.
+pub const MAX_SERIES_RESEND_SECONDS: u32 = 60;
 pub const PACKED_BYTES: usize = 128 * 1024;
 pub const NORMALIZER_GROUP: &str = "recount-normalizer";
 pub const CLICKHOUSE_GROUP: &str = "recount-clickhouse";

@@ -1,5 +1,8 @@
+use crate::runtime::series_cache::{DEFAULT_ENTRIES, MAX_ENTRIES};
 use clap::{CommandFactory, Parser, Subcommand, error::ErrorKind};
-use recount_telemetry_schema::{LATE_TOPIC, NORMALIZED_TOPIC, NORMALIZER_GROUP, RAW_TOPIC};
+use recount_telemetry_schema::{
+    LATE_TOPIC, MAX_SERIES_RESEND_SECONDS, NORMALIZED_TOPIC, NORMALIZER_GROUP, RAW_TOPIC,
+};
 use recount_telemetry_validation::{
     cli::{LimitArgs, nonblank},
     transport::{self, MAX_BROKER_BYTES, NORMALIZED_BROKER_BYTES, RAW_BROKER_BYTES},
@@ -39,6 +42,12 @@ pub struct Cli {
     /// Time to wait for more records in a Kafka producer batch.
     #[arg(long, env = "RECOUNT_NORMALIZER_LINGER_MS", default_value_t = 30, value_parser = clap::value_parser!(u32).range(0..=1000))]
     linger_ms: u32,
+    /// Process-local metadata slots (40 bytes each); zero disables caching.
+    #[arg(long, env = "RECOUNT_NORMALIZER_SERIES_CACHE_ENTRIES", default_value_t = DEFAULT_ENTRIES, value_parser = clap::value_parser!(u32).range(0..=MAX_ENTRIES as i64))]
+    series_cache_entries: u32,
+    /// Maximum wall-clock and event-time gap between series emissions.
+    #[arg(long, env = "RECOUNT_NORMALIZER_SERIES_RESEND_SECONDS", default_value_t = MAX_SERIES_RESEND_SECONDS, value_parser = clap::value_parser!(u32).range(1..=MAX_SERIES_RESEND_SECONDS as i64))]
+    series_resend_seconds: u32,
     /// Native producer retry backoff in milliseconds, within the delivery deadline.
     #[arg(long, env = "RECOUNT_NORMALIZER_RETRY_MS", default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=60_000))]
     retry_ms: u32,
@@ -85,6 +94,8 @@ impl Cli {
             normalized_partitions: self.normalized_partitions,
             max_active: self.max_active as usize,
             linger_ms: self.linger_ms,
+            series_cache_entries: self.series_cache_entries as usize,
+            series_resend_ns: u64::from(self.series_resend_seconds) * 1_000_000_000,
             retry: Duration::from_millis(self.retry_ms.into()),
             delivery: Duration::from_millis(self.delivery_ms.into()),
             shutdown: Duration::from_millis(self.shutdown_ms.into()),
@@ -125,6 +136,8 @@ pub struct Config {
     pub normalized_partitions: u32,
     pub max_active: usize,
     pub linger_ms: u32,
+    pub series_cache_entries: usize,
+    pub series_resend_ns: u64,
     pub retry: Duration,
     pub delivery: Duration,
     pub shutdown: Duration,

@@ -11,6 +11,7 @@ import {
 import { executionPointSource } from "../analytics/execution-source.server";
 import {
 	POINT_FINAL_SETTINGS,
+	seriesLastSeen,
 	seriesPointSource,
 } from "../analytics/series-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
@@ -114,7 +115,7 @@ function keyQuery(
 	execution: boolean,
 ) {
 	const points = seriesPointSource(
-		` AND last_seen_unix_nano >= {lower:UInt64} AND first_seen_unix_nano <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
+		` AND ${seriesLastSeen("{lower:UInt64}")} AND first_seen_unix_nano <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
 		`AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
 AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String})`,
 		execution ? "s.source_id, s.resource_id, s.resource_kind" : "",
@@ -355,7 +356,7 @@ nullIf(toUInt8(monotonic),2) AS monotonic,
 hex(stream_id) AS stream_id_hex,hex(original_position) AS original_hex,
 arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
 FROM (${seriesPointSource(
-			" AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_nano <= {time:UInt64} AND last_seen_unix_nano >= {time:UInt64}",
+			` AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_nano <= {time:UInt64} AND ${seriesLastSeen("{time:UInt64}")}`,
 			`AND event_day={day:UInt32} AND time_unix_nano={time:UInt64} AND series_id={series:UInt64} AND stream_id=unhex({stream:String})`,
 			undefined,
 			"AND metric_name={metric:String}",

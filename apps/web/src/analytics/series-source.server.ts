@@ -27,6 +27,11 @@ FROM (
 INNER JOIN selected_series AS s USING (series_id)`;
 }
 
-export const SERIES_WINDOW = ` AND last_seen_unix_nano >= {from:UInt64} AND first_seen_unix_nano < {to:UInt64}`;
+// Matches MAX_SERIES_RESEND_SECONDS. Only widen metadata pruning.
+export function seriesLastSeen(time: string) {
+	return `last_seen_unix_nano >= (${time} - least(${time}, toUInt64(60000000000)))`;
+}
+
+export const SERIES_WINDOW = ` AND ${seriesLastSeen("{from:UInt64}")} AND first_seen_unix_nano < {to:UInt64}`;
 export const POINT_WINDOW = `AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}
     AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}`;

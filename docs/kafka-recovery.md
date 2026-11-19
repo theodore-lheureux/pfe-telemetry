@@ -38,6 +38,13 @@ ordinary graceful restart does not require a rewind.
 This recovers only data still retained in Kafka. It does not recover a lost
 Kafka disk or guarantee that a minute covers every crash.
 
+When series caching is enabled, include at least one additional resend
+interval in the replay window where retained offsets allow it. Points can
+depend on metadata published earlier on the same output partition. Restart
+normalizers to clear their local caches if series storage is lost or rebuilt;
+do not rebuild just the series table from an arbitrary suffix of point-only
+frames.
+
 ## Capacity budget
 
 Local measurements supplied for this workload are approximately 12 MiB per

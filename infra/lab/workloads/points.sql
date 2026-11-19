@@ -8,7 +8,8 @@ WITH memberships AS (
 ), selected_series AS (
     SELECT * FROM telemetry.metric_series FINAL
     WHERE project_id = {project:String}
-      AND last_seen_unix_nano >= {start:UInt64} AND first_seen_unix_nano <= {end:UInt64}
+      AND last_seen_unix_nano >= ({start:UInt64} - least({start:UInt64}, toUInt64(60000000000)))
+      AND first_seen_unix_nano <= {end:UInt64}
       AND (source_id, resource_id) IN (SELECT node_id, resource FROM memberships)
 )
 SELECT project_id, source_id, resource_id, metric_name, unit,

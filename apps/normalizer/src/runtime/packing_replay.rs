@@ -11,7 +11,7 @@ use rdkafka::{
 };
 use recount_telemetry_schema::{
     ExportMetricsServiceRequest, RAW_RECEIVED_MS_HEADER, ddl::Schema, identity,
-    metrics::metric::Data, series,
+    metrics::metric::Data, series, wire::AnalyticalPoint,
 };
 use ruststream_rdkafka::prelude::*;
 use std::{
@@ -137,14 +137,30 @@ async fn real_normalizer_linger_preserves_points_and_checkpoints() {
         .map(|i| batch(now + i * 1_000_000, i as usize))
         .collect();
     for burst in [false, true] {
-        let baseline = scenario_with_linger(&broker, &input, true, Some("5"), burst).await;
-        let trial = scenario_with_linger(&broker, &input, true, Some("30"), burst).await;
+        let baseline = scenario_with_linger(&broker, &input, true, Some("5"), burst, false).await;
+        let trial = scenario_with_linger(&broker, &input, true, Some("30"), burst, false).await;
         assert_eq!(baseline, trial, "logical ClickHouse rows changed");
     }
 }
 
 async fn scenario(broker: &str, input: &[Vec<u8>], packed: bool) -> String {
-    scenario_with_linger(broker, input, packed, None, false).await
+    scenario_with_linger(broker, input, packed, None, false, false).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires disposable Kafka topics and ClickHouse"]
+async fn cached_series_survive_two_replicas_and_reassignment() {
+    assert_eq!(
+        std::env::var("RECOUNT_NORMALIZER_TEST_ALLOW_PUBLISH").as_deref(),
+        Ok("1")
+    );
+    let broker = setting("RECOUNT_NORMALIZER_TEST_BROKER");
+    assert!(broker.starts_with("127.0.0.1:"));
+    let now = unix_nanos();
+    let input: Vec<_> = (0..8)
+        .map(|i| batch(now + i * 1_000_000, i as usize))
+        .collect();
+    scenario_with_linger(&broker, &input, true, None, false, true).await;
 }
 
 async fn scenario_with_linger(
@@ -153,6 +169,7 @@ async fn scenario_with_linger(
     packed: bool,
     linger_ms: Option<&'static str>,
     burst: bool,
+    replicas: bool,
 ) -> String {
     let database = Database(format!("recount_pack_{}", unix_nanos()));
     let db = &database.0;
@@ -179,7 +196,7 @@ async fn scenario_with_linger(
         "--group",
         &group,
         "--raw-partitions",
-        "1",
+        if replicas { "3" } else { "1" },
         "--normalized-partitions",
         "1",
         "--linger-ms",
@@ -193,7 +210,12 @@ async fn scenario_with_linger(
         admin
             .create_topics(
                 &[
-                    NewTopic::new(&raw, 1, TopicReplication::Fixed(1)).set(
+                    NewTopic::new(
+                        &raw,
+                        if replicas { 3 } else { 1 },
+                        TopicReplication::Fixed(1)
+                    )
+                    .set(
                         "max.message.bytes",
                         &config.raw_broker_max_bytes.to_string()
                     ),
@@ -240,12 +262,29 @@ async fn scenario_with_linger(
         sql(statement);
     }
     let (stop, stopped) = tokio::sync::oneshot::channel();
-    let run = tokio::spawn(async move {
-        app(config, packed)
-            .run_until(async {
-                let _ = stopped.await;
-            })
-            .await
+    let second_config = config.clone();
+    let mut first = Some((
+        stop,
+        tokio::spawn(async move {
+            app(config, packed)
+                .run_until(async {
+                    let _ = stopped.await;
+                })
+                .await
+        }),
+    ));
+    let second = replicas.then(|| {
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        (
+            stop,
+            tokio::spawn(async move {
+                app(second_config, packed)
+                    .run_until(async {
+                        let _ = stopped.await;
+                    })
+                    .await
+            }),
+        )
     });
     let producer: FutureProducer = ClientConfig::new()
         .set("bootstrap.servers", broker)
@@ -261,9 +300,33 @@ async fn scenario_with_linger(
     let mut expected = Vec::new();
     let mut expected_ids = Vec::new();
     let start = Instant::now();
+    let members = |expected| {
+        observer
+            .fetch_group_list(Some(&group), timeout)
+            .is_ok_and(|list| {
+                list.groups()
+                    .iter()
+                    .any(|g| g.state() == "Stable" && g.members().len() == expected)
+            })
+    };
+    if replicas {
+        while !members(2) {
+            assert!(start.elapsed() < Duration::from_secs(30));
+            tokio::time::sleep(Duration::from_millis(150)).await;
+        }
+    }
     let received_ms = (unix_nanos() / 1_000_000) as i64 - 60_000;
     let mut delays = Vec::new();
     for (index, bytes) in input.iter().enumerate() {
+        if replicas && index == input.len() / 2 {
+            let (stop, run) = first.take().unwrap();
+            stop.send(()).unwrap();
+            run.await.unwrap().unwrap();
+            while !members(1) {
+                assert!(start.elapsed() < Duration::from_secs(60));
+                tokio::time::sleep(Duration::from_millis(150)).await;
+            }
+        }
         let key = identity::raw_routing_key(
             &recount_telemetry_schema::wire::RawRecord::decode(bytes.as_slice()).unwrap(),
         )
@@ -285,7 +348,7 @@ async fn scenario_with_linger(
         producer
             .send(
                 FutureRecord::to(&raw)
-                    .partition(0)
+                    .partition(if replicas { (index % 3) as i32 } else { 0 })
                     .key(&key)
                     .payload(bytes)
                     .timestamp(received_ms + index as i64),
@@ -315,16 +378,21 @@ async fn scenario_with_linger(
         delays.push(sent.elapsed());
     }
     let mut assignment = TopicPartitionList::new();
-    assignment.add_partition(&raw, 0);
+    for p in 0..if replicas { 3 } else { 1 } {
+        assignment.add_partition(&raw, p);
+    }
     loop {
-        if observer
+        let offsets = observer
             .committed_offsets(assignment.clone(), timeout)
-            .unwrap()
-            .find_partition(&raw, 0)
-            .unwrap()
-            .offset()
-            == Offset::Offset(input.len() as i64)
-        {
+            .unwrap();
+        if offsets.elements().iter().all(|p| {
+            let count = if replicas {
+                (input.len() + 2 - p.partition() as usize) / 3
+            } else {
+                input.len()
+            };
+            p.offset() == Offset::Offset(count as i64)
+        }) {
             break;
         }
         assert!(
@@ -351,8 +419,18 @@ async fn scenario_with_linger(
     observer.assign(&assignment).unwrap();
     let records = if packed { input.len() } else { expected.len() };
     let mut stamps = Vec::new();
+    let mut series_frames = std::collections::BTreeMap::<u64, usize>::new();
     for _ in 0..records {
         let message = observer.poll(timeout).expect("normalized record").unwrap();
+        if replicas {
+            let mut payload = message.payload().unwrap();
+            while !payload.is_empty() {
+                let point = AnalyticalPoint::decode_length_delimited(&mut payload).unwrap();
+                if point.last_seen_unix_nano != 0 {
+                    *series_frames.entry(point.series_id).or_default() += 1;
+                }
+            }
+        }
         let stamp = message
             .headers()
             .unwrap()
@@ -382,6 +460,13 @@ async fn scenario_with_linger(
         observer.fetch_watermarks(&late, 0, timeout).unwrap(),
         (0, 0)
     );
+    if replicas {
+        assert!(
+            series_frames
+                .values()
+                .all(|count| *count >= 2 && *count < input.len())
+        );
+    }
     let actual = sql(&format!(
             "SELECT p.time_unix_nano, p.series_id, lower(hex(p.stream_id)), s.logical_series_id, p.receipt_tag
             FROM (SELECT * FROM {db}.metric_points FINAL) AS p
@@ -409,8 +494,10 @@ async fn scenario_with_linger(
         "packed={packed} linger={linger_ms:?} burst={burst}: {} verified points; observed visibility delays {delays:?}",
         actual.len()
     );
-    stop.send(()).unwrap();
-    run.await.unwrap().unwrap();
+    for (stop, run) in first.into_iter().chain(second) {
+        stop.send(()).unwrap();
+        run.await.unwrap().unwrap();
+    }
     drop(database);
     assert!(
         admin

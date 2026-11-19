@@ -137,6 +137,31 @@ test("gauges average per series, then combine per group and across groups", asyn
 	]);
 });
 
+test("a short point window keeps a series whose metadata has not been refreshed", async () => {
+	const project = randomUUID();
+	await gauge(project, "node-a", -45n, 100);
+	await fixture.client.command({
+		query: `INSERT INTO metric_points SELECT * REPLACE (
+			{time:UInt64} AS time_unix_nano, toInt64(200) AS int_value)
+			FROM metric_points WHERE project_id={project:String}`,
+		query_params: { project, time: (ns + 10_000_000_000n).toString() },
+	});
+	const result = await run(project, {
+		shape: "timeseries",
+		range,
+		interval: "1m",
+		measures: [
+			{
+				name: "memory",
+				metric: "recount.node.memory.total",
+				calculation: "avg",
+				combine: "sum",
+			},
+		],
+	});
+	expect(result.series[0]?.points[0]?.value).toBe(200);
+});
+
 test("sources combine by count and by exact percentiles", async () => {
 	const project = randomUUID();
 	for (const [node, value] of [

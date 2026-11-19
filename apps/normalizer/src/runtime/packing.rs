@@ -1,3 +1,4 @@
+use super::series_cache::{Emission, SeriesCache};
 use prost::Message;
 use recount_telemetry_schema::{
     PACKED_BYTES, PACKED_POINTS, identity,
@@ -33,24 +34,34 @@ fn frame_size(point: &AnalyticalPoint, metadata: Option<&AnalyticalPoint>) -> us
 }
 
 impl Packet {
-    fn push(&mut self, point: AnalyticalPoint, metadata: AnalyticalPoint, bytes: usize) {
-        let (_, bounds) = self
-            .series
-            .entry(point.series_id)
-            .or_insert((self.points.len(), metadata));
-        bounds.first_seen_unix_nano = bounds.first_seen_unix_nano.min(point.time_unix_nano);
-        bounds.last_seen_unix_nano = bounds.last_seen_unix_nano.max(point.time_unix_nano);
+    fn push(&mut self, point: AnalyticalPoint, metadata: Option<AnalyticalPoint>, bytes: usize) {
+        if let Some(metadata) = metadata {
+            self.series
+                .entry(point.series_id)
+                .or_insert((self.points.len(), metadata));
+        }
+        if let Some((_, bounds)) = self.series.get_mut(&point.series_id) {
+            bounds.first_seen_unix_nano = bounds.first_seen_unix_nano.min(point.time_unix_nano);
+            bounds.last_seen_unix_nano = bounds.last_seen_unix_nano.max(point.time_unix_nano);
+        }
         self.points.push(point);
         self.bytes += bytes;
     }
 
-    fn finish(self, partition: u32) -> RoutedRecord {
+    fn finish(self, partition: u32, now: u64, emissions: &mut Vec<Emission>) -> RoutedRecord {
         let time_unix_nano = self.points[0].time_unix_nano;
         let mut payload = Vec::with_capacity(self.bytes);
         for (index, point) in self.points.into_iter().enumerate() {
             if let Some((first, metadata)) = self.series.get(&point.series_id)
                 && *first == index
             {
+                emissions.push(Emission {
+                    series: point.series_id,
+                    first: metadata.first_seen_unix_nano,
+                    time: metadata.last_seen_unix_nano,
+                    emitted_at: now,
+                    lane_partition: partition * 2,
+                });
                 series::with_series(point, metadata)
                     .encode_length_delimited(&mut payload)
                     .unwrap();
@@ -74,16 +85,43 @@ pub(crate) fn pack(
     broker_bytes: usize,
     packed_recent: bool,
 ) -> Result<Vec<RoutedRecord>, &'static str> {
+    Ok(pack_cached(points, partitions, now, broker_bytes, packed_recent, None)?.0)
+}
+
+pub(super) fn pack_cached(
+    points: Vec<AnalyticalPoint>,
+    partitions: u32,
+    now: u64,
+    broker_bytes: usize,
+    packed_recent: bool,
+    cache: Option<&SeriesCache>,
+) -> Result<(Vec<RoutedRecord>, Vec<Emission>), &'static str> {
     let batch_bytes = PACKED_BYTES.min(broker_bytes.saturating_sub(FRAMING_RESERVE));
     let mut pending = BTreeMap::<u32, Packet>::new();
     let mut output = Vec::new();
+    let mut emissions = Vec::new();
     for mut point in points {
         let partition = identity::partition(&normalized_routing_key(&point)?, partitions)
             .ok_or("positive partition count required")?;
         let metadata = series::split(&mut point);
-        if !packed_recent || !recent(point.time_unix_nano, now) {
+        let late = !recent(point.time_unix_nano, now);
+        let emission = Emission {
+            series: point.series_id,
+            first: point.time_unix_nano,
+            time: point.time_unix_nano,
+            emitted_at: now,
+            lane_partition: partition * 2 + u32::from(late),
+        };
+        let emit = cache.is_none_or(|c| c.should_emit(emission));
+        let metadata = emit.then_some(metadata);
+        if !packed_recent || late {
             let time_unix_nano = point.time_unix_nano;
-            let payload = series::with_series(point, &metadata).encode_to_vec();
+            let payload = if let Some(metadata) = metadata {
+                emissions.push(emission);
+                series::with_series(point, &metadata).encode_to_vec()
+            } else {
+                point.encode_to_vec()
+            };
             body_fits(payload.len(), broker_bytes)?;
             output.push(RoutedRecord {
                 partition,
@@ -95,28 +133,30 @@ pub(crate) fn pack(
         let packet = pending.entry(partition).or_default();
         let mut bytes = frame_size(
             &point,
-            (!packet.series.contains_key(&point.series_id)).then_some(&metadata),
+            metadata
+                .as_ref()
+                .filter(|_| !packet.series.contains_key(&point.series_id)),
         );
         if !packet.points.is_empty()
             && (packet.points.len() == PACKED_POINTS || packet.bytes + bytes > batch_bytes)
         {
-            output.push(std::mem::take(packet).finish(partition));
-            bytes = frame_size(&point, Some(&metadata));
+            output.push(std::mem::take(packet).finish(partition, now, &mut emissions));
+            bytes = frame_size(&point, metadata.as_ref());
         }
         body_fits(packet.bytes + bytes, broker_bytes)?;
         packet.push(point, metadata, bytes);
         // A valid indivisible point larger than the packing target travels alone.
         if packet.bytes >= batch_bytes {
-            output.push(std::mem::take(packet).finish(partition));
+            output.push(std::mem::take(packet).finish(partition, now, &mut emissions));
         }
     }
     output.extend(
         pending
             .into_iter()
             .filter(|(_, p)| !p.points.is_empty())
-            .map(|(partition, p)| p.finish(partition)),
+            .map(|(partition, p)| p.finish(partition, now, &mut emissions)),
     );
-    Ok(output)
+    Ok((output, emissions))
 }
 
 #[cfg(test)]

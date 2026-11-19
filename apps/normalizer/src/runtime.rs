@@ -18,6 +18,8 @@ use tokio::sync::Semaphore;
 #[cfg(test)]
 mod delivery_tests;
 pub(crate) mod packing;
+pub(crate) mod series_cache;
+use series_cache::SeriesCache;
 #[cfg(test)]
 mod packing_replay;
 
@@ -30,6 +32,7 @@ struct RunState {
     config: Config,
     preparation: Arc<Semaphore>,
     packed_recent: bool,
+    series_cache: Arc<SeriesCache>,
 }
 impl FromRef<RunState> for RunState {
     fn from_ref(state: &RunState) -> Self {
@@ -75,12 +78,20 @@ async fn normalize(
     let now = unix_nanos();
     let broker_bytes = state.config.normalized_broker_max_bytes;
     let packed_recent = state.packed_recent;
-    let records = tokio::task::spawn_blocking(move || {
+    let cache = state.series_cache.clone();
+    let (records, emissions) = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let rows = prepare_rows(&payload, key.as_deref(), limits)
             .unwrap_or_else(|_| panic!("retained validation failed"));
-        packing::pack(rows, partitions, now, broker_bytes, packed_recent)
-            .expect("normalized record exceeds broker budget")
+        packing::pack_cached(
+            rows,
+            partitions,
+            now,
+            broker_bytes,
+            packed_recent,
+            Some(&cache),
+        )
+        .expect("normalized record exceeds broker budget")
     })
     .await
     .expect("preparation failed");
@@ -122,6 +133,7 @@ async fn normalize(
     .unwrap_or_else(|error| {
         panic!("normalized publication failed; input remains unsettled: {error}")
     });
+    state.series_cache.acknowledge(&emissions);
     HandlerOutcome::ack()
 }
 
@@ -219,6 +231,10 @@ fn app(config: Config, packed_recent: bool) -> impl App {
             .map_err(std::io::Error::other)?;
         Ok::<_, std::io::Error>(RunState {
             preparation: Arc::new(Semaphore::new(config.max_active)),
+            series_cache: Arc::new(SeriesCache::new(
+                config.series_cache_entries,
+                config.series_resend_ns,
+            )),
             config,
             packed_recent,
         })

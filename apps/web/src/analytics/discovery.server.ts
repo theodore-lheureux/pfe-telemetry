@@ -4,6 +4,7 @@ import { compileFields, isPointField } from "./compile.server";
 import type { AttributeDefinition, MetricDefinition } from "./contracts";
 import {
 	POINT_FINAL_SETTINGS,
+	seriesLastSeen,
 	seriesPointSource,
 } from "./series-source.server";
 import { metricBehavior } from "./validation";
@@ -204,7 +205,7 @@ export async function metricAttributeExamples(
     SELECT point_attributes, resource_attributes
     FROM metric_series FINAL
     WHERE project_id = {project:String} AND metric_name = {metric:String}
-      AND last_seen_unix_nano >= {from:UInt64}
+      AND ${seriesLastSeen("{from:UInt64}")}
     LIMIT ${EXAMPLE_SERIES}
   )
   ARRAY JOIN arrayConcat(${value("point")}, ${value("resource")}) AS entry
@@ -247,7 +248,7 @@ export async function attributeValueSample(
 	const from = now - EXAMPLE_WINDOW_MS;
 	const column = scope === "point" ? "point_attributes" : "resource_attributes";
 	const points = seriesPointSource(
-		" AND metric_name IN {metrics:Array(String)} AND last_seen_unix_nano >= {from:UInt64}",
+		` AND metric_name IN {metrics:Array(String)} AND ${seriesLastSeen("{from:UInt64}")}`,
 		"AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}",
 		"s.suggested",
 		"",
@@ -307,7 +308,7 @@ export async function listAttributeValues(
 	const from = now - VALUE_WINDOW_MS;
 	const onPoint = isPointField(field);
 	const points = seriesPointSource(
-		` AND last_seen_unix_nano >= {from:UInt64}${metric === undefined ? "" : " AND metric_name = {metric:String}"}`,
+		` AND ${seriesLastSeen("{from:UInt64}")}${metric === undefined ? "" : " AND metric_name = {metric:String}"}`,
 		"AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}",
 		onPoint ? "" : "s.suggested",
 		"",

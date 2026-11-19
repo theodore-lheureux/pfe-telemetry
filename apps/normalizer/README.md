@@ -19,6 +19,30 @@ Kafka permissions must allow raw consumption, normalized production, group check
 
 ## First start and recovery
 
+Normalizers in the same consumer group can run on multiple replicas. With
+three raw partitions, at most three replicas receive work. Startup checks
+topic topology and transport settings without claiming exclusive ownership.
+Use a distinct `RECOUNT_NORMALIZER_METRICS_FILE` per replica if exporting
+process metrics. To raise the ceiling, coordinate raw partition expansion
+with the ingestion API and all replicas, then update `RECOUNT_RAW_PARTITIONS`
+to the new count on both services. Keep the raw group and its offsets; new
+partitions start at retained earliest. Expansion changes raw routing affinity
+for subsequent requests and does not require changing normalized partitions.
+
+Each process allocates 40 bytes per configured `RECOUNT_NORMALIZER_SERIES_CACHE_ENTRIES`
+slot (131,072 by default, 5 MiB; maximum 1,048,576, 40 MiB). Set it to zero
+to disable suppression. Collisions replace a slot and can cause extra writes,
+not missing metadata. `RECOUNT_NORMALIZER_SERIES_RESEND_SECONDS` defaults to
+60 and accepts 1–60. Only acknowledged emissions for the same output topic
+and partition suppress later rows. Earlier event times, event-time jumps at
+least as wide as the interval, changed series IDs and expiration force an
+emission. Replicas do not share state; ClickHouse aggregates duplicate rows
+and their time bounds.
+
+Deploy readers with the widened series window before enabling the cache.
+If rolling out the normalizer first, set the cache entry count to zero until
+the readers are updated. This change does not require a topic or table reset.
+
 New groups start from retained earliest without offset seeding. `auto.offset.reset=earliest` deliberately discards unavailable offsets in active development and continues from the retained suffix. Every native error-driven reset produces an explicit `event=retention_gap action=resume_earliest` warning and increments `recount_normalizer_retention_gaps_total`; a fresh group's initial start does not count as a gap. Set `RECOUNT_NORMALIZER_METRICS_FILE` or `--metrics-file` for atomic Prometheus text-file export of that process-local counter. Logs include the group and native topic/partition/offset detail. The retained suffix is not complete recovery of expired input. See [Kafka recovery](../../docs/kafka-recovery.md) for production sizing choices, lag/headroom/disk gauges and disposable outage tests.
 
 Raw consumers use a six-second Kafka session. The [startup assignment wait](https://docs.rs/ruststream-rdkafka/0.7.1/ruststream_rdkafka/struct.KafkaBroker.html#method.assignment_timeout) allows eighteen seconds: a full session expiry after an abrupt member exit, plus twelve seconds of startup headroom. This is not a per-stage timing guarantee; RustStream's initial committed-offset lookup has its own ten-second timeout within the overall assignment wait. The assignment deadline still fails startup if the subscription cannot open. Metadata RPCs and the broker connectivity probe retain their separate three-second deadlines; this longer assignment budget does not delay metadata-outage failure.
