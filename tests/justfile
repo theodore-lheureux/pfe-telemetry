@@ -56,3 +56,8 @@ recovery *args:
 # Host-built Linux harnesses only; no compilers or live services in the runner.
 linux build_log:
     bun tests/linux-artifacts.ts "$1"
+
+# Isolated pipeline load-tool regression: exact identities after resend, kill, replay and revocation.
+load-check *args:
+    cargo build --locked -p recount-ingestion-api -p recount-normalizer -p recount-pipeline-load
+    cargo run --locked -p recount-pipeline-load -- check "$@"

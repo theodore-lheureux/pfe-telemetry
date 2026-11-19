@@ -1,0 +1,3 @@
+# HELP recount_normalizer_retention_gaps_total Native offset resets after unavailable offsets.
+# TYPE recount_normalizer_retention_gaps_total counter
+recount_normalizer_retention_gaps_total 0

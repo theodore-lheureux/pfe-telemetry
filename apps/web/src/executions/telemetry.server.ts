@@ -68,6 +68,24 @@ SELECT id,segment,metric,unit,hostId,cpuMode,
 FROM samples GROUP BY id,segment,metric,unit,hostId,cpuMode,bucket
 `;
 
+/** Per-query limits of the node chart reader. */
+export const NODE_CHART_SETTINGS = {
+	max_execution_time: 6,
+	max_threads: 1,
+	max_memory_usage: "268435456",
+	max_rows_to_read: "100000",
+	max_bytes_to_read: "268435456",
+	read_overflow_mode: "throw",
+	max_result_rows: "50000",
+	max_result_bytes: "8388608",
+	result_overflow_mode: "throw",
+	max_rows_to_group_by: "200000",
+	group_by_overflow_mode: "throw",
+	max_bytes_before_external_group_by: "0",
+	max_bytes_before_external_sort: "0",
+	output_format_json_quote_64bit_integers: 1,
+} as const;
+
 interface Row {
 	id: string;
 	segment: string;
@@ -205,22 +223,7 @@ export async function readTelemetry(
 			abort_signal: signal
 				? AbortSignal.any([signal, AbortSignal.timeout(10000)])
 				: AbortSignal.timeout(10000),
-			clickhouse_settings: {
-				max_execution_time: 6,
-				max_threads: 1,
-				max_memory_usage: "268435456",
-				max_rows_to_read: "100000",
-				max_bytes_to_read: "268435456",
-				read_overflow_mode: "throw",
-				max_result_rows: "50000",
-				max_result_bytes: "8388608",
-				result_overflow_mode: "throw",
-				max_rows_to_group_by: "200000",
-				group_by_overflow_mode: "throw",
-				max_bytes_before_external_group_by: "0",
-				max_bytes_before_external_sort: "0",
-				output_format_json_quote_64bit_integers: 1,
-			},
+			clickhouse_settings: NODE_CHART_SETTINGS,
 		});
 		const rows = await result.json<Row>();
 		if (signal?.aborted)

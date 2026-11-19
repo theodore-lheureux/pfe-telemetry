@@ -1,0 +1,112 @@
+[
+  {
+    "phase": "step-400",
+    "offered_per_second": 398.3,
+    "outcomes": {
+      "acked": 23898,
+      "probe_acked": 59
+    },
+    "skipped": 0,
+    "acked_batches_per_second": 398.3,
+    "acked_samples_per_second": 18316,
+    "mean_batch_bytes": 2557,
+    "first_attempt_ms": {
+      "p50": 6.542,
+      "p95": 10.58,
+      "p99": 53.436,
+      "max": 84.082
+    },
+    "acknowledged_ms": {
+      "p50": 7.868,
+      "p95": 165.603,
+      "p99": 868.744,
+      "max": 5084.484
+    },
+    "queryable_ms": {
+      "p50": 10985.079,
+      "p95": 24398.193,
+      "p99": 26384.732,
+      "max": 26384.732
+    },
+    "queryable_after_ack_ms": {
+      "p50": 10979.102,
+      "p95": 24274.714,
+      "p99": 26376.839,
+      "max": 26376.839
+    },
+    "load_average": "{ 10.33 12.68 9.47 }",
+    "k6_ack_ms": null,
+    "revocation_delay_seconds": null,
+    "rejected_first_attempt_ms": null,
+    "drain": {
+      "seconds": 1,
+      "initial_lag": [0, 0, 0]
+    },
+    "resources": {
+      "raw_catch_up": null,
+      "normalized_catch_up": null,
+      "ingestion": {
+        "peak_rss_mib": 17.4,
+        "mean_cpu_percent": 15.5
+      },
+      "normalizer": {
+        "peak_rss_mib": 32.2,
+        "mean_cpu_percent": 12.4
+      },
+      "peak_lag": {
+        "raw": 6471,
+        "normalized": 63660,
+        "late": 0
+      },
+      "peak_active_parts": 11,
+      "peak_parts_in_partition": 11,
+      "peak_clickhouse_memory_mib": 741.3,
+      "peak_container_cpu_percent": {
+        "recount-clickhouse-1": 221.83,
+        "recount-kafka-1": 115.94,
+        "recount-postgres-1": 2.4
+      },
+      "credential_lookups_per_minute": 2.28
+    },
+    "queries": {
+      "gauge_by_node": {
+        "p50": 23.6,
+        "p95": 53.1,
+        "max": 228.6,
+        "count": 65
+      },
+      "node_chart": {
+        "p50": 42.3,
+        "p95": 161.1,
+        "max": 475.1,
+        "count": 66
+      },
+      "counter_rate_by_execution": {
+        "p50": 38.1,
+        "p95": 104.5,
+        "max": 263.2,
+        "count": 65
+      },
+      "execution_memory_table": {
+        "p50": 35,
+        "p95": 136.1,
+        "max": 225.3,
+        "count": 65
+      }
+    },
+    "verify": {
+      "passed": true,
+      "expected": 1099003,
+      "final": 1099003,
+      "physical": 1099003,
+      "inserted": 1099003,
+      "insert_amplification": 1,
+      "normalized_amplification": 1,
+      "ambiguous_present": 0,
+      "ambiguous_absent": 0,
+      "rejected": 0,
+      "unenrolled_sources": 0,
+      "divergent": 0
+    }
+  }
+]

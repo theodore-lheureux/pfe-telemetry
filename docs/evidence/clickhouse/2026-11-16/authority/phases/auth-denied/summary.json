@@ -1,0 +1,114 @@
+{
+  "label": "auth-denied",
+  "args": {
+    "label": "auth-denied",
+    "rate": 200.0,
+    "seconds": 120.0,
+    "nodes": null,
+    "only_node": null,
+    "shape": {
+      "metrics": 1,
+      "processes": 4,
+      "points": 4,
+      "attributes": 2,
+      "series": 4,
+      "padding": 0,
+      "foreign_resource": true
+    },
+    "connections": 8,
+    "max_outstanding": 512,
+    "max_attempts": 1,
+    "timeout_ms": 10000,
+    "resend_every": 0,
+    "resend_delay_ms": 0,
+    "probe_interval_ms": 0,
+    "monitor_interval": 5,
+    "gzip": false,
+    "address": null
+  },
+  "host": {
+    "cpus": "10",
+    "load_average": "{ 2.84 3.25 3.99 }",
+    "memory_bytes": "17179869184",
+    "uname": "Darwin 27.0.0 arm64"
+  },
+  "started_unix_nano": 1794883931943435000,
+  "schedule_seconds": 119.984629833,
+  "completion_seconds": 120.000222416,
+  "offered_batches": 24103,
+  "skipped_batches": 0,
+  "outcomes": {
+    "acked": 47,
+    "rejected": 24056
+  },
+  "codes": {
+    "Ok": 47,
+    "PermissionDenied": 24056
+  },
+  "acked_samples": 2068,
+  "acked_bytes": 133433,
+  "acked_batches_per_second": 0.39171683961034603,
+  "acked_samples_per_second": 17.235540942855224,
+  "acked_bytes_per_second": 1112.0841076537724,
+  "mean_batch_bytes": 2839.0,
+  "mean_samples_per_batch": 44.0,
+  "first_attempt_ms": {
+    "count": 47,
+    "min": 6.782,
+    "p50": 8.064,
+    "p95": 11.287,
+    "p99": 12.005,
+    "max": 12.005,
+    "mean": 8.459
+  },
+  "acknowledged_ms": {
+    "count": 47,
+    "min": 7.465,
+    "p50": 10.082,
+    "p95": 12.044,
+    "p99": 14.474,
+    "max": 14.474,
+    "mean": 10.118
+  },
+  "schedule_delay_ms": {
+    "count": 24103,
+    "min": 0.041,
+    "p50": 1.61,
+    "p95": 3.065,
+    "p99": 3.592,
+    "max": 20.107,
+    "mean": 1.677
+  },
+  "probe_ack_ms": {
+    "count": 0,
+    "min": 0.0,
+    "p50": 0.0,
+    "p95": 0.0,
+    "p99": 0.0,
+    "max": 0.0,
+    "mean": 0.0
+  },
+  "probe_visible_ms": {
+    "count": 0,
+    "min": 0.0,
+    "p50": 0.0,
+    "p95": 0.0,
+    "p99": 0.0,
+    "max": 0.0,
+    "mean": 0.0
+  },
+  "probe_visible_after_ack_ms": {
+    "count": 0,
+    "min": 0.0,
+    "p50": 0.0,
+    "p95": 0.0,
+    "p99": 0.0,
+    "max": 0.0,
+    "mean": 0.0
+  },
+  "resends": {},
+  "code_windows_ms": {
+    "Ok": [2567.4286660000002, 119764.545083],
+    "PermissionDenied": [4.163958, 119984.64224999999]
+  }
+}

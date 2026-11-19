@@ -1,0 +1,109 @@
+{
+  "passed": true,
+  "failures": [],
+  "acked_batches": 39319,
+  "ambiguous_present": 0,
+  "ambiguous_absent": 6506,
+  "rejected_batches": 3929,
+  "rejected_present": 0,
+  "expected_samples": 1439892,
+  "physical_rows": 1439892,
+  "distinct_samples": 1439892,
+  "final_rows": 1439892,
+  "duplicate_rows": 0,
+  "amplification": 1.0,
+  "raw_records": 39319,
+  "normalized_records": 1439892,
+  "inserted_rows": 1439892,
+  "normalized_amplification": 1.0,
+  "insert_amplification": 1.0,
+  "unenrolled_sources": 0,
+  "divergent_replicas": 0,
+  "sources": 64,
+  "wait_seconds": 0.472152375,
+  "lags": [
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.raw",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.normalizer",
+      "low": 0,
+      "high": 39319,
+      "committed": 39319,
+      "lag": 0
+    },
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.normalized",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.clickhouse",
+      "low": 0,
+      "high": 1439892,
+      "committed": 1439892,
+      "lag": 0
+    },
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.late",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.clickhouse-late",
+      "low": 0,
+      "high": 0,
+      "committed": 0,
+      "lag": 0
+    }
+  ],
+  "part_log": [
+    {
+      "bytes": 119596586,
+      "duration_max_ms": 137,
+      "duration_p50_ms": 20,
+      "duration_p95_ms": 42,
+      "errors": 0,
+      "event_type": "NewPart",
+      "events": 397,
+      "mean_rows": 3626.9,
+      "peak_memory_max": 0,
+      "peak_memory_p50": 0,
+      "row_count": 1439892
+    },
+    {
+      "bytes": 274668202,
+      "duration_max_ms": 4896,
+      "duration_p50_ms": 254,
+      "duration_p95_ms": 1009,
+      "errors": 0,
+      "event_type": "MergeParts",
+      "events": 73,
+      "mean_rows": 68849.7,
+      "peak_memory_max": 383987006,
+      "peak_memory_p50": 366268802,
+      "row_count": 5026030
+    },
+    {
+      "bytes": 176167964,
+      "duration_max_ms": 0,
+      "duration_p50_ms": 0,
+      "duration_p95_ms": 0,
+      "errors": 0,
+      "event_type": "RemovePart",
+      "events": 293,
+      "mean_rows": 9302.5,
+      "peak_memory_max": 0,
+      "peak_memory_p50": 0,
+      "row_count": 2725621
+    },
+    {
+      "bytes": 0,
+      "duration_max_ms": 0,
+      "duration_p50_ms": 0,
+      "duration_p95_ms": 0,
+      "errors": 0,
+      "event_type": "MergePartsStart",
+      "events": 73,
+      "mean_rows": 0,
+      "peak_memory_max": 0,
+      "peak_memory_p50": 0,
+      "row_count": 0
+    }
+  ],
+  "retained_bytes": {
+    "recount.pfe16.campaign.load.1794879963_11109.late": 0,
+    "recount.pfe16.campaign.load.1794879963_11109.normalized": 133625376,
+    "recount.pfe16.campaign.load.1794879963_11109.raw": 30820575
+  }
+}

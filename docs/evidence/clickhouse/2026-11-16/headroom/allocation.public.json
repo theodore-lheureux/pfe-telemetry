@@ -1,0 +1,415 @@
+{
+  "created_unix_nano": 1794885292342550000,
+  "source_revision": "f64f408f0bc53de949492b8c58b482688a58c1f9+dirty",
+  "namespace": "recount.pfe16.campaign",
+  "raw_topic": "recount.pfe16.campaign.load.1794885292_65766.raw",
+  "normalized_topic": "recount.pfe16.campaign.load.1794885292_65766.normalized",
+  "late_topic": "recount.pfe16.campaign.load.1794885292_65766.late",
+  "normalizer_group": "recount.pfe16.campaign.load.1794885292_65766.normalizer",
+  "clickhouse_group": "recount.pfe16.campaign.load.1794885292_65766.clickhouse",
+  "output_rows": 128,
+  "database": "recount_load_1794885292_65766",
+  "pg_database": "recount_load_1794885292_65766",
+  "settings": {
+    "projects": 4,
+    "direct_nodes": 48,
+    "linux_nodes": 16,
+    "raw_partitions": 3,
+    "normalized_partitions": 3,
+    "retention_bytes": 134217728,
+    "ingestion_max_in_flight": 8,
+    "normalizer_max_active": 2
+  },
+  "projects": [
+    "01a1e780-1136-71ce-9790-4160fd79b688",
+    "01a1e780-1136-71ce-9790-41616ca3b02a",
+    "01a1e780-1136-71ce-9790-41624911992a",
+    "01a1e780-1136-71ce-9790-4163291ddc82"
+  ],
+  "nodes": [
+    {
+      "id": "01a1e780-1136-71ce-9790-416406806f3d",
+      "project": 0,
+      "root": "load-root-0",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4165d4336fae",
+      "project": 1,
+      "root": "load-root-1",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41662f49a02f",
+      "project": 2,
+      "root": "load-root-2",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41676299c655",
+      "project": 3,
+      "root": "load-root-3",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4168dce2edee",
+      "project": 0,
+      "root": "load-root-4",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4169016cc2c5",
+      "project": 1,
+      "root": "load-root-5",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-416a2df3dd56",
+      "project": 2,
+      "root": "load-root-6",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-416b27b57bd6",
+      "project": 3,
+      "root": "load-root-7",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-416c9d80e907",
+      "project": 0,
+      "root": "load-root-8",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-416d338a74be",
+      "project": 1,
+      "root": "load-root-9",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-416e58a56e60",
+      "project": 2,
+      "root": "load-root-10",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-416f586d3eab",
+      "project": 3,
+      "root": "load-root-11",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4170ccc42c3d",
+      "project": 0,
+      "root": "load-root-12",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41712ca09bec",
+      "project": 1,
+      "root": "load-root-13",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4172bb2fc069",
+      "project": 2,
+      "root": "load-root-14",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4173516bfb0a",
+      "project": 3,
+      "root": "load-root-15",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4174eaeec88c",
+      "project": 0,
+      "root": "load-root-16",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-417520811a3e",
+      "project": 1,
+      "root": "load-root-17",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4176dff1f8a8",
+      "project": 2,
+      "root": "load-root-18",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4177270e87f8",
+      "project": 3,
+      "root": "load-root-19",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4178de6c0021",
+      "project": 0,
+      "root": "load-root-20",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41799bdc139d",
+      "project": 1,
+      "root": "load-root-21",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-417a96f7729f",
+      "project": 2,
+      "root": "load-root-22",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-417b41997de6",
+      "project": 3,
+      "root": "load-root-23",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-417cbc6470f6",
+      "project": 0,
+      "root": "load-root-24",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-417d6ee1818e",
+      "project": 1,
+      "root": "load-root-25",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-417e7234822f",
+      "project": 2,
+      "root": "load-root-26",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-417fd4c48b42",
+      "project": 3,
+      "root": "load-root-27",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41801ca7f153",
+      "project": 0,
+      "root": "load-root-28",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4181558087d6",
+      "project": 1,
+      "root": "load-root-29",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4182a2abf3dd",
+      "project": 2,
+      "root": "load-root-30",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418317f8ad3e",
+      "project": 3,
+      "root": "load-root-31",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4184f3fbf3b1",
+      "project": 0,
+      "root": "load-root-32",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4185cdc77c59",
+      "project": 1,
+      "root": "load-root-33",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418645885d70",
+      "project": 2,
+      "root": "load-root-34",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418782159854",
+      "project": 3,
+      "root": "load-root-35",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4188ab966635",
+      "project": 0,
+      "root": "load-root-36",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4189365aafb7",
+      "project": 1,
+      "root": "load-root-37",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418ab5d7ef9f",
+      "project": 2,
+      "root": "load-root-38",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418b1a451fdd",
+      "project": 3,
+      "root": "load-root-39",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418c41b69c48",
+      "project": 0,
+      "root": "load-root-40",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418d6bfc2e34",
+      "project": 1,
+      "root": "load-root-41",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418e5c59f2dc",
+      "project": 2,
+      "root": "load-root-42",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-418fa3c5e0a0",
+      "project": 3,
+      "root": "load-root-43",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4190e00fea24",
+      "project": 0,
+      "root": "load-root-44",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41918629e404",
+      "project": 1,
+      "root": "load-root-45",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4192049c8f83",
+      "project": 2,
+      "root": "load-root-46",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41931027b18e",
+      "project": 3,
+      "root": "load-root-47",
+      "kind": "direct"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4194815769ca",
+      "project": 0,
+      "root": "load-root-48",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4195986d6b07",
+      "project": 1,
+      "root": "load-root-49",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4196cfbabf67",
+      "project": 2,
+      "root": "load-root-50",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-419798a79b1a",
+      "project": 3,
+      "root": "load-root-51",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41982b7163f2",
+      "project": 0,
+      "root": "load-root-52",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-4199fb8f1f6b",
+      "project": 1,
+      "root": "load-root-53",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-419ac87d6ec4",
+      "project": 2,
+      "root": "load-root-54",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-419bcdea0b59",
+      "project": 3,
+      "root": "load-root-55",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-419c47ec2e96",
+      "project": 0,
+      "root": "load-root-56",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-419d7826f49b",
+      "project": 1,
+      "root": "load-root-57",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-419e5859f735",
+      "project": 2,
+      "root": "load-root-58",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-419fe77a598b",
+      "project": 3,
+      "root": "load-root-59",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41a0bbd50b32",
+      "project": 0,
+      "root": "load-root-60",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41a18080b668",
+      "project": 1,
+      "root": "load-root-61",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41a285eb7272",
+      "project": 2,
+      "root": "load-root-62",
+      "kind": "linux"
+    },
+    {
+      "id": "01a1e780-1136-71ce-9790-41a3f3897f67",
+      "project": 3,
+      "root": "load-root-63",
+      "kind": "linux"
+    }
+  ]
+}

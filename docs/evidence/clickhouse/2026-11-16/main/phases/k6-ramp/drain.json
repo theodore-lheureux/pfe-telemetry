@@ -1,0 +1,32 @@
+{
+  "label": "k6-ramp",
+  "drained": true,
+  "seconds": 2.427172541,
+  "initial": [
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.raw",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.normalizer",
+      "low": 0,
+      "high": 31492,
+      "committed": 31413,
+      "lag": 79
+    },
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.normalized",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.clickhouse",
+      "low": 0,
+      "high": 1081837,
+      "committed": 1077865,
+      "lag": 3972
+    },
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.late",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.clickhouse-late",
+      "low": 0,
+      "high": 0,
+      "committed": 0,
+      "lag": 0
+    }
+  ],
+  "records_per_second": [32.548159912624854, 1636.4720401638724, 0.0]
+}

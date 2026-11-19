@@ -9,5 +9,11 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["ci/*.ts", "runtime/*.ts", "tooling/*.ts", "linux-artifacts.ts"]
+  "include": [
+    "ci/*.ts",
+    "load/*.ts",
+    "runtime/*.ts",
+    "tooling/*.ts",
+    "linux-artifacts.ts"
+  ]
 }

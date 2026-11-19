@@ -66,3 +66,5 @@ Use deterministic sample identities and compare the accepted set with stored res
 | Inject late samples and clock differences across nodes.                | Analysis distinguishes collection time from arrival order and shows uncertainty.                 |
 
 Record collector overhead, accepted data rate, backlog age, recovery time, and sample-to-query delay for baseline and competing-workload runs. Failure tests establish behavior under their stated conditions; performance targets need separate measurements.
+
+The [ClickHouse ingestion evaluation](clickhouse-evaluation.md) records these measurements for the native pipeline on one development host: acknowledgement and query-visibility latency, admission and storage capacity, backlog drain after interruptions, the effective deduplication layers and the scenarios that remain untested, such as replicated broker failover.

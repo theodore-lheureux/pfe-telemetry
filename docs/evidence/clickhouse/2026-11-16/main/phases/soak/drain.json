@@ -1,0 +1,32 @@
+{
+  "label": "soak",
+  "drained": true,
+  "seconds": 0.967198083,
+  "initial": [
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.raw",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.normalizer",
+      "low": 0,
+      "high": 135654,
+      "committed": 135654,
+      "lag": 0
+    },
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.normalized",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.clickhouse",
+      "low": 1245827,
+      "high": 5739141,
+      "committed": 5739141,
+      "lag": 0
+    },
+    {
+      "topic": "recount.pfe16.campaign.load.1794879963_11109.late",
+      "group": "recount.pfe16.campaign.load.1794879963_11109.clickhouse-late",
+      "low": 0,
+      "high": 0,
+      "committed": 0,
+      "lag": 0
+    }
+  ],
+  "records_per_second": [0.0, 0.0, 0.0]
+}

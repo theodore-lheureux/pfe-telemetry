@@ -1,0 +1,220 @@
+[
+  {
+    "phase": "step-400",
+    "offered_per_second": 398.3,
+    "outcomes": {
+      "acked": 23897,
+      "probe_acked": 59,
+      "rejected": 1
+    },
+    "skipped": 0,
+    "acked_batches_per_second": 398.3,
+    "acked_samples_per_second": 18315,
+    "mean_batch_bytes": 2557,
+    "first_attempt_ms": {
+      "p50": 6.832,
+      "p95": 17.321,
+      "p99": 54.269,
+      "max": 230.976
+    },
+    "acknowledged_ms": {
+      "p50": 8.365,
+      "p95": 211.279,
+      "p99": 1162.576,
+      "max": 5144.866
+    },
+    "queryable_ms": {
+      "p50": 47210.117,
+      "p95": 78940.691,
+      "p99": 81973.813,
+      "max": 81973.813
+    },
+    "queryable_after_ack_ms": {
+      "p50": 47198.917,
+      "p95": 78932.976,
+      "p99": 81966.418,
+      "max": 81966.418
+    },
+    "load_average": "{ 11.20 7.63 5.65 }",
+    "k6_ack_ms": null,
+    "revocation_delay_seconds": null,
+    "rejected_first_attempt_ms": null,
+    "drain": {
+      "seconds": 0.9,
+      "initial_lag": [0, 0, 0]
+    },
+    "resources": {
+      "raw_catch_up": {
+        "peak": 13546,
+        "seconds": 77.2,
+        "records_per_second": 176
+      },
+      "normalized_catch_up": null,
+      "ingestion": {
+        "peak_rss_mib": 16.8,
+        "mean_cpu_percent": 9.1
+      },
+      "normalizer": {
+        "peak_rss_mib": 62.6,
+        "mean_cpu_percent": 9.2
+      },
+      "peak_lag": {
+        "raw": 13546,
+        "normalized": 25619,
+        "late": 0
+      },
+      "peak_active_parts": 13,
+      "peak_parts_in_partition": 13,
+      "peak_clickhouse_memory_mib": 759.2,
+      "peak_container_cpu_percent": {
+        "recount-clickhouse-1": 232.57,
+        "recount-kafka-1": 116.82,
+        "recount-postgres-1": 4.21
+      },
+      "credential_lookups_per_minute": 2.2
+    },
+    "queries": {
+      "execution_memory_table": {
+        "p50": 40.4,
+        "p95": 352.9,
+        "max": 470.6,
+        "count": 65
+      },
+      "gauge_by_node": {
+        "p50": 18.2,
+        "p95": 197.9,
+        "max": 382.7,
+        "count": 65
+      },
+      "counter_rate_by_execution": {
+        "p50": 46.1,
+        "p95": 347.1,
+        "max": 442.7,
+        "count": 65
+      },
+      "node_chart": {
+        "p50": 47.8,
+        "p95": 252.6,
+        "max": 427.5,
+        "count": 66
+      }
+    },
+    "verify": null
+  },
+  {
+    "phase": "step-800",
+    "offered_per_second": 800.6,
+    "outcomes": {
+      "acked": 45697,
+      "probe_acked": 58,
+      "probe_rejected": 1,
+      "rejected": 640
+    },
+    "skipped": 1696,
+    "acked_batches_per_second": 761.6,
+    "acked_samples_per_second": 35027,
+    "mean_batch_bytes": 2557,
+    "first_attempt_ms": {
+      "p50": 6.41,
+      "p95": 15.65,
+      "p99": 44.332,
+      "max": 297.675
+    },
+    "acknowledged_ms": {
+      "p50": 9.773,
+      "p95": 1240.439,
+      "p99": 4257.315,
+      "max": 5796.668
+    },
+    "queryable_ms": {
+      "p50": 120681.814,
+      "p95": 296336.814,
+      "p99": 298591.746,
+      "max": 298591.746
+    },
+    "queryable_after_ack_ms": {
+      "p50": 120676.597,
+      "p95": 296322.933,
+      "p99": 298235.147,
+      "max": 298235.147
+    },
+    "load_average": "{ 14.38 14.04 9.53 }",
+    "k6_ack_ms": null,
+    "revocation_delay_seconds": null,
+    "rejected_first_attempt_ms": null,
+    "drain": {
+      "seconds": 0.9,
+      "initial_lag": [0, 0, 0]
+    },
+    "resources": {
+      "raw_catch_up": {
+        "peak": 35157,
+        "seconds": 234.1,
+        "records_per_second": 150
+      },
+      "normalized_catch_up": null,
+      "ingestion": {
+        "peak_rss_mib": 18.1,
+        "mean_cpu_percent": 6
+      },
+      "normalizer": {
+        "peak_rss_mib": 112.3,
+        "mean_cpu_percent": 6.6
+      },
+      "peak_lag": {
+        "raw": 35157,
+        "normalized": 627154,
+        "late": 0
+      },
+      "peak_active_parts": 17,
+      "peak_parts_in_partition": 17,
+      "peak_clickhouse_memory_mib": 894.8,
+      "peak_container_cpu_percent": {
+        "recount-clickhouse-1": 230.76,
+        "recount-kafka-1": 117.62,
+        "recount-postgres-1": 7.75
+      },
+      "credential_lookups_per_minute": 2.02
+    },
+    "queries": {
+      "node_chart": {
+        "p50": 186.2,
+        "p95": 883.9,
+        "max": 1074.9,
+        "count": 65
+      },
+      "gauge_by_node": {
+        "p50": 122.5,
+        "p95": 538.4,
+        "max": 623.7,
+        "count": 65
+      },
+      "counter_rate_by_execution": {
+        "p50": 193.4,
+        "p95": 980.1,
+        "max": 1073.6,
+        "count": 65
+      },
+      "execution_memory_table": {
+        "p50": 210.4,
+        "p95": 794,
+        "max": 926.6,
+        "count": 65
+      }
+    },
+    "verify": {
+      "passed": true,
+      "expected": 3200629,
+      "final": 3200629,
+      "physical": 3200629,
+      "inserted": 3200629,
+      "insert_amplification": 1,
+      "normalized_amplification": 1,
+      "ambiguous_present": 0,
+      "ambiguous_absent": 0,
+      "rejected": 642,
+      "unenrolled_sources": 0,
+      "divergent": 0
+    }
+  }
+]
