@@ -84,7 +84,7 @@ def main():
         except (ConnectionError, HTTPClientError):
             return False
 
-    results = wait_for_fleet(instances, check)
+    results = wait_for_fleet(instances, check, timeout=360)
     print(f"SSM startup ready for {len(results)} collectors; first/last seconds "
           f"{min(results.values()):.2f}/{max(results.values()):.2f}")
 
