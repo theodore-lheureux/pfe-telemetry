@@ -1,0 +1,105 @@
+- name: Require sequential project execution
+  ansible.builtin.assert:
+    that: (semaphore_projects.json | selectattr('id', 'equalto', semaphore_project_id | int) | first).max_parallel_tasks == 1
+
+- name: Read project members
+  ansible.builtin.uri:
+    url: "{{ semaphore_api }}/project/{{ semaphore_project_id }}/users"
+    headers: "{{ semaphore_headers }}"
+  register: semaphore_members
+  no_log: true
+
+- name: Add task-runner memberships when absent
+  ansible.builtin.uri:
+    url: "{{ semaphore_api }}/project/{{ semaphore_project_id }}/users"
+    method: POST
+    headers: "{{ semaphore_headers }}"
+    body_format: json
+    body:
+      user_id: "{{ (semaphore_users.json | selectattr('username', 'equalto', item) | first).id }}"
+      role: task_runner
+    status_code: [200, 201, 204]
+  loop: [alex, simeon]
+  when: semaphore_members.json | selectattr('username', 'equalto', item) | list | length == 0
+  no_log: true
+
+- name: Require task-runner-only memberships
+  ansible.builtin.assert:
+    that: (semaphore_members.json | selectattr('username', 'equalto', item) | list | length == 0) or (semaphore_members.json | selectattr('username', 'equalto', item) | first).roles == ['task_runner']
+  loop: [alex, simeon]
+
+- name: Initialize the repository credential placeholder
+  ansible.builtin.include_tasks: bootstrap-resource.yml
+  vars:
+    semaphore_resource:
+      key: credential
+      path: keys
+      body: { name: No repository credential, type: none }
+
+- name: Initialize the local source repository
+  ansible.builtin.include_tasks: bootstrap-resource.yml
+  vars:
+    semaphore_resource:
+      key: repository
+      path: repositories
+      body:
+        name: Demo task source
+        git_url: /opt/recount
+        git_branch: ""
+        ssh_key_id: "{{ semaphore_ids.credential | int }}"
+
+- name: Initialize the local inventory
+  ansible.builtin.include_tasks: bootstrap-resource.yml
+  vars:
+    semaphore_resource:
+      key: inventory
+      path: inventory
+      body:
+        name: Demo controller
+        type: static
+        inventory: "localhost ansible_connection=local ansible_remote_tmp=/tmp/ansible-remote\n"
+        ssh_key_id: "{{ semaphore_ids.credential | int }}"
+
+- name: Initialize the empty variable group
+  ansible.builtin.include_tasks: bootstrap-resource.yml
+  vars:
+    semaphore_resource:
+      key: environment
+      path: environment
+      body: { name: Select a Recount project, json: "{}", env: "{}" }
+
+- name: Initialize native Ansible templates
+  ansible.builtin.include_tasks: bootstrap-template.yml
+  loop:
+    - {
+        name: Create CPU collectors,
+        file: create-cpu.yml,
+        action: create,
+        kind: cpu,
+      }
+    - {
+        name: Create GPU collectors,
+        file: create-gpu.yml,
+        action: create,
+        kind: gpu,
+      }
+    - { name: List collectors, file: list.yml, action: list }
+    - { name: Configure collectors, file: configure.yml, action: configure }
+    - { name: Move collectors, file: move.yml, action: move }
+    - { name: Destroy lab, file: destroy.yml, action: destroy }
+    - {
+        name: Start distributed CPU load,
+        file: load-cpu.yml,
+        action: load,
+        kind: cpu,
+      }
+    - { name: Start GPU load, file: load-gpu.yml, action: load, kind: gpu }
+    - {
+        name: Load status and results,
+        file: load-status.yml,
+        action: load-status,
+      }
+    - { name: Stop synthetic load, file: stop-load.yml, action: stop-load }
+  loop_control:
+    loop_var: semaphore_template
+    label: "{{ semaphore_template.name }}"

@@ -1,0 +1,43 @@
+- name: Read the guest-published SSH host key
+  ansible.builtin.command:
+    argv:
+      [
+        timeout,
+        20s,
+        gcloud,
+        compute,
+        instances,
+        get-guest-attributes,
+        "{{ demo_collector.name }}",
+        "--zone={{ demo_collector.zone }}",
+        --project=recount-cloud,
+        --query-path=hostkeys/ssh-ed25519,
+        --format=value(value),
+      ]
+  environment: "{{ demo_environment }}"
+  register: demo_host_key
+  retries: 30
+  delay: 10
+  until: demo_host_key.rc == 0 and demo_host_key.stdout | trim is match('^[A-Za-z0-9+/]{40,}={0,2}$')
+  changed_when: false
+  no_log: true
+
+- name: Retain the verified host key
+  ansible.builtin.copy:
+    dest: "{{ demo_private.path }}/{{ demo_collector.name }}.known_hosts"
+    content: "{{ demo_collector.address }} ssh-ed25519 {{ demo_host_key.stdout | trim }}\n"
+    mode: "0600"
+
+- name: Add the GCP collector through verified SSH
+  ansible.builtin.add_host:
+    name: "{{ demo_collector.name }}"
+    groups: demo
+    ansible_host: "{{ demo_collector.address }}"
+    ansible_connection: ssh
+    ansible_user: recount
+    ansible_ssh_private_key_file: /run/demo/id_ed25519
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=yes -o UserKnownHostsFile={{ demo_private.path }}/{{ demo_collector.name }}.known_hosts"
+    recount_arch: amd64
+    recount_gpu: true
+  no_log: true

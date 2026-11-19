@@ -1,0 +1,73 @@
+- name: Prepare private Semaphore inputs
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Validate the selected directory and Access configuration
+      ansible.builtin.assert:
+        that:
+          - semaphore_private_source is match('^/')
+          - semaphore_access_team is match('^[a-z0-9-]+$')
+          - semaphore_access_audience is match('^[a-f0-9]{64}$')
+          - semaphore_tunnel_id is match('^[a-f0-9-]{36}$')
+
+    - name: Create private input directories
+      ansible.builtin.file:
+        path: "{{ semaphore_private_source }}/{{ item }}"
+        state: directory
+        mode: "0700"
+      loop: [bootstrap, runner, demo, tunnel]
+
+    - name: Retain or generate initial account passwords
+      ansible.builtin.set_fact:
+        semaphore_initial_password: "{{ lookup('password', semaphore_private_source ~ '/bootstrap/' ~ item ~ '-password length=40 chars=ascii_letters,digits') }}"
+      loop: [admin, alex, simeon]
+      no_log: true
+
+    - name: Check the encryption key
+      ansible.builtin.stat:
+        path: "{{ semaphore_private_source }}/access-key"
+      register: semaphore_encryption_key
+
+    - name: Generate the encryption key once
+      when: not semaphore_encryption_key.stat.exists
+      block:
+        - ansible.builtin.command:
+            argv: [openssl, rand, -base64, "32"]
+          register: semaphore_new_key
+          changed_when: false
+          no_log: true
+        - ansible.builtin.copy:
+            dest: "{{ semaphore_private_source }}/access-key"
+            content: "{{ semaphore_new_key.stdout }}\n"
+            mode: "0600"
+            force: false
+          no_log: true
+          diff: false
+
+    - name: Retain the runner configuration
+      ansible.builtin.copy:
+        dest: "{{ semaphore_private_source }}/runner/config.json"
+        force: false
+        mode: "0600"
+        content: |
+          {
+            "web_host": "http://semaphore:3000",
+            "tmp_path": "/tmp/semaphore",
+            "home_dir_mode": "user_home",
+            "forwarded_env_vars": ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION", "AWS_CONFIG_FILE", "AWS_EC2_METADATA_DISABLED"],
+            "runner": {
+              "token_file": "/run/runner/token",
+              "max_parallel_tasks": 1,
+              "name": "demo-only",
+              "executor": {"type": "local"}
+            },
+            "apps": {"ansible": {"active": true}}
+          }
+
+    - name: Retain the dedicated tunnel configuration
+      ansible.builtin.copy:
+        dest: "{{ semaphore_private_source }}/tunnel/config.yml"
+        force: false
+        mode: "0600"
+        content: "{{ {'tunnel': semaphore_tunnel_id, 'credentials-file': '/run/tunnel/credentials.json', 'ingress': [{'hostname': 'semaphore.recount.cloud', 'service': 'http://semaphore:3000', 'originRequest': {'access': {'required': true, 'teamName': semaphore_access_team, 'audTag': [semaphore_access_audience]}}}, {'service': 'http_status:404'}]} | to_nice_json }}"

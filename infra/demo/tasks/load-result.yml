@@ -1,0 +1,35 @@
+- name: Read this worker's active state
+  ansible.builtin.command:
+    argv: [systemctl, is-active, recount-demo-load]
+  register: recount_load_service
+  changed_when: false
+  failed_when: false
+
+- name: Inspect the bounded job checkpoint
+  ansible.builtin.stat:
+    path: "/var/lib/recount-demo-load/{{ recount_load_job.job_id }}.json"
+  register: recount_load_checkpoint
+
+- name: Reject unsafe or oversized checkpoints
+  when: recount_load_checkpoint.stat.exists
+  ansible.builtin.assert:
+    that:
+      - recount_load_checkpoint.stat.isreg and not recount_load_checkpoint.stat.islnk
+      - recount_load_checkpoint.stat.size <= 8192
+    quiet: true
+
+- name: Read the worker's public counters
+  when: recount_load_checkpoint.stat.exists
+  ansible.builtin.slurp:
+    src: "/var/lib/recount-demo-load/{{ recount_load_job.job_id }}.json"
+  register: recount_load_counters
+  no_log: true
+
+- name: Retain only the current job's result
+  ansible.builtin.set_fact:
+    recount_load_report:
+      name: "{{ inventory_hostname }}"
+      active: "{{ recount_load_service.stdout | trim == 'active' }}"
+      service_state: "{{ recount_load_service.stdout | trim }}"
+      result: "{{ (recount_load_counters.content | b64decode | from_json) if recount_load_checkpoint.stat.exists else none }}"
+  no_log: true

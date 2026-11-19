@@ -1,0 +1,8 @@
+- name: Destroy lab
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    demo_action: destroy
+  tasks:
+    - ansible.builtin.import_tasks: tasks/controller.yml

@@ -1,0 +1,147 @@
+- name: Validate the collector release and platform
+  ansible.builtin.assert:
+    that:
+      - recount_release is match('^release-[a-f0-9]{40}-[0-9]+-[0-9]+$')
+      - recount_release_sha256 is match('^[a-f0-9]{64}$')
+      - recount_repository == 'theodore-lheureux/pfe-telemetry'
+      - ansible_facts.architecture in ['x86_64', 'aarch64']
+      - recount_arch == {'x86_64':'amd64', 'aarch64':'arm64'}[ansible_facts.architecture]
+      - recount_expected_project_id is match('^[a-f0-9-]{36}$')
+    quiet: true
+
+- name: Read installed services
+  ansible.builtin.service_facts:
+
+- name: Stop synthetic work before changing collector configuration
+  when: "'recount-demo-load.service' in ansible_facts.services"
+  ansible.builtin.systemd_service:
+    name: recount-demo-load
+    state: stopped
+    enabled: false
+
+- name: Stop existing sampling
+  when: "'recount-collector.service' in ansible_facts.services"
+  ansible.builtin.systemd_service:
+    name: recount-collector
+    state: stopped
+    enabled: false
+
+- name: Preserve the old project's queue before movement
+  when: recount_reenroll
+  block:
+    - name: Require an enrolled identity
+      ansible.builtin.stat:
+        path: "{{ recount_state }}/node/node.json"
+      register: recount_old_identity
+    - ansible.builtin.assert:
+        that: recount_old_identity.stat.exists
+        quiet: true
+    - name: Install the queue delivery guard
+      when: not recount_discard_queue
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/drain.py"
+        dest: /usr/local/lib/recount-demo-drain.py
+        mode: "0600"
+    - name: Drain with the original binary and identity
+      when: not recount_discard_queue
+      ansible.builtin.command:
+        argv: [/usr/bin/python3, /usr/local/lib/recount-demo-drain.py]
+      environment:
+        RECOUNT_COLLECTOR_ENROLLMENT_URL: "{{ recount_enrollment_url }}"
+        OTEL_EXPORTER_OTLP_ENDPOINT: "{{ recount_endpoint }}"
+        RECOUNT_COLLECTOR_STATE_DIRECTORY: "{{ recount_state }}/node"
+        RECOUNT_COLLECTOR_QUEUE_DIRECTORY: "{{ recount_state }}/queue"
+        RECOUNT_COLLECTOR_VISIBILITY: host
+      no_log: true
+    - name: Clear old project state after delivery or explicit discard
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: ["{{ recount_state }}", "{{ recount_state }}.move-backup"]
+
+- name: Install GPU telemetry packages
+  when: recount_gpu
+  ansible.builtin.include_tasks: dcgm.yml
+
+- name: Download the collector release
+  ansible.builtin.get_url:
+    url: "https://github.com/{{ recount_repository }}/releases/download/{{ recount_release }}/recount-collector-{{ recount_arch }}.tar.gz"
+    dest: /tmp/recount-collector.tar.gz
+    checksum: "sha256:{{ recount_release_sha256 }}"
+    mode: "0600"
+
+- name: Install the collector binary
+  ansible.builtin.unarchive:
+    src: /tmp/recount-collector.tar.gz
+    dest: /usr/local/bin
+    remote_src: true
+    include: [recount-collector]
+    mode: "0755"
+
+- name: Create private collector directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop: [/etc/recount-collector, "{{ recount_state }}"]
+
+- name: Install the temporary enrollment key
+  ansible.builtin.copy:
+    content: "{{ lookup('env', 'DEMO_ENROLLMENT_KEY') }}\n"
+    dest: /etc/recount-collector/enrollment.key
+    mode: "0600"
+  no_log: true
+  diff: false
+
+- name: Install the collector service
+  ansible.builtin.template:
+    src: collector.service.j2
+    dest: /etc/systemd/system/recount-collector.service
+    mode: "0644"
+
+- name: Enroll without sampling
+  ansible.builtin.command:
+    argv:
+      [
+        timeout,
+        --signal=TERM,
+        --kill-after=10s,
+        120s,
+        /usr/local/bin/recount-collector,
+        --drain,
+      ]
+  environment:
+    RECOUNT_COLLECTOR_ENROLLMENT_URL: "{{ recount_enrollment_url }}"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "{{ recount_endpoint }}"
+    RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE: /etc/recount-collector/enrollment.key
+    RECOUNT_COLLECTOR_STATE_DIRECTORY: "{{ recount_state }}/node"
+    RECOUNT_COLLECTOR_QUEUE_DIRECTORY: "{{ recount_state }}/queue"
+    RECOUNT_COLLECTOR_VISIBILITY: host
+  no_log: true
+
+- name: Read the enrolled project identity
+  ansible.builtin.slurp:
+    src: "{{ recount_state }}/node/node.json"
+  register: recount_enrolled_node
+  no_log: true
+
+- name: Require the selected project before sampling
+  ansible.builtin.assert:
+    that: (recount_enrolled_node.content | b64decode | from_json).projectId == recount_expected_project_id
+    quiet: true
+  no_log: true
+
+- name: Start the collector
+  ansible.builtin.systemd_service:
+    name: recount-collector
+    enabled: true
+    state: restarted
+    daemon_reload: true
+
+- name: Record the enrolled project
+  ansible.builtin.copy:
+    dest: "{{ recount_lab_directory }}/{{ inventory_hostname }}.json"
+    content: "{{ {'phase': 'ready', 'project_id': recount_expected_project_id, 'project': lookup('env', 'DEMO_PROJECT')} | to_nice_json }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false

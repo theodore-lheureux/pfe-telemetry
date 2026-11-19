@@ -1,19 +1,39 @@
-# Store a project's enrollment key, read from stdin.
-key project:
-    python3 demo.py key "{{ project }}"
+# Create temporary AWS CPU collectors from environment inputs.
+cpu:
+    uv run --locked ansible-playbook -i localhost, create-cpu.yml
 
-# Start temporary collectors: --project NAME [--gpu] [--load] [--ttl 2h] [--count 1].
-up *args:
-    python3 demo.py up {{ args }}
+# Create one temporary GCP GPU collector from environment inputs.
+gpu:
+    uv run --locked ansible-playbook -i localhost, create-gpu.yml
 
-# Show running demo collectors and when they expire.
+# List owned temporary collectors without applying infrastructure.
 list:
-    python3 demo.py list
+    uv run --locked ansible-playbook -i localhost, list.yml
 
-# Re-enroll a collector into another project: NAME --project NAME.
-move name *args:
-    python3 demo.py move "{{ name }}" {{ args }}
+# Configure collectors in an existing lab.
+configure:
+    uv run --locked ansible-playbook -i localhost, configure.yml
 
-# Delete demo collectors by name, or all of them with --all.
-down *args:
-    python3 demo.py down {{ args }}
+# Move an existing lab's collectors into the selected Recount project.
+move:
+    uv run --locked ansible-playbook -i localhost, move.yml
+
+# Destroy only the explicitly selected lab.
+destroy:
+    uv run --locked ansible-playbook -i localhost, destroy.yml
+
+# Start a bounded distributed job on an existing CPU lab.
+load-cpu:
+    uv run --locked ansible-playbook -i localhost, load-cpu.yml
+
+# Start a bounded profiling load on an existing GPU lab.
+load-gpu:
+    uv run --locked ansible-playbook -i localhost, load-gpu.yml
+
+# Reduce the latest checkpoints of an existing load job.
+load-status:
+    uv run --locked ansible-playbook -i localhost, load-status.yml
+
+# Stop only an existing lab's synthetic workers.
+stop-load:
+    uv run --locked ansible-playbook -i localhost, stop-load.yml

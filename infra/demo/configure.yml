@@ -1,0 +1,10 @@
+- name: Configure collector
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    demo_action: configure
+  tasks:
+    - ansible.builtin.import_tasks: tasks/controller.yml
+
+- ansible.builtin.import_playbook: collector.yml

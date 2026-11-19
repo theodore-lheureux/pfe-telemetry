@@ -1,0 +1,28 @@
+gcp_project: recount-cloud
+network: recount-demo
+zones:
+  gpu: us-central1-a
+subnets:
+  us-central1: recount-demo-us-central1
+active_budget: 3
+cpu_budget: 3
+gpu_budget: 1
+large_fleet_approved: false
+aws:
+  enabled: false
+  region: REPLACE_WITH_AWS_REGION
+  account_id: "REPLACE_WITH_AWS_ACCOUNT_ID"
+  vpc_id: vpc-REPLACE
+  subnet_id: subnet-REPLACE
+  security_group_id: sg-REPLACE
+  instance_profile: recount-demo-nodes
+  startup_ssm_document: ""
+  network_mode: public
+  transfer_bucket: REPLACE_WITH_UNVERSIONED_TRANSFER_BUCKET
+  expiry_guard_ready: false
+  expiry_lambda_arn: REPLACE_WITH_EXPIRY_LAMBDA_ARN
+  expiry_rule_arn: REPLACE_WITH_EXPIRY_RULE_ARN
+state_bucket: REPLACE_WITH_SCOPED_STATE_BUCKET
+state_region: REPLACE_WITH_BUCKET_REGION
+federation_audience: //iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/recount-demo/providers/aws
+federation_service_account: recount-demo@recount-cloud.iam.gserviceaccount.com

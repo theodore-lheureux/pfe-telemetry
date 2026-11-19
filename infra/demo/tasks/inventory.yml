@@ -1,0 +1,35 @@
+- name: Read CPU instances in the demo name namespace
+  when: demo_config.aws.enabled | default(false) | bool
+  amazon.aws.ec2_instance_info:
+    region: "{{ demo_config.aws.region }}"
+    profile: recount-demo
+    access_key: ""
+    secret_key: ""
+    session_token: ""
+    filters:
+      tag:Name: demo-*
+      instance-state-name: [pending, running, stopping, stopped]
+  environment: "{{ demo_environment }}"
+  register: demo_aws_inventory
+  no_log: true
+
+- name: Read GPU instances in the demo name namespace
+  ansible.builtin.command:
+    argv:
+      [
+        gcloud,
+        compute,
+        instances,
+        list,
+        --project=recount-cloud,
+        "--filter=name~^demo-",
+        --format=json,
+      ]
+  environment: "{{ demo_environment }}"
+  register: demo_gcp_inventory
+  changed_when: false
+  no_log: true
+
+- name: Validate owned cloud inventory
+  ansible.builtin.set_fact:
+    demo_instances: "{{ (demo_aws_inventory.instances | default([]) | demo_owned_aws(demo_config)) + (demo_gcp_inventory.stdout | from_json | demo_owned_gcp(demo_config)) }}"

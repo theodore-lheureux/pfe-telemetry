@@ -1,0 +1,9 @@
+- name: Select an existing distributed CPU lab
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars: { demo_action: load, demo_kind: cpu }
+  tasks:
+    - ansible.builtin.import_tasks: tasks/controller.yml
+
+- ansible.builtin.import_playbook: load-workers.yml

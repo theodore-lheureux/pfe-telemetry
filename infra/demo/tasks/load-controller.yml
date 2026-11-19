@@ -1,0 +1,52 @@
+- name: Select the load context
+  ansible.builtin.set_fact:
+    demo_load_action: "{{ demo_action }}"
+    demo_private: { path: "{{ demo_workspace }}" }
+
+- name: Require at least two live nodes for a distributed CPU job
+  when: demo_action == 'load'
+  ansible.builtin.assert:
+    that: (demo_live_collectors | length >= 2) if demo_cloud == 'aws-cpu' else (demo_live_collectors | length == 1)
+    fail_msg: Distributed CPU loads need at least two nodes; GPU loads need one
+
+- name: Inspect the lab's current load job
+  ansible.builtin.stat:
+    path: "{{ demo_lab_directory }}/load.json"
+  register: demo_load_receipt
+
+- name: Require a recorded job for status and stop
+  when: demo_action != 'load'
+  ansible.builtin.assert:
+    that: demo_load_receipt.stat.exists
+    fail_msg: No synthetic load is recorded for this lab
+
+- name: Read the current load job
+  when: demo_action != 'load'
+  ansible.builtin.set_fact:
+    demo_load_job: "{{ lookup('file', demo_lab_directory ~ '/load.json') | from_json }}"
+
+- name: Require the selected project's exact lab identities
+  when: demo_action != 'load'
+  ansible.builtin.assert:
+    that:
+      - demo_load_job.project_id == lookup('env', 'DEMO_PROJECT_ID')
+      - demo_load_job.lab_id == demo_lab and demo_load_job.cloud == demo_cloud
+      - (demo_load_job.nodes | map(attribute='instance_id') | sort | list) == (demo_collectors | map(attribute='instance_id') | sort | list)
+    fail_msg: This load job does not belong to the selected project and lab
+    quiet: true
+
+- name: Connect only the selected live lab nodes
+  ansible.builtin.include_tasks: connect.yml
+  loop: "{{ demo_live_collectors }}"
+  loop_control:
+    loop_var: demo_collector
+    label: "{{ demo_collector.name }}"
+
+- name: Bind the load operation to each selected node
+  ansible.builtin.add_host:
+    name: "{{ item.name }}"
+    groups: demo
+    recount_load_action: "{{ demo_action }}"
+    recount_expected_project_id: "{{ lookup('env', 'DEMO_PROJECT_ID') }}"
+  loop: "{{ demo_live_collectors }}"
+  loop_control: { label: "{{ item.name }}" }

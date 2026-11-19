@@ -1,0 +1,276 @@
+- name: Deploy only the isolated temporary-demo control
+  hosts: semaphore
+  become: true
+  gather_facts: true
+  vars:
+    semaphore_install_directory: /opt/recount-demo-semaphore
+    semaphore_project: recount-demo-semaphore
+  tasks:
+    - name: Validate source and private input paths
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.architecture == "aarch64"
+          - ansible_facts.distribution == "Ubuntu"
+          - ansible_facts.distribution_version == "24.04"
+          - semaphore_source_bundle is file
+          - semaphore_source_sha256 is match("^[a-f0-9]{64}$")
+          - semaphore_private_source is directory
+          - semaphore_install_directory == "/opt/recount-demo-semaphore"
+          - semaphore_runtime_subnet is match("^[0-9.]+/24$")
+          - semaphore_admin_email is match("^[A-Za-z0-9_.+@-]+$")
+          - semaphore_demo_ssh_private_key_source is file
+          - semaphore_demo_ssh_public_key_source is file
+
+    - name: Select immutable source and private deployment paths
+      ansible.builtin.set_fact:
+        semaphore_snapshot_directory: "{{ semaphore_install_directory }}/snapshots/{{ semaphore_source_sha256 }}"
+        semaphore_private_directory: "{{ semaphore_install_directory }}/private"
+        semaphore_worker_image: "recount-demo-worker:{{ semaphore_source_sha256 }}"
+
+    - name: Create only the demo installation directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop:
+        - "{{ semaphore_install_directory }}"
+        - "{{ semaphore_install_directory }}/snapshots"
+        - "{{ semaphore_snapshot_directory }}"
+        - "{{ semaphore_private_directory }}"
+
+    - name: Copy the source archive
+      ansible.builtin.copy:
+        src: "{{ semaphore_source_bundle }}"
+        dest: "{{ semaphore_snapshot_directory }}/source.tar.gz"
+        mode: "0600"
+
+    - name: Check the transferred archive
+      ansible.builtin.stat:
+        path: "{{ semaphore_snapshot_directory }}/source.tar.gz"
+        checksum_algorithm: sha256
+      register: semaphore_archive
+
+    - name: Verify the source archive digest
+      ansible.builtin.assert:
+        that: semaphore_archive.stat.checksum == semaphore_source_sha256
+
+    - name: Extract this snapshot once
+      ansible.builtin.unarchive:
+        src: "{{ semaphore_snapshot_directory }}/source.tar.gz"
+        dest: "{{ semaphore_snapshot_directory }}"
+        remote_src: true
+        creates: "{{ semaphore_snapshot_directory }}/source-manifest.json"
+
+    - name: Prepare private mount directories
+      ansible.builtin.file:
+        path: "{{ semaphore_private_directory }}/{{ item.name }}"
+        state: directory
+        owner: "{{ item.uid }}"
+        group: "{{ item.uid }}"
+        mode: "0700"
+      loop:
+        - { name: bootstrap, uid: 1001 }
+        - { name: runner, uid: 1001 }
+        - { name: demo, uid: 1001 }
+        - { name: tunnel, uid: 65532 }
+
+    - name: Copy selected private inputs without replacing established credentials
+      ansible.builtin.copy:
+        src: "{{ semaphore_private_source }}/{{ item.path }}"
+        dest: "{{ semaphore_private_directory }}/{{ item.path }}"
+        owner: "{{ item.uid | default(1001) }}"
+        group: "{{ item.uid | default(1001) }}"
+        mode: "0600"
+        force: false
+      loop:
+        - { path: access-key }
+        - { path: bootstrap/admin-password }
+        - { path: bootstrap/alex-password }
+        - { path: bootstrap/simeon-password }
+        - { path: bootstrap/accounts.json }
+        - { path: runner/config.json }
+        - { path: demo/config.yml }
+        - { path: demo/external-account.json }
+        - { path: demo/federation-aws.json }
+        - { path: demo/aws-config }
+        - { path: tunnel/config.yml, uid: 65532 }
+        - { path: tunnel/credentials.json, uid: 65532 }
+      no_log: true
+      diff: false
+
+    - name: Copy only the explicitly selected temporary-VM SSH identity
+      ansible.builtin.copy:
+        src: "{{ item.source }}"
+        dest: "{{ semaphore_private_directory }}/demo/{{ item.name }}"
+        owner: "1001"
+        group: "1001"
+        mode: "0600"
+        force: false
+      loop:
+        - {
+            source: "{{ semaphore_demo_ssh_private_key_source }}",
+            name: id_ed25519,
+          }
+        - {
+            source: "{{ semaphore_demo_ssh_public_key_source }}",
+            name: id_ed25519.pub,
+          }
+      no_log: true
+      diff: false
+
+    - name: Select the demo Compose environment
+      ansible.builtin.copy:
+        dest: "{{ semaphore_install_directory }}/compose.env"
+        mode: "0600"
+        content: |
+          RECOUNT_SEMAPHORE_PRIVATE_DIRECTORY={{ semaphore_private_directory }}
+          RECOUNT_SEMAPHORE_WORKER_IMAGE={{ semaphore_worker_image }}
+          RECOUNT_SEMAPHORE_ADMIN_EMAIL={{ semaphore_admin_email }}
+          RECOUNT_SEMAPHORE_SUBNET={{ semaphore_runtime_subnet }}
+
+    - name: Configure the public URL independently of the worker image
+      ansible.builtin.copy:
+        dest: "{{ semaphore_install_directory }}/public-settings.yaml"
+        mode: "0644"
+        content: |
+          services:
+            semaphore:
+              environment:
+                SEMAPHORE_WEB_ROOT: https://semaphore.recount.cloud
+
+    - name: Install the source-scoped demo network guard
+      ansible.builtin.copy:
+        src: firewall.sh
+        dest: "{{ semaphore_install_directory }}/firewall.sh"
+        mode: "0700"
+
+    - name: Persist the dedicated source subnet without changing an existing allocation
+      ansible.builtin.copy:
+        dest: "{{ semaphore_install_directory }}/subnet"
+        content: "{{ semaphore_runtime_subnet }}\n"
+        mode: "0600"
+        force: false
+
+    - name: Read the established subnet allocation
+      ansible.builtin.slurp:
+        src: "{{ semaphore_install_directory }}/subnet"
+      register: semaphore_established_subnet
+
+    - name: Refuse a silent bridge allocation change
+      ansible.builtin.assert:
+        that: semaphore_established_subnet.content | b64decode | trim == semaphore_runtime_subnet
+
+    - name: Persist only the demo guard after Docker starts
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/recount-demo-semaphore-firewall.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Source-scoped network guard for temporary demo controls
+          Requires=docker.service
+          After=docker.service
+          PartOf=docker.service
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          ExecStart={{ semaphore_install_directory }}/firewall.sh {{ semaphore_runtime_subnet }}
+          ExecReload={{ semaphore_install_directory }}/firewall.sh {{ semaphore_runtime_subnet }}
+
+          [Install]
+          WantedBy=docker.service multi-user.target
+
+    - name: Apply the demo guard without reloading Docker or production networks
+      ansible.builtin.systemd_service:
+        name: recount-demo-semaphore-firewall
+        enabled: true
+        state: restarted
+        daemon_reload: true
+
+    - name: Check whether the immutable worker is already built
+      ansible.builtin.command:
+        argv: [docker, image, inspect, "{{ semaphore_worker_image }}"]
+      register: semaphore_image
+      changed_when: false
+      failed_when: semaphore_image.rc not in [0, 1]
+      no_log: true
+
+    - name: Build the native ARM64 worker
+      when: semaphore_image.rc != 0
+      ansible.builtin.command:
+        argv:
+          - docker
+          - build
+          - --platform=linux/arm64
+          - --build-arg
+          - TARGETARCH=arm64
+          - --tag
+          - "{{ semaphore_worker_image }}"
+          - --file
+          - "{{ semaphore_snapshot_directory }}/infra/semaphore/Worker.Dockerfile"
+          - "{{ semaphore_snapshot_directory }}"
+      changed_when: true
+
+    - name: Select commands for this project only
+      ansible.builtin.set_fact:
+        semaphore_compose:
+          - docker
+          - compose
+          - --project-name
+          - "{{ semaphore_project }}"
+          - --env-file
+          - "{{ semaphore_install_directory }}/compose.env"
+          - --file
+          - "{{ semaphore_snapshot_directory }}/infra/semaphore/compose.yaml"
+          - --file
+          - "{{ semaphore_install_directory }}/public-settings.yaml"
+
+    - name: Start only the demo control before bootstrap
+      ansible.builtin.command:
+        argv: "{{ semaphore_compose + ['up', '--detach', '--no-deps', '--wait', 'semaphore'] }}"
+      changed_when: true
+
+    - name: Bootstrap demo accounts and browser forms over the private bridge
+      ansible.builtin.command:
+        argv: "{{ semaphore_compose + ['run', '--rm', '--no-deps', 'bootstrap'] }}"
+      changed_when: true
+      no_log: true
+
+    - name: Retain the runner token outside its image and environment configuration
+      ansible.builtin.copy:
+        src: "{{ semaphore_private_directory }}/bootstrap/runner-token"
+        dest: "{{ semaphore_private_directory }}/runner/token"
+        remote_src: true
+        owner: "1001"
+        group: "1001"
+        mode: "0600"
+        force: false
+      no_log: true
+      diff: false
+
+    - name: Order demo container startup after the guard on every host or Docker restart
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/recount-demo-semaphore.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Temporary collector control
+          Requires=docker.service recount-demo-semaphore-firewall.service
+          After=docker.service recount-demo-semaphore-firewall.service
+          PartOf=docker.service
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          ExecStart={{ semaphore_compose | join(' ') }} up --detach --no-deps semaphore runner cloudflared
+          ExecStop={{ semaphore_compose | join(' ') }} stop --timeout 30 semaphore runner cloudflared
+
+          [Install]
+          WantedBy=docker.service multi-user.target
+
+    - name: Start only the guarded demo stack
+      ansible.builtin.systemd_service:
+        name: recount-demo-semaphore
+        enabled: true
+        state: restarted
+        daemon_reload: true

@@ -1,0 +1,27 @@
+- name: Read project resource
+  ansible.builtin.uri:
+    url: "{{ semaphore_api }}/project/{{ semaphore_project_id }}/{{ semaphore_resource.path }}"
+    headers: "{{ semaphore_headers }}"
+  register: semaphore_existing
+  no_log: true
+
+- name: Require unique project resource names
+  ansible.builtin.assert:
+    that: semaphore_existing.json | selectattr('name', 'equalto', semaphore_resource.body.name) | list | length <= 1
+    quiet: true
+
+- name: Create the project resource when absent
+  when: semaphore_existing.json | selectattr('name', 'equalto', semaphore_resource.body.name) | list | length == 0
+  ansible.builtin.uri:
+    url: "{{ semaphore_api }}/project/{{ semaphore_project_id }}/{{ semaphore_resource.path }}"
+    method: POST
+    headers: "{{ semaphore_headers }}"
+    body_format: json
+    body: "{{ semaphore_resource.body | combine({'project_id': semaphore_project_id | int}) }}"
+    status_code: 201
+  register: semaphore_created
+  no_log: true
+
+- name: Retain the resource ID
+  ansible.builtin.set_fact:
+    semaphore_ids: "{{ semaphore_ids | default({}) | combine({semaphore_resource.key: ((semaphore_existing.json | selectattr('name', 'equalto', semaphore_resource.body.name) | first).id if semaphore_created.skipped | default(false) else semaphore_created.json.id)}) }}"

@@ -1,0 +1,43 @@
+- name: Read global runners
+  ansible.builtin.uri:
+    url: "{{ semaphore_api }}/runners"
+    headers: "{{ semaphore_headers }}"
+  register: semaphore_runners
+  no_log: true
+
+- name: Check the retained runner token
+  ansible.builtin.stat:
+    path: "{{ semaphore_bootstrap_directory }}/runner-token"
+  register: semaphore_runner_token
+
+- name: Require restoration of an established token
+  ansible.builtin.assert:
+    that: semaphore_runners.json | selectattr('name', 'equalto', 'demo-only') | list | length == 0 or semaphore_runner_token.stat.exists
+    fail_msg: Restore the established runner token before continuing
+
+- name: Create one global local-executor runner
+  when: semaphore_runners.json | selectattr('name', 'equalto', 'demo-only') | list | length == 0
+  block:
+    - ansible.builtin.uri:
+        url: "{{ semaphore_api }}/runners"
+        method: POST
+        headers: "{{ semaphore_headers }}"
+        body_format: json
+        body:
+          {
+            name: demo-only,
+            active: true,
+            is_default: true,
+            max_parallel_tasks: 1,
+            registered: true,
+          }
+        status_code: 201
+      register: semaphore_runner
+      no_log: true
+    - ansible.builtin.copy:
+        dest: "{{ semaphore_bootstrap_directory }}/runner-token"
+        content: "{{ semaphore_runner.json.token }}\n"
+        mode: "0600"
+        force: false
+      no_log: true
+      diff: false

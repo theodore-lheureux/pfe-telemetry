@@ -1,0 +1,74 @@
+- name: Find a published collector release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/theodore-lheureux/pfe-telemetry/releases?per_page=100
+    return_content: true
+    headers: { Accept: application/vnd.github+json }
+  register: demo_releases
+
+- name: Select the collector architecture
+  ansible.builtin.set_fact:
+    demo_arch: "{{ 'arm64' if demo_cloud == 'aws-cpu' else 'amd64' }}"
+
+- name: Select a published runtime build
+  ansible.builtin.set_fact:
+    demo_release: "{{ demo_releases.json | demo_published_release(demo_arch) }}"
+
+- name: Prepare artifact and host-key files
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: recount-configure-
+  register: demo_private
+
+- name: Read the collector checksum
+  ansible.builtin.uri:
+    url: "https://github.com/theodore-lheureux/pfe-telemetry/releases/download/{{ demo_release.tag_name }}/recount-collector-{{ demo_arch }}.tar.gz.sha256"
+    return_content: true
+    follow_redirects: all
+  register: demo_checksum
+
+- name: Validate the checksum
+  ansible.builtin.assert:
+    that: demo_checksum.content.split()[0] is match('^[a-f0-9]{64}$')
+    quiet: true
+
+- name: Download the collector for provenance verification
+  ansible.builtin.get_url:
+    url: "https://github.com/theodore-lheureux/pfe-telemetry/releases/download/{{ demo_release.tag_name }}/recount-collector-{{ demo_arch }}.tar.gz"
+    dest: "{{ demo_private.path }}/collector.tar.gz"
+    checksum: "sha256:{{ demo_checksum.content.split()[0] }}"
+    mode: "0600"
+
+- name: Read public build attestations
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/theodore-lheureux/pfe-telemetry/attestations/sha256:{{ demo_checksum.content.split()[0] }}"
+    headers: { Accept: application/vnd.github+json }
+  register: demo_attestations
+
+- name: Retain the verification bundle
+  ansible.builtin.copy:
+    dest: "{{ demo_private.path }}/attestation.json"
+    content: "{{ demo_attestations.json.attestations[0].bundle | to_nice_json }}"
+    mode: "0600"
+
+- name: Verify release provenance without a GitHub login
+  ansible.builtin.command:
+    argv:
+      - gh
+      - attestation
+      - verify
+      - "{{ demo_private.path }}/collector.tar.gz"
+      - --bundle
+      - "{{ demo_private.path }}/attestation.json"
+      - --repo
+      - theodore-lheureux/pfe-telemetry
+      - --signer-workflow
+      - theodore-lheureux/pfe-telemetry/.github/workflows/release.yml
+      - --source-ref
+      - refs/heads/main
+      - --source-digest
+      - "{{ demo_release.tag_name.split('-')[1] }}"
+      - --deny-self-hosted-runners
+  environment:
+    GH_CONFIG_DIR: /tmp/demo-gh
+    GH_PROMPT_DISABLED: "1"
+  changed_when: false

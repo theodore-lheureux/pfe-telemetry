@@ -1,0 +1,13 @@
+- name: Create CPU collectors
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    demo_action: create
+    demo_kind: cpu
+  tasks:
+    - ansible.builtin.import_tasks: tasks/controller.yml
+
+- ansible.builtin.import_playbook: collector.yml
+  vars:
+    demo_setup_batch_size: 20

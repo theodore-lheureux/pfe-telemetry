@@ -1,0 +1,141 @@
+- name: Read the initial state envelope
+  ansible.builtin.set_fact:
+    demo_initial_state: "{{ (demo_state_pull.stdout | from_json) if (demo_state_pull.stdout | trim | length > 0) else {} }}"
+  no_log: true
+
+- name: Require a new lab and bounded inputs
+  ansible.builtin.assert:
+    that:
+      - demo_state_pull.rc == 0
+      - demo_initial_state.get('version', 4) == 4
+      - demo_initial_state.get('resources', []) | length == 0
+      - demo_initial_state.get('outputs', {}) | length == 0
+      - demo_initial_state.get('serial', 0) == 0
+      - demo_initial_state.get('lineage', '') == ''
+      - lookup('env', 'DEMO_COUNT') is match('^[1-9][0-9]{0,2}$')
+      - lookup('env', 'DEMO_COUNT') | int <= (200 if demo_kind == 'cpu' else 1)
+      - lookup('env', 'DEMO_TTL') in ['15m', '30m', '1h', '2h', '4h']
+      - lookup('env', 'DEMO_COST') == ('on-demand' if demo_kind == 'cpu' else 'spot-only')
+      - demo_kind in ['cpu', 'gpu']
+      - (demo_kind == 'cpu' and lookup('env', 'DEMO_PRESET') == 't4g-nano') or (demo_kind == 'gpu' and lookup('env', 'DEMO_PRESET') == 'gpu-l4')
+      - demo_kind != 'cpu' or (demo_config.aws.enabled | bool and demo_config.aws.expiry_guard_ready | bool)
+      - ((demo_instances | length) + (lookup('env', 'DEMO_COUNT') | int)) <= (demo_config.active_budget | int)
+      - ((demo_instances | selectattr('kind', 'equalto', demo_kind) | list | length) + (lookup('env', 'DEMO_COUNT') | int)) <= (demo_config[demo_kind ~ '_budget'] | int)
+    fail_msg: Use a new lab ID, confirm its fixed market costs and stay within count, preset and TTL limits
+    quiet: true
+
+- name: Inspect prior lab claims
+  ansible.builtin.find:
+    paths: /var/lib/recount-demo/labs
+    patterns: claim.json
+    recurse: true
+  register: demo_claims
+
+- name: Refuse unresolved creates
+  ansible.builtin.assert:
+    that: (lookup('file', item.path) | from_json).outcome not in ['creating', 'uncertain']
+    fail_msg: An incomplete lab operation requires reconciliation before another create
+  loop: "{{ demo_claims.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Check this lab ID has never been claimed
+  ansible.builtin.stat:
+    path: "{{ demo_lab_directory }}/claim.json"
+  register: demo_claim
+
+- name: Require an unused lab ID
+  ansible.builtin.assert:
+    that: not demo_claim.stat.exists
+    fail_msg: This lab ID has already been used; choose a new ID
+
+- name: Read the creation attempt's timestamp
+  ansible.builtin.setup:
+    gather_subset: [date_time]
+
+- name: Select bounded public inputs
+  ansible.builtin.set_fact:
+    demo_public_variables:
+      lab_id: "{{ demo_lab }}"
+      collector_count: "{{ lookup('env', 'DEMO_COUNT') | int }}"
+      ttl_seconds: "{{ {'15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400}[lookup('env', 'DEMO_TTL')] }}"
+
+- name: Select AWS CPU inputs
+  when: demo_cloud == 'aws-cpu'
+  ansible.builtin.set_fact:
+    demo_public_variables: "{{ demo_public_variables | combine({'region': demo_config.aws.region, 'subnet_id': demo_config.aws.subnet_id, 'security_group_id': demo_config.aws.security_group_id, 'instance_profile': demo_config.aws.instance_profile, 'network_mode': demo_config.aws.network_mode, 'expiry_guard_ready': demo_config.aws.expiry_guard_ready, 'created_at': ansible_facts.date_time.iso8601}) }}"
+
+- name: Select GCP GPU inputs
+  when: demo_cloud == 'gcp-gpu'
+  ansible.builtin.set_fact:
+    demo_public_variables: "{{ demo_public_variables | combine({'preset': 'gpu-l4', 'zone': demo_config.zones.gpu, 'subnets': demo_config.subnets, 'ssh_public_key': lookup('file', '/run/demo/id_ed25519.pub')}) }}"
+
+- name: Record only public OpenTofu inputs
+  ansible.builtin.copy:
+    dest: "{{ demo_workspace }}/terraform.tfvars.json"
+    mode: "0600"
+    content: "{{ demo_public_variables | to_nice_json }}"
+
+- name: Reserve this lab ID before any create request
+  ansible.builtin.copy:
+    dest: "{{ demo_lab_directory }}/claim.json"
+    mode: "0600"
+    force: false
+    content: "{{ {'lab_id': demo_lab, 'outcome': 'creating'} | to_nice_json }}"
+
+- name: Create only the planned lab resources
+  block:
+    - name: Plan a new lab
+      ansible.builtin.command:
+        argv: "{{ demo_tofu + ['plan', '-input=false', '-lock-timeout=60s', '-out=create.plan'] }}"
+      environment: "{{ demo_environment }}"
+      changed_when: false
+      no_log: true
+
+    - name: Inspect the create plan
+      ansible.builtin.command:
+        argv: "{{ demo_tofu + ['show', '-json', 'create.plan'] }}"
+      environment: "{{ demo_environment }}"
+      register: demo_plan
+      changed_when: false
+      no_log: true
+
+    - name: Require create-only actions
+      ansible.builtin.assert:
+        that: demo_plan.stdout | from_json | demo_create_plan(demo_cloud)
+        quiet: true
+
+    - name: Apply the saved create plan once
+      ansible.builtin.command:
+        argv: "{{ demo_tofu + ['apply', '-input=false', '-lock-timeout=60s', 'create.plan'] }}"
+      environment: "{{ demo_environment }}"
+      changed_when: true
+      no_log: true
+
+    - name: Read public collector outputs
+      ansible.builtin.command:
+        argv: "{{ demo_tofu + ['output', '-json', 'collectors'] }}"
+      environment: "{{ demo_environment }}"
+      register: demo_outputs
+      changed_when: false
+      no_log: true
+
+    - name: Select the new collectors
+      ansible.builtin.set_fact:
+        demo_collectors: "{{ demo_outputs.stdout | from_json }}"
+
+    - name: Record successful VM creation
+      ansible.builtin.copy:
+        dest: "{{ demo_lab_directory }}/claim.json"
+        mode: "0600"
+        content: "{{ {'lab_id': demo_lab, 'outcome': 'created'} | to_nice_json }}"
+  rescue:
+    - name: Preserve an uncertain create receipt
+      ansible.builtin.copy:
+        dest: "{{ demo_lab_directory }}/claim.json"
+        mode: "0600"
+        content: "{{ {'lab_id': demo_lab, 'outcome': 'uncertain'} | to_nice_json }}"
+
+    - name: Stop after an incomplete create
+      ansible.builtin.fail:
+        msg: Creation failed; inspect this lab's state and destroy it explicitly. Do not reapply. GCP expiry remains active.

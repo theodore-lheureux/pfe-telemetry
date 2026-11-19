@@ -1,0 +1,21 @@
+- name: Wait for all newly created CPU collectors through SSM
+  when: demo_action == 'create' and demo_cloud == 'aws-cpu'
+  ansible.builtin.command:
+    argv: "{{ [ansible_playbook_python, playbook_dir ~ '/ssm_ready.py', '--fleet', demo_config.aws.region, demo_config.aws.startup_ssm_document | default('')] + (demo_live_collectors | map(attribute='instance_id') | list) }}"
+  environment: "{{ demo_environment }}"
+  changed_when: false
+  register: demo_cpu_fleet_ssm
+
+- name: Report CPU fleet SSM readiness
+  when: demo_action == 'create' and demo_cloud == 'aws-cpu'
+  ansible.builtin.debug:
+    msg: "{{ demo_cpu_fleet_ssm.stdout }}"
+
+- name: Select verified collectors for configuration
+  ansible.builtin.include_tasks: host.yml
+  loop: "{{ demo_live_collectors }}"
+  loop_control:
+    loop_var: demo_collector
+    label: "{{ demo_collector.name }}"
+  vars:
+    demo_skip_individual_ssm: "{{ demo_action == 'create' and demo_cloud == 'aws-cpu' and demo_cpu_fleet_ssm is succeeded and demo_cpu_fleet_ssm is not skipped }}"

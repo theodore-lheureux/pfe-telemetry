@@ -1,0 +1,26 @@
+- name: Select the verified collector connection
+  ansible.builtin.include_tasks: connect.yml
+
+- name: Refuse an incomplete previous enrollment
+  ansible.builtin.assert:
+    that: (lookup('file', demo_lab_directory ~ '/' ~ demo_collector.name ~ '.json', errors='ignore') | default('{"phase":"new"}', true) | from_json).phase in ['new', 'ready']
+    fail_msg: Reconcile the collector's incomplete identity and queue operation before retrying
+
+- name: Record the attempt before connecting
+  ansible.builtin.copy:
+    dest: "{{ demo_lab_directory }}/{{ demo_collector.name }}.json"
+    content: "{{ {'phase': 'configuring', 'project_id': lookup('env', 'DEMO_PROJECT_ID')} | to_nice_json }}"
+    mode: "0600"
+
+- name: Set collector configuration inputs
+  ansible.builtin.add_host:
+    name: "{{ demo_collector.name }}"
+    groups: demo
+    recount_release: "{{ demo_release.tag_name }}"
+    recount_release_sha256: "{{ demo_checksum.content.split()[0] }}"
+    recount_repository: theodore-lheureux/pfe-telemetry
+    recount_expected_project_id: "{{ lookup('env', 'DEMO_PROJECT_ID') }}"
+    recount_reenroll: "{{ demo_action == 'move' }}"
+    recount_discard_queue: "{{ lookup('env', 'DEMO_DISCARD', default='drain') == 'discard-old-queue' }}"
+    recount_lab_directory: "{{ demo_lab_directory }}"
+  no_log: true

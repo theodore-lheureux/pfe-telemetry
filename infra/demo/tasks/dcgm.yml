@@ -1,0 +1,42 @@
+- name: Read the driver's CUDA major version
+  ansible.builtin.shell: nvidia-smi -q | sed -En 's/^CUDA Version[ :]+([0-9]+)[.].*/\1/p'
+  register: recount_cuda
+  changed_when: false
+  failed_when: recount_cuda.stdout not in ['12', '13']
+
+- name: Add NVIDIA's CUDA repository key
+  ansible.builtin.apt:
+    deb: https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+
+- name: Refuse a driver replacement
+  ansible.builtin.shell: >-
+    apt-get update -qq &&
+    apt-get --simulate --no-install-recommends install
+    datacenter-gpu-manager-4-cuda{{ recount_cuda.stdout }}
+    datacenter-gpu-manager-4-proprietary
+    datacenter-gpu-manager-4-proprietary-cuda{{ recount_cuda.stdout }}
+  register: recount_dcgm_plan
+  changed_when: false
+  failed_when: >-
+    recount_dcgm_plan.rc != 0 or
+    recount_dcgm_plan.stdout is search('^(Remv |Inst (nvidia-driver|cuda-drivers|linux-image|libnvidia-compute))', multiline=True)
+
+- name: Install DCGM with profiling
+  ansible.builtin.apt:
+    name:
+      - "datacenter-gpu-manager-4-cuda{{ recount_cuda.stdout }}"
+      - datacenter-gpu-manager-4-proprietary
+      - "datacenter-gpu-manager-4-proprietary-cuda{{ recount_cuda.stdout }}"
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 600
+  register: recount_dcgm
+  retries: 2
+  delay: 15
+  until: recount_dcgm is succeeded
+
+- name: Start the DCGM host engine
+  ansible.builtin.systemd_service:
+    name: nvidia-dcgm
+    enabled: true
+    state: started

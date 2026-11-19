@@ -1,0 +1,165 @@
+- name: Select lab inputs
+  ansible.builtin.set_fact:
+    semaphore_surveys: "{{ [] if semaphore_template.action == 'list' else [{'name': 'DEMO_LAB', 'title': semaphore_lab_title, 'required': semaphore_template.action != 'create', 'target': 'env'}] }}"
+  vars:
+    semaphore_lab_title: "{{ 'Lab ID (leave blank to generate)' if semaphore_template.action == 'create' else 'Lab ID' }}"
+
+- name: Select the existing fleet type
+  when: semaphore_template.action in ['configure', 'move', 'destroy', 'load-status', 'stop-load']
+  ansible.builtin.set_fact:
+    semaphore_surveys: "{{ semaphore_surveys + [fleet] }}"
+  vars:
+    fleet:
+      name: DEMO_FLEET
+      title: Collector type
+      type: enum
+      target: env
+      required: true
+      values:
+        - { name: AWS CPU, value: aws-cpu }
+        - { name: GCP GPU, value: gcp-gpu }
+
+- name: Select bounded creation inputs
+  when: semaphore_template.action == 'create'
+  ansible.builtin.set_fact:
+    semaphore_surveys: "{{ semaphore_surveys + [count, ttl, cost, preset] }}"
+  vars:
+    count:
+      name: DEMO_COUNT
+      title: Collector count (administrator fleet limit applies)
+      type: int
+      target: env
+      required: true
+      default_value: "{{ '2' if semaphore_template.kind == 'cpu' else '1' }}"
+    ttl:
+      name: DEMO_TTL
+      title: Automatic deletion
+      type: enum
+      target: env
+      required: true
+      default_value: 2h
+      values:
+        - { name: 15 minutes, value: 15m }
+        - { name: 30 minutes, value: 30m }
+        - { name: 1 hour, value: 1h }
+        - { name: 2 hours, value: 2h }
+        - { name: 4 hours, value: 4h }
+    cost:
+      name: DEMO_COST
+      title: "{{ 'Confirm on-demand compute, boot disk and public IP costs' if semaphore_template.kind == 'cpu' else 'Confirm Spot compute, boot disk and public IP costs' }}"
+      type: enum
+      target: env
+      required: true
+      values:
+        - name: "{{ 'I accept on-demand demo costs' if semaphore_template.kind == 'cpu' else 'I accept Spot-only demo costs' }}"
+          value: "{{ 'on-demand' if semaphore_template.kind == 'cpu' else 'spot-only' }}"
+    preset:
+      name: DEMO_PRESET
+      title: VM preset
+      type: enum
+      target: env
+      required: true
+      default_value: "{{ 't4g-nano' if semaphore_template.kind == 'cpu' else 'gpu-l4' }}"
+      values: "{{ [{'name': 't4g.nano (ARM64, 512 MiB)', 'value': 't4g-nano'}] if semaphore_template.kind == 'cpu' else [{'name': 'One NVIDIA L4', 'value': 'gpu-l4'}] }}"
+
+- name: Select bounded synthetic-load inputs
+  when: semaphore_template.action == 'load'
+  ansible.builtin.set_fact:
+    semaphore_surveys: "{{ semaphore_surveys + [profile, duration] }}"
+  vars:
+    profile:
+      name: DEMO_WORKLOAD
+      title: Load profile
+      type: enum
+      target: env
+      required: true
+      default_value: "{{ 'cpu-primes' if semaphore_template.kind == 'cpu' else 'gpu-mixed' }}"
+      values: "{{ cpu_profiles if semaphore_template.kind == 'cpu' else gpu_profiles }}"
+    cpu_profiles:
+      - { name: Distributed hashing, value: cpu-hash }
+      - { name: Distributed prime search, value: cpu-primes }
+      - { name: Distributed Monte Carlo pi, value: cpu-pi }
+    gpu_profiles:
+      - { name: FP32 CUDA cores, value: gpu-fp32 }
+      - { name: Tensor cores, value: gpu-tensor }
+      - { name: VRAM bandwidth, value: gpu-memory }
+      - { name: Mixed compute and memory phases, value: gpu-mixed }
+    duration:
+      name: DEMO_DURATION
+      title: Maximum load duration
+      type: enum
+      target: env
+      required: true
+      default_value: "120"
+      values:
+        - { name: 1 minute, value: "60" }
+        - { name: 2 minutes, value: "120" }
+        - { name: 3 minutes, value: "180" }
+        - { name: 5 minutes, value: "300" }
+
+- name: Select queue delivery behavior
+  when: semaphore_template.action == 'move'
+  ansible.builtin.set_fact:
+    semaphore_surveys: "{{ semaphore_surveys + [queue] }}"
+  vars:
+    queue:
+      name: DEMO_DISCARD
+      title: Old project queue
+      type: enum
+      target: env
+      required: true
+      default_value: drain
+      values:
+        - { name: Drain first and preserve failed deliveries, value: drain }
+        - {
+            name: Discard queued telemetry explicitly,
+            value: discard-old-queue,
+          }
+
+- name: Confirm lab destruction
+  when: semaphore_template.action == 'destroy'
+  ansible.builtin.set_fact:
+    semaphore_surveys: "{{ semaphore_surveys + [confirmation] }}"
+  vars:
+    confirmation:
+      name: DEMO_CONFIRM
+      title: Delete this lab and its boot disks
+      type: enum
+      target: env
+      required: true
+      values:
+        - { name: Delete, value: delete }
+
+- name: Create the native Ansible template when absent
+  ansible.builtin.include_tasks: bootstrap-resource.yml
+  vars:
+    workload_descriptions:
+      load: Existing lab only. CPU jobs need at least two nodes; GPU jobs need one. Workers have independent resource/time limits and do not create VMs. Use Load status and results or Stop synthetic load afterward.
+      load-status: Read the selected lab's current job checkpoints and reduce its distributed results. Missing or interrupted shards remain partial. No new VM or worker is started.
+      stop-load: Stop only the selected lab's synthetic worker units and retain their partial results. Collectors keep running and VMs are not deleted.
+    semaphore_resource:
+      key: "template_{{ semaphore_template.action }}_{{ semaphore_template.kind | default('') }}"
+      path: templates
+      body:
+        name: "{{ semaphore_template.name }}"
+        app: ansible
+        playbook: "infra/demo/{{ semaphore_template.file }}"
+        repository_id: "{{ semaphore_ids.repository | int }}"
+        inventory_id: "{{ semaphore_ids.inventory | int }}"
+        environment_id: "{{ semaphore_ids.environment | int }}"
+        environment_ids: ["{{ semaphore_ids.environment | int }}"]
+        arguments: "{{ (['--forks', '20'] if semaphore_template.action == 'create' and semaphore_template.kind | default('') == 'cpu' else []) | to_json }}"
+        allow_override_args_in_task: false
+        allow_override_branch_in_task: false
+        allow_parallel_tasks: false
+        task_params:
+          allow_debug: false
+          allow_override_inventory: false
+          allow_override_limit: false
+          allow_override_tags: false
+          allow_override_skip_tags: false
+          skip_galaxy_install: true
+          hide_dry_run: true
+          hide_diff: true
+        survey_vars: "{{ semaphore_surveys }}"
+        description: "{{ workload_descriptions.get(semaphore_template.action, 'Temporary collectors: AWS CPU on-demand, GCP GPU Spot; maximum requested TTL 4 hours. Create configures collectors without synthetic loads. Select a project variable group for creation, configuration or movement. Create projects and enrollment keys at https://app.recount.cloud/.') }}"

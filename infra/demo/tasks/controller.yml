@@ -1,0 +1,198 @@
+- name: Use the controller's installed Python packages
+  ansible.builtin.set_fact:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+- name: Read the fixed cloud allocation
+  ansible.builtin.include_vars:
+    file: /run/demo/config.yml
+    name: demo_config
+
+- name: Select a new or existing lab ID
+  ansible.builtin.set_fact:
+    demo_lab: "{{ lookup('env', 'DEMO_LAB') | demo_selected_lab(demo_action) }}"
+
+- name: Validate operation, lab ID and administrator limits
+  ansible.builtin.assert:
+    that:
+      - demo_action in ['create', 'list', 'configure', 'move', 'destroy', 'load', 'load-status', 'stop-load']
+      - demo_config.gcp_project == 'recount-cloud'
+      - demo_config.network == 'recount-demo'
+      - demo_config.active_budget | int >= 1 and demo_config.active_budget | int <= 201
+      - demo_config.cpu_budget | int >= 1 and demo_config.cpu_budget | int <= 200
+      - demo_config.gpu_budget | int == 1
+      - demo_config.large_fleet_approved | bool or (demo_config.cpu_budget | int <= 5 and demo_config.active_budget | int <= 5)
+      - demo_action == 'list' or demo_lab is match('^[a-z][a-z0-9-]{0,23}$')
+      - demo_action in ['create', 'list', 'load'] or lookup('env', 'DEMO_FLEET') in ['aws-cpu', 'gcp-gpu']
+      - demo_config.aws.transfer_bucket != demo_config.state_bucket
+    quiet: true
+
+- name: Show the selected lab ID
+  when: demo_action != 'list'
+  ansible.builtin.debug:
+    msg: "Lab ID: {{ demo_lab }}"
+
+- name: Read base federation and state credentials
+  ansible.builtin.include_vars:
+    file: /run/demo/federation-aws.json
+    name: demo_aws
+  no_log: true
+
+- name: Select fixed authentication and operation context
+  ansible.builtin.set_fact:
+    demo_cloud: "{{ {'cpu': 'aws-cpu', 'gpu': 'gcp-gpu'}[demo_kind] if demo_action in ['create', 'load'] else lookup('env', 'DEMO_FLEET') }}"
+    demo_environment:
+      PATH: /opt/ansible/bin:/usr/lib/google-cloud-sdk/bin:/usr/local/bin:/usr/bin:/bin
+      HOME: /tmp/demo-home
+      CLOUDSDK_CONFIG: /tmp/demo-gcloud
+      CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE: /run/demo/external-account.json
+      GOOGLE_APPLICATION_CREDENTIALS: /run/demo/external-account.json
+      AWS_ACCESS_KEY_ID: "{{ demo_aws.AWS_ACCESS_KEY_ID }}"
+      AWS_SECRET_ACCESS_KEY: "{{ demo_aws.AWS_SECRET_ACCESS_KEY }}"
+      AWS_REGION: "{{ demo_aws.AWS_REGION }}"
+      AWS_CONFIG_FILE: /run/demo/aws-config
+      AWS_EC2_METADATA_DISABLED: "true"
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_WORKSPACE: default
+      TF_CLI_CONFIG_FILE: /opt/recount/infra/semaphore/tofu.rc
+      TF_PLUGIN_CACHE_DIR: /opt/tofu-providers
+  no_log: true
+
+- name: Validate project inputs before any provisioning
+  when: demo_action in ['create', 'configure', 'move', 'load', 'load-status', 'stop-load']
+  ansible.builtin.import_tasks: project-inputs.yml
+
+- name: Inspect the temporary fleet
+  ansible.builtin.import_tasks: inventory.yml
+
+- name: List collectors and remaining time
+  when: demo_action == 'list'
+  ansible.builtin.debug:
+    msg: "{{ demo_instances | demo_listing }}"
+
+- name: Run the selected lab operation
+  when: demo_action != 'list'
+  block:
+    - name: Select this lab's receipt directory
+      ansible.builtin.set_fact:
+        demo_lab_directory: "/var/lib/recount-demo/labs/{{ demo_cloud }}/{{ demo_lab }}"
+
+    - name: Retain the lab receipts
+      ansible.builtin.file:
+        path: "{{ demo_lab_directory }}"
+        state: directory
+        mode: "0700"
+
+    - name: Create a fresh execution directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: recount-lab-
+      register: demo_execution
+
+    - name: Select the fixed OpenTofu command
+      ansible.builtin.set_fact:
+        demo_workspace: "{{ demo_execution.path }}"
+        demo_tofu:
+          [
+            env,
+            -u,
+            DEMO_ENROLLMENT_KEY,
+            tofu,
+            "-chdir={{ demo_execution.path }}",
+          ]
+
+    - name: Copy only the selected immutable cloud root
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ demo_workspace }}/{{ item | basename }}"
+        mode: preserve
+      with_fileglob:
+        - "{{ playbook_dir }}/tofu/{{ demo_cloud }}/*.tf"
+        - "{{ playbook_dir }}/tofu/{{ demo_cloud }}/.terraform.lock.hcl"
+
+    - name: Initialize only this lab's state
+      ansible.builtin.command:
+        argv: "{{ demo_tofu + ['init', '-input=false', '-lockfile=readonly', '-backend-config=bucket=' ~ demo_config.state_bucket, '-backend-config=region=' ~ demo_config.state_region, '-backend-config=key=demo/labs/' ~ demo_cloud ~ '/' ~ demo_lab ~ '/terraform.tfstate', '-backend-config=workspace_key_prefix=demo/labs/workspaces', '-backend-config=encrypt=true', '-backend-config=use_lockfile=true'] }}"
+      environment: "{{ demo_environment }}"
+      changed_when: false
+      no_log: true
+
+    - name: Read only this lab's existing state
+      ansible.builtin.command:
+        argv: "{{ demo_tofu + ['state', 'pull'] }}"
+      environment: "{{ demo_environment }}"
+      register: demo_state_pull
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Require a readable backend
+      ansible.builtin.assert:
+        that: demo_state_pull.rc == 0
+        fail_msg: State could not be read; no resources were changed
+
+    - name: Verify the collector build before provisioning or configuration
+      when: demo_action in ['create', 'configure', 'move']
+      ansible.builtin.include_tasks: release.yml
+
+    - name: Create a new lab
+      when: demo_action == 'create'
+      ansible.builtin.include_tasks: create.yml
+
+    - name: Require existing state for existing-lab operations
+      when: demo_action != 'create'
+      ansible.builtin.assert:
+        that: demo_state_pull.stdout | trim | length > 0
+        fail_msg: This lab has no state; no resources were changed
+
+    - name: Inspect public lab state
+      ansible.builtin.command:
+        argv: "{{ demo_tofu + ['show', '-json'] }}"
+      environment: "{{ demo_environment }}"
+      register: demo_state_show
+      changed_when: false
+      no_log: true
+
+    - name: Validate state identities
+      ansible.builtin.set_fact:
+        demo_collectors: "{{ demo_state_show.stdout | from_json | demo_lab_state(demo_lab, demo_config, demo_cloud) }}"
+
+    - name: Reinspect live identities before use
+      ansible.builtin.include_tasks: inventory.yml
+
+    - name: Inspect exact CPU state IDs without a name or owner filter
+      when: demo_cloud == 'aws-cpu' and demo_collectors | length > 0
+      amazon.aws.ec2_instance_info:
+        region: "{{ demo_config.aws.region }}"
+        profile: recount-demo
+        access_key: ""
+        secret_key: ""
+        session_token: ""
+        filters:
+          instance-id: "{{ demo_collectors | map(attribute='instance_id') | list }}"
+          instance-state-name: [pending, running, stopping, stopped]
+      environment: "{{ demo_environment }}"
+      register: demo_exact_aws
+      no_log: true
+
+    - name: Reject unrelated CPU state targets
+      when: demo_cloud == 'aws-cpu' and demo_collectors | length > 0
+      ansible.builtin.assert:
+        that: demo_exact_aws.instances | demo_owned_aws(demo_config) | demo_accounted(demo_collectors, demo_lab, demo_cloud, true) is defined
+        quiet: true
+
+    - name: Account for every live lab instance
+      ansible.builtin.set_fact:
+        demo_live_collectors: "{{ demo_instances | demo_accounted(demo_collectors, demo_lab, demo_cloud, demo_action in ['destroy', 'load-status', 'stop-load']) }}"
+
+    - name: Destroy the validated lab
+      when: demo_action == 'destroy'
+      ansible.builtin.include_tasks: destroy.yml
+
+    - name: Configure the selected existing collectors
+      when: demo_action in ['create', 'configure', 'move']
+      ansible.builtin.include_tasks: configure.yml
+
+    - name: Select existing nodes for a synthetic-load operation
+      when: demo_action in ['load', 'load-status', 'stop-load']
+      ansible.builtin.include_tasks: load-controller.yml

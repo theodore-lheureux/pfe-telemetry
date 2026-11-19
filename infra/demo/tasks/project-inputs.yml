@@ -1,0 +1,29 @@
+- name: Require a project label and UUID
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'DEMO_PROJECT') is match('^[a-z][a-z0-9-]{0,23}$')
+      - lookup('env', 'DEMO_PROJECT_ID') is match('^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$')
+    quiet: true
+  no_log: true
+
+- name: Require an encrypted-group enrollment key for enrollment operations
+  when: demo_action in ['create', 'configure', 'move']
+  ansible.builtin.assert:
+    that: lookup('env', 'DEMO_ENROLLMENT_KEY') is match('^recount_enroll_[a-f0-9-]{36}_[A-Za-z0-9_-]{43}$')
+    quiet: true
+  no_log: true
+
+- name: Validate the selected queue behavior
+  when: demo_action == 'move'
+  ansible.builtin.assert:
+    that: lookup('env', 'DEMO_DISCARD', default='drain') in ['drain', 'discard-old-queue']
+    quiet: true
+
+- name: Require a bounded load profile and duration
+  when: demo_action == 'load'
+  ansible.builtin.assert:
+    that:
+      - lookup('env', 'DEMO_WORKLOAD') in (['cpu-hash', 'cpu-primes', 'cpu-pi'] if demo_cloud == 'aws-cpu' else ['gpu-fp32', 'gpu-tensor', 'gpu-memory', 'gpu-mixed'])
+      - lookup('env', 'DEMO_DURATION') is match('^[1-9][0-9]{0,2}$')
+      - lookup('env', 'DEMO_DURATION') | int <= 300
+    quiet: true

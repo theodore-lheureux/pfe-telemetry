@@ -1,0 +1,31 @@
+[Unit]
+Description=Bounded Recount synthetic load
+After=recount-collector.service
+
+[Service]
+Type=simple
+WorkingDirectory=/var/lib/recount-demo-load
+Environment="RECOUNT_EXECUTION={{ recount_load_job.job_id }}"
+Environment="RECOUNT_EXECUTION_NAME={{ recount_load_job.profile }} demo job"
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=CUDA_CACHE_DISABLE=1
+ExecStart=/usr/bin/python3 /usr/local/lib/recount-demo/{{ 'gpu_load.py' if recount_gpu else 'cpu_load.py' }} --profile {{ recount_load_job.profile }} --job {{ recount_load_job.job_id }} --duration {{ recount_load_job.duration_seconds }} --expires {{ recount_load_job.expires_epoch }} --output /var/lib/recount-demo-load/{{ recount_load_job.job_id }}.json{% if not recount_gpu %} --shard {{ recount_load_shard }} --shards {{ recount_load_job.nodes | length }}{% endif %}
+
+Restart=no
+RuntimeMaxSec={{ recount_load_job.duration_seconds | int + 5 }}
+TimeoutStopSec=5
+KillMode=control-group
+CPUQuota={{ '100%' if recount_gpu else '50%' }}
+MemoryMax={{ '1G' if recount_gpu else '64M' }}
+MemorySwapMax=0
+TasksMax={{ 64 if recount_gpu else 16 }}
+LimitFSIZE=8M
+Nice=10
+OOMPolicy=stop
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/recount-demo-load

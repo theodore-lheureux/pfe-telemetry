@@ -1,0 +1,148 @@
+name: recount-demo-semaphore
+
+x-limits:
+  &limits # Host systemd starts this project only after its source-scoped firewall guard.
+  restart: "no"
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  pids_limit: 128
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "3"
+
+services:
+  semaphore:
+    <<: *limits
+    image: semaphoreui/semaphore:v2.20.23@sha256:00e6733dbca9a2bddf77e048f34f9002027c8a6f549a8cde18d13101e84a19c3
+    user: "1001:0"
+    cpus: 0.5
+    mem_limit: 512m
+    memswap_limit: 512m
+    ports: ["127.0.0.1:3100:3000"]
+    environment:
+      SEMAPHORE_DB_DIALECT: sqlite
+      SEMAPHORE_DB_PATH: /var/lib/semaphore
+      SEMAPHORE_CONFIG_PATH: /etc/semaphore
+      SEMAPHORE_ADMIN: admin
+      SEMAPHORE_ADMIN_NAME: Theodore
+      SEMAPHORE_ADMIN_EMAIL: "${RECOUNT_SEMAPHORE_ADMIN_EMAIL:?Set admin email}"
+      SEMAPHORE_ADMIN_PASSWORD_FILE: /run/secrets/admin-password
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION_FILE: /run/secrets/access-key
+      SEMAPHORE_WEB_ROOT: "${RECOUNT_SEMAPHORE_PUBLIC_URL:-https://semaphore.recount.cloud}"
+      SEMAPHORE_MAX_PARALLEL_TASKS: "1"
+      SEMAPHORE_MAX_TASK_DURATION_SEC: "1800"
+      SEMAPHORE_MAX_TASKS_PER_TEMPLATE: "50"
+      SEMAPHORE_DEFAULT_GLOBAL_RUNNERS_MODE: require
+      SEMAPHORE_NON_ADMIN_CAN_CREATE_PROJECT: "false"
+      SEMAPHORE_APPS: '{"ansible":{"active":true},"python":{"active":false},"bash":{"active":false},"tofu":{"active":false},"terraform":{"active":false},"terragrunt":{"active":false},"powershell":{"active":false},"pulumi":{"active":false}}'
+      TZ: UTC
+    volumes:
+      - config:/etc/semaphore
+      - database:/var/lib/semaphore
+    secrets: [admin-password, access-key]
+    tmpfs:
+      - /tmp:uid=1001,gid=0,mode=1770,size=128m
+    networks: [runtime]
+    healthcheck:
+      test:
+        ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3000/api/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+
+  runner:
+    <<: *limits
+    image: "${RECOUNT_SEMAPHORE_WORKER_IMAGE:?Build the worker source snapshot}"
+    user: "1001:1001"
+    cpus: 1.5
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    pids_limit: 256
+    depends_on:
+      semaphore:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: "${RECOUNT_SEMAPHORE_PRIVATE_DIRECTORY:?Set private directory}/runner"
+        target: /run/runner
+        read_only: true
+        bind: { create_host_path: false }
+      - runner-data:/var/lib/semaphore-runner
+      - receipts:/var/lib/recount-demo
+      - type: bind
+        source: "${RECOUNT_SEMAPHORE_PRIVATE_DIRECTORY}/demo"
+        target: /run/demo
+        read_only: true
+        bind: { create_host_path: false }
+    tmpfs:
+      - /tmp:uid=1001,gid=1001,mode=1770,size=512m
+    networks: [runtime]
+
+  cloudflared:
+    <<: *limits
+    image: cloudflare/cloudflared:2026.11.0@sha256:b94b96edf2c9c4360f8879c8580cfaa99077f19c849ec595ca2f711b27d4f344
+    user: "65532:65532"
+    cpus: 0.25
+    mem_limit: 128m
+    memswap_limit: 128m
+    command:
+      ["tunnel", "--no-autoupdate", "--config", "/run/tunnel/config.yml", "run"]
+    depends_on:
+      semaphore:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: "${RECOUNT_SEMAPHORE_PRIVATE_DIRECTORY}/tunnel"
+        target: /run/tunnel
+        read_only: true
+        bind: { create_host_path: false }
+    networks: [runtime]
+
+  bootstrap:
+    <<: *limits
+    profiles: [bootstrap]
+    restart: "no"
+    image: "${RECOUNT_SEMAPHORE_WORKER_IMAGE}"
+    user: "1001:1001"
+    cpus: 0.5
+    mem_limit: 256m
+    memswap_limit: 256m
+    command:
+      [
+        "ansible-playbook",
+        "-i",
+        "localhost,",
+        "/opt/recount/infra/semaphore/bootstrap.yml",
+      ]
+    volumes:
+      - type: bind
+        source: "${RECOUNT_SEMAPHORE_PRIVATE_DIRECTORY}/bootstrap"
+        target: /bootstrap
+        bind: { create_host_path: false }
+    tmpfs:
+      - /tmp:uid=1001,gid=1001,mode=1770,size=32m
+    networks: [runtime]
+
+secrets:
+  admin-password:
+    file: "${RECOUNT_SEMAPHORE_PRIVATE_DIRECTORY}/bootstrap/admin-password"
+  access-key:
+    file: "${RECOUNT_SEMAPHORE_PRIVATE_DIRECTORY}/access-key"
+
+volumes:
+  config:
+  database:
+  receipts:
+  runner-data:
+
+networks:
+  runtime:
+    enable_ipv6: false
+    driver_opts:
+      com.docker.network.bridge.name: br-recount-demo
+    ipam:
+      config:
+        - subnet: "${RECOUNT_SEMAPHORE_SUBNET:?Allocate an unused private IPv4 /24}"

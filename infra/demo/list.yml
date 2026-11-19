@@ -1,0 +1,8 @@
+- name: List collectors
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    demo_action: list
+  tasks:
+    - ansible.builtin.import_tasks: tasks/controller.yml

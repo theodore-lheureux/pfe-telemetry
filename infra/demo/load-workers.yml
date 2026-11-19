@@ -1,0 +1,122 @@
+- name: Verify each selected collector before touching a load
+  hosts: demo
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Wait for the verified connection
+      ansible.builtin.wait_for_connection:
+        timeout: 180
+        connect_timeout: 10
+      no_log: true
+    - name: Read the enrolled project
+      ansible.builtin.slurp:
+        src: /var/lib/recount-collector/node/node.json
+      register: recount_load_identity
+      no_log: true
+    - name: Require the selected project
+      ansible.builtin.assert:
+        that: (recount_load_identity.content | b64decode | from_json).projectId == recount_expected_project_id
+        quiet: true
+      no_log: true
+    - name: Read installed services
+      ansible.builtin.service_facts:
+    - name: Refuse to replace a running load
+      when: recount_load_action == 'load'
+      ansible.builtin.assert:
+        that: "'recount-demo-load.service' not in ansible_facts.services or ansible_facts.services['recount-demo-load.service'].state in ['stopped', 'failed']"
+        fail_msg: Stop the current synthetic load before starting another
+    - name: Require a running collector before starting work
+      when: recount_load_action == 'load'
+      ansible.builtin.assert:
+        that: ansible_facts.services.get('recount-collector.service', {}).get('state', '') == 'running'
+        fail_msg: Configure and start the collector before running a synthetic load
+    - name: Require the installed GPU profiling tool
+      when: recount_load_action == 'load' and recount_gpu
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - "import shutil,sys; sys.exit(not any(shutil.which(n) for n in ('dcgmproftester13','dcgmproftester12','dcgmproftester')))"
+      changed_when: false
+
+- name: Record and bind the distributed job
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Plan a bounded job across all selected live nodes
+      when: demo_load_action == 'load'
+      ansible.builtin.set_fact:
+        demo_load_job: "{{ demo_live_collectors | demo_load_plan(demo_lab, lookup('env', 'DEMO_PROJECT_ID'), demo_cloud, lookup('env', 'DEMO_WORKLOAD'), lookup('env', 'DEMO_DURATION')) }}"
+    - name: Retain this job's private results directory
+      ansible.builtin.file:
+        path: "{{ demo_lab_directory }}/loads/{{ demo_load_job.job_id }}"
+        state: directory
+        mode: "0700"
+    - name: Reserve the job before starting any worker
+      when: demo_load_action == 'load'
+      ansible.builtin.copy:
+        dest: "{{ demo_lab_directory }}/loads/{{ demo_load_job.job_id }}/plan.json"
+        content: "{{ demo_load_job | to_nice_json }}"
+        mode: "0600"
+        force: false
+    - name: Select this lab's current job
+      when: demo_load_action == 'load'
+      ansible.builtin.copy:
+        dest: "{{ demo_lab_directory }}/load.json"
+        content: "{{ demo_load_job | to_nice_json }}"
+        mode: "0600"
+    - name: Assign each live worker its non-overlapping shard
+      when: item.name in (demo_live_collectors | map(attribute='name') | list)
+      ansible.builtin.add_host:
+        name: "{{ item.name }}"
+        groups: demo
+        recount_load_job: "{{ demo_load_job }}"
+        recount_load_shard: "{{ item.shard }}"
+      loop: "{{ demo_load_job.nodes }}"
+      loop_control: { label: "{{ item.name }}" }
+
+- name: Start or inspect the selected workers
+  hosts: demo
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Install and start a bounded worker
+      when: recount_load_action == 'load'
+      ansible.builtin.include_tasks: tasks/load-start.yml
+    - name: Stop only this lab's synthetic worker
+      when: recount_load_action == 'stop-load' and 'recount-demo-load.service' in ansible_facts.services
+      ansible.builtin.systemd_service:
+        name: recount-demo-load
+        state: stopped
+        enabled: false
+    - name: Inspect this job's result
+      ansible.builtin.include_tasks: tasks/load-result.yml
+
+- name: Reduce the selected job's results
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Collect only reports from the recorded nodes
+      ansible.builtin.set_fact:
+        demo_load_reports: "{{ (demo_load_reports | default([])) + [hostvars[item.name].recount_load_report | default({'name': item.name})] }}"
+      loop: "{{ demo_load_job.nodes }}"
+      loop_control: { label: "{{ item.name }}" }
+    - name: Validate and reduce the distributed results
+      ansible.builtin.set_fact:
+        demo_load_result: "{{ demo_load_job | demo_load_summary(demo_load_reports) }}"
+    - name: Retain the validated public result
+      ansible.builtin.copy:
+        dest: "{{ demo_lab_directory }}/loads/{{ demo_load_job.job_id }}/summary.json"
+        content: "{{ demo_load_result | to_nice_json }}"
+        mode: "0600"
+    - name: Show the load job and its reduced results
+      ansible.builtin.debug:
+        msg: "{{ demo_load_result }}"
+    - name: Reject an immediately failed worker
+      when: demo_load_action == 'load'
+      ansible.builtin.assert:
+        that: demo_load_result.state != 'failed'
+        fail_msg: A worker failed to start; use Load status and results and inspect its guest service log

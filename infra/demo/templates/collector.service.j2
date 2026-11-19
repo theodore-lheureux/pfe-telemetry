@@ -1,0 +1,21 @@
+[Unit]
+Description=Recount collector (demo)
+Wants=network-online.target
+After=network-online.target{{ ' nvidia-dcgm.service' if recount_gpu else '' }}
+
+[Service]
+Environment=RECOUNT_COLLECTOR_ENROLLMENT_URL={{ recount_enrollment_url }}
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT={{ recount_endpoint }}
+Environment=RECOUNT_COLLECTOR_ENROLLMENT_KEY_FILE=/etc/recount-collector/enrollment.key
+Environment=RECOUNT_COLLECTOR_STATE_DIRECTORY={{ recount_state }}/node
+Environment=RECOUNT_COLLECTOR_QUEUE_DIRECTORY={{ recount_state }}/queue
+Environment=RECOUNT_COLLECTOR_VISIBILITY=host
+ExecStart=/usr/local/bin/recount-collector
+{% if not recount_gpu %}
+MemoryMax=256M
+{% endif %}
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

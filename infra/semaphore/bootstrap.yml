@@ -1,0 +1,101 @@
+- name: Initialize demo accounts and task templates
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    semaphore_api: http://semaphore:3000/api
+    semaphore_bootstrap_directory: /bootstrap
+    semaphore_accounts: "{{ lookup('file', semaphore_bootstrap_directory ~ '/accounts.json') | from_json }}"
+  tasks:
+    - name: Sign in to the local control
+      ansible.builtin.uri:
+        url: "{{ semaphore_api }}/auth/login"
+        method: POST
+        body_format: json
+        body:
+          auth: admin
+          password: "{{ lookup('file', semaphore_bootstrap_directory ~ '/admin-password') | trim }}"
+        status_code: [200, 204]
+      register: semaphore_login
+      no_log: true
+
+    - name: Select the private API session
+      ansible.builtin.set_fact:
+        semaphore_headers:
+          Cookie: "{{ semaphore_login.cookies_string }}"
+      no_log: true
+
+    - name: Read accounts
+      ansible.builtin.uri:
+        url: "{{ semaphore_api }}/users"
+        headers: "{{ semaphore_headers }}"
+      register: semaphore_users
+      no_log: true
+
+    - name: Create separate local accounts when absent
+      ansible.builtin.uri:
+        url: "{{ semaphore_api }}/users"
+        method: POST
+        headers: "{{ semaphore_headers }}"
+        body_format: json
+        body:
+          username: "{{ item }}"
+          name: "{{ semaphore_accounts[item].name }}"
+          email: "{{ semaphore_accounts[item].email }}"
+          password: "{{ lookup('file', semaphore_bootstrap_directory ~ '/' ~ item ~ '-password') | trim }}"
+          admin: false
+        status_code: 201
+      loop: [alex, simeon]
+      when: semaphore_users.json | selectattr('username', 'equalto', item) | list | length == 0
+      no_log: true
+
+    - name: Read current local accounts
+      ansible.builtin.uri:
+        url: "{{ semaphore_api }}/users"
+        headers: "{{ semaphore_headers }}"
+      register: semaphore_users
+      no_log: true
+
+    - name: Require non-admin local team accounts
+      ansible.builtin.assert:
+        that:
+          - not (semaphore_users.json | selectattr('username', 'equalto', item) | first).admin
+          - not (semaphore_users.json | selectattr('username', 'equalto', item) | first).external
+        quiet: true
+      loop: [alex, simeon]
+      no_log: true
+
+    - name: Read projects
+      ansible.builtin.uri:
+        url: "{{ semaphore_api }}/projects"
+        headers: "{{ semaphore_headers }}"
+      register: semaphore_projects
+      no_log: true
+
+    - name: Create the temporary collector project when absent
+      when: semaphore_projects.json | selectattr('name', 'equalto', 'Recount temporary collectors') | list | length == 0
+      ansible.builtin.uri:
+        url: "{{ semaphore_api }}/projects"
+        method: POST
+        headers: "{{ semaphore_headers }}"
+        body_format: json
+        body: { name: Recount temporary collectors, max_parallel_tasks: 1 }
+        status_code: 201
+      no_log: true
+
+    - name: Read the selected project
+      ansible.builtin.uri:
+        url: "{{ semaphore_api }}/projects"
+        headers: "{{ semaphore_headers }}"
+      register: semaphore_projects
+      no_log: true
+
+    - name: Select the temporary collector project
+      ansible.builtin.set_fact:
+        semaphore_project_id: "{{ (semaphore_projects.json | selectattr('name', 'equalto', 'Recount temporary collectors') | first).id }}"
+
+    - name: Initialize project resources
+      ansible.builtin.include_tasks: tasks/bootstrap-project.yml
+
+    - name: Initialize the global runner
+      ansible.builtin.include_tasks: tasks/bootstrap-runner.yml

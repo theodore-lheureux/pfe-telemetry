@@ -1,0 +1,45 @@
+- name: Require explicit lab destruction
+  ansible.builtin.assert:
+    that: lookup('env', 'DEMO_CONFIRM') == 'delete'
+    fail_msg: Confirm deletion of this lab and its boot disks
+
+- name: Supply only public destruction variables
+  when: demo_collectors | length > 0
+  block:
+    - ansible.builtin.set_fact:
+        demo_destroy_variables:
+          lab_id: "{{ demo_lab }}"
+          collector_count: "{{ demo_collectors | length }}"
+          ttl_seconds: "{{ demo_collectors[0].ttl_seconds }}"
+    - name: Select CPU destruction variables
+      when: demo_cloud == 'aws-cpu'
+      ansible.builtin.set_fact:
+        demo_destroy_variables: "{{ demo_destroy_variables | combine({'region': demo_config.aws.region, 'subnet_id': demo_config.aws.subnet_id, 'security_group_id': demo_config.aws.security_group_id, 'instance_profile': demo_config.aws.instance_profile, 'network_mode': demo_config.aws.network_mode, 'expiry_guard_ready': demo_config.aws.expiry_guard_ready, 'created_at': '2000-01-01T00:00:00Z'}) }}"
+    - name: Select GPU destruction variables
+      when: demo_cloud == 'gcp-gpu'
+      ansible.builtin.set_fact:
+        demo_destroy_variables: "{{ demo_destroy_variables | combine({'preset': 'gpu-l4', 'zone': demo_config.zones.gpu, 'subnets': demo_config.subnets, 'ssh_public_key': lookup('file', '/run/demo/id_ed25519.pub')}) }}"
+    - ansible.builtin.copy:
+        dest: "{{ demo_workspace }}/terraform.tfvars.json"
+        content: "{{ demo_destroy_variables | to_nice_json }}"
+        mode: "0600"
+    - name: Destroy only validated lab resources
+      ansible.builtin.command:
+        argv: "{{ demo_tofu + ['destroy', '-auto-approve', '-input=false', '-lock-timeout=60s'] }}"
+      environment: "{{ demo_environment }}"
+      changed_when: true
+      no_log: true
+
+- name: Verify the lab has no remaining live instances
+  ansible.builtin.include_tasks: inventory.yml
+
+- name: Require complete lab cleanup
+  ansible.builtin.assert:
+    that: demo_instances | selectattr('lab_id', 'equalto', demo_lab) | selectattr('cloud', 'equalto', demo_cloud) | list | length == 0
+    fail_msg: Live lab instances remain; preserve its receipt and reconcile the exact IDs
+
+- name: Retain the used lab ID
+  ansible.builtin.copy:
+    dest: "{{ demo_lab_directory }}/claim.json"
+    mode: "0600"
+    content: "{{ {'lab_id': demo_lab, 'cloud': demo_cloud, 'outcome': 'destroyed'} | to_nice_json }}"
