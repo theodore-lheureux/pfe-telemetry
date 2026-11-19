@@ -69,6 +69,8 @@ fn main() {
         for row in &mut rows {
             recount_telemetry_schema::series::split_delivery(row).unwrap();
             row.delivery_id.clear();
+            // The raw fixture can set a device; analytical storage does not persist it.
+            row.device_id = None;
         }
         let key = |point: &AnalyticalPoint| (point.time_unix_nano, point.stream_id.clone());
         rows.sort_by_key(key);
