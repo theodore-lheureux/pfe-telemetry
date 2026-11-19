@@ -304,7 +304,7 @@ test("effective project administrators grant access and can give up their own ad
 		.getByRole("button", { name: "Confirm access change", exact: true })
 		.click();
 	await expect(page).toHaveURL(
-		`${workspace.origin}/organizations/${org.id}/projects/${project.id}/executions`,
+		`${workspace.origin}/organizations/${org.id}/projects/${project.id}`,
 	);
 	await expect(
 		page.getByLabel("Project role for manager@example.invalid", {

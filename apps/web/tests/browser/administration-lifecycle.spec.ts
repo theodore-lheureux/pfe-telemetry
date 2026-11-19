@@ -267,7 +267,7 @@ test("a delayed self-project demotion cannot replace a newer organization page",
 	);
 	await page.goBack();
 	await expect(page).toHaveURL(
-		`${workspace.origin}/organizations/${first.id}/projects/${project.id}/executions`,
+		`${workspace.origin}/organizations/${first.id}/projects/${project.id}`,
 	);
 	await page.goBack();
 	await expect(
