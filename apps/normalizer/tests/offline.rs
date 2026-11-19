@@ -30,7 +30,8 @@ fn declaration_validation_needs_no_backends_and_preserves_cli_precedence() {
             "--normalized-max-record-bytes",
             "2000000",
             "--normalized-broker-max-bytes",
-            "2065536",
+            // 2,000,000 bytes + 3-byte packed Protobuf length + 64 KiB reserve.
+            "2065539",
             "validate",
         ],
         vec!["--max-points", "23", "validate"],
@@ -40,7 +41,8 @@ fn declaration_validation_needs_no_backends_and_preserves_cli_precedence() {
             "--raw-broker-max-bytes",
             "1000000000",
             "--normalized-max-record-bytes",
-            "999934464",
+            // The normalized record must also leave room for its 5-byte length.
+            "999934459",
             "--normalized-max-output-bytes",
             "999934464",
             "--normalized-broker-max-bytes",
@@ -57,7 +59,7 @@ fn declaration_validation_needs_no_backends_and_preserves_cli_precedence() {
                 } else {
                     vec![]
                 })
-                .args(args)
+                .args(&args)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
@@ -90,7 +92,7 @@ fn declaration_validation_needs_no_backends_and_preserves_cli_precedence() {
             .unwrap()
             .read_to_string(&mut errors)
             .unwrap();
-        assert!(status.success(), "{errors}");
+        assert!(status.success(), "{args:?}: {errors}");
         assert!(output.contains("declarations only"));
         assert!(errors.is_empty());
     }
