@@ -23,7 +23,7 @@ RECOUNT_LOAD_NODES=2 bun --no-env-file tooling/load/run.ts
 | `RECOUNT_LOAD_NODES`           | `2`          | Baseline virtual nodes, 1–500. Use the current fleet size for saturation. |
 | `RECOUNT_LOAD_RAMP_SECONDS`    | `10`         | Ramp duration before each plateau.                                        |
 | `RECOUNT_LOAD_HOLD_SECONDS`    | `60`         | Duration at each plateau. Use at least a few minutes for capacity tests.  |
-| `RECOUNT_LOAD_FIXTURE`         | `processes`  | `idle` for 56 points; `processes` for 184 points per export.              |
+| `RECOUNT_LOAD_FIXTURE`         | `processes`  | `idle` (56), `processes` (184), or `collector` (1,158 points per export). |
 | `RECOUNT_LOAD_P95_MS`          | `1000`       | Regression export p95 threshold in milliseconds.                          |
 | `RECOUNT_LOAD_REFRESH_SECONDS` | `3300`       | Maximum time between renewals; lower to verify renewal in a short run.    |
 | `RECOUNT_LOAD_K6`              | `k6`         | k6 executable or local wrapper.                                           |
@@ -52,6 +52,8 @@ Keep `.state/load` private. It holds the metrics and cleanup manifests. The enro
 ## Fixtures
 
 The fixtures were captured over OTLP/gRPC from a Linux collector in a disposable container, first with only the collector and then with 16 `sleep` processes. The scrubber reads only the protobuf request body, never headers. It keeps reviewed metric and dimension values, replaces host, boot, epoch, PID, process tick, device and counter-segment identifiers, and stores only relative timestamps. Replay shifts observations to the current clock and advances cumulative counters without changing series identity.
+
+The `collector` fixture uses a scrubbed export from a dedicated AWS calibration lab. It keeps the larger process mix and replays it once per second. It does not reproduce process churn or guarantee identical protobuf or compressed wire sizes. To refresh it from an authorized disposable lab export without writing a raw capture, pipe the decoded OTLP request body into `scrub.ts` and pass `-` in place of the input file.
 
 To refresh from a controlled Linux collector capture, export an OTLP descriptor set and scrub the captured, decoded protobuf request body. Review the output before committing; never store raw captures:
 

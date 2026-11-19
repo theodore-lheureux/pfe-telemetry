@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import idle from "./fixtures/idle.json";
+import collector from "./fixtures/collector.json";
 import processes from "./fixtures/processes.json";
 import { preparePayload } from "./payload.js";
 
 test.each([
 	[idle, 56],
 	[processes, 184],
+	[collector, 1158],
 ])(
 	"captured payload is replayable with stable per-node identity",
 	(fixture, count) => {

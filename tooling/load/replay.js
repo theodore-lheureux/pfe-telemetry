@@ -10,7 +10,7 @@ const config = JSON.parse(open(__ENV.RECOUNT_LOAD_CONFIG));
 const client = new grpc.Client();
 client.loadProtoset(config.descriptor);
 const fixtures = Object.fromEntries(
-	["idle", "processes"].map((name) => [
+	["idle", "processes", "collector"].map((name) => [
 		name,
 		JSON.parse(open(`./fixtures/${name}.json`)),
 	]),

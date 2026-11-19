@@ -105,10 +105,10 @@ function settings() {
 	const fixture = env.RECOUNT_LOAD_FIXTURE ?? "processes";
 	if (
 		!["regression", "saturation"].includes(mode) ||
-		!["idle", "processes"].includes(fixture)
+		!["idle", "processes", "collector"].includes(fixture)
 	)
 		throw new Error(
-			"Choose regression or saturation mode, and idle or processes fixture",
+			"Choose regression or saturation mode, and idle, processes or collector fixture",
 		);
 	return {
 		origin: origin.origin,

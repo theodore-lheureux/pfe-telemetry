@@ -4,7 +4,7 @@ import descriptor from "protobufjs/ext/descriptor";
 const [schema, capture, output] = process.argv.slice(2);
 if (!schema || !capture || !output)
 	throw new Error(
-		"Usage: bun tooling/load/scrub.ts otlp.pb capture.pb fixture.json",
+		"Usage: bun tooling/load/scrub.ts otlp.pb capture.pb|- fixture.json",
 	);
 const type = protobuf.Root.fromDescriptor(
 	descriptor.FileDescriptorSet.decode(await Bun.file(schema).bytes()),
@@ -12,7 +12,8 @@ const type = protobuf.Root.fromDescriptor(
 	"opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
 );
 
-const input = type.toObject(type.decode(await Bun.file(capture).bytes()), {
+const bytes = await (capture === "-" ? Bun.stdin : Bun.file(capture)).bytes();
+const input = type.toObject(type.decode(bytes), {
 	longs: String,
 });
 const safeValues: Record<string, RegExp> = {
