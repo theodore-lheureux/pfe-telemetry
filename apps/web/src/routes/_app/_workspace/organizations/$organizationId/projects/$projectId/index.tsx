@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { analyticsCatalogQuery } from "@/analytics/catalog";
 import { DashboardPage } from "@/analytics/dashboards/dashboard-page";
 import { NodeHealthOverview } from "@/analytics/dashboards/node-health-overview";
 import { getProjectHome } from "@/analytics/dashboards.functions";
@@ -11,16 +10,12 @@ export const Route = createFileRoute(
 	// A home dashboard's overrides live in the URL until they are saved, as on its page.
 	validateSearch: (search: Record<string, unknown>): { filters?: string } =>
 		typeof search.filters === "string" ? { filters: search.filters } : {},
-	loader: async ({ params, context, location }) => {
+	loader: async ({ params, location }) => {
 		const reference = projectParams(params);
 		const home = routeData(
 			await getProjectHome({ data: reference }),
 			location.href,
 		);
-		if (!home)
-			await context.queryClient.ensureQueryData(
-				analyticsCatalogQuery(context.user.id, reference),
-			);
 		return home;
 	},
 	staleTime: 0,

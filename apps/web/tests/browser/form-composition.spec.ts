@@ -73,7 +73,7 @@ for (const locale of ["en", "fr"] as const) {
 				.click();
 			await expect(page).toHaveURL(
 				new RegExp(
-					`/organizations/${organization.id}/projects/[^/]+/executions$`,
+					`/organizations/${organization.id}/projects/[0-9a-f-]{36}/?$`,
 				),
 			);
 			expect(writes).toHaveLength(2);

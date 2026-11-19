@@ -2,6 +2,7 @@ import { m } from "@recount/i18n/messages";
 import { useHydrated } from "@tanstack/react-router";
 import { FormFeedback } from "../../components/form-feedback";
 import { Skeleton } from "../../components/ui/skeleton";
+import { PageHeading } from "../../components/workspace";
 import { operationMessage } from "../../lib/operation-message";
 import { MutationFailure } from "../../lib/operation-result";
 import type { ProjectReference } from "../../organizations/contracts";
@@ -30,14 +31,19 @@ export function NodeHealthOverview({
 	const catalog = useAnalyticsCatalog(userId, reference, useHydrated());
 	if (catalog.error)
 		return (
-			<FormFeedback
-				kind="error"
-				message={
-					catalog.error instanceof MutationFailure
-						? operationMessage(catalog.error.failure)
-						: m.insight_unavailable()
-				}
-			/>
+			<section>
+				<PageHeading title={m.dashboard_template_node_health()}>
+					{m.dashboard_template_node_health_description()}
+				</PageHeading>
+				<FormFeedback
+					kind="error"
+					message={
+						catalog.error instanceof MutationFailure
+							? operationMessage(catalog.error.failure)
+							: m.insight_unavailable()
+					}
+				/>
+			</section>
 		);
 	if (!catalog.data) return <Skeleton className="h-96 w-full" />;
 	const template = nodeHealthTemplate();

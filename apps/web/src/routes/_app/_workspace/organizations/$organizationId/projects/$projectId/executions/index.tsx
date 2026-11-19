@@ -1,6 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ListIcon } from "lucide-react";
+import { FormFeedback } from "@/components/form-feedback";
 import { settingsSearch } from "@/components/settings-links";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,11 +21,10 @@ export const Route = createFileRoute(
 	loaderDeps: ({ search }) => ({ afterKey: search.afterKey }),
 	loader: async ({ params, deps, location }) => {
 		const reference = projectParams(params);
-		const page = routeData(
-			await listExecutions({ data: { ...reference, ...deps } }),
-			location.href,
-		);
-		return page;
+		const result = await listExecutions({ data: { ...reference, ...deps } });
+		// A telemetry outage should not break navigation or workspace mutations.
+		if (result.error?.code === "UNAVAILABLE") return null;
+		return routeData(result, location.href);
 	},
 	staleTime: 0,
 	gcTime: 0,
@@ -36,6 +36,13 @@ function Executions() {
 	const params = Route.useParams();
 	const { afterKey } = Route.useSearch();
 	const { project } = Route.useRouteContext();
+	if (!page)
+		return (
+			<>
+				<PageHeading title={m.executions()} />
+				<FormFeedback kind="error" message={m.insight_unavailable()} />
+			</>
+		);
 	const paged = !!afterKey || !!page.nextCursor;
 	const empty = page.executions.length === 0;
 	return (

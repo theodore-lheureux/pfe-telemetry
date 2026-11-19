@@ -253,7 +253,7 @@ test("real workspace, collectors and administration retain Core geometry and key
 				if (screen === "admin") await openInvitationForm(page);
 				const readyControl =
 					screen === "workspace"
-						? page.getByRole("heading", { name: "Executions", level: 1 })
+						? page.getByRole("heading", { name: "Node health", level: 1 })
 						: page.getByLabel(
 								screen === "nodes"
 									? "Search hosts, machine IDs or labels"

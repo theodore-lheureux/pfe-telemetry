@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_app/_workspace/")({
 		const project = context.workspaceProject;
 		if (project)
 			throw redirect({
-				to: "/organizations/$organizationId/projects/$projectId/executions",
+				to: "/organizations/$organizationId/projects/$projectId",
 				params: {
 					organizationId: project.organizationId,
 					projectId: project.id,

@@ -144,7 +144,7 @@ export function WorkspaceMenu({
 			});
 		if (projectId)
 			return router.navigate({
-				to: "/organizations/$organizationId/projects/$projectId/executions",
+				to: "/organizations/$organizationId/projects/$projectId",
 				params: { organizationId, projectId },
 			});
 		return router.navigate({
@@ -170,7 +170,7 @@ export function WorkspaceMenu({
 				}),
 			});
 		return router.navigate({
-			to: "/organizations/$organizationId/projects/$projectId/executions",
+			to: "/organizations/$organizationId/projects/$projectId",
 			params: { organizationId: organization.id, projectId },
 		});
 	}

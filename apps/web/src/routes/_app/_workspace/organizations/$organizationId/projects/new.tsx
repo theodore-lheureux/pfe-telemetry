@@ -37,7 +37,7 @@ function NewProject() {
 				}
 				onSuccess={async (project, navigate) => {
 					const destination = {
-						to: "/organizations/$organizationId/projects/$projectId/executions",
+						to: "/organizations/$organizationId/projects/$projectId",
 						params: { organizationId: organization.id, projectId: project.id },
 					} as const;
 					await navigate(destination);

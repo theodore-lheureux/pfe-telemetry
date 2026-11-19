@@ -57,6 +57,12 @@ for (const locale of ["en", "fr"] as const) {
 			]);
 		const url = `${workspace.origin}/organizations/${first.id}/projects/${beta.id}/executions`;
 		await page.goto(url);
+		await expect(
+			page.getByRole("heading", {
+				name: m.executions({}, options),
+				exact: true,
+			}),
+		).toBeVisible();
 		await openWorkspaceMenu(page, locale);
 		await page
 			.getByRole("menuitem", {
@@ -163,12 +169,14 @@ for (const locale of ["en", "fr"] as const) {
 			.click();
 		await chooseOrganization(page, second.name, locale);
 		await expect(page).toHaveURL(
-			`${workspace.origin}/organizations/${second.id}/projects/${gamma.id}/executions`,
+			`${workspace.origin}/organizations/${second.id}/projects/${gamma.id}`,
 		);
 		await chooseOrganization(page, first.name, locale);
-		await expect(page).toHaveURL(url);
+		await expect(page).toHaveURL(
+			`${workspace.origin}/organizations/${first.id}/projects/${beta.id}`,
+		);
 		await chooseProject(page, alpha.name, locale);
-		const alphaUrl = `${workspace.origin}/organizations/${first.id}/projects/${alpha.id}/executions`;
+		const alphaUrl = `${workspace.origin}/organizations/${first.id}/projects/${alpha.id}`;
 		await expect(page).toHaveURL(alphaUrl);
 		await page.goto(workspace.origin);
 		await expect(page).toHaveURL(alphaUrl);

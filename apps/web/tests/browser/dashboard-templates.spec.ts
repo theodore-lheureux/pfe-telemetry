@@ -5,7 +5,8 @@ import { getDashboard } from "../../src/analytics/dashboards.server";
 import { collectorNode, enrollmentKey } from "../../src/db/schema";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
-import { data, expect, test } from "./fixtures";
+import { data, expect } from "./fixtures";
+import { telemetryTest as test } from "./telemetry";
 
 for (const locale of ["en", "fr"] as const) {
 	test(`dashboard gallery previews, fills node variables and reuses project snapshots in ${locale}`, async ({

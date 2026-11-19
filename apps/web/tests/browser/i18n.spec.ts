@@ -304,9 +304,12 @@ for (const locale of ["en", "fr"] as const) {
 			.getByRole("button", { name: text(m.create_project), exact: true })
 			.click();
 		await expect(
-			page.getByRole("heading", { name: text(m.executions), exact: true }),
+			page.getByRole("heading", {
+				name: text(m.dashboard_template_node_health),
+				exact: true,
+			}),
 		).toBeVisible();
-		const projectURL = page.url().replace(/\/executions\/?$/, "");
+		const projectURL = page.url().replace(/\/$/, "");
 		await openSettingsSection(page, text(m.project_settings), locale);
 		await openSettingsSection(page, text(m.settings_customization), locale);
 		await page.getByLabel(text(m.name), { exact: true }).fill("   ");

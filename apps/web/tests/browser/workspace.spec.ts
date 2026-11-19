@@ -13,163 +13,176 @@ import {
 	settingsUrl,
 	test,
 } from "./fixtures";
+import { telemetryTest } from "./telemetry";
 
-test("onboards, creates and renames private projects, switches tenants and signs out", async ({
-	page,
-	workspace,
-}) => {
-	await workspace.signIn(page, "owner@example.invalid");
-	const response = await page.goto(workspace.origin);
-	expect(response?.headers()["cache-control"]).toContain("no-store");
-	await expect(
-		page.getByRole("heading", { name: "Create your first organization" }),
-	).toBeVisible();
-	await page
-		.getByRole("link", { name: "Create organization", exact: true })
-		.click();
-	await page.getByLabel("Name", { exact: true }).fill("Research lab");
-	await page
-		.getByRole("button", { name: "Create organization", exact: true })
-		.click();
-	await expect(
-		page.getByRole("heading", { name: "Research lab", exact: true }),
-	).toBeVisible();
-	await expect(
-		page.getByRole("heading", { name: "No visible projects" }),
-	).toBeVisible();
-	await page.getByRole("link", { name: "Create project", exact: true }).click();
-	await page.getByLabel("Name", { exact: true }).fill("GPU benchmarks");
-	await page
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
-	await expect(
-		page.getByRole("heading", { name: "Executions", exact: true }),
-	).toBeVisible();
-	await expect(
-		page.getByRole("heading", { name: "No executions yet", exact: true }),
-	).toBeVisible();
-	const projectURL = page.url().replace(/\/executions\/?$/, "");
-	await openSettingsSection(page, "Project settings");
-	await openSettingsSection(page, "Customization");
-	await page.getByLabel("Name", { exact: true }).fill("GPU comparison");
-	await page.getByRole("button", { name: "Save project", exact: true }).click();
-	await expect(page.getByText("Changes saved.", { exact: true })).toBeVisible();
-	await expect(
-		page.getByRole("button", {
-			name: "Switch project, organization or account",
+telemetryTest(
+	"onboards, creates and renames private projects, switches tenants and signs out",
+	async ({ page, workspace }) => {
+		await workspace.signIn(page, "owner@example.invalid");
+		const response = await page.goto(workspace.origin);
+		expect(response?.headers()["cache-control"]).toContain("no-store");
+		await expect(
+			page.getByRole("heading", { name: "Create your first organization" }),
+		).toBeVisible();
+		await page
+			.getByRole("link", { name: "Create organization", exact: true })
+			.click();
+		await page.getByLabel("Name", { exact: true }).fill("Research lab");
+		await page
+			.getByRole("button", { name: "Create organization", exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", { name: "Research lab", exact: true }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "No visible projects" }),
+		).toBeVisible();
+		await page
+			.getByRole("link", { name: "Create project", exact: true })
+			.click();
+		await page.getByLabel("Name", { exact: true }).fill("GPU benchmarks");
+		await page
+			.getByRole("button", { name: "Create project", exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", { name: "Node health", exact: true }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("link", { name: "Executions", exact: true }),
+		).toBeVisible();
+		const projectURL = page.url().replace(/\/$/, "");
+		await openSettingsSection(page, "Project settings");
+		await openSettingsSection(page, "Customization");
+		await page.getByLabel("Name", { exact: true }).fill("GPU comparison");
+		await page
+			.getByRole("button", { name: "Save project", exact: true })
+			.click();
+		await expect(
+			page.getByText("Changes saved.", { exact: true }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", {
+				name: "Switch project, organization or account",
+				exact: true,
+			}),
+		).toContainText("GPU comparison");
+		await page.reload();
+		await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
+			"GPU comparison",
+		);
+		await openWorkspaceMenu(page);
+		await page
+			.getByRole("menuitem", { name: "Choose project", exact: true })
+			.click();
+		await page
+			.getByRole("menuitem", { name: "New project", exact: true })
+			.click();
+		const createProject = page.getByRole("dialog", {
+			name: "Create project",
 			exact: true,
-		}),
-	).toContainText("GPU comparison");
-	await page.reload();
-	await expect(page.getByLabel("Name", { exact: true })).toHaveValue(
-		"GPU comparison",
-	);
-	await openWorkspaceMenu(page);
-	await page
-		.getByRole("menuitem", { name: "Choose project", exact: true })
-		.click();
-	await page
-		.getByRole("menuitem", { name: "New project", exact: true })
-		.click();
-	const createProject = page.getByRole("dialog", {
-		name: "Create project",
-		exact: true,
-	});
-	await createProject.getByLabel("Project name", { exact: true }).fill("   ");
-	await createProject
-		.getByRole("button", { name: "Create project", exact: true })
-		.click();
-	await expect(
-		createProject.getByText("Enter a name, not just spaces.", { exact: true }),
-	).toBeVisible();
-	await createProject
-		.getByRole("button", { name: "Cancel", exact: true })
-		.click();
-	await openWorkspaceMenu(page);
-	await page
-		.getByRole("menuitem", { name: "Choose organization", exact: true })
-		.click();
-	await page
-		.getByRole("menuitem", { name: "New organization", exact: true })
-		.click();
-	const createOrganization = page.getByRole("dialog", {
-		name: "Create organization",
-		exact: true,
-	});
-	await createOrganization
-		.getByLabel("Organization name", { exact: true })
-		.fill("Second lab");
-	await createOrganization
-		.getByRole("button", { name: "Create organization", exact: true })
-		.click();
-	await expect(createOrganization).toHaveCount(0);
-	await page.goto(`${projectURL}/executions`);
-	// A new organization has no projects, so it opens its empty organization page.
-	await chooseOrganization(page, "Second lab");
-	await expect(
-		page.getByRole("heading", { name: "Second lab", exact: true }),
-	).toBeVisible();
-	// Returning to an organization reopens its remembered project.
-	await chooseOrganization(page, "Research lab");
-	await expect(page).toHaveURL(`${projectURL}/executions`);
-	await chooseProject(page, "GPU comparison");
-	await expect(page).toHaveURL(`${projectURL}/executions`);
-	const missing = await page.goto(
-		`${projectURL}/executions/not-a-real-execution`,
-	);
-	expect(missing?.status()).toBe(404);
-	await expect(
-		page.getByRole("heading", { name: "Page not found" }),
-	).toBeVisible();
-	await expect(page.locator("[data-public-header], footer")).toHaveCount(0);
-	await page.goto(`${projectURL}/executions`);
-	await expect(
-		page.getByRole("button", {
-			name: "Switch project, organization or account",
+		});
+		await createProject.getByLabel("Project name", { exact: true }).fill("   ");
+		await createProject
+			.getByRole("button", { name: "Create project", exact: true })
+			.click();
+		await expect(
+			createProject.getByText("Enter a name, not just spaces.", {
+				exact: true,
+			}),
+		).toBeVisible();
+		await createProject
+			.getByRole("button", { name: "Cancel", exact: true })
+			.click();
+		await openWorkspaceMenu(page);
+		await page
+			.getByRole("menuitem", { name: "Choose organization", exact: true })
+			.click();
+		await page
+			.getByRole("menuitem", { name: "New organization", exact: true })
+			.click();
+		const createOrganization = page.getByRole("dialog", {
+			name: "Create organization",
 			exact: true,
-		}),
-	).toBeEnabled();
-	await page.evaluate(() => {
-		document.body.dataset.testDocument = "same-account-transition-document";
-	});
-	await openSettingsSection(page, "User settings");
-	await expect(
-		page.getByRole("heading", { name: "Passkeys", exact: true }),
-	).toBeVisible();
-	await expect(page.getByText("No passkeys registered yet.")).toBeVisible();
-	await page.getByRole("button", { name: "Sign out", exact: true }).click();
-	await expect(page).toHaveURL(/\/login(?:\?|$)/);
-	await page.goBack();
-	await expect(
-		page.getByRole("heading", { name: "Sign in", exact: true }),
-	).toBeVisible();
-	await expect(page.getByLabel("Email address")).toBeEnabled();
-	await workspace.signIn(page, "other@example.invalid");
-	await page
-		.getByRole("link", { name: "Recount · Go home", exact: true })
-		.click();
-	await expect(
-		page.getByRole("heading", { name: "Create your first organization" }),
-	).toBeVisible();
-	await expect(page.getByText("Research lab", { exact: true })).toHaveCount(0);
-	await expect(page.locator("body")).toHaveAttribute(
-		"data-test-document",
-		"same-account-transition-document",
-	);
-	await page.goBack();
-	await expect(page).toHaveURL(/\/login(?:\?|$)/);
-	await expect(
-		page.getByRole("heading", { name: "Sign in", exact: true }),
-	).toBeVisible();
-	await expect(page.getByText("Research lab", { exact: true })).toHaveCount(0);
-	await expect(page.getByText("GPU comparison", { exact: true })).toHaveCount(
-		0,
-	);
-	await expect(page.locator("body")).toHaveAttribute(
-		"data-test-document",
-		"same-account-transition-document",
-	);
-});
+		});
+		await createOrganization
+			.getByLabel("Organization name", { exact: true })
+			.fill("Second lab");
+		await createOrganization
+			.getByRole("button", { name: "Create organization", exact: true })
+			.click();
+		await expect(createOrganization).toHaveCount(0);
+		await page.goto(`${projectURL}/executions`);
+		// A new organization has no projects, so it opens its empty organization page.
+		await chooseOrganization(page, "Second lab");
+		await expect(
+			page.getByRole("heading", { name: "Second lab", exact: true }),
+		).toBeVisible();
+		// Returning to an organization reopens its remembered project.
+		await chooseOrganization(page, "Research lab");
+		await expect(page).toHaveURL(projectURL);
+		await chooseProject(page, "GPU comparison");
+		await expect(page).toHaveURL(projectURL);
+		const missing = await page.goto(
+			`${projectURL}/executions/not-a-real-execution`,
+		);
+		expect(missing?.status()).toBe(404);
+		await expect(
+			page.getByRole("heading", { name: "Page not found" }),
+		).toBeVisible();
+		await expect(page.locator("[data-public-header], footer")).toHaveCount(0);
+		await page.goto(`${projectURL}/executions`);
+		await expect(
+			page.getByRole("button", {
+				name: "Switch project, organization or account",
+				exact: true,
+			}),
+		).toBeEnabled();
+		await page.evaluate(() => {
+			document.body.dataset.testDocument = "same-account-transition-document";
+		});
+		await openSettingsSection(page, "User settings");
+		await expect(
+			page.getByRole("heading", { name: "Passkeys", exact: true }),
+		).toBeVisible();
+		await expect(page.getByText("No passkeys registered yet.")).toBeVisible();
+		await page.getByRole("button", { name: "Sign out", exact: true }).click();
+		await expect(page).toHaveURL(/\/login(?:\?|$)/);
+		await page.goBack();
+		await expect(
+			page.getByRole("heading", { name: "Sign in", exact: true }),
+		).toBeVisible();
+		await expect(page.getByLabel("Email address")).toBeEnabled();
+		await workspace.signIn(page, "other@example.invalid");
+		await page
+			.getByRole("link", { name: "Recount · Go home", exact: true })
+			.click();
+		await expect(
+			page.getByRole("heading", { name: "Create your first organization" }),
+		).toBeVisible();
+		await expect(page.getByText("Research lab", { exact: true })).toHaveCount(
+			0,
+		);
+		await expect(page.locator("body")).toHaveAttribute(
+			"data-test-document",
+			"same-account-transition-document",
+		);
+		await page.goBack();
+		await expect(page).toHaveURL(/\/login(?:\?|$)/);
+		await expect(
+			page.getByRole("heading", { name: "Sign in", exact: true }),
+		).toBeVisible();
+		await expect(page.getByText("Research lab", { exact: true })).toHaveCount(
+			0,
+		);
+		await expect(page.getByText("GPU comparison", { exact: true })).toHaveCount(
+			0,
+		);
+		await expect(page.locator("body")).toHaveAttribute(
+			"data-test-document",
+			"same-account-transition-document",
+		);
+	},
+);
 
 test("protects direct links, uses effective roles and handles membership revocation on sibling navigation", async ({
 	page,
