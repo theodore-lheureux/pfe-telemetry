@@ -2,11 +2,15 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import { readExecutions } from "../executions/participants.server";
 import { compileFields, isPointField } from "./compile.server";
 import type { AttributeDefinition, MetricDefinition } from "./contracts";
-import { seriesPointSource } from "./series-source.server";
+import {
+	POINT_FINAL_SETTINGS,
+	seriesPointSource,
+} from "./series-source.server";
 import { metricBehavior } from "./validation";
 
 // Catalogs scan series definitions, never raw samples.
 const SETTINGS = {
+	...POINT_FINAL_SETTINGS,
 	max_execution_time: 5,
 	max_threads: 1,
 	max_memory_usage: "134217728",

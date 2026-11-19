@@ -1,3 +1,9 @@
+// LIMIT BY can keep an older receipt. FINAL selects the winning version;
+// duplicate timestamps map to the same event-day partition.
+export const POINT_FINAL_SETTINGS = {
+	do_not_merge_across_partitions_select_final: 1,
+} as const;
+
 /** Project-scoped series first, then indexed points with the small set on the right. */
 export function seriesPointSource(
 	seriesWhere: string,

@@ -304,6 +304,130 @@ Live and web with `--no-deps --pull never`; it never restarts shared backends. A
 backend/schema change fails for separate maintenance review instead of replacing
 mounted schemas under running consumers.
 
+### Cut over to split metric storage
+
+This maintenance procedure discards the existing metric history in ClickHouse
+and unread normalized/late output. It preserves PostgreSQL, execution
+participants, raw Kafka records and the normalizer's raw checkpoints. The new
+normalizer resumes at those checkpoints; it does not recover older history.
+Once the old output is deleted, do not reactivate the old writer or reader.
+
+1. Stage the approved, attested release under `/opt/recount/releases/RELEASE_ID`
+   without activating it. On the host as root, set the release path, check its
+   backend checksums and migration receipt, and build its schema image:
+
+   ```bash
+   set -euo pipefail
+   release=/opt/recount/releases/RELEASE_ID
+   id=$(cat "$release/release")
+   old=$(readlink -f /opt/recount/current)
+   (cd "$release/backend" && sha256sum --check --status ../backend.SHA256SUMS)
+   cmp "$release/migrations.sha256" /etc/recount/approved-migrations.sha256
+   docker build -f "$release/backend/infra/clickhouse/Dockerfile" \
+     -t "recount-clickhouse:$id" "$release/backend/schema"
+   export COMPOSE_PROJECT_NAME=recount-ingestion
+   compose_release() {
+     export COMPOSE_ENV_FILES="/etc/recount/ingestion.env,$1/images.env"
+     export COMPOSE_FILE="/opt/recount/backend/infra/local/compose.yaml:/opt/recount/backend/infra/local/data.binds.yaml:$1/compose.apps.yaml:$1/compose.release.yaml"
+     if [[ -f /etc/recount/web.local.yaml ]]; then
+       export COMPOSE_FILE="$COMPOSE_FILE:/etc/recount/web.local.yaml"
+     fi
+   }
+   compose_release "$old"
+   ch() {
+     docker compose exec -T clickhouse sh -c \
+       'exec clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --multiquery'
+   }
+   kafka() {
+     local tool=$1
+     shift
+     docker compose exec -T kafka "/opt/kafka/bin/$tool.sh" --bootstrap-server kafka:9092 "$@"
+   }
+   ```
+
+2. Verify the selected Compose project, installed DDL and release schema use
+   exactly `recount.metrics.normalized-packed`, `recount.metrics.late`,
+   `recount-clickhouse` and `recount-clickhouse-late`. Stop if names differ,
+   if the configured output topic bounds differ from the approved release, or if
+   another consumer uses either group. Stop the normalizer and old readers:
+
+   ```bash
+   docker compose stop --timeout 60 normalizer live web
+   kafka kafka-consumer-groups --describe --group recount-normalizer
+   ch <<'SQL'
+   DROP TABLE IF EXISTS telemetry.ingest_metric_points SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_late_metric_points SYNC;
+   DROP TABLE IF EXISTS telemetry.normalized_kafka SYNC;
+   DROP TABLE IF EXISTS telemetry.late_kafka SYNC;
+   SQL
+   ```
+
+   Leave `ingestion-api` and Kafka running. Record the raw checkpoint and keep
+   the interruption below the raw topic's six-hour retention and its effective
+   per-partition byte limit. Leave `metric_points` in place until step 4;
+   the ClickHouse startup guard requires its metadata on the existing volume.
+
+3. Confirm both metric ClickHouse groups are inactive with
+   `kafka kafka-consumer-groups --describe --state --group NAME`. Delete only
+   those groups and output topics. Wait until both topics disappear from
+   `kafka kafka-topics --list` and both groups from
+   `kafka kafka-consumer-groups --list` before recreating the topics:
+
+   ```bash
+   kafka kafka-consumer-groups --delete --group recount-clickhouse
+   kafka kafka-consumer-groups --delete --group recount-clickhouse-late
+   kafka kafka-topics --delete --topic recount.metrics.normalized-packed
+   kafka kafka-topics --delete --topic recount.metrics.late
+   ```
+
+4. Stop only ClickHouse, install the verified backend tree and manifest, and
+   set the `RECOUNT_CLICKHOUSE_IMAGE` line in `/etc/recount/ingestion.env` to
+   `recount-clickhouse:$id` without changing any data path, credential, Kafka
+   setting or identity. Keep the previous backend files outside the release
+   tree for diagnosis. Start the new ClickHouse container without its
+   dependencies and without waiting for schema health:
+
+   ```bash
+   docker compose stop --timeout 60 clickhouse
+   mv /opt/recount/backend "/opt/recount/backend.before-$id"
+   cp -a "$release/backend" /opt/recount/backend
+   install -m 0600 "$release/backend.SHA256SUMS" /opt/recount/backend.SHA256SUMS
+   compose_release "$release"
+   docker compose config --quiet
+   docker compose run --rm --no-deps kafka-topics create-metric-output
+   docker compose run --rm --no-deps kafka-topics verify
+   docker compose up -d --no-deps --no-build --pull never --force-recreate clickhouse
+   ```
+
+   Wait until `printf 'SELECT 1\n' | ch` succeeds. The mounted init scripts
+   do not run on this non-empty data directory. Drop the old discovery views
+   and tables and the old point table, then explicitly apply the verified,
+   generated schema:
+
+   ```bash
+   ch <<'SQL'
+   DROP TABLE IF EXISTS telemetry.discover_metric_definitions SYNC;
+   DROP TABLE IF EXISTS telemetry.discover_resource_attributes SYNC;
+   DROP TABLE IF EXISTS telemetry.discover_scope_attributes SYNC;
+   DROP TABLE IF EXISTS telemetry.discover_point_attributes SYNC;
+   DROP TABLE IF EXISTS telemetry.metric_definitions SYNC;
+   DROP TABLE IF EXISTS telemetry.attribute_definitions SYNC;
+   DROP TABLE telemetry.metric_points SYNC;
+   SQL
+   ch < /opt/recount/backend/schema/schema.sql
+   docker compose exec -T clickhouse sh /etc/recount-healthcheck.sh
+   ```
+
+   Do not restart between dropping `metric_points` and recreating it. The
+   generated `IF NOT EXISTS` statements leave participant objects intact.
+
+5. Run `bash "$release/activate.sh" "$release"` with the existing raw normalizer
+   group. Verify raw checkpoints advance from the saved positions, both new
+   ClickHouse groups commit, `system.kafka_consumers` reports no decode errors,
+   and a synthetic authorized submission appears in an analytics query and the
+   point inspector. If activation fails after the destructive step, keep the old
+   writer stopped and fix forward with the matching new reader and writer.
+
 ### Switch to packed recent Kafka messages
 
 The recent writer and reader must switch together. Prepare the attested backend

@@ -1,8 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-mode=${1:?usage: init-topics.sh create|create-live|verify}
-[[ $# == 1 && ( "$mode" == create || "$mode" == create-live || "$mode" == verify ) ]] || { echo 'Expected create, create-live or verify' >&2; exit 1; }
+mode=${1:?usage: init-topics.sh create|create-live|create-metric-output|verify}
+[[ $# == 1 && ( "$mode" == create || "$mode" == create-live || "$mode" == create-metric-output || "$mode" == verify ) ]] || { echo 'Expected create, create-live, create-metric-output or verify' >&2; exit 1; }
+[[ "$mode" != create-metric-output ]] || metric_output_only=true
 live_only=false
 if [[ "$mode" == create-live ]]; then live_only=true; mode=create; fi
 
@@ -77,6 +78,13 @@ ensure_topic() {
     done
     if [[ "$mismatch" == false ]]; then echo "Verified $topic ($actual partitions)"; fi
 }
+
+if [[ "${metric_output_only:-false}" == true ]]; then
+    mode=create
+    ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED zstd
+    ensure_topic "$late" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_LATE zstd
+    exit "$status"
+fi
 
 if [[ "$live_only" == false ]]; then
     ensure_topic "$raw" "$RECOUNT_RAW_PARTITIONS" RECOUNT_RAW zstd

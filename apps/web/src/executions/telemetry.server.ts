@@ -5,6 +5,7 @@ import {
 } from "@clickhouse/client";
 import * as z from "zod";
 import {
+	POINT_FINAL_SETTINGS,
 	POINT_WINDOW,
 	SERIES_WINDOW,
 	seriesPointSource,
@@ -214,6 +215,7 @@ export async function readTelemetry(
 				? AbortSignal.any([signal, AbortSignal.timeout(10000)])
 				: AbortSignal.timeout(10000),
 			clickhouse_settings: {
+				...POINT_FINAL_SETTINGS,
 				max_execution_time: 6,
 				max_threads: 1,
 				max_memory_usage: "268435456",

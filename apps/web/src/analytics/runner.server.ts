@@ -16,6 +16,7 @@ import { metricDefinitions } from "./discovery.server";
 import { formulaSeries } from "./formula-series";
 import { pipelineIngestedThrough } from "./ingested-through.server";
 import {
+	POINT_FINAL_SETTINGS,
 	POINT_WINDOW,
 	SERIES_WINDOW,
 	seriesPointSource,
@@ -43,9 +44,7 @@ const SETTINGS = {
 	max_bytes_before_external_group_by: "0",
 	max_bytes_before_external_sort: "0",
 	output_format_json_quote_64bit_integers: 1,
-	// Duplicates share a timestamp, so a day partition holds all copies of a point and
-	// FINAL can merge each partition alone: about twice as fast on one thread.
-	do_not_merge_across_partitions_select_final: 1,
+	...POINT_FINAL_SETTINGS,
 } as const;
 /** Maps ClickHouse failures to operation errors; limits never yield partial results. */
 export function analyticsError(error: unknown, signal?: AbortSignal): never {

@@ -9,7 +9,10 @@ import {
 	isPointField,
 } from "../analytics/compile.server";
 import { executionPointSource } from "../analytics/execution-source.server";
-import { seriesPointSource } from "../analytics/series-source.server";
+import {
+	POINT_FINAL_SETTINGS,
+	seriesPointSource,
+} from "../analytics/series-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
 import { activityNode, decodeLineage, nanosecondsDate } from "./codec.server";
@@ -24,6 +27,7 @@ import type {
 } from "./contracts";
 
 const settings = {
+	...POINT_FINAL_SETTINGS,
 	max_execution_time: 6,
 	max_threads: 1,
 	max_memory_usage: "268435456",
