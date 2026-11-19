@@ -9,7 +9,7 @@ import type {
 	Measure,
 } from "../apps/web/src/analytics/contracts";
 
-const [container, url, fixture, packets] = process.argv.slice(2);
+const [container, url, fixture, packets, mode] = process.argv.slice(2);
 assert(
 	container?.startsWith("recount-series-trial-") &&
 		url?.startsWith("http://127.0.0.1:") &&
@@ -61,7 +61,26 @@ const start = 1_797_600_000_000_000_000n;
 const to = start + 600_000_000_000n;
 const nsToDate = (ns: bigint) => new Date(Number(ns / 1_000_000n));
 const window = { projectId: project, from: nsToDate(start), to: nsToDate(to) };
-const variants = ["wide1024", "split1024", "split4096"] as const;
+const layouts = [
+	"wide1024",
+	"metricFirst",
+	"seriesFirst",
+	"timeFirst",
+	"metricFirstLC",
+] as const;
+const codecs = {
+	doubleDeltaTime: { time_unix_nano: "DoubleDelta, LZ4" },
+	deltaStart: { start_time_unix_nano: "Delta, ZSTD(1)" },
+	gorillaGauge: { double_value: "Gorilla, LZ4" },
+	doubleDeltaCounter: { int_value: "DoubleDelta, LZ4" },
+	t64Counter: { int_value: "T64, ZSTD(1)" },
+} as const;
+function selectedVariants() {
+	if (mode === "codecs") return ["metricFirst", ...Object.keys(codecs)];
+	if (mode === "threshold") return ["metricFirst"];
+	return [...layouts];
+}
+const variants = selectedVariants();
 const databases = variants.map((variant) => `${run}_${variant}`);
 const sourceFiles = readdirSync(packets).sort();
 const suites: [
@@ -165,7 +184,8 @@ function parts(db: string) {
 	);
 }
 
-function setup(db: string, wide: boolean, granularity: number) {
+function setup(db: string, variant: string) {
+	const wide = variant === "wide1024";
 	const render = (query: string) =>
 		query
 			.replaceAll("__DATABASE__", db)
@@ -175,7 +195,9 @@ function setup(db: string, wide: boolean, granularity: number) {
 			.replaceAll("__POINT_NAMES__", layout.pointNames)
 			.replaceAll("__SERIES_COLUMNS__", layout.seriesColumns)
 			.replaceAll("__SERIES_NAMES__", layout.seriesNames)
-			.replace(/index_granularity = \d+/, `index_granularity = ${granularity}`);
+			.replaceAll("__DELIVERY_COLUMNS__", layout.deliveryColumns)
+			.replaceAll("__KAFKA_COLUMNS__", layout.kafkaColumns)
+			.replace(/index_granularity = \d+/, "index_granularity = 1024");
 	const ddl = statements(wide ? baselineDdl : splitDdl);
 	const setup = wide
 		? [
@@ -185,13 +207,38 @@ function setup(db: string, wide: boolean, granularity: number) {
 				...ddl.slice(6),
 			]
 		: [
-				...ddl.slice(0, 3),
-				ddl[3]
-					.replace("__ANALYTICAL_COLUMNS__", exec([fixture, "--columns"]))
-					.replace(/ENGINE = Kafka[\s\S]*/, "ENGINE = Null"),
-				...ddl.slice(4, 6),
+				...ddl.slice(0, 4),
+				ddl[4].replace(/ENGINE = Kafka[\s\S]*/, "ENGINE = Null"),
+				...ddl.slice(5, 8),
 			];
-	command(setup.map(render).join(";\n"));
+	const rendered = setup.map(render);
+	if (variant === "seriesFirst" || variant === "timeFirst") {
+		const key =
+			variant === "seriesFirst"
+				? "project_id, series_id, time_unix_nano"
+				: "project_id, time_unix_nano, series_id";
+		rendered[1] = rendered[1].replaceAll(
+			"project_id, metric_name, series_id, time_unix_nano",
+			key,
+		);
+	}
+	if (variant === "metricFirstLC") {
+		for (const i of [1, 2])
+			rendered[i] = rendered[i].replace(
+				"metric_name String",
+				"metric_name LowCardinality(String)",
+			);
+	}
+	if (Object.hasOwn(codecs, variant)) {
+		for (const [column, codec] of Object.entries(
+			codecs[variant as keyof typeof codecs],
+		))
+			rendered[1] = rendered[1].replace(
+				new RegExp(`(^\\s*${column} [^\\n]+?)(,?)$`, "m"),
+				`$1 CODEC(${codec})$2`,
+			);
+	}
+	command(rendered.join(";\n"));
 	command(`CREATE TABLE ${db}.execution_participants (
 		project_id String, node_id String, process_resource_id Nullable(String), execution_key String,
 		first_seen_unix_nano UInt64, last_seen_unix_nano UInt64, ended_unix_nano Nullable(UInt64),
@@ -204,7 +251,7 @@ async function measure(db: string, wide: boolean) {
 		"metric_points",
 		...(wide
 			? ["metric_definitions", "attribute_definitions"]
-			: ["metric_series"]),
+			: ["metric_series", "deliveries"]),
 	];
 	for (const table of tables) command(`SYSTEM STOP MERGES ${db}.${table}`);
 	const beforeInsert = cpu();
@@ -225,6 +272,7 @@ async function measure(db: string, wide: boolean) {
 	const insert = cpu() - beforeInsert;
 	assert.equal(native(`SELECT count() FROM ${db}.metric_points`), "600000");
 	if (!wide) {
+		assert.equal(native(`SELECT count() FROM ${db}.deliveries FINAL`), "46880");
 		assert.equal(
 			native(`SELECT count() FROM ${db}.metric_series FINAL WHERE project_id='${project}'
 				AND metric_name='recount.collection.discovered.processes' AND last_seen_unix_nano>=${start} AND first_seen_unix_nano<${to}`),
@@ -234,6 +282,9 @@ async function measure(db: string, wide: boolean) {
 		);
 	}
 	const beforeMerge = parts(db);
+	const beforeCodecs =
+		native(`SELECT groupUniqArray(default_compression_codec) FROM system.parts
+		WHERE database='${db}' AND table='metric_points' AND active`);
 	const before = cpu();
 	for (const table of tables) {
 		command(
@@ -246,6 +297,20 @@ async function measure(db: string, wide: boolean) {
 		before_merge: beforeMerge,
 		after_merge: parts(db),
 		merge_log: logs(db),
+		point_codec:
+			native(`SELECT default_compression_codec FROM system.parts WHERE database='${db}'
+			AND table='metric_points' AND active ORDER BY rows DESC LIMIT 1`),
+		fresh_point_codecs: beforeCodecs,
+		checksum: native(
+			`SELECT sum(cityHash64(tuple(*))) FROM ${db}.metric_points FINAL`,
+		),
+		columns: JSON.parse(
+			native(`SELECT table, name, type, data_compressed_bytes AS compressed_bytes,
+			data_uncompressed_bytes AS uncompressed_bytes,
+			round(data_compressed_bytes/600000, 6) AS compressed_bytes_per_point
+			FROM system.columns WHERE database='${db}' AND table IN (${tables.map((t) => `'${t}'`).join(",")})
+			ORDER BY table, position FORMAT JSON`),
+		).data,
 	};
 }
 
@@ -276,16 +341,17 @@ async function reads() {
 				calculation,
 				combine: "sum",
 			} satisfies Measure;
-			const queries = [oldCompile, compileMeasure, compileMeasure].map(
-				(compile) =>
+			const queries = variants
+				.map((v) => (v === "wide1024" ? oldCompile : compileMeasure))
+				.map((compile) =>
 					compile(
 						options,
 						measure,
 						{ kind: behavior === "gauge" ? 1 : 2, behavior },
 						window,
 					),
-			);
-			const timings = [[], [], []] as number[][];
+				);
+			const timings = variants.map(() => [] as number[]);
 			let reference: string[] | undefined;
 			for (let iteration = 0; iteration < 23; iteration++) {
 				for (let order = 0; order < variants.length; order++) {
@@ -340,11 +406,24 @@ async function reads() {
 try {
 	const storage = {};
 	for (const [i, variant] of variants.entries()) {
-		setup(databases[i], i === 0, i === 2 ? 4096 : 1024);
-		storage[variant] = await measure(databases[i], i === 0);
-		console.error(variant, JSON.stringify(storage[variant]));
+		setup(databases[i], variant);
+		storage[variant] = await measure(databases[i], variant === "wide1024");
+		const { columns: _, ...summary } = storage[variant];
+		console.error(variant, JSON.stringify(summary));
 	}
-	console.log(JSON.stringify({ storage, queries: await reads() }, null, 2));
+	if (mode) {
+		const checksums = new Set(
+			Object.values(storage).map((entry) => entry.checksum),
+		);
+		assert.equal(checksums.size, 1);
+	}
+	console.log(
+		JSON.stringify(
+			{ storage, ...(mode ? {} : { queries: await reads() }) },
+			null,
+			2,
+		),
+	);
 } finally {
 	unlinkSync(baselineCompilerFile);
 	for (const db of databases) command(`DROP DATABASE IF EXISTS ${db} SYNC`);

@@ -28,7 +28,7 @@ function text(value: unknown, limit: number) {
 	return value;
 }
 function sample(value: unknown) {
-	if (typeof value !== "string" || !/^[0-9a-f]{64}$/i.test(value))
+	if (typeof value !== "string" || !/^[0-9a-f]{80}$/i.test(value))
 		throw new Error("Invalid sample identifier");
 	return value.toUpperCase();
 }

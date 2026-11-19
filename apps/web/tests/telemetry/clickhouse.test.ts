@@ -355,7 +355,7 @@ test("continuity segment and physical point limits fail rather than truncate", a
 	for (let offset = 0; offset < 100001; offset += 4096)
 		await fixture.client.command({
 			query: insertPoints(
-				{ sample_id: "SHA256(toString(number))" },
+				{ time_unix_nano: "{time:UInt64} + number" },
 				`CROSS JOIN numbers(${offset},${Math.min(4096, 100001 - offset)}) AS ticks`,
 			),
 			query_params: {
@@ -378,4 +378,35 @@ test("continuity segment and physical point limits fail rather than truncate", a
 	await expect(read(scope(crowded, source))).rejects.toMatchObject({
 		code: "CAPACITY",
 	});
+});
+
+test("the later receipt wins for one series, stream and timestamp before and after merges", async () => {
+	const project = randomUUID(),
+		source = randomUUID();
+	for (const [revision, integer] of [
+		[2, "29"],
+		[1, "13"],
+	] as const)
+		await fixture.client.command({
+			query: insertPoints({ received_unix_nano: `toUInt64(${revision})` }),
+			query_params: {
+				project,
+				source,
+				host: "node1",
+				sample: String(revision),
+				stream: "same",
+				epoch: "same",
+				integer,
+				time: ns.toString(),
+			},
+		});
+	const value = async () =>
+		(await read(scope(project, source))).series[0].segments[0].points[0]
+			.integer;
+	expect(await value()).toBe("29");
+	// The test fixture disables merges; OPTIMIZE FINAL must not change the winner.
+	await fixture.client.command({ query: "SYSTEM START MERGES metric_points" });
+	await fixture.client.command({ query: "OPTIMIZE TABLE metric_points FINAL" });
+	expect(await value()).toBe("29");
+	await fixture.client.command({ query: "SYSTEM STOP MERGES metric_points" });
 });

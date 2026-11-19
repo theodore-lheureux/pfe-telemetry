@@ -270,14 +270,17 @@ async fn scenario_with_linger(
         .unwrap();
         let points = prepare_rows(bytes, Some(&key), Default::default()).unwrap();
         for mut point in points {
+            series::split_delivery(&mut point).unwrap();
             let dimensions = series::split(&mut point);
             expected_ids.push(format!(
-                "{}\t{}\t{}",
-                identity::hex(&point.sample_id),
+                "{}\t{}\t{}\t{}\t{}",
+                point.time_unix_nano,
                 dimensions.series_id,
+                identity::hex(&point.stream_id),
                 dimensions.logical_series_id,
+                identity::hex(&point.delivery_id),
             ));
-            expected.push(point.sample_id);
+            expected.push(point.time_unix_nano);
         }
         let sent = Instant::now();
         producer
@@ -296,7 +299,7 @@ async fn scenario_with_linger(
         }
         loop {
             let count: usize = sql(&format!(
-                "SELECT uniqExact(sample_id) FROM {db}.metric_points"
+                "SELECT uniqExact(series_id,stream_id,time_unix_nano) FROM {db}.metric_points"
             ))
             .trim()
             .parse()
@@ -380,37 +383,25 @@ async fn scenario_with_linger(
         observer.fetch_watermarks(&late, 0, timeout).unwrap(),
         (0, 0)
     );
-    let mut stored: Vec<_> = sql(&format!(
-        "SELECT lower(hex(sample_id)) FROM {db}.metric_points ORDER BY sample_id"
-    ))
-    .lines()
-    .map(str::to_owned)
-    .collect();
-    let mut encoded: Vec<_> = expected
-        .iter()
-        .map(|id| id.iter().map(|b| format!("{b:02x}")).collect::<String>())
-        .collect();
-    stored.sort();
-    encoded.sort();
-    assert_eq!(stored, encoded);
-    expected_ids.sort_unstable();
-    assert_eq!(
-        sql(&format!(
-            "SELECT lower(hex(p.sample_id)), p.series_id, s.logical_series_id
+    let actual = sql(&format!(
+            "SELECT p.time_unix_nano, p.series_id, lower(hex(p.stream_id)), s.logical_series_id, lower(hex(p.delivery_id))
             FROM (SELECT * FROM {db}.metric_points FINAL) AS p
             INNER JOIN (SELECT * FROM {db}.metric_series FINAL) AS s USING (project_id, series_id)
-            ORDER BY p.sample_id"
-        ))
-        .lines()
-        .collect::<Vec<_>>(),
-        expected_ids.iter().map(String::as_str).collect::<Vec<_>>(),
+            INNER JOIN (SELECT * FROM {db}.deliveries FINAL) AS d USING (project_id, delivery_id)"
+        ));
+    let mut actual: Vec<_> = actual.lines().collect();
+    actual.sort_unstable();
+    expected_ids.sort_unstable();
+    assert_eq!(
+        actual,
+        expected_ids.iter().map(String::as_str).collect::<Vec<_>>()
     );
     let logical_rows = sql(&format!(
-        "SELECT hex(formatRow('RowBinary', *)) FROM {db}.metric_points FINAL ORDER BY sample_id"
+        "SELECT hex(formatRow('RowBinary', *)) FROM {db}.metric_points FINAL ORDER BY series_id,stream_id,time_unix_nano"
     ));
     eprintln!(
         "packed={packed} linger={linger_ms:?} burst={burst}: {} verified points; observed visibility delays {delays:?}",
-        stored.len()
+        actual.len()
     );
     stop.send(()).unwrap();
     run.await.unwrap().unwrap();

@@ -2,8 +2,8 @@
 export function seriesPointSource(
 	seriesWhere: string,
 	pointWhere: string,
-	dimensions = "s.* EXCEPT (project_id, series_id)",
-	pointTail = "",
+	dimensions = "s.* EXCEPT (project_id, series_id, metric_name)",
+	pointMetric = "",
 	seriesExpressions: string[] = [],
 ) {
 	return `WITH selected_series AS (
@@ -12,10 +12,10 @@ export function seriesPointSource(
 )
 SELECT p.*${dimensions ? `, ${dimensions}` : ""}
 FROM (
-  SELECT * FROM metric_points
+  SELECT * FROM metric_points FINAL
   WHERE project_id = {project:String} AND series_id IN (SELECT series_id FROM selected_series)
     ${pointWhere}
-  ${pointTail}
+    ${pointMetric ? `AND metric_name IN (SELECT metric_name FROM selected_series) ${pointMetric}` : ""}
 ) AS p
 INNER JOIN selected_series AS s USING (series_id)`;
 }

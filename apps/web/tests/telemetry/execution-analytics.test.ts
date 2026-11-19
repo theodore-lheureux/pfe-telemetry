@@ -110,7 +110,7 @@ test("late facts, corrected times and retractions change reads without changing 
 	const identities = async () => {
 		const result = await fixture.client.query({
 			query:
-				"SELECT hex(sample_id),series_id FROM metric_points FINAL WHERE project_id={project:String} ORDER BY sample_id",
+				"SELECT time_unix_nano,hex(stream_id),series_id FROM metric_points FINAL WHERE project_id={project:String} ORDER BY time_unix_nano,series_id,stream_id",
 			query_params: { project },
 			format: "JSONEachRow",
 		});

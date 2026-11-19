@@ -64,7 +64,7 @@ const page = (
 				from,
 				to,
 				timeNs: (BigInt(to.getTime()) * 1_000_000n).toString(),
-				sampleId: "FF".repeat(32),
+				sampleId: "FF".repeat(40),
 			},
 			...options,
 		},

@@ -103,7 +103,7 @@ test("execution pages use bounded project-qualified key cursors and never stamp 
 		fixture.client
 			.query({
 				query:
-					"SELECT hex(sample_id),hex(stream_id),series_id FROM metric_points FINAL ORDER BY sample_id",
+					"SELECT time_unix_nano,hex(stream_id),series_id FROM metric_points FINAL ORDER BY time_unix_nano,series_id,stream_id",
 				format: "JSONEachRow",
 			})
 			.then((r) => r.json());

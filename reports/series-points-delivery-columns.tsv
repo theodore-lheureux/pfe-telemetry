@@ -1,0 +1,324 @@
+layout	table	column	type	compressed_bytes	uncompressed_bytes	compressed_bytes_per_point
+wide1024	attribute_definitions	project_id	String	0	0	0
+wide1024	attribute_definitions	metric_name	String	0	0	0
+wide1024	attribute_definitions	scope	LowCardinality(String)	0	0	0
+wide1024	attribute_definitions	attribute_key	String	0	0	0
+wide1024	attribute_definitions	value_kind	UInt8	0	0	0
+wide1024	attribute_definitions	last_seen_unix_nano	SimpleAggregateFunction(max, UInt64)	0	0	0
+wide1024	metric_definitions	project_id	String	0	0	0
+wide1024	metric_definitions	metric_name	String	0	0	0
+wide1024	metric_definitions	metric_kind	UInt8	0	0	0
+wide1024	metric_definitions	temporality	UInt8	0	0	0
+wide1024	metric_definitions	monotonic_state	UInt8	0	0	0
+wide1024	metric_definitions	unit	String	0	0	0
+wide1024	metric_definitions	description	SimpleAggregateFunction(anyLast, String)	0	0	0
+wide1024	metric_definitions	first_seen_unix_nano	SimpleAggregateFunction(min, UInt64)	0	0	0
+wide1024	metric_definitions	last_seen_unix_nano	SimpleAggregateFunction(max, UInt64)	0	0	0
+wide1024	metric_points	project_id	String	60275	13200000	0.100458
+wide1024	metric_points	source_id	String	38020	8400000	0.063367
+wide1024	metric_points	resource_id	String	52179	9124890	0.086965
+wide1024	metric_points	resource_kind	UInt8	3475	600000	0.005792
+wide1024	metric_points	host_id	Nullable(String)	40724	9000000	0.067873
+wide1024	metric_points	device_id	Nullable(String)	24086	5400000	0.040143
+wide1024	metric_points	metric_name	String	158886	18212190	0.26481
+wide1024	metric_points	unit	String	45548	5956910	0.075913
+wide1024	metric_points	metric_kind	UInt8	3399	600000	0.005665
+wide1024	metric_points	sample_id	FixedString(32)	19282719	19200000	32.137865
+wide1024	metric_points	stream_id	FixedString(32)	280948	19200000	0.468247
+wide1024	metric_points	time_unix_nano	UInt64	3931742	4800000	6.552903
+wide1024	metric_points	start_time_unix_nano	UInt64	122	5400	0.000203
+wide1024	metric_points	event_day	UInt32	10820	2400000	0.018033
+wide1024	metric_points	continuity	Nullable(String)	24086	5400000	0.040143
+wide1024	metric_points	flags	UInt32	122	5400	0.000203
+wide1024	metric_points	int_value	Nullable(Int64)	24086	5400000	0.040143
+wide1024	metric_points	double_value	Nullable(Float64)	341500	5400000	0.569167
+wide1024	metric_points	resource_present	UInt8	2704	600000	0.004507
+wide1024	metric_points	scope_present	UInt8	2704	600000	0.004507
+wide1024	metric_points	scope_name	String	69265	15000000	0.115442
+wide1024	metric_points	scope_version	String	122	5400	0.000203
+wide1024	metric_points	resource_schema_url	String	122	5400	0.000203
+wide1024	metric_points	scope_schema_url	String	122	5400	0.000203
+wide1024	metric_points	resource_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	7933054	177600000	13.221757
+wide1024	metric_points	scope_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	21382	4800000	0.035637
+wide1024	metric_points	point_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	323500	48471410	0.539167
+wide1024	metric_points	metric_metadata	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	21382	4800000	0.035637
+wide1024	metric_points	temporality	UInt8	3399	600000	0.005665
+wide1024	metric_points	monotonic	Nullable(UInt8)	6798	1200000	0.01133
+wide1024	metric_points	count	Nullable(UInt64)	24086	5400000	0.040143
+wide1024	metric_points	sum	Nullable(Float64)	24086	5400000	0.040143
+wide1024	metric_points	min	Nullable(Float64)	24086	5400000	0.040143
+wide1024	metric_points	max	Nullable(Float64)	24086	5400000	0.040143
+wide1024	metric_points	explicit_bounds	Array(Float64)	21382	4800000	0.035637
+wide1024	metric_points	bucket_counts	Array(UInt64)	21382	4800000	0.035637
+wide1024	metric_points	scale	Nullable(Int32)	13413	3000000	0.022355
+wide1024	metric_points	zero_count	Nullable(UInt64)	24086	5400000	0.040143
+wide1024	metric_points	zero_threshold	Nullable(Float64)	24086	5400000	0.040143
+wide1024	metric_points	positive_offset	Nullable(Int32)	13413	3000000	0.022355
+wide1024	metric_points	positive_counts	Array(UInt64)	21382	4800000	0.035637
+wide1024	metric_points	negative_offset	Nullable(Int32)	13413	3000000	0.022355
+wide1024	metric_points	negative_counts	Array(UInt64)	21382	4800000	0.035637
+wide1024	metric_points	quantiles	Array(Float64)	21382	4800000	0.035637
+wide1024	metric_points	quantile_values	Array(Float64)	21382	4800000	0.035637
+wide1024	metric_points	description	String	122	5400	0.000203
+wide1024	metric_points	resource_dropped_attributes_count	UInt32	122	5400	0.000203
+wide1024	metric_points	scope_dropped_attributes_count	UInt32	122	5400	0.000203
+wide1024	metric_points	exemplars	Array(String)	21382	4800000	0.035637
+wide1024	metric_points	resource_entity_refs	Array(String)	21382	4800000	0.035637
+wide1024	metric_points	lineage	String	236123432	683248544	393.539053
+wide1024	metric_points	series_id	UInt64	233769	4800000	0.389615
+metricFirst	deliveries	project_id	String	4568	1031360	0.007613
+metricFirst	deliveries	lineage	String	21596863	53197700	35.994772
+metricFirst	deliveries	delivery_id	FixedString(16)	753178	750080	1.255297
+metricFirst	metric_points	project_id	String	60250	13200000	0.100417
+metricFirst	metric_points	metric_name	String	85616	18212190	0.142693
+metricFirst	metric_points	stream_id	FixedString(32)	284032	19200000	0.473387
+metricFirst	metric_points	time_unix_nano	UInt64	3823343	4800000	6.372238
+metricFirst	metric_points	start_time_unix_nano	UInt64	379	5400	0.000632
+metricFirst	metric_points	event_day	UInt32	10823	2400000	0.018038
+metricFirst	metric_points	continuity	Nullable(String)	24057	5400000	0.040095
+metricFirst	metric_points	flags	UInt32	379	5400	0.000632
+metricFirst	metric_points	int_value	Nullable(Int64)	24057	5400000	0.040095
+metricFirst	metric_points	double_value	Nullable(Float64)	292692	5400000	0.48782
+metricFirst	metric_points	count	Nullable(UInt64)	24057	5400000	0.040095
+metricFirst	metric_points	sum	Nullable(Float64)	24057	5400000	0.040095
+metricFirst	metric_points	min	Nullable(Float64)	24057	5400000	0.040095
+metricFirst	metric_points	max	Nullable(Float64)	24057	5400000	0.040095
+metricFirst	metric_points	explicit_bounds	Array(Float64)	21352	4800000	0.035587
+metricFirst	metric_points	bucket_counts	Array(UInt64)	21352	4800000	0.035587
+metricFirst	metric_points	scale	Nullable(Int32)	13417	3000000	0.022362
+metricFirst	metric_points	zero_count	Nullable(UInt64)	24057	5400000	0.040095
+metricFirst	metric_points	zero_threshold	Nullable(Float64)	24057	5400000	0.040095
+metricFirst	metric_points	positive_offset	Nullable(Int32)	13417	3000000	0.022362
+metricFirst	metric_points	positive_counts	Array(UInt64)	21352	4800000	0.035587
+metricFirst	metric_points	negative_offset	Nullable(Int32)	13417	3000000	0.022362
+metricFirst	metric_points	negative_counts	Array(UInt64)	21352	4800000	0.035587
+metricFirst	metric_points	quantiles	Array(Float64)	21352	4800000	0.035587
+metricFirst	metric_points	quantile_values	Array(Float64)	21352	4800000	0.035587
+metricFirst	metric_points	exemplars	Array(String)	21352	4800000	0.035587
+metricFirst	metric_points	series_id	UInt64	220100	4800000	0.366833
+metricFirst	metric_points	resource_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	21352	4800000	0.035587
+metricFirst	metric_points	point_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	131462	11997420	0.219103
+metricFirst	metric_points	delivery_id	FixedString(16)	6295055	9600000	10.491758
+metricFirst	metric_points	original_position	String	190184	5990624	0.316973
+metricFirst	metric_points	received_unix_nano	UInt64	410543	4800000	0.684238
+metricFirst	metric_series	project_id	String	1941	428120	0.003235
+metricFirst	metric_series	source_id	String	53272	272440	0.088787
+metricFirst	metric_series	resource_id	String	90314	295960	0.150523
+metricFirst	metric_series	resource_kind	UInt8	116	19460	0.000193
+metricFirst	metric_series	host_id	Nullable(String)	53384	291900	0.088973
+metricFirst	metric_series	device_id	Nullable(String)	828	175140	0.00138
+metricFirst	metric_series	metric_name	String	2790	590750	0.00465
+metricFirst	metric_series	unit	String	935	193210	0.001558
+metricFirst	metric_series	metric_kind	UInt8	116	19460	0.000193
+metricFirst	metric_series	resource_present	UInt8	112	19460	0.000187
+metricFirst	metric_series	scope_present	UInt8	112	19460	0.000187
+metricFirst	metric_series	scope_name	String	2181	486500	0.003635
+metricFirst	metric_series	scope_version	String	45	27	0.000075
+metricFirst	metric_series	resource_schema_url	String	45	27	0.000075
+metricFirst	metric_series	scope_schema_url	String	45	27	0.000075
+metricFirst	metric_series	resource_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	255310	5760160	0.425517
+metricFirst	metric_series	scope_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	716	155680	0.001193
+metricFirst	metric_series	point_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	15098	1349690	0.025163
+metricFirst	metric_series	metric_metadata	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	716	155680	0.001193
+metricFirst	metric_series	temporality	UInt8	116	19460	0.000193
+metricFirst	metric_series	monotonic	Nullable(UInt8)	232	38920	0.000387
+metricFirst	metric_series	description	String	45	27	0.000075
+metricFirst	metric_series	resource_dropped_attributes_count	UInt32	45	27	0.000075
+metricFirst	metric_series	scope_dropped_attributes_count	UInt32	45	27	0.000075
+metricFirst	metric_series	resource_entity_refs	Array(String)	716	155680	0.001193
+metricFirst	metric_series	series_id	UInt64	156369	155680	0.260615
+metricFirst	metric_series	logical_series_id	UInt64	156369	155680	0.260615
+metricFirst	metric_series	first_seen_unix_nano	SimpleAggregateFunction(min, UInt64)	114049	155680	0.190082
+metricFirst	metric_series	last_seen_unix_nano	SimpleAggregateFunction(max, UInt64)	114014	155680	0.190023
+seriesFirst	deliveries	project_id	String	4568	1031360	0.007613
+seriesFirst	deliveries	lineage	String	21596863	53197700	35.994772
+seriesFirst	deliveries	delivery_id	FixedString(16)	753178	750080	1.255297
+seriesFirst	metric_points	project_id	String	60274	13200000	0.100457
+seriesFirst	metric_points	metric_name	String	257996	18212190	0.429993
+seriesFirst	metric_points	stream_id	FixedString(32)	287373	19200000	0.478955
+seriesFirst	metric_points	time_unix_nano	UInt64	4052157	4800000	6.753595
+seriesFirst	metric_points	start_time_unix_nano	UInt64	240	5400	0.0004
+seriesFirst	metric_points	event_day	UInt32	10819	2400000	0.018032
+seriesFirst	metric_points	continuity	Nullable(String)	24086	5400000	0.040143
+seriesFirst	metric_points	flags	UInt32	240	5400	0.0004
+seriesFirst	metric_points	int_value	Nullable(Int64)	24086	5400000	0.040143
+seriesFirst	metric_points	double_value	Nullable(Float64)	333587	5400000	0.555978
+seriesFirst	metric_points	count	Nullable(UInt64)	24086	5400000	0.040143
+seriesFirst	metric_points	sum	Nullable(Float64)	24086	5400000	0.040143
+seriesFirst	metric_points	min	Nullable(Float64)	24086	5400000	0.040143
+seriesFirst	metric_points	max	Nullable(Float64)	24086	5400000	0.040143
+seriesFirst	metric_points	explicit_bounds	Array(Float64)	21382	4800000	0.035637
+seriesFirst	metric_points	bucket_counts	Array(UInt64)	21382	4800000	0.035637
+seriesFirst	metric_points	scale	Nullable(Int32)	13412	3000000	0.022353
+seriesFirst	metric_points	zero_count	Nullable(UInt64)	24086	5400000	0.040143
+seriesFirst	metric_points	zero_threshold	Nullable(Float64)	24086	5400000	0.040143
+seriesFirst	metric_points	positive_offset	Nullable(Int32)	13412	3000000	0.022353
+seriesFirst	metric_points	positive_counts	Array(UInt64)	21382	4800000	0.035637
+seriesFirst	metric_points	negative_offset	Nullable(Int32)	13412	3000000	0.022353
+seriesFirst	metric_points	negative_counts	Array(UInt64)	21382	4800000	0.035637
+seriesFirst	metric_points	quantiles	Array(Float64)	21382	4800000	0.035637
+seriesFirst	metric_points	quantile_values	Array(Float64)	21382	4800000	0.035637
+seriesFirst	metric_points	exemplars	Array(String)	21382	4800000	0.035637
+seriesFirst	metric_points	series_id	UInt64	214708	4800000	0.357847
+seriesFirst	metric_points	resource_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	21382	4800000	0.035637
+seriesFirst	metric_points	point_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	142966	11997420	0.238277
+seriesFirst	metric_points	delivery_id	FixedString(16)	9369289	9600000	15.615482
+seriesFirst	metric_points	original_position	String	189134	5990624	0.315223
+seriesFirst	metric_points	received_unix_nano	UInt64	1868563	4800000	3.114272
+seriesFirst	metric_series	project_id	String	1941	428120	0.003235
+seriesFirst	metric_series	source_id	String	53272	272440	0.088787
+seriesFirst	metric_series	resource_id	String	90314	295960	0.150523
+seriesFirst	metric_series	resource_kind	UInt8	116	19460	0.000193
+seriesFirst	metric_series	host_id	Nullable(String)	53384	291900	0.088973
+seriesFirst	metric_series	device_id	Nullable(String)	828	175140	0.00138
+seriesFirst	metric_series	metric_name	String	2790	590750	0.00465
+seriesFirst	metric_series	unit	String	935	193210	0.001558
+seriesFirst	metric_series	metric_kind	UInt8	116	19460	0.000193
+seriesFirst	metric_series	resource_present	UInt8	112	19460	0.000187
+seriesFirst	metric_series	scope_present	UInt8	112	19460	0.000187
+seriesFirst	metric_series	scope_name	String	2181	486500	0.003635
+seriesFirst	metric_series	scope_version	String	45	27	0.000075
+seriesFirst	metric_series	resource_schema_url	String	45	27	0.000075
+seriesFirst	metric_series	scope_schema_url	String	45	27	0.000075
+seriesFirst	metric_series	resource_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	255310	5760160	0.425517
+seriesFirst	metric_series	scope_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	716	155680	0.001193
+seriesFirst	metric_series	point_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	15098	1349690	0.025163
+seriesFirst	metric_series	metric_metadata	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	716	155680	0.001193
+seriesFirst	metric_series	temporality	UInt8	116	19460	0.000193
+seriesFirst	metric_series	monotonic	Nullable(UInt8)	232	38920	0.000387
+seriesFirst	metric_series	description	String	45	27	0.000075
+seriesFirst	metric_series	resource_dropped_attributes_count	UInt32	45	27	0.000075
+seriesFirst	metric_series	scope_dropped_attributes_count	UInt32	45	27	0.000075
+seriesFirst	metric_series	resource_entity_refs	Array(String)	716	155680	0.001193
+seriesFirst	metric_series	series_id	UInt64	156369	155680	0.260615
+seriesFirst	metric_series	logical_series_id	UInt64	156369	155680	0.260615
+seriesFirst	metric_series	first_seen_unix_nano	SimpleAggregateFunction(min, UInt64)	114049	155680	0.190082
+seriesFirst	metric_series	last_seen_unix_nano	SimpleAggregateFunction(max, UInt64)	114014	155680	0.190023
+timeFirst	deliveries	project_id	String	4568	1031360	0.007613
+timeFirst	deliveries	lineage	String	21596863	53197700	35.994772
+timeFirst	deliveries	delivery_id	FixedString(16)	753178	750080	1.255297
+timeFirst	metric_points	project_id	String	60283	13200000	0.100472
+timeFirst	metric_points	metric_name	String	90779	18212190	0.151298
+timeFirst	metric_points	stream_id	FixedString(32)	3020664	19200000	5.03444
+timeFirst	metric_points	time_unix_nano	UInt64	3617863	4800000	6.029772
+timeFirst	metric_points	start_time_unix_nano	UInt64	80	5400	0.000133
+timeFirst	metric_points	event_day	UInt32	10779	2400000	0.017965
+timeFirst	metric_points	continuity	Nullable(String)	24010	5400000	0.040017
+timeFirst	metric_points	flags	UInt32	80	5400	0.000133
+timeFirst	metric_points	int_value	Nullable(Int64)	24010	5400000	0.040017
+timeFirst	metric_points	double_value	Nullable(Float64)	166390	5400000	0.277317
+timeFirst	metric_points	count	Nullable(UInt64)	24010	5400000	0.040017
+timeFirst	metric_points	sum	Nullable(Float64)	24010	5400000	0.040017
+timeFirst	metric_points	min	Nullable(Float64)	24010	5400000	0.040017
+timeFirst	metric_points	max	Nullable(Float64)	24010	5400000	0.040017
+timeFirst	metric_points	explicit_bounds	Array(Float64)	21306	4800000	0.03551
+timeFirst	metric_points	bucket_counts	Array(UInt64)	21306	4800000	0.03551
+timeFirst	metric_points	scale	Nullable(Int32)	13375	3000000	0.022292
+timeFirst	metric_points	zero_count	Nullable(UInt64)	24010	5400000	0.040017
+timeFirst	metric_points	zero_threshold	Nullable(Float64)	24010	5400000	0.040017
+timeFirst	metric_points	positive_offset	Nullable(Int32)	13375	3000000	0.022292
+timeFirst	metric_points	positive_counts	Array(UInt64)	21306	4800000	0.03551
+timeFirst	metric_points	negative_offset	Nullable(Int32)	13375	3000000	0.022292
+timeFirst	metric_points	negative_counts	Array(UInt64)	21306	4800000	0.03551
+timeFirst	metric_points	quantiles	Array(Float64)	21306	4800000	0.03551
+timeFirst	metric_points	quantile_values	Array(Float64)	21306	4800000	0.03551
+timeFirst	metric_points	exemplars	Array(String)	21306	4800000	0.03551
+timeFirst	metric_points	series_id	UInt64	4820704	4800000	8.034507
+timeFirst	metric_points	resource_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	21306	4800000	0.03551
+timeFirst	metric_points	point_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	54856	11997420	0.091427
+timeFirst	metric_points	delivery_id	FixedString(16)	810668	9600000	1.351113
+timeFirst	metric_points	original_position	String	31870	5990624	0.053117
+timeFirst	metric_points	received_unix_nano	UInt64	63220	4800000	0.105367
+timeFirst	metric_series	project_id	String	1941	428120	0.003235
+timeFirst	metric_series	source_id	String	53272	272440	0.088787
+timeFirst	metric_series	resource_id	String	90314	295960	0.150523
+timeFirst	metric_series	resource_kind	UInt8	116	19460	0.000193
+timeFirst	metric_series	host_id	Nullable(String)	53384	291900	0.088973
+timeFirst	metric_series	device_id	Nullable(String)	828	175140	0.00138
+timeFirst	metric_series	metric_name	String	2790	590750	0.00465
+timeFirst	metric_series	unit	String	935	193210	0.001558
+timeFirst	metric_series	metric_kind	UInt8	116	19460	0.000193
+timeFirst	metric_series	resource_present	UInt8	112	19460	0.000187
+timeFirst	metric_series	scope_present	UInt8	112	19460	0.000187
+timeFirst	metric_series	scope_name	String	2181	486500	0.003635
+timeFirst	metric_series	scope_version	String	45	27	0.000075
+timeFirst	metric_series	resource_schema_url	String	45	27	0.000075
+timeFirst	metric_series	scope_schema_url	String	45	27	0.000075
+timeFirst	metric_series	resource_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	255310	5760160	0.425517
+timeFirst	metric_series	scope_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	716	155680	0.001193
+timeFirst	metric_series	point_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	15098	1349690	0.025163
+timeFirst	metric_series	metric_metadata	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	716	155680	0.001193
+timeFirst	metric_series	temporality	UInt8	116	19460	0.000193
+timeFirst	metric_series	monotonic	Nullable(UInt8)	232	38920	0.000387
+timeFirst	metric_series	description	String	45	27	0.000075
+timeFirst	metric_series	resource_dropped_attributes_count	UInt32	45	27	0.000075
+timeFirst	metric_series	scope_dropped_attributes_count	UInt32	45	27	0.000075
+timeFirst	metric_series	resource_entity_refs	Array(String)	716	155680	0.001193
+timeFirst	metric_series	series_id	UInt64	156369	155680	0.260615
+timeFirst	metric_series	logical_series_id	UInt64	156369	155680	0.260615
+timeFirst	metric_series	first_seen_unix_nano	SimpleAggregateFunction(min, UInt64)	114049	155680	0.190082
+timeFirst	metric_series	last_seen_unix_nano	SimpleAggregateFunction(max, UInt64)	114014	155680	0.190023
+metricFirstLC	deliveries	project_id	String	4568	1031360	0.007613
+metricFirstLC	deliveries	lineage	String	21596863	53197700	35.994772
+metricFirstLC	deliveries	delivery_id	FixedString(16)	753178	750080	1.255297
+metricFirstLC	metric_points	project_id	String	60250	13200000	0.100417
+metricFirstLC	metric_points	metric_name	LowCardinality(String)	3780	609929	0.0063
+metricFirstLC	metric_points	stream_id	FixedString(32)	284032	19200000	0.473387
+metricFirstLC	metric_points	time_unix_nano	UInt64	3823343	4800000	6.372238
+metricFirstLC	metric_points	start_time_unix_nano	UInt64	379	5400	0.000632
+metricFirstLC	metric_points	event_day	UInt32	10823	2400000	0.018038
+metricFirstLC	metric_points	continuity	Nullable(String)	24057	5400000	0.040095
+metricFirstLC	metric_points	flags	UInt32	379	5400	0.000632
+metricFirstLC	metric_points	int_value	Nullable(Int64)	24057	5400000	0.040095
+metricFirstLC	metric_points	double_value	Nullable(Float64)	292692	5400000	0.48782
+metricFirstLC	metric_points	count	Nullable(UInt64)	24057	5400000	0.040095
+metricFirstLC	metric_points	sum	Nullable(Float64)	24057	5400000	0.040095
+metricFirstLC	metric_points	min	Nullable(Float64)	24057	5400000	0.040095
+metricFirstLC	metric_points	max	Nullable(Float64)	24057	5400000	0.040095
+metricFirstLC	metric_points	explicit_bounds	Array(Float64)	21352	4800000	0.035587
+metricFirstLC	metric_points	bucket_counts	Array(UInt64)	21352	4800000	0.035587
+metricFirstLC	metric_points	scale	Nullable(Int32)	13417	3000000	0.022362
+metricFirstLC	metric_points	zero_count	Nullable(UInt64)	24057	5400000	0.040095
+metricFirstLC	metric_points	zero_threshold	Nullable(Float64)	24057	5400000	0.040095
+metricFirstLC	metric_points	positive_offset	Nullable(Int32)	13417	3000000	0.022362
+metricFirstLC	metric_points	positive_counts	Array(UInt64)	21352	4800000	0.035587
+metricFirstLC	metric_points	negative_offset	Nullable(Int32)	13417	3000000	0.022362
+metricFirstLC	metric_points	negative_counts	Array(UInt64)	21352	4800000	0.035587
+metricFirstLC	metric_points	quantiles	Array(Float64)	21352	4800000	0.035587
+metricFirstLC	metric_points	quantile_values	Array(Float64)	21352	4800000	0.035587
+metricFirstLC	metric_points	exemplars	Array(String)	21352	4800000	0.035587
+metricFirstLC	metric_points	series_id	UInt64	220100	4800000	0.366833
+metricFirstLC	metric_points	resource_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	21352	4800000	0.035587
+metricFirstLC	metric_points	point_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	131462	11997420	0.219103
+metricFirstLC	metric_points	delivery_id	FixedString(16)	6295055	9600000	10.491758
+metricFirstLC	metric_points	original_position	String	190184	5990624	0.316973
+metricFirstLC	metric_points	received_unix_nano	UInt64	410543	4800000	0.684238
+metricFirstLC	metric_series	project_id	String	1941	428120	0.003235
+metricFirstLC	metric_series	source_id	String	53272	272440	0.088787
+metricFirstLC	metric_series	resource_id	String	90314	295960	0.150523
+metricFirstLC	metric_series	resource_kind	UInt8	116	19460	0.000193
+metricFirstLC	metric_series	host_id	Nullable(String)	53384	291900	0.088973
+metricFirstLC	metric_series	device_id	Nullable(String)	828	175140	0.00138
+metricFirstLC	metric_series	metric_name	LowCardinality(String)	363	19837	0.000605
+metricFirstLC	metric_series	unit	String	935	193210	0.001558
+metricFirstLC	metric_series	metric_kind	UInt8	116	19460	0.000193
+metricFirstLC	metric_series	resource_present	UInt8	112	19460	0.000187
+metricFirstLC	metric_series	scope_present	UInt8	112	19460	0.000187
+metricFirstLC	metric_series	scope_name	String	2181	486500	0.003635
+metricFirstLC	metric_series	scope_version	String	45	27	0.000075
+metricFirstLC	metric_series	resource_schema_url	String	45	27	0.000075
+metricFirstLC	metric_series	scope_schema_url	String	45	27	0.000075
+metricFirstLC	metric_series	resource_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	255310	5760160	0.425517
+metricFirstLC	metric_series	scope_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	716	155680	0.001193
+metricFirstLC	metric_series	point_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	15098	1349690	0.025163
+metricFirstLC	metric_series	metric_metadata	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	716	155680	0.001193
+metricFirstLC	metric_series	temporality	UInt8	116	19460	0.000193
+metricFirstLC	metric_series	monotonic	Nullable(UInt8)	232	38920	0.000387
+metricFirstLC	metric_series	description	String	45	27	0.000075
+metricFirstLC	metric_series	resource_dropped_attributes_count	UInt32	45	27	0.000075
+metricFirstLC	metric_series	scope_dropped_attributes_count	UInt32	45	27	0.000075
+metricFirstLC	metric_series	resource_entity_refs	Array(String)	716	155680	0.001193
+metricFirstLC	metric_series	series_id	UInt64	156369	155680	0.260615
+metricFirstLC	metric_series	logical_series_id	UInt64	156369	155680	0.260615
+metricFirstLC	metric_series	first_seen_unix_nano	SimpleAggregateFunction(min, UInt64)	114049	155680	0.190082
+metricFirstLC	metric_series	last_seen_unix_nano	SimpleAggregateFunction(max, UInt64)	114014	155680	0.190023

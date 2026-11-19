@@ -201,4 +201,7 @@ message AnalyticalPoint {
   fixed64 last_seen_unix_nano = 55;
   repeated ContinuityNode resource_continuity = 56;
   repeated ContinuityNode point_continuity = 57;
+  bytes delivery_id = 58;
+  bytes original_position = 59;
+  fixed64 received_unix_nano = 60;
 }

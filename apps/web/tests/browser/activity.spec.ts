@@ -205,9 +205,10 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 						metric_name: "recount.node.memory.total",
 						unit: "By",
 						metric_kind: 1,
-						sample_id: createHash("sha256")
-							.update(`${project.id}/${index}`)
-							.digest(),
+						delivery_id: createHash("sha256")
+							.update(project.id)
+							.digest()
+							.subarray(0, 16),
 						stream_id: createHash("sha256").update(project.id).digest(),
 						time_unix_nano: (time - BigInt(index)).toString(),
 						event_day: Number(time / 86400000000000n),
@@ -228,7 +229,7 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 				.finish(),
 		);
 		inserted = true;
-		for (const table of ["metric_series", "metric_points"]) {
+		for (const table of ["deliveries", "metric_series", "metric_points"]) {
 			const result = await clickhouse.exec({
 				query: `INSERT INTO telemetry.${table} FORMAT Protobuf`,
 				values: Readable.from([Buffer.concat(rows)]),

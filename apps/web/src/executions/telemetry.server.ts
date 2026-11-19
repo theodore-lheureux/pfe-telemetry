@@ -44,8 +44,8 @@ const executionTelemetrySource = seriesPointSource(
 	`${POINT_WINDOW}
     AND (bitAnd(flags,1)!=0 OR (isNull(int_value) AND double_value>=0)
       OR (isNull(double_value) AND int_value>=0))`,
-	"s.chart_id, s.metric_name, s.unit, s.host_id, s.cpu_mode",
-	"",
+	"s.chart_id, s.unit, s.host_id, s.cpu_mode",
+	"AND metric_name IN ('recount.node.cpu.time','recount.node.memory.total','recount.node.memory.available')",
 	[
 		`hex(SHA256(toString(tuple(project_id,source_id,resource_id,resource_kind,host_id,device_id,
     resource_present,scope_present,scope_name,scope_version,resource_schema_url,scope_schema_url,
@@ -63,7 +63,7 @@ WITH samples AS (
   SELECT chart_id AS id,
     hex(stream_id) AS segment, metric_name AS metric, unit, host_id AS hostId,
     cpu_mode AS cpuMode,
-    time_unix_nano, sample_id, flags,
+    time_unix_nano, series_id, flags,
     if(bitAnd(flags,1)=0,int_value,NULL) AS integer_value,
     if(bitAnd(flags,1)=0,double_value,NULL) AS scalar_double,
     intDiv(time_unix_nano-{from:UInt64},{step:UInt64}) AS bucket
@@ -72,7 +72,7 @@ WITH samples AS (
 SELECT id,segment,metric,unit,hostId,cpuMode,
   toString({from:UInt64}+bucket*{step:UInt64}) AS bucketNs,
   argMax(tuple(toString(time_unix_nano),if(isNull(integer_value),NULL,toString(integer_value)),scalar_double,flags),
-    tuple(time_unix_nano,sample_id)) AS sample
+    tuple(time_unix_nano,series_id)) AS sample
 FROM samples GROUP BY id,segment,metric,unit,hostId,cpuMode,bucket
 `;
 

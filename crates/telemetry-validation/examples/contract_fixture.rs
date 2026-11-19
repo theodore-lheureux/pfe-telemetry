@@ -7,11 +7,15 @@ use std::io::Write;
 fn main() {
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--storage-layout") {
-        use recount_telemetry_schema::{POINT_COLUMNS, POINT_NAMES, SERIES_COLUMNS, SERIES_NAMES};
+        use recount_telemetry_schema::{
+            DELIVERY_COLUMNS, KAFKA_COLUMNS, POINT_COLUMNS, POINT_NAMES, SERIES_COLUMNS,
+            SERIES_NAMES,
+        };
         println!(
             "{}",
             serde_json::json!({ "pointColumns": POINT_COLUMNS, "pointNames": POINT_NAMES,
-            "seriesColumns": SERIES_COLUMNS, "seriesNames": SERIES_NAMES })
+            "seriesColumns": SERIES_COLUMNS, "seriesNames": SERIES_NAMES,
+            "deliveryColumns": DELIVERY_COLUMNS, "kafkaColumns": KAFKA_COLUMNS })
         );
         return;
     }
@@ -62,8 +66,13 @@ fn main() {
         while !remaining.is_empty() {
             actual.push(AnalyticalPoint::decode_length_delimited(&mut remaining).unwrap());
         }
-        rows.sort_by(|a, b| a.sample_id.cmp(&b.sample_id));
-        actual.sort_by(|a, b| a.sample_id.cmp(&b.sample_id));
+        for row in &mut rows {
+            recount_telemetry_schema::series::split_delivery(row).unwrap();
+            row.delivery_id.clear();
+        }
+        let key = |point: &AnalyticalPoint| (point.time_unix_nano, point.stream_id.clone());
+        rows.sort_by_key(key);
+        actual.sort_by_key(key);
         assert_eq!(actual, rows);
         assert_eq!(
             rows.iter()

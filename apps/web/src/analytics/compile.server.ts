@@ -29,11 +29,6 @@ const COMBINE_SQL: Record<Combine, string> = {
 };
 // A bucket's band across the sources it combines, when the query asks for one. The
 // column is qualified, since `value` alone names the combined value in that SELECT.
-// Replays resend identical points under the same sorting key. Keeping one per key
-// after filtering reads only the queried columns, where FINAL merged whole parts:
-// about 3.4x faster on production data with identical results.
-const POINT_DEDUP = "LIMIT 1 BY series_id, time_unix_nano, sample_id";
-
 const SPREAD_SQL = {
 	range: ["min(per_series.value)", "max(per_series.value)"],
 	middle: [
@@ -172,7 +167,7 @@ function perSeries(
 	);
 	if (behavior === "gauge") {
 		const aggregate = {
-			last: "argMax(v, tuple(t, sample_id))",
+			last: "argMax(v, tuple(t, stream, storage_series))",
 			avg: "avg(v)",
 			min: "min(v)",
 			max: "max(v)",
@@ -196,7 +191,7 @@ function perSeries(
 	return `diffs AS (
   SELECT ${keys}, v - lagInFrame(v) OVER w AS d, row_number() OVER w AS n
   FROM base WHERE v IS NOT NULL
-  WINDOW w AS (PARTITION BY stream${groups ? `, ${groups}` : ""} ORDER BY t, sample_id
+  WINDOW w AS (PARTITION BY stream${groups ? `, ${groups}` : ""} ORDER BY t, storage_series
     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
 ),
 per_series AS (
@@ -283,7 +278,7 @@ function measureSelect(
 				.filter((_, index) => !isPointField(groupBy[index]))
 				.map((column) => `s.${column}`),
 		].join(", "),
-		POINT_DEDUP,
+		`AND metric_name = ${metric}`,
 		staticGroups,
 	);
 	// Timeseries buckets align to the interval; a table result is one bucket.
@@ -310,8 +305,8 @@ FROM ranked GROUP BY ${groupColumns.map((column) => `k_${column}`).join(", ")}, 
   low AS series_low, high AS series_high, sources AS series_sources
 FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
 	return `WITH base AS (
-  SELECT logical_series_id AS series, stream_id AS stream,
-    ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_nano AS t, sample_id,
+  SELECT logical_series_id AS series, stream_id AS stream, series_id AS storage_series,
+    ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_nano AS t,
     ${bucket} AS bucket, ${VALUE} AS v
   FROM ${usesExecution ? executionPointSource(points) : `(${points})`}
   ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}

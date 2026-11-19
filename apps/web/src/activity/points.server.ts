@@ -101,9 +101,9 @@ interface Key {
 	day: number;
 }
 
-// Points are sorted by series, so the newest points of a window are found by sorting
-// only their narrow key columns. Without FINAL, a resent point can appear more than once
-// until merges remove its copies.
+// Fixed-width hexadecimal preserves numeric series order and binary stream order.
+const POINT_KEY = "concat(leftPad(hex(series_id), 16, '0'), hex(stream_id))";
+
 function keyQuery(
 	seriesFilters: string[],
 	pointFilters: string[],
@@ -112,30 +112,28 @@ function keyQuery(
 	const points = seriesPointSource(
 		` AND last_seen_unix_nano >= {lower:UInt64} AND first_seen_unix_nano <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
 		`AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
-AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String}))`,
+AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String})`,
 		execution ? "s.source_id, s.resource_id, s.resource_kind" : "",
 	);
-	return `SELECT toString(time_unix_nano) AS timeNs,hex(sample_id) AS sampleId,toString(series_id) AS seriesId,event_day AS day
+	return `SELECT toString(time_unix_nano) AS timeNs,${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,event_day AS day
 FROM ${execution ? executionPointSource(points) : `(${points})`}
 ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
-ORDER BY time_unix_nano DESC,sample_id DESC LIMIT {limit:UInt32}`;
+ORDER BY time_unix_nano DESC,sampleId DESC LIMIT {limit:UInt32}`;
 }
 
-// Resent copies of a point are identical, so the fetch keeps one per key rather than
-// paying for FINAL, which merges every part overlapping the fetched keys.
 function pointListQuery(fields: string[]) {
 	const projected = fields.length ? `[${fields.join(",")}] AS fields,` : "";
 	const points = seriesPointSource(
 		" AND series_id IN arrayMap(id -> toUInt64(id), {ids:Array(String)})",
 		`AND event_day IN {days:Array(UInt32)}
 AND (series_id,time_unix_nano) IN {series:Array(Tuple(UInt64,UInt64))}
-AND hex(sample_id) IN {samples:Array(String)}`,
+AND ${POINT_KEY} IN {samples:Array(String)}`,
 	);
-	return `SELECT ${projected}hex(sample_id) AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
+	return `SELECT ${projected}${POINT_KEY} AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
 host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
 resource_kind AS resourceKind,metric_kind AS kind,toString(int_value) AS integer,double_value AS double,toString(count) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
 FROM (${points})
-ORDER BY time_unix_nano DESC,sample_id DESC LIMIT 1 BY time_unix_nano,sample_id`;
+ORDER BY time_unix_nano DESC,sampleId DESC`;
 }
 
 // A page searches backwards from its cursor. Windows grow while they come back short and
@@ -148,8 +146,8 @@ const MAX_SEARCHES = 12;
 const SEARCH_BUDGET_MS = 4000;
 const NS_PER_MS = 1000000n;
 const NS_PER_DAY = 86400000000000n;
-const AFTER_ALL = "FF".repeat(32),
-	BEFORE_ALL = "00".repeat(32);
+const AFTER_ALL = "FF".repeat(40),
+	BEFORE_ALL = "00".repeat(40);
 
 function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 	return {
@@ -346,12 +344,14 @@ export async function readPoint(
 		)
 		.join(",");
 	const rows = await query<JsonObject>(
-		`SELECT * EXCEPT(lineage,sample_id,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_nano,last_seen_unix_nano,logical_series_id),
-hex(sample_id) AS sample_id_hex,hex(stream_id) AS stream_id_hex,hex(lineage) AS lineage_hex,
+		`SELECT * EXCEPT(delivery_id,original_position,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_nano,last_seen_unix_nano,logical_series_id),
+hex(delivery_id) AS delivery_hex,hex(stream_id) AS stream_id_hex,hex(original_position) AS original_hex,
 arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
 FROM (${seriesPointSource(
 			" AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_nano <= {time:UInt64} AND last_seen_unix_nano >= {time:UInt64}",
-			"AND event_day={day:UInt32} AND time_unix_nano={time:UInt64} AND sample_id=unhex({sample:String})",
+			`AND event_day={day:UInt32} AND time_unix_nano={time:UInt64} AND series_id={series:UInt64} AND stream_id=unhex({stream:String})`,
+			undefined,
+			"AND metric_name={metric:String}",
 		)}) LIMIT 1`,
 		{
 			project: input.projectId,
@@ -360,7 +360,8 @@ FROM (${seriesPointSource(
 			metric: input.metricName,
 			day,
 			time: input.timeNs,
-			sample: input.sampleId,
+			series: BigInt(`0x${input.sampleId.slice(0, 16)}`).toString(),
+			stream: input.sampleId.slice(16),
 		},
 		signal,
 		connection,
@@ -371,7 +372,7 @@ FROM (${seriesPointSource(
 		row[name] = row[`${name}_json`];
 		delete row[`${name}_json`];
 	}
-	for (const name of ["sample_id", "stream_id"]) {
+	for (const name of ["stream_id"]) {
 		row[name] = row[`${name}_hex`];
 		delete row[`${name}_hex`];
 	}
@@ -383,8 +384,21 @@ FROM (${seriesPointSource(
 		Object.fromEntries(
 			names.map((key) => [key, row[key] ?? null]),
 		) as JsonObject;
-	const provenance = decodeLineage(String(row.lineage_hex));
-	delete row.lineage_hex;
+	const [delivery] = await query<{ lineage: string }>(
+		`SELECT hex(lineage) AS lineage FROM deliveries FINAL
+		WHERE project_id={project:String} AND delivery_id=unhex({delivery:String}) LIMIT 1`,
+		{ project: input.projectId, delivery: String(row.delivery_hex) },
+		signal,
+		connection,
+	);
+	if (!delivery)
+		throw new OperationError(
+			"UNAVAILABLE",
+			"Measurement provenance is not yet available",
+		);
+	const provenance = decodeLineage(delivery.lineage, String(row.original_hex));
+	delete row.delivery_hex;
+	delete row.original_hex;
 	// Binary values from ClickHouse use base64 at this JSON integration boundary.
 	const raw = { ...row, lineage: provenance };
 	return {

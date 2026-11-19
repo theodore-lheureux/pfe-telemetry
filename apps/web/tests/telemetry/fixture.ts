@@ -26,18 +26,20 @@ interface Layout {
 	seriesColumns: string;
 	pointNames: string;
 	seriesNames: string;
+	deliveryColumns: string;
 }
 
 function storageStatements(layout: Layout) {
 	return template()
 		.split(";")
-		.slice(1, 3)
+		.slice(1, 4)
 		.map((statement) =>
 			withoutComments(
 				statement
 					.replace("__CREATE_GUARD____DATABASE__.", "")
 					.replace("__POINT_COLUMNS__", layout.pointColumns)
-					.replace("__SERIES_COLUMNS__", layout.seriesColumns),
+					.replace("__SERIES_COLUMNS__", layout.seriesColumns)
+					.replace("__DELIVERY_COLUMNS__", layout.deliveryColumns),
 			),
 		);
 }
@@ -68,12 +70,15 @@ function fixtureViews(layout: Layout) {
 	const continuity = (column: string, predicate: string) =>
 		`arrayMap(i -> tuple(toUInt32(i-1), ${column}[i]), arrayFilter(i -> arrayExists(a -> NOT (${predicate}), [${column}[i]]), arrayEnumerate(${column})))`;
 	return [
+		`CREATE MATERIALIZED VIEW fixture_deliveries TO deliveries AS
+		SELECT project_id, substring(SHA256(lineage),1,16) AS delivery_id, lineage FROM fixture_input`,
 		`CREATE MATERIALIZED VIEW fixture_series TO metric_series AS
 		SELECT ${layout.seriesNames} FROM (SELECT * REPLACE (${id} AS series_id, ${logical} AS logical_series_id,
 		time_unix_nano AS first_seen_unix_nano, time_unix_nano AS last_seen_unix_nano) FROM (${clean}))`,
 		`CREATE MATERIALIZED VIEW fixture_points TO metric_points AS
 		SELECT ${layout.pointNames} FROM (
 			SELECT * REPLACE (series_key AS series_id,
+			substring(SHA256(lineage),1,16) AS delivery_id,
 			${continuity("resource_attributes", resource)} AS resource_continuity,
 			${continuity("point_attributes", point)} AS point_continuity)
 			FROM (SELECT *, ${id
@@ -207,6 +212,7 @@ export async function createPointFixture(
 		for (const table of [
 			"metric_points",
 			"metric_series",
+			"deliveries",
 			...(options.participants ? ["execution_participants"] : []),
 		])
 			await admin.command({

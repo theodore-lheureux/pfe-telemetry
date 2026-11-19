@@ -1,6 +1,6 @@
 use crate::{
     identity::TypedHash,
-    wire::{AnalyticalPoint, AttributeNode, ContinuityNode},
+    wire::{AnalyticalPoint, AttributeNode, ContinuityNode, PointLineage},
 };
 use prost::Message;
 
@@ -20,7 +20,7 @@ fn is_marker(path: &str, markers: &[&str]) -> bool {
 /// only make the frame smaller. Protobuf record-length framing is budgeted separately.
 pub fn singleton_size_bound(point: &AnalyticalPoint) -> usize {
     // A storage key, a logical key and two timestamp bounds are fixed64s.
-    let mut overhead = 4 * 10;
+    let mut overhead = 4 * 10 + 48;
     for (nodes, markers) in [
         (&point.resource_attributes, RESOURCE_MARKERS),
         (&point.point_attributes, POINT_MARKERS),
@@ -67,7 +67,7 @@ pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
         resource_kind: std::mem::take(&mut point.resource_kind),
         host_id: point.host_id.take(),
         device_id: point.device_id.take(),
-        metric_name: std::mem::take(&mut point.metric_name),
+        metric_name: point.metric_name.clone(),
         unit: std::mem::take(&mut point.unit),
         metric_kind: std::mem::take(&mut point.metric_kind),
         resource_present: std::mem::take(&mut point.resource_present),
@@ -138,6 +138,27 @@ pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
 pub fn with_series(mut frame: AnalyticalPoint, series: &AnalyticalPoint) -> AnalyticalPoint {
     include!(concat!(env!("OUT_DIR"), "/attach-series.rs"));
     frame
+}
+
+/// Lower request evidence to a content-addressed delivery and a point position.
+/// Receipt and resolved resource context participate in the delivery hash; a
+/// later transport attempt cannot overwrite evidence referenced by other points.
+pub fn split_delivery(point: &mut AnalyticalPoint) -> Result<(), &'static str> {
+    let mut lineage =
+        PointLineage::decode(point.lineage.as_slice()).map_err(|_| "invalid lineage")?;
+    point.original_position = lineage
+        .original
+        .take()
+        .map_or_else(Vec::new, |p| p.encode_to_vec());
+    point.received_unix_nano = lineage.received_unix_nano;
+    point.lineage = lineage.encode_to_vec();
+    let mut hash = TypedHash::new("recount.delivery");
+    hash.field(point.project_id.as_bytes());
+    hash.field(point.source_id.as_bytes());
+    hash.field(&point.lineage);
+    point.delivery_id = hash.finish()[..16].to_vec();
+    point.sample_id.clear();
+    Ok(())
 }
 
 #[cfg(test)]

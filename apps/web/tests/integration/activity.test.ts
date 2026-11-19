@@ -115,7 +115,7 @@ test("all activity operations authorize canonical project access before touching
 		resourceId: "node",
 		metricName: "metric",
 		timeNs: "1",
-		sampleId: "aa".repeat(32),
+		sampleId: "aa".repeat(40),
 	};
 	await expect(
 		listPoints(database.db, actor, reference, undefined, points),

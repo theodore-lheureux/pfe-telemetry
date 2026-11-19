@@ -63,7 +63,7 @@ fn sql_type(
     messages: &BTreeMap<String, DescriptorProto>,
 ) -> String {
     if owner == ".recount.telemetry.AnalyticalPoint"
-        && matches!(field.name(), "sample_id" | "stream_id")
+        && matches!(field.name(), "sample_id" | "stream_id" | "delivery_id")
     {
         assert_eq!(
             field.r#type(),
@@ -79,7 +79,12 @@ fn sql_type(
             !field.proto3_optional.unwrap_or(false),
             "analytical identity is required"
         );
-        return "FixedString(32)".into();
+        return if field.name() == "delivery_id" {
+            "FixedString(16)"
+        } else {
+            "FixedString(32)"
+        }
+        .into();
     }
     let base = match field.r#type() {
         Type::String => "String".into(),
@@ -151,10 +156,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Vec<_>>();
         write_projection(&out, file.trim_end_matches("-columns.sql"), &columns)?;
         if file == "analytical-columns.sql" {
+            let delivery: Vec<_> = columns
+                .iter()
+                .filter(|(name, _)| matches!(*name, "project_id" | "delivery_id" | "lineage"))
+                .cloned()
+                .collect();
+            write_projection(&out, "delivery", &delivery)?;
+            let kafka: Vec<_> = columns
+                .iter()
+                .filter(|(name, _)| *name != "sample_id")
+                .cloned()
+                .collect();
+            write_projection(&out, "kafka", &kafka)?;
             let points: Vec<_> = columns
                 .iter()
+                .filter(|(name, _)| !matches!(*name, "sample_id" | "lineage"))
                 .filter(|(name, _)| {
-                    matches!(*name, "project_id" | "series_id") || !SERIES_FIELDS.contains(name)
+                    matches!(*name, "project_id" | "series_id" | "metric_name")
+                        || !SERIES_FIELDS.contains(name)
                 })
                 .cloned()
                 .collect();
@@ -182,7 +201,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "{{ {} }}",
             SERIES_FIELDS
                 .iter()
-                .filter(|name| !matches!(**name, "project_id" | "series_id"))
+                .filter(|name| !matches!(**name, "project_id" | "series_id" | "metric_name"))
                 .map(|name| format!("frame.{name} = series.{name}.clone();"))
                 .collect::<Vec<_>>()
                 .join("\n")

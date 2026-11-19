@@ -25,6 +25,7 @@
       <grants>
         <query>GRANT SELECT ON telemetry.metric_points</query>
         <query>GRANT SELECT ON telemetry.metric_series</query>
+        <query>GRANT SELECT ON telemetry.deliveries</query>
         <query>GRANT SELECT ON telemetry.execution_participants</query>
       </grants>
     </telemetry_reader>

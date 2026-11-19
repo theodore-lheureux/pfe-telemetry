@@ -157,7 +157,7 @@ impl Schema<'_> {
         {
             return Err(io::Error::other("invalid ClickHouse schema inputs"));
         }
-        let columns = crate::ANALYTICAL_COLUMNS.trim();
+        let columns = crate::KAFKA_COLUMNS.trim();
         if columns.is_empty() || columns.contains(';') || columns.contains("__") {
             return Err(io::Error::other("invalid generated columns"));
         }
@@ -173,7 +173,8 @@ impl Schema<'_> {
                 }
                 .to_owned(),
             ),
-            ("__ANALYTICAL_COLUMNS__", columns.to_owned()),
+            ("__KAFKA_COLUMNS__", columns.to_owned()),
+            ("__DELIVERY_COLUMNS__", crate::DELIVERY_COLUMNS.to_owned()),
             ("__POINT_COLUMNS__", crate::POINT_COLUMNS.to_owned()),
             ("__POINT_NAMES__", crate::POINT_NAMES.to_owned()),
             ("__SERIES_COLUMNS__", crate::SERIES_COLUMNS.to_owned()),

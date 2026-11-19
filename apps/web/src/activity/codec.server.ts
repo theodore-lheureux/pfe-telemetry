@@ -64,11 +64,17 @@ export function nanosecondsDate(value: string): Date {
 		throw new Error("Invalid telemetry timestamp");
 	return date;
 }
-export function decodeLineage(hex: string): JsonObject {
-	return lineageType.toObject(
-		lineageType.decode(Buffer.from(hex, "hex")),
-		options,
-	) as JsonObject;
+export function decodeLineage(hex: string, position?: string): JsonObject {
+	const message = lineageType.decode(Buffer.from(hex, "hex"));
+	const result = lineageType.toObject(message, options) as JsonObject;
+	if (position !== undefined && !result.original) {
+		const type = root.lookupType("recount.telemetry.Position");
+		result.original = type.toObject(
+			type.decode(Buffer.from(position, "hex")),
+			options,
+		) as JsonObject;
+	}
+	return result;
 }
 
 function preview(value: JsonValue): { value: JsonValue; truncated: boolean } {

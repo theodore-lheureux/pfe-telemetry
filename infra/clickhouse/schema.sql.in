@@ -4,9 +4,10 @@ CREATE TABLE __CREATE_GUARD____DATABASE__.metric_points
 (
 __POINT_COLUMNS__
 )
-ENGINE = ReplacingMergeTree
+ENGINE = ReplacingMergeTree(received_unix_nano)
 PARTITION BY event_day
-ORDER BY (project_id, series_id, time_unix_nano, sample_id)
+PRIMARY KEY (project_id, metric_name, series_id, time_unix_nano)
+ORDER BY (project_id, metric_name, series_id, time_unix_nano, stream_id)
 SETTINGS index_granularity = 1024, fsync_after_insert = 1, fsync_part_directory = 1;
 
 -- Non-key dimensions are immutable for a storage series_id. Only the bounds aggregate.
@@ -18,11 +19,19 @@ ENGINE = AggregatingMergeTree
 ORDER BY (project_id, metric_name, series_id)
 SETTINGS allow_dimensions_outside_sorting_key = 1, fsync_after_insert = 1, fsync_part_directory = 1;
 
+CREATE TABLE __CREATE_GUARD____DATABASE__.deliveries
+(
+__DELIVERY_COLUMNS__
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (project_id, delivery_id)
+SETTINGS fsync_after_insert = 1, fsync_part_directory = 1;
+
 -- Each packet is self-contained: its first frame for a series carries the
 -- dimensions and the packet's event-time bounds. Other frames carry only points.
 CREATE TABLE __CREATE_GUARD____DATABASE__.normalized_kafka
 (
-__ANALYTICAL_COLUMNS__
+__KAFKA_COLUMNS__
 )
 ENGINE = Kafka
 SETTINGS
@@ -42,10 +51,14 @@ WHERE last_seen_unix_nano != 0;
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_points
 TO __DATABASE__.metric_points AS SELECT __POINT_NAMES__ FROM __DATABASE__.normalized_kafka;
 
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_deliveries
+TO __DATABASE__.deliveries AS SELECT project_id, delivery_id, lineage FROM __DATABASE__.normalized_kafka
+WHERE notEmpty(lineage);
+
 -- Late packets are singletons so a poll can't exceed the event-day partition guard.
 CREATE TABLE __CREATE_GUARD____DATABASE__.late_kafka
 (
-__ANALYTICAL_COLUMNS__
+__KAFKA_COLUMNS__
 )
 ENGINE = Kafka
 SETTINGS
@@ -64,3 +77,7 @@ WHERE last_seen_unix_nano != 0;
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_metric_points
 TO __DATABASE__.metric_points AS SELECT __POINT_NAMES__ FROM __DATABASE__.late_kafka;
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_deliveries
+TO __DATABASE__.deliveries AS SELECT project_id, delivery_id, lineage FROM __DATABASE__.late_kafka
+WHERE notEmpty(lineage);
