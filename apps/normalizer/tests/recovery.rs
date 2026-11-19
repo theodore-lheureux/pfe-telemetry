@@ -16,7 +16,9 @@ fn effective_body_limits_need_matching_configured_transport_headroom() {
     assert!(config.validate_transport().is_ok());
     config.limits.normalized_record_bytes = 2 * 1024 * 1024;
     assert!(config.validate_transport().is_err());
-    config.normalized_broker_max_bytes = config.limits.normalized_record_bytes + 65536;
+    config.normalized_broker_max_bytes = config.limits.normalized_record_bytes
+        + prost::length_delimiter_len(config.limits.normalized_record_bytes)
+        + 65536;
     assert!(config.validate_transport().is_ok());
     config.normalized_broker_max_bytes -= 1;
     assert!(config.validate_transport().is_err());

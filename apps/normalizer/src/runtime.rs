@@ -5,12 +5,15 @@ use recount_telemetry_validation::transport::ConsumerBudget;
 use ruststream_rdkafka::{context::keys::Key, prelude::*};
 use std::{
     convert::Infallible,
+    future::Future,
     num::NonZeroUsize,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Semaphore;
 
+#[cfg(test)]
+mod delivery_tests;
 mod packing;
 #[cfg(test)]
 mod packing_replay;
@@ -18,7 +21,6 @@ mod packing_replay;
 const KAFKA_NETWORK_TIMEOUT: Duration = Duration::from_secs(3);
 const KAFKA_SESSION_TIMEOUT: Duration = Duration::from_secs(6);
 const KAFKA_ASSIGNMENT_HEADROOM: Duration = Duration::from_secs(12);
-const PRODUCER_QUEUE_MESSAGES: usize = 128;
 
 #[derive(Clone)]
 struct RunState {
@@ -73,10 +75,6 @@ async fn normalize(
     })
     .await
     .expect("preparation failed");
-    // Records go out in groups awaited together, so librdkafka sends each group in a few
-    // requests instead of one round trip per record. Every worker's group fits in the
-    // producer queue at once. Storage does not depend on the order of records within a
-    // partition.
     // Points far from now take the late topic, which ClickHouse reads in small blocks.
     let now = unix_nanos();
     let records = if state.packed_recent {
@@ -100,20 +98,25 @@ async fn normalize(
             )
         })
         .collect();
-    let group = (PRODUCER_QUEUE_MESSAGES / state.config.max_active).max(1);
-    for chunk in points.chunks(group) {
-        let deliveries = join_all(chunk.iter().map(|(point, partition, topic)| {
-            out.message(point)
-                .to(*topic)
-                .partition(*partition)
-                .publish()
-        }))
-        .await;
-        if let Some(error) = deliveries.into_iter().find_map(Result::err) {
-            panic!("normalized publication failed; input remains unsettled: {error}");
-        }
-    }
+    // Let the producer fill and drain its byte-bounded queue without waiting for
+    // a delivery barrier between chunks. A partial failure leaves the input unsettled.
+    await_deliveries(points.iter().map(|(point, partition, topic)| {
+        out.message(point)
+            .to(*topic)
+            .partition(*partition)
+            .publish()
+    }))
+    .await
+    .unwrap_or_else(|error| {
+        panic!("normalized publication failed; input remains unsettled: {error}")
+    });
     HandlerOutcome::ack()
+}
+
+async fn await_deliveries<E>(
+    deliveries: impl IntoIterator<Item = impl Future<Output = Result<(), E>>>,
+) -> Result<(), E> {
+    join_all(deliveries).await.into_iter().collect()
 }
 
 fn unix_nanos() -> u64 {
@@ -156,7 +159,12 @@ fn app(config: Config, packed_recent: bool) -> impl App {
         )
         .producer_config(
             "queue.buffering.max.messages",
-            PRODUCER_QUEUE_MESSAGES.to_string(),
+            config
+                .limits
+                .points
+                .saturating_mul(config.max_active)
+                .min(1_000_000)
+                .to_string(),
         )
         .producer_config("retry.backoff.ms", config.retry.as_millis().to_string())
         .producer_config("retry.backoff.max.ms", config.retry.as_millis().to_string())
@@ -199,8 +207,8 @@ fn app(config: Config, packed_recent: bool) -> impl App {
             .await
             .map_err(std::io::Error::other)?;
         Ok::<_, std::io::Error>(RunState {
+            preparation: Arc::new(Semaphore::new(config.max_active)),
             config,
-            preparation: Arc::new(Semaphore::new(1)),
             packed_recent,
         })
     })
