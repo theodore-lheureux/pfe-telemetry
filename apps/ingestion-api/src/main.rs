@@ -5,7 +5,7 @@ use recount_ingestion_api::{
     broker::{KafkaSink, Sink, Topic},
     config::{Command, Config},
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 fn main() -> Result<()> {
     let config = Config::parse();
@@ -32,7 +32,6 @@ async fn serve(
             .expect("Clap requires a database URL for service operation"),
         &config.collector_public_keys,
     )?);
-    authority.spawn_revocation_poller();
     let sink = Arc::new(KafkaSink::new(
         &config.kafka_bootstrap,
         Topic {
@@ -55,14 +54,31 @@ async fn serve(
             "Raw topic metadata does not match configured partitions or is unavailable".into(),
         );
     }
-    recount_ingestion_api::configured_router(
-        authority,
+    let router = recount_ingestion_api::configured_router(
+        authority.clone(),
         sink,
         limits,
         config.max_in_flight as usize,
     )
-    .await?
-    .serve_with_shutdown(config.addr, recount_ingestion_api::shutdown_signal())
     .await?;
-    Ok(())
+    let (stop, stopped) = tokio::sync::oneshot::channel();
+    let maintenance = tokio::spawn(authority.maintain(stopped));
+    let (shutdown, shutting_down) = tokio::sync::oneshot::channel();
+    let server = router.serve_with_shutdown(config.addr, async {
+        let _ = shutting_down.await;
+    });
+    tokio::pin!(server);
+    let result = tokio::select! {
+        result = &mut server => result.map_err(Into::into),
+        () = recount_ingestion_api::shutdown_signal() => {
+            let _ = shutdown.send(());
+            match tokio::time::timeout(Duration::from_secs(10), &mut server).await {
+                Ok(result) => result.map_err(Into::into),
+                Err(error) => Err(error.into()),
+            }
+        }
+    };
+    let _ = stop.send(());
+    tokio::time::timeout(Duration::from_secs(8), maintenance).await??;
+    result
 }

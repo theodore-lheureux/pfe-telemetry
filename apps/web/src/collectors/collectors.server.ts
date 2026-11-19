@@ -441,7 +441,9 @@ export async function issueNodeToken(
 		rejected("Token request was rejected");
 	await database
 		.update(collectorNode)
-		.set({ lastSeenAt: sql`statement_timestamp()` })
+		.set({
+			lastSeenAt: sql`greatest(${collectorNode.lastSeenAt}, statement_timestamp())`,
+		})
 		.where(eq(collectorNode.id, node.id));
 	return issue(node);
 }

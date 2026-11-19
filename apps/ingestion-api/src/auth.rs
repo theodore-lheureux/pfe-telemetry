@@ -19,7 +19,7 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 use tonic::{Status, metadata::MetadataMap};
 use uuid::Uuid;
 
-use crate::Result;
+use crate::{Result, last_seen::LastSeen};
 
 const AUDIENCE: &str = "recount-ingestion";
 const ISSUER: &str = "recount";
@@ -52,6 +52,7 @@ pub trait Authority: Send + Sync {
         requested: &RequestedAuthorities,
     ) -> std::result::Result<(Vec<RootGrant>, Vec<BoundGrant>), Status>;
     async fn ready(&self) -> bool;
+    fn accepted_export(&self, _node: Uuid, _received: SystemTime) {}
 }
 
 #[derive(Deserialize)]
@@ -84,11 +85,12 @@ struct Revocations {
 }
 
 /// Verifies node access tokens signed by the web application. Signatures and claims are
-/// checked in memory; the database is read only to refresh the revocation list.
+/// checked in memory; background maintenance refreshes revocations and records last-seen times.
 pub struct NodeTokens {
     keys: HashMap<String, VerifyingKey>,
     pool: Pool,
     revocations: RwLock<Revocations>,
+    last_seen: LastSeen,
 }
 
 fn unavailable() -> Status {
@@ -157,6 +159,7 @@ impl NodeTokens {
             keys: parse_public_keys(public_keys)?,
             pool,
             revocations: RwLock::default(),
+            last_seen: LastSeen::default(),
         })
     }
 
@@ -188,18 +191,28 @@ impl NodeTokens {
         true
     }
 
-    /// Keeps the revocation list current for the life of the process.
-    pub fn spawn_revocation_poller(self: &Arc<Self>) -> tokio::task::JoinHandle<()> {
-        let tokens = Arc::clone(self);
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(REVOCATION_POLL);
-            loop {
-                interval.tick().await;
-                if !tokens.refresh_revocations().await {
-                    tracing::warn!("collector revocation list refresh failed");
+    pub async fn maintain(self: Arc<Self>, mut stop: tokio::sync::oneshot::Receiver<()>) {
+        let mut interval = tokio::time::interval(REVOCATION_POLL);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                biased;
+                _ = &mut stop => break,
+                _ = interval.tick() => {
+                    if !self.refresh_revocations().await {
+                        tracing::warn!("collector revocation list refresh failed");
+                    }
+                    self.flush_last_seen().await;
                 }
             }
-        })
+        }
+        self.flush_last_seen().await;
+    }
+
+    pub(crate) async fn flush_last_seen(&self) {
+        if let Err(error) = self.last_seen.flush(&self.pool).await {
+            tracing::warn!(%error, "collector last-seen flush failed");
+        }
     }
 
     fn verify(&self, token: &str, now: u64) -> std::result::Result<Source, Status> {
@@ -274,6 +287,10 @@ fn unix_now() -> u64 {
 
 #[tonic::async_trait]
 impl Authority for NodeTokens {
+    fn accepted_export(&self, node: Uuid, received: SystemTime) {
+        self.last_seen.record(node, received);
+    }
+
     async fn authenticate(&self, metadata: &MetadataMap) -> std::result::Result<Source, Status> {
         let token = one(metadata, "authorization")?
             .and_then(|v| v.strip_prefix("Bearer "))

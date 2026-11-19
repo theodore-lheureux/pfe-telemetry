@@ -1,8 +1,14 @@
 use super::*;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use recount_telemetry_schema::wire::{
     ParticipantFact, execution_participants_client::ExecutionParticipantsClient,
 };
-use std::path::PathBuf;
+use std::{
+    io::Write,
+    path::PathBuf,
+    process::{Command, Stdio},
+    time::UNIX_EPOCH,
+};
 
 struct Database {
     client: tokio_postgres::Client,
@@ -61,12 +67,24 @@ impl Database {
              INSERT INTO ingestion.enrollment_key (id,organization_id,project_id,name,key_sha256) VALUES ('{key}','test-org','{project}','Test',repeat('a',64));
              INSERT INTO ingestion.collector_node (id,organization_id,project_id,enrollment_key_id,machine_id,hostname,public_key) VALUES
                ('{node}','test-org','{project}','{key}','node','node',repeat('A',43)),
-               ('{other_node}','test-org','{project}','{key}','other','other',repeat('A',43));
-             CREATE ROLE {role} LOGIN PASSWORD 'test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT CONNECTION LIMIT 4;
-             GRANT CONNECT ON DATABASE {name} TO {role};
-             GRANT USAGE ON SCHEMA ingestion TO {role};
-             GRANT SELECT (id, project_id, organization_id, revoked_at) ON ingestion.collector_node TO {role};"
+               ('{other_node}','test-org','{project}','{key}','other','other',repeat('A',43));"
         )).await.unwrap();
+        let mut psql = Command::new("psql")
+            .args(["-X", &url])
+            .env("RECOUNT_INGESTION_PASSWORD", "test-only")
+            .stdin(Stdio::piped())
+            .spawn()
+            .unwrap();
+        psql.stdin
+            .take()
+            .unwrap()
+            .write_all(
+                include_str!("../../../../infra/local/ingestion-role.sql")
+                    .replace("recount_ingestion", &role)
+                    .as_bytes(),
+            )
+            .unwrap();
+        assert!(psql.wait().unwrap().success());
         let (_, host) = prefix
             .rsplit_once('@')
             .expect("Test URL must include explicit user info");
@@ -93,6 +111,57 @@ impl Database {
             .await
             .unwrap();
     }
+}
+
+#[tokio::test]
+#[ignore = "requires explicit isolated PostgreSQL, current web migrations, psql and Bun"]
+async fn last_seen_flush_is_monotonic_and_restricted_to_active_nodes_and_one_column() {
+    let db = Database::new().await;
+    let old = UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    let new = old + Duration::from_secs(1);
+    db.client.execute(
+        "UPDATE ingestion.collector_node SET last_seen_at = $1, revoked_at = CASE WHEN id = $2 THEN now() END",
+        &[&old, &db.other_node],
+    ).await.unwrap();
+    let role = connect(&db.reader_url.parse().unwrap()).await;
+    assert_eq!(
+        role.query_one("SHOW default_transaction_read_only", &[])
+            .await
+            .unwrap()
+            .get::<_, String>(0),
+        "on"
+    );
+    let public = URL_SAFE_NO_PAD.encode(signing().verifying_key().as_bytes());
+    let tokens = auth::NodeTokens::new(&db.reader_url, &[public]).unwrap();
+    auth::Authority::accepted_export(&tokens, db.node, new);
+    auth::Authority::accepted_export(&tokens, db.other_node, new);
+    tokens.flush_last_seen().await;
+    auth::Authority::accepted_export(&tokens, db.node, old);
+    tokens.flush_last_seen().await;
+    for (id, expected) in [(db.node, new), (db.other_node, old)] {
+        let row = db
+            .client
+            .query_one(
+                "SELECT last_seen_at FROM ingestion.collector_node WHERE id = $1",
+                &[&id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(row.get::<_, SystemTime>(0), expected);
+    }
+    role.batch_execute("BEGIN READ WRITE").await.unwrap();
+    let error = role
+        .execute("UPDATE ingestion.collector_node SET revoked_at = NULL", &[])
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.code(),
+        Some(&tokio_postgres::error::SqlState::INSUFFICIENT_PRIVILEGE)
+    );
+    role.batch_execute("ROLLBACK").await.unwrap();
+    drop(role);
+    drop(tokens);
+    db.close().await;
 }
 
 fn authorized(

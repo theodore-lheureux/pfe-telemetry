@@ -36,6 +36,7 @@ x-limits: &limits
 services:
   ingestion-api:
     <<: *runtime
+    stop_grace_period: 20s
     image: recount-ingestion-api:local
     ports: ["127.0.0.1:${RECOUNT_INGESTION_PORT:-14317}:4317"]
     environment:

@@ -3,6 +3,7 @@ pub mod auth;
 pub mod broker;
 pub mod config;
 mod delivery;
+mod last_seen;
 pub mod live;
 mod participants;
 pub mod resources;
@@ -159,6 +160,8 @@ impl Ingestion {
                 .await
                 .map_err(|_| Status::unavailable("Durable publication was not confirmed"))?;
         }
+        self.authority
+            .accepted_export(source.node_id, SystemTime::now());
         Ok(Response::new(ExportMetricsServiceResponse::default()))
     }
 }
