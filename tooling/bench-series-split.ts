@@ -45,6 +45,41 @@ const baselineDdl = exec([
 	`${baseline}:infra/clickhouse/schema.sql.in`,
 ]);
 const splitDdl = await Bun.file("infra/clickhouse/schema.sql.in").text();
+const strictBaseline = "6295165";
+const beforeStrictDdl =
+	mode === "strict"
+		? exec(["git", "show", `${strictBaseline}:infra/clickhouse/schema.sql.in`])
+		: "";
+const beforeStrictLayout =
+	mode === "strict"
+		? JSON.parse(await Bun.file(process.argv[7]).text())
+		: undefined;
+const beforeCompilerPath = join(
+	process.cwd(),
+	`apps/web/src/analytics/.${run}_before.ts`,
+);
+const beforeSourcePath = join(
+	process.cwd(),
+	`apps/web/src/analytics/.${run}_source.ts`,
+);
+let beforeStrictCompile = compileMeasure;
+if (mode === "strict") {
+	for (const [file, destination] of [
+		["series-source", beforeSourcePath],
+		["compile", beforeCompilerPath],
+	]) {
+		const source = exec([
+			"git",
+			"show",
+			`${strictBaseline}:apps/web/src/analytics/${file}.server.ts`,
+		]);
+		await Bun.write(
+			destination,
+			source.replace("./series-source.server", `./.${run}_source`),
+		);
+	}
+	beforeStrictCompile = (await import(beforeCompilerPath)).compileMeasure;
+}
 const baselineCompilerFile = join(
 	process.cwd(),
 	`apps/web/src/analytics/.${run}.ts`,
@@ -78,6 +113,7 @@ const codecs = {
 function selectedVariants() {
 	if (mode === "codecs") return ["metricFirst", ...Object.keys(codecs)];
 	if (mode === "threshold") return ["metricFirst"];
+	if (mode === "strict") return ["beforeStrict", "strict", "strictLC"];
 	return [...layouts];
 }
 const variants = selectedVariants();
@@ -186,19 +222,23 @@ function parts(db: string) {
 
 function setup(db: string, variant: string) {
 	const wide = variant === "wide1024";
+	const definitions = variant === "beforeStrict" ? beforeStrictLayout : layout;
 	const render = (query: string) =>
 		query
 			.replaceAll("__DATABASE__", db)
 			.replaceAll("__CREATE_GUARD__", "")
 			.replaceAll("__ANALYTICAL_COLUMNS__", columns)
-			.replaceAll("__POINT_COLUMNS__", layout.pointColumns)
-			.replaceAll("__POINT_NAMES__", layout.pointNames)
-			.replaceAll("__SERIES_COLUMNS__", layout.seriesColumns)
-			.replaceAll("__SERIES_NAMES__", layout.seriesNames)
-			.replaceAll("__DELIVERY_COLUMNS__", layout.deliveryColumns)
-			.replaceAll("__KAFKA_COLUMNS__", layout.kafkaColumns)
+			.replaceAll("__POINT_COLUMNS__", definitions.pointColumns)
+			.replaceAll("__POINT_NAMES__", definitions.pointNames)
+			.replaceAll("__POINT_SELECT__", definitions.pointSelect ?? "")
+			.replaceAll("__SERIES_COLUMNS__", definitions.seriesColumns)
+			.replaceAll("__SERIES_NAMES__", definitions.seriesNames)
+			.replaceAll("__SERIES_SELECT__", definitions.seriesSelect ?? "")
+			.replaceAll("__DELIVERY_COLUMNS__", definitions.deliveryColumns)
+			.replaceAll("__KAFKA_COLUMNS__", definitions.kafkaColumns)
 			.replace(/index_granularity = \d+/, "index_granularity = 1024");
-	const ddl = statements(wide ? baselineDdl : splitDdl);
+	const splitTemplate = variant === "beforeStrict" ? beforeStrictDdl : splitDdl;
+	const ddl = statements(wide ? baselineDdl : splitTemplate);
 	const setup = wide
 		? [
 				...ddl.slice(0, 2),
@@ -212,6 +252,12 @@ function setup(db: string, variant: string) {
 				...ddl.slice(5, 8),
 			];
 	const rendered = setup.map(render);
+	if (variant === "beforeStrict") {
+		rendered[1] = rendered[1].replace(
+			"index_granularity = 1024",
+			"index_granularity = 1024, merge_max_block_size = 8192, merge_max_block_size_bytes = 10485760",
+		);
+	}
 	if (variant === "seriesFirst" || variant === "timeFirst") {
 		const key =
 			variant === "seriesFirst"
@@ -228,6 +274,14 @@ function setup(db: string, variant: string) {
 				"metric_name String",
 				"metric_name LowCardinality(String)",
 			);
+	}
+	if (variant === "strictLC") {
+		rendered[2] = rendered[2]
+			.replace(
+				/\b(metric_name|unit|scope_name|scope_version|resource_schema_url|scope_schema_url) String/g,
+				"$1 LowCardinality(String)",
+			)
+			.replaceAll("path String", "path LowCardinality(String)");
 	}
 	if (Object.hasOwn(codecs, variant)) {
 		for (const [column, codec] of Object.entries(
@@ -342,7 +396,11 @@ async function reads() {
 				combine: "sum",
 			} satisfies Measure;
 			const queries = variants
-				.map((v) => (v === "wide1024" ? oldCompile : compileMeasure))
+				.map((v) => {
+					if (v === "wide1024") return oldCompile;
+					if (v === "beforeStrict") return beforeStrictCompile;
+					return compileMeasure;
+				})
 				.map((compile) =>
 					compile(
 						options,
@@ -411,7 +469,7 @@ try {
 		const { columns: _, ...summary } = storage[variant];
 		console.error(variant, JSON.stringify(summary));
 	}
-	if (mode) {
+	if (mode === "codecs" || mode === "threshold") {
 		const checksums = new Set(
 			Object.values(storage).map((entry) => entry.checksum),
 		);
@@ -419,12 +477,19 @@ try {
 	}
 	console.log(
 		JSON.stringify(
-			{ storage, ...(mode ? {} : { queries: await reads() }) },
+			{
+				storage,
+				...(!mode || mode === "strict" ? { queries: await reads() } : {}),
+			},
 			null,
 			2,
 		),
 	);
 } finally {
 	unlinkSync(baselineCompilerFile);
+	if (mode === "strict") {
+		unlinkSync(beforeCompilerPath);
+		unlinkSync(beforeSourcePath);
+	}
 	for (const db of databases) command(`DROP DATABASE IF EXISTS ${db} SYNC`);
 }

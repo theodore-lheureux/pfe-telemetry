@@ -1,0 +1,67 @@
+table	column	before_type	after_type	before_compressed_bytes_per_point	after_compressed_bytes_per_point
+deliveries	delivery_id	FixedString(16)	FixedString(16)	1.255297	1.255297
+deliveries	lineage	String	String	35.994772	35.994772
+deliveries	project_id	String	String	0.007613	0.007613
+metric_points	bucket_counts	Array(UInt64)	Array(UInt64)	0.035587	0.035587
+metric_points	continuity	Nullable(String)	Nullable(String)	0.040095	0.040095
+metric_points	count	Nullable(UInt64)	UInt64	0.040095	0.000632
+metric_points	delivery_id	FixedString(16)	FixedString(16)	10.491758	10.491758
+metric_points	double_value	Nullable(Float64)	Float64	0.48782	0.483312
+metric_points	event_day	UInt32	UInt32	0.018038	0.018038
+metric_points	exemplars	Array(String)	Array(String)	0.035587	0.035587
+metric_points	explicit_bounds	Array(Float64)	Array(Float64)	0.035587	0.035587
+metric_points	flags	UInt32	UInt32	0.000632	0.000632
+metric_points	int_value	Nullable(Int64)	Int64	0.040095	0.000632
+metric_points	max	Nullable(Float64)	Float64	0.040095	0.000632
+metric_points	metric_name	String	String	0.142693	0.142693
+metric_points	min	Nullable(Float64)	Float64	0.040095	0.000632
+metric_points	negative_counts	Array(UInt64)	Array(UInt64)	0.035587	0.035587
+metric_points	negative_offset	Nullable(Int32)	Int32	0.022362	0.000632
+metric_points	original_position	String	String	0.316973	0.316973
+metric_points	point_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	Array(Tuple(ordinal UInt32, node Tuple(path String, kind Enum8('ATTRIBUTE_ABSENT' = 0, 'ATTRIBUTE_EMPTY' = 1, 'STRING' = 2, 'INTEGER' = 3, 'DOUBLE' = 4, 'BOOLEAN' = 5, 'BYTES' = 6, 'ARRAY' = 7, 'KEY_VALUE_LIST' = 8), string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	0.219103	0.219103
+metric_points	positive_counts	Array(UInt64)	Array(UInt64)	0.035587	0.035587
+metric_points	positive_offset	Nullable(Int32)	Int32	0.022362	0.000632
+metric_points	project_id	String	String	0.100417	0.100417
+metric_points	quantile_values	Array(Float64)	Array(Float64)	0.035587	0.035587
+metric_points	quantiles	Array(Float64)	Array(Float64)	0.035587	0.035587
+metric_points	received_unix_nano	UInt64	UInt64	0.684238	0.684238
+metric_points	resource_continuity	Array(Tuple(ordinal UInt32, node Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	Array(Tuple(ordinal UInt32, node Tuple(path String, kind Enum8('ATTRIBUTE_ABSENT' = 0, 'ATTRIBUTE_EMPTY' = 1, 'STRING' = 2, 'INTEGER' = 3, 'DOUBLE' = 4, 'BOOLEAN' = 5, 'BYTES' = 6, 'ARRAY' = 7, 'KEY_VALUE_LIST' = 8), string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String))))	0.035587	0.035587
+metric_points	scale	Nullable(Int32)	Int32	0.022362	0.000632
+metric_points	series_id	UInt64	UInt64	0.366833	0.366833
+metric_points	start_time_unix_nano	UInt64	UInt64	0.000632	0.000632
+metric_points	statistics_present		UInt16		0.000632
+metric_points	stream_id	FixedString(32)	FixedString(32)	0.473387	0.473387
+metric_points	sum	Nullable(Float64)	Float64	0.040095	0.000632
+metric_points	time_unix_nano	UInt64	UInt64	6.372238	6.372238
+metric_points	value_kind		Enum8('ABSENT' = 0, 'INTEGER' = 1, 'DOUBLE' = 2)		0.004508
+metric_points	zero_count	Nullable(UInt64)	UInt64	0.040095	0.000632
+metric_points	zero_threshold	Nullable(Float64)	Float64	0.040095	0.000632
+metric_series	description	String	String	0.000075	0.000075
+metric_series	device_id	Nullable(String)		0.00138	
+metric_series	first_seen_unix_nano	SimpleAggregateFunction(min, UInt64)	SimpleAggregateFunction(min, UInt64)	0.190082	0.190082
+metric_series	host_id	Nullable(String)	String	0.088973	0.088787
+metric_series	last_seen_unix_nano	SimpleAggregateFunction(max, UInt64)	SimpleAggregateFunction(max, UInt64)	0.190023	0.190023
+metric_series	logical_series_id	UInt64	UInt64	0.260615	0.260615
+metric_series	metric_kind	UInt8	Enum8('METRIC_UNKNOWN' = 0, 'GAUGE' = 1, 'SUM' = 2, 'HISTOGRAM' = 3, 'EXPONENTIAL_HISTOGRAM' = 4, 'SUMMARY' = 5)	0.000193	0.000193
+metric_series	metric_metadata	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	Array(Tuple(path String, kind Enum8('ATTRIBUTE_ABSENT' = 0, 'ATTRIBUTE_EMPTY' = 1, 'STRING' = 2, 'INTEGER' = 3, 'DOUBLE' = 4, 'BOOLEAN' = 5, 'BYTES' = 6, 'ARRAY' = 7, 'KEY_VALUE_LIST' = 8), string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	0.001193	0.001193
+metric_series	metric_name	String	String	0.00465	0.00465
+metric_series	monotonic	Nullable(UInt8)	Enum8('FALSE' = 0, 'TRUE' = 1, 'UNKNOWN' = 2)	0.000387	0.000193
+metric_series	point_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	Array(Tuple(path String, kind Enum8('ATTRIBUTE_ABSENT' = 0, 'ATTRIBUTE_EMPTY' = 1, 'STRING' = 2, 'INTEGER' = 3, 'DOUBLE' = 4, 'BOOLEAN' = 5, 'BYTES' = 6, 'ARRAY' = 7, 'KEY_VALUE_LIST' = 8), string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	0.025163	0.025163
+metric_series	project_id	String	String	0.003235	0.003235
+metric_series	resource_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	Array(Tuple(path String, kind Enum8('ATTRIBUTE_ABSENT' = 0, 'ATTRIBUTE_EMPTY' = 1, 'STRING' = 2, 'INTEGER' = 3, 'DOUBLE' = 4, 'BOOLEAN' = 5, 'BYTES' = 6, 'ARRAY' = 7, 'KEY_VALUE_LIST' = 8), string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	0.425517	0.425517
+metric_series	resource_dropped_attributes_count	UInt32	UInt32	0.000075	0.000075
+metric_series	resource_entity_refs	Array(String)	Array(String)	0.001193	0.001193
+metric_series	resource_id	String	String	0.150523	0.150523
+metric_series	resource_kind	UInt8	Enum8('RESOURCE_UNKNOWN' = 0, 'HOST' = 1, 'CPU' = 2, 'GPU' = 3, 'PROCESS' = 4, 'VM' = 5, 'CONTAINER' = 6, 'GATEWAY' = 7, 'SENSOR' = 8)	0.000193	0.000193
+metric_series	resource_present	UInt8	UInt8	0.000187	0.000187
+metric_series	resource_schema_url	String	String	0.000075	0.000075
+metric_series	scope_attributes	Array(Tuple(path String, kind UInt8, string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	Array(Tuple(path String, kind Enum8('ATTRIBUTE_ABSENT' = 0, 'ATTRIBUTE_EMPTY' = 1, 'STRING' = 2, 'INTEGER' = 3, 'DOUBLE' = 4, 'BOOLEAN' = 5, 'BYTES' = 6, 'ARRAY' = 7, 'KEY_VALUE_LIST' = 8), string_value Nullable(String), int_value Nullable(Int64), double_value Nullable(Float64), bool_value Nullable(UInt8), bytes_value Nullable(String)))	0.001193	0.001193
+metric_series	scope_dropped_attributes_count	UInt32	UInt32	0.000075	0.000075
+metric_series	scope_name	String	String	0.003635	0.003635
+metric_series	scope_present	UInt8	UInt8	0.000187	0.000187
+metric_series	scope_schema_url	String	String	0.000075	0.000075
+metric_series	scope_version	String	String	0.000075	0.000075
+metric_series	series_id	UInt64	UInt64	0.260615	0.260615
+metric_series	source_id	String	String	0.088787	0.088787
+metric_series	temporality	UInt8	Enum8('TEMPORALITY_UNKNOWN' = 0, 'DELTA' = 1, 'CUMULATIVE' = 2)	0.000193	0.000193
+metric_series	unit	String	String	0.001558	0.001558

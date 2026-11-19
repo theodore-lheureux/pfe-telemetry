@@ -53,3 +53,31 @@ The codec fixture uses integer counters with nonzero start times and double gaug
 The [sparse probe](../tooling/clickhouse-sparse-trial.sql) used 600,000 rows and a 95% default-ratio threshold. `Nullable(Int64)` was `Default` (25,086 compressed bytes), while the non-nullable value and presence columns were `Sparse` (738 and 720 bytes). The presence bit preserved present zero and absent values exactly. This verifies the mechanism, not a production CPU win; no point scalar representation was changed.
 
 Generate packets with the example's `codecs` argument and pass `codecs` as the final harness argument. Run `threshold` against a separate server with the compression XML mounted under its `config.d`. Run the sparse SQL with `clickhouse-client --multiquery` against a disposable server.
+
+## Strict analytical types
+
+The strict layout removes nullable numeric storage without losing presence. `host_id` uses the empty-string sentinel; standard OTLP has no promoted host. The unused device column is removed. The [per-column comparison](series-points-strict-columns.tsv) lists all three tables, including unchanged fields, and normalizes compressed bytes by input point count. ClickHouse 26.8.34.13 accepted named Protobuf enums and rejected an unknown metric enum number in the native-input test.
+
+Both sides used the same 600,000 packets, LZ4, point granularity 1024, merge blocks of up to 8192 rows or 10 MiB, and both fsync settings. Series and deliveries inherit the server merge block caps, since their larger payloads and lower row rates do not need the point override.
+
+| Layout                            | Insert CPU-s | Merge CPU-s | Final bytes on disk |
+| --------------------------------- | -----------: | ----------: | ------------------: |
+| Before strict types               |         2.78 |        1.12 |          35,722,095 |
+| Strict types                      |         2.84 |        1.13 |          35,508,768 |
+| Strict with series LowCardinality |         2.57 |        1.12 |          35,495,262 |
+
+| Query p95 (ms)               | Before | Strict | Strict + LC |
+| ---------------------------- | -----: | -----: | ----------: |
+| Node health: processes       |   16.7 |   15.7 |        16.5 |
+| Node health: disk read rate  |   28.4 |   30.4 |        30.8 |
+| Node health: disk write rate |   25.1 |   27.2 |        27.8 |
+| Disk rate by direction       |   34.5 |   38.0 |        40.2 |
+| Execution filter and group   |   20.4 |   25.4 |        23.4 |
+
+All results matched within Float64 tolerance. The LC test dictionary-encoded series metric name, unit, scope name/version, both schema URLs and attribute paths. It saved about 13.5 KB and did not consistently improve filter and group p95, so none of those columns use LC. The retained strict layout saves about 0.6% of final disk, not a material CPU improvement in this run.
+
+A separate 19,460-row attribute probe compared five typed slots with `Variant(String, Int64, Float64, Bool)`. Scalar values matched when extracting the correct alternative, and the compressed value columns used 1,648 B versus 7,251 B. Variant needs a separate kind to distinguish bytes from UTF-8 strings (both are ClickHouse `String`), and the flattened path/container encoding is still needed. This probe did not measure ingestion and nested attribute-query performance. Keep the five nullable slots for this layout: they distinguish inactive slots from present zero, false or empty payloads in the SQL tuples. The only top-level Nullable field retained is `continuity`, where a present empty string is valid.
+
+The width audit retains `UInt64` for nanoseconds (full unsigned range), series hashes (avoid truncating their collision budget) and OTLP counts/bucket counts (full unsigned range). Scalar and attribute integers retain full `Int64`; doubles, statistics and floating arrays retain `Float64`. A `UInt16` mask covers nine statistics. Event days require more than 16 bits over the full timestamp range; flags, dropped counts and position ordinals retain their UInt32 range. Exponential scale and offsets are signed Int32 in OTLP. The delivery and stream IDs remain fixed-length binary digests rather than textual identifiers.
+
+To reproduce, build `contract_fixture` at `6295165`, save its `--storage-layout` output, then run the current harness with `strict` and that JSON path as the final arguments.
