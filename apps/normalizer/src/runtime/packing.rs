@@ -1,131 +1,183 @@
-use prost::{encode_length_delimiter, length_delimiter_len};
+use prost::Message;
 use recount_telemetry_schema::{
-    PACKED_BYTES as BYTES, PACKED_POINTS as POINTS, point::RoutedRecord, recent,
+    PACKED_BYTES, PACKED_POINTS, identity,
+    point::{RoutedRecord, normalized_routing_key},
+    recent, series,
+    wire::AnalyticalPoint,
 };
 use recount_telemetry_validation::transport::{FRAMING_RESERVE, body_fits};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
-pub(super) fn pack_recent(
-    records: Vec<RoutedRecord>,
-    now: u64,
-    broker_bytes: usize,
-) -> Result<Vec<RoutedRecord>, &'static str> {
-    let batch_bytes = BYTES.min(broker_bytes.saturating_sub(FRAMING_RESERVE));
-    let mut pending = BTreeMap::<u32, (RoutedRecord, usize)>::new();
-    let mut output = Vec::new();
-    let empty = |partition, time_unix_nano| RoutedRecord {
-        partition,
-        time_unix_nano,
-        payload: Vec::new(),
-    };
-    for record in records {
-        if !recent(record.time_unix_nano, now) {
-            output.push(record);
-            continue;
-        }
-        let bytes = length_delimiter_len(record.payload.len()) + record.payload.len();
-        body_fits(bytes, broker_bytes)?;
-        // A valid wide point that cannot fit the packing target travels alone.
-        if bytes > batch_bytes {
-            if let Some((packet, _)) = pending.remove(&record.partition) {
-                output.push(packet);
-            }
-            let mut packet = empty(record.partition, record.time_unix_nano);
-            encode_length_delimiter(record.payload.len(), &mut packet.payload)
-                .map_err(|_| "could not encode the point length")?;
-            packet.payload.extend_from_slice(&record.payload);
-            output.push(packet);
-            continue;
-        }
-        let (packet, count) = pending
-            .entry(record.partition)
-            .or_insert_with(|| (empty(record.partition, record.time_unix_nano), 0));
-        if *count == POINTS || packet.payload.len() + bytes > batch_bytes {
-            output.push(std::mem::replace(
-                packet,
-                empty(record.partition, record.time_unix_nano),
-            ));
-            *count = 0;
-        }
-        encode_length_delimiter(record.payload.len(), &mut packet.payload)
-            .map_err(|_| "could not encode the point length")?;
-        packet.payload.extend_from_slice(&record.payload);
-        *count += 1;
-    }
-    output.extend(pending.into_values().map(|(packet, _)| packet));
-    Ok(output)
+#[derive(Default)]
+struct Packet {
+    points: Vec<AnalyticalPoint>,
+    // The index of the first frame and its metadata, including the packet bounds.
+    series: HashMap<u64, (usize, AnalyticalPoint)>,
+    bytes: usize,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use prost::decode_length_delimiter;
+fn frame_size(point: &AnalyticalPoint, metadata: Option<&AnalyticalPoint>) -> usize {
+    let len = point.encoded_len() + metadata.map_or(0, Message::encoded_len);
+    prost::length_delimiter_len(len) + len
+}
 
-    fn packet(partition: u32, time_unix_nano: u64, payload: Vec<u8>) -> RoutedRecord {
+impl Packet {
+    fn push(&mut self, point: AnalyticalPoint, metadata: AnalyticalPoint, bytes: usize) {
+        let (_, bounds) = self
+            .series
+            .entry(point.series_id)
+            .or_insert((self.points.len(), metadata));
+        bounds.first_seen_unix_nano = bounds.first_seen_unix_nano.min(point.time_unix_nano);
+        bounds.last_seen_unix_nano = bounds.last_seen_unix_nano.max(point.time_unix_nano);
+        self.points.push(point);
+        self.bytes += bytes;
+    }
+
+    fn finish(self, partition: u32) -> RoutedRecord {
+        let time_unix_nano = self.points[0].time_unix_nano;
+        let mut payload = Vec::with_capacity(self.bytes);
+        for (index, point) in self.points.into_iter().enumerate() {
+            if let Some((first, metadata)) = self.series.get(&point.series_id)
+                && *first == index
+            {
+                let frame = series::encode_with_series(&point, metadata);
+                prost::encode_length_delimiter(frame.len(), &mut payload).unwrap();
+                payload.extend(frame);
+            } else {
+                point.encode_length_delimited(&mut payload).unwrap();
+            }
+        }
+        debug_assert_eq!(self.bytes, payload.len());
         RoutedRecord {
             partition,
             time_unix_nano,
             payload,
         }
     }
+}
 
-    fn frames(mut data: &[u8]) -> Vec<&[u8]> {
-        let mut rows = Vec::new();
-        while !data.is_empty() {
-            let size = decode_length_delimiter(&mut data).unwrap();
-            let (point, rest) = data.split_at(size);
-            rows.push(point);
-            data = rest;
+pub(super) fn pack(
+    points: Vec<AnalyticalPoint>,
+    partitions: u32,
+    now: u64,
+    broker_bytes: usize,
+    packed_recent: bool,
+) -> Result<Vec<RoutedRecord>, &'static str> {
+    let batch_bytes = PACKED_BYTES.min(broker_bytes.saturating_sub(FRAMING_RESERVE));
+    let mut pending = BTreeMap::<u32, Packet>::new();
+    let mut output = Vec::new();
+    for mut point in points {
+        let partition = identity::partition(&normalized_routing_key(&point)?, partitions)
+            .ok_or("positive partition count required")?;
+        let metadata = series::split(&mut point);
+        if !packed_recent || !recent(point.time_unix_nano, now) {
+            let payload = series::encode_with_series(&point, &metadata);
+            body_fits(payload.len(), broker_bytes)?;
+            output.push(RoutedRecord {
+                partition,
+                time_unix_nano: point.time_unix_nano,
+                payload,
+            });
+            continue;
         }
-        rows
+        let packet = pending.entry(partition).or_default();
+        let mut bytes = frame_size(
+            &point,
+            (!packet.series.contains_key(&point.series_id)).then_some(&metadata),
+        );
+        if !packet.points.is_empty()
+            && (packet.points.len() == PACKED_POINTS || packet.bytes + bytes > batch_bytes)
+        {
+            output.push(std::mem::take(packet).finish(partition));
+            bytes = frame_size(&point, Some(&metadata));
+        }
+        body_fits(packet.bytes + bytes, broker_bytes)?;
+        packet.push(point, metadata, bytes);
+        // A valid indivisible point larger than the packing target travels alone.
+        if packet.bytes >= batch_bytes {
+            output.push(std::mem::take(packet).finish(partition));
+        }
+    }
+    output.extend(
+        pending
+            .into_iter()
+            .filter(|(_, p)| !p.points.is_empty())
+            .map(|(partition, p)| p.finish(partition)),
+    );
+    Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn point(t: u64, stream: u8, sample: u8) -> AnalyticalPoint {
+        AnalyticalPoint {
+            project_id: "project".into(),
+            metric_name: "metric".into(),
+            stream_id: [vec![0; 7], vec![stream], vec![0; 24]].concat(),
+            sample_id: vec![sample; 32],
+            time_unix_nano: t,
+            ..Default::default()
+        }
     }
 
     #[test]
-    fn pack_flushes_partials_preserves_order_and_never_mixes_lanes_or_partitions() {
+    fn packets_repeat_dimensions_only_across_packet_boundaries_and_track_event_bounds() {
         let now = 1_800_000_000_000_000_000;
         let records = (0..129)
-            .flat_map(|i| [packet(0, now, vec![i]), packet(1, now, vec![i, 255])])
-            .chain([packet(0, 1, vec![73])])
+            .rev()
+            .flat_map(|i| [point(now + i as u64, 0, i), point(now + i as u64, 1, i)])
+            .chain([point(1, 0, 7)])
             .collect();
-        let result = pack_recent(records, now, 2 * BYTES).unwrap();
+        let result = pack(records, 2, now, 2 * PACKED_BYTES, true).unwrap();
         assert_eq!(result.len(), 5);
-        let late: Vec<_> = result
-            .iter()
-            .filter(|p| !recent(p.time_unix_nano, now))
-            .collect();
-        assert_eq!(late.len(), 1);
-        assert_eq!(late[0].payload, [73]);
+        let late = result.iter().find(|p| p.time_unix_nano == 1).unwrap();
+        let late = AnalyticalPoint::decode(late.payload.as_slice()).unwrap();
+        assert_eq!(late.last_seen_unix_nano, 1);
         for partition in [0, 1] {
-            let packets: Vec<_> = result
+            let packets: Vec<Vec<_>> = result
                 .iter()
                 .filter(|p| p.partition == partition && recent(p.time_unix_nano, now))
-                .map(|p| frames(&p.payload))
+                .map(|p| {
+                    let mut buf = p.payload.as_slice();
+                    std::iter::from_fn(|| {
+                        (!buf.is_empty())
+                            .then(|| AnalyticalPoint::decode_length_delimited(&mut buf).unwrap())
+                    })
+                    .collect()
+                })
                 .collect();
             assert_eq!([packets[0].len(), packets[1].len()], [128, 1]);
-            for (i, bytes) in packets.into_iter().flatten().enumerate() {
-                let expected = if partition == 0 {
-                    vec![i as u8]
-                } else {
-                    vec![i as u8, 255]
-                };
-                assert_eq!(bytes, expected);
+            assert_eq!(packets[0][0].first_seen_unix_nano, now + 1);
+            assert_eq!(packets[0][0].last_seen_unix_nano, now + 128);
+            assert_eq!(packets[0][1].last_seen_unix_nano, 0);
+            assert_eq!(packets[0][1].series_id, packets[0][0].series_id);
+            assert_eq!(packets[1][0].last_seen_unix_nano, now);
+            for (i, point) in packets.into_iter().flatten().enumerate() {
+                assert_eq!(point.sample_id, [128 - i as u8; 32]);
             }
         }
     }
 
     #[test]
-    fn encoded_size_includes_framing_and_an_indivisible_point_fails_closed() {
+    fn framing_is_bounded_and_an_indivisible_point_fails_closed() {
         let now = 1_800_000_000_000_000_000;
-        let result = pack_recent(
-            (0..2).map(|_| packet(0, now, vec![0; BYTES / 2])).collect(),
+        let wide = |size| AnalyticalPoint {
+            lineage: vec![0; size],
+            ..point(now, 0, 0)
+        };
+        let packets = pack(
+            vec![wide(PACKED_BYTES / 2); 2],
+            1,
             now,
-            2 * BYTES,
+            2 * PACKED_BYTES,
+            true,
         )
         .unwrap();
-        assert_eq!(result.len(), 2);
-        assert!(result.iter().all(|p| p.payload.len() <= BYTES));
-        let wide = pack_recent(vec![packet(0, now, vec![0; BYTES])], now, 2 * BYTES).unwrap();
-        assert_eq!(frames(&wide[0].payload)[0].len(), BYTES);
-        assert!(pack_recent(vec![packet(0, now, vec![0; BYTES])], now, BYTES).is_err());
+        assert_eq!(packets.len(), 2);
+        assert!(packets.iter().all(|p| p.payload.len() <= PACKED_BYTES));
+        assert!(pack(vec![wide(PACKED_BYTES)], 1, now, 2 * PACKED_BYTES, true).is_ok());
+        assert!(pack(vec![wide(PACKED_BYTES)], 1, now, PACKED_BYTES, true).is_err());
     }
 }

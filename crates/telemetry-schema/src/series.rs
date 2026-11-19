@@ -4,6 +4,36 @@ use crate::{
 };
 use prost::Message;
 
+const RESOURCE_MARKERS: &[&str] = &["/recount.host.boot_id", "/recount.collection.epoch_id"];
+const POINT_MARKERS: &[&str] = &["/recount.counter.segment_id"];
+
+fn is_marker(path: &str, markers: &[&str]) -> bool {
+    markers.iter().any(|marker| {
+        path == *marker
+            || path
+                .strip_prefix(marker)
+                .is_some_and(|p| p.starts_with('/'))
+    })
+}
+
+/// Bound the extra fields in a singleton before admission. Packet elision can
+/// only make the frame smaller. Protobuf record-length framing is budgeted separately.
+pub(crate) fn wire_overhead(point: &AnalyticalPoint) -> usize {
+    // Two storage keys, a logical key and two timestamp bounds are fixed64s.
+    let mut overhead = 5 * 10 + 2 + point.project_id.len();
+    for (nodes, markers) in [
+        (&point.resource_attributes, RESOURCE_MARKERS),
+        (&point.point_attributes, POINT_MARKERS),
+    ] {
+        overhead += nodes
+            .iter()
+            .filter(|node| is_marker(&node.path, markers))
+            .count()
+            * 20;
+    }
+    overhead
+}
+
 fn id(hash: TypedHash) -> u64 {
     u64::from_be_bytes(hash.finish()[..8].try_into().unwrap())
 }
@@ -15,13 +45,7 @@ fn without_markers(
     let mut dimensions = Vec::new();
     let mut continuity = Vec::new();
     for (ordinal, node) in attributes.into_iter().enumerate() {
-        if markers.iter().any(|path| {
-            node.path == *path
-                || node
-                    .path
-                    .strip_prefix(path)
-                    .is_some_and(|p| p.starts_with('/'))
-        }) {
+        if is_marker(&node.path, markers) {
             continuity.push(ContinuityNode {
                 ordinal: ordinal as u32,
                 node: Some(node),
@@ -66,12 +90,10 @@ pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
     };
     (series.resource_attributes, point.resource_continuity) = without_markers(
         std::mem::take(&mut point.resource_attributes),
-        &["/recount.host.boot_id", "/recount.collection.epoch_id"],
+        RESOURCE_MARKERS,
     );
-    (series.point_attributes, point.point_continuity) = without_markers(
-        std::mem::take(&mut point.point_attributes),
-        &["/recount.counter.segment_id"],
-    );
+    (series.point_attributes, point.point_continuity) =
+        without_markers(std::mem::take(&mut point.point_attributes), POINT_MARKERS);
     let mut storage = TypedHash::new("recount.series");
     storage.field(&series.encode_to_vec());
     series.series_id = id(storage);

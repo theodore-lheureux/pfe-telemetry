@@ -1,4 +1,4 @@
-use crate::{config::Config, kafka, prepare};
+use crate::{config::Config, kafka, prepare_rows};
 use futures_util::future::join_all;
 use recount_telemetry_schema::{RAW_RECEIVED_MS_HEADER, recent};
 use recount_telemetry_validation::transport::ConsumerBudget;
@@ -72,10 +72,15 @@ async fn normalize(
     let payload = frame.0.to_vec();
     let partitions = state.config.normalized_partitions;
     let limits = state.config.limits;
+    let now = unix_nanos();
+    let broker_bytes = state.config.normalized_broker_max_bytes;
+    let packed_recent = state.packed_recent;
     let records = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        prepare(&payload, key.as_deref(), partitions, limits)
-            .unwrap_or_else(|_| panic!("retained validation failed"))
+        let rows = prepare_rows(&payload, key.as_deref(), limits)
+            .unwrap_or_else(|_| panic!("retained validation failed"));
+        packing::pack(rows, partitions, now, broker_bytes, packed_recent)
+            .expect("normalized record exceeds broker budget")
     })
     .await
     .expect("preparation failed");
@@ -89,14 +94,6 @@ async fn normalize(
             .to_string()
             .into_bytes(),
     );
-    // Points far from now take the late topic, which ClickHouse reads in small blocks.
-    let now = unix_nanos();
-    let records = if state.packed_recent {
-        packing::pack_recent(records, now, state.config.normalized_broker_max_bytes)
-            .expect("packed normalized record exceeds broker budget")
-    } else {
-        records
-    };
     let points: Vec<(Point, i32, &str)> = records
         .into_iter()
         .map(|record| {
@@ -158,8 +155,7 @@ fn app(config: Config, packed_recent: bool) -> impl App {
         )
         .producer_config("enable.idempotence", "true")
         .producer_config("acks", "all")
-        // Rows repeat their resource, scope and identity fields, so batches compress well;
-        // the topic declares the same codec, so the broker stores them unchanged.
+        // The topic declares the same codec, so the broker stores batches unchanged.
         .producer_config("compression.type", "zstd")
         .producer_config("linger.ms", config.linger_ms.to_string())
         .producer_config(

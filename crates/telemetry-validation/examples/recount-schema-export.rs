@@ -152,13 +152,19 @@ fn prepare(options: &Options) -> Result<()> {
         .render()?,
     );
     let columns = COLUMNS.trim();
-    let expected = expected_columns(columns);
     let artifacts = BTreeMap::from([
         ("schemas/recount.proto", PROTO.to_owned()),
         ("schemas/executions.proto", PARTICIPANT_PROTO.to_owned()),
         ("schema.sql", sql),
         ("analytical-columns.sql", format!("{columns}\n")),
-        ("expected-columns.tsv", expected),
+        (
+            "expected-columns.tsv",
+            expected_columns(recount_telemetry_schema::POINT_COLUMNS),
+        ),
+        (
+            "expected-series-columns.tsv",
+            expected_columns(recount_telemetry_schema::SERIES_COLUMNS),
+        ),
         (
             "expected-participant-columns.tsv",
             expected_columns(PARTICIPANT_COLUMNS),

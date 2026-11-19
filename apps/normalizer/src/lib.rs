@@ -4,7 +4,10 @@ pub mod retention;
 pub mod runtime;
 
 use prost::Message;
-use recount_telemetry_schema::{identity, point, wire::RawRecord};
+use recount_telemetry_schema::{
+    identity, point,
+    wire::{AnalyticalPoint, RawRecord},
+};
 use recount_telemetry_validation::{
     Category, Issue,
     validate::{self, Limits},
@@ -17,6 +20,16 @@ pub fn prepare(
     partitions: u32,
     limits: Limits,
 ) -> Result<Vec<point::RoutedRecord>, Issue> {
+    let rows = prepare_rows(payload, key, limits)?;
+    point::kafka_records(&rows, partitions, limits.normalized_record_bytes)
+        .map_err(|reason| Issue::new(Category::Poison, "raw", reason))
+}
+
+fn prepare_rows(
+    payload: &[u8],
+    key: Option<&[u8]>,
+    limits: Limits,
+) -> Result<Vec<AnalyticalPoint>, Issue> {
     let limits = limits.validate()?;
     let poison = |reason| Issue::new(Category::Poison, "raw", reason);
     if payload.len() > limits.decoded_bytes {
@@ -26,6 +39,5 @@ pub fn prepare(
     if key != Some(identity::raw_routing_key(&raw).map_err(poison)?.as_slice()) {
         return Err(poison("raw routing key mismatch"));
     }
-    let rows = validate::retained_raw(&raw, limits)?;
-    point::kafka_records(&rows, partitions, limits.normalized_record_bytes).map_err(poison)
+    validate::retained_raw(&raw, limits)
 }

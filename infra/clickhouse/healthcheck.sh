@@ -5,6 +5,9 @@ sh /docker-entrypoint-initdb.d/00-verify-schema.sh
 actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT name, type FROM system.columns WHERE database = 'telemetry' AND table = 'metric_points' AND default_kind != 'MATERIALIZED' ORDER BY position FORMAT TSVRaw")
 expected=$(cat /etc/recount-schema/expected-columns.tsv)
 [ "$actual" = "$expected" ]
+actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT name, type FROM system.columns WHERE database = 'telemetry' AND table = 'metric_series' ORDER BY position FORMAT TSVRaw")
+expected=$(cat /etc/recount-schema/expected-series-columns.tsv)
+[ "$actual" = "$expected" ]
 actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT name, type FROM system.columns WHERE database = 'telemetry' AND table = 'execution_participants' ORDER BY position FORMAT TSVRaw")
 expected=$(cat /etc/recount-schema/expected-participant-columns.tsv)
 [ "$actual" = "$expected" ]
