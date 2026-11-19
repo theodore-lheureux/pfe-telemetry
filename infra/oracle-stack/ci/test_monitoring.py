@@ -24,10 +24,8 @@ class SamplerTest(unittest.TestCase):
     def test_freshness_uses_part_write_time_and_excludes_invalid_receipts(self):
         part = "20775_12_12_0"
         written = 1_800_000_000_000_000_000
-        def payload(received):
-            return (b"\x0a\x03\x21\x00\x00\x21" + received.to_bytes(8, "little")).hex()
-        points = [f"{part}\t{payload(written - i * 10**9)}" for i in range(1, 21)]
-        points.extend([f"{part}\t{payload(written + 1)}", f"{part}\t21ff"])
+        points = [f"{part}\t{written - i * 10**9}" for i in range(1, 21)]
+        points.extend([f"{part}\t{written + 1}", f"{part}\t0"])
         with patch.object(sample, "clickhouse_query", side_effect=[f"{part}\t{written}", "\n".join(points)]):
             self.assertEqual(list(sample.freshness_metrics()), [
                 "recount_ingestion_freshness_samples 20",
