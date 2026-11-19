@@ -92,6 +92,7 @@ export async function setup() {
 		nodes.push({
 			...issued,
 			machineId,
+			seed: index + 1,
 			boot: crypto.randomUUID(),
 			epoch: crypto.randomUUID(),
 			privateKey: encoding.b64encode(
@@ -111,6 +112,7 @@ let payload;
 let next;
 let started;
 let renewAt;
+let cycle = 0;
 
 async function refresh() {
 	signing ??= await crypto.subtle.importKey(
@@ -158,6 +160,8 @@ export default async function (nodes) {
 	sleep(Math.max(0, next - Date.now()) / 1000);
 	const skipped = Math.max(0, Math.floor((Date.now() - next) / 1000));
 	missed.add(skipped);
+	const sampleCycle = cycle + skipped;
+	cycle = sampleCycle + 1;
 	next += (skipped + 1) * 1000;
 	try {
 		if (Date.now() >= renewAt) await refresh();
@@ -178,7 +182,7 @@ export default async function (nodes) {
 		requests.add(1);
 		result = client.invoke(
 			"opentelemetry.proto.collector.metrics.v1.MetricsService/Export",
-			payload.at(now, started),
+			payload.at(now, started, sampleCycle),
 			{
 				timeout: "3s",
 				metadata: {
