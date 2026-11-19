@@ -146,6 +146,40 @@ fn analytical_wire_bytes_match_independent_known_vectors() {
 }
 
 #[test]
+fn compact_delivery_reassembles_every_original_lineage() {
+    use recount_telemetry_schema::wire::{DeliveryEvidence, Position};
+    let raw = cases::raw();
+    let before = validate::retained_raw(&raw, Limits::default()).unwrap();
+    let after = validate::retained_delivery(&raw, Limits::default()).unwrap();
+    assert_eq!(
+        after
+            .iter()
+            .filter(|p| !p.delivery_evidence.is_empty())
+            .count(),
+        1
+    );
+    let bundle = DeliveryEvidence::decode(after[0].delivery_evidence.as_slice()).unwrap();
+    for (old, point) in before.iter().zip(after) {
+        let original = Position::decode(point.original_position.as_slice()).unwrap();
+        let resource = bundle
+            .resources
+            .iter()
+            .find(|r| r.resource == original.resource)
+            .unwrap();
+        let restored = PointLineage {
+            original: Some(original),
+            relationships: resource.relationships.clone(),
+            access: resource.access.clone(),
+            ..bundle.common.clone().unwrap()
+        };
+        assert_eq!(
+            restored,
+            PointLineage::decode(old.lineage.as_slice()).unwrap()
+        );
+    }
+}
+
+#[test]
 fn admission_preflight_and_retained_replay_share_exact_rows_and_bounds() {
     let mut request = cases::reader_request();
     cases::gauge_mut(&mut request, "integer.extremes").data_points[0].value =
@@ -170,7 +204,7 @@ fn admission_preflight_and_retained_replay_share_exact_rows_and_bounds() {
     raw.otlp_request = request.encode_to_vec();
     validate::request(&request, Limits::default()).unwrap();
     let admission = validate::preflight(&raw, &request, Limits::default()).unwrap();
-    let replay = validate::retained_raw(&raw, Limits::default()).unwrap();
+    let replay = validate::retained_delivery(&raw, Limits::default()).unwrap();
     assert_eq!(
         admission
             .iter()
@@ -217,7 +251,9 @@ fn admission_preflight_and_retained_replay_share_exact_rows_and_bounds() {
             Category::Limit
         );
         assert_eq!(
-            validate::retained_raw(&raw, limits).unwrap_err().category,
+            validate::retained_delivery(&raw, limits)
+                .unwrap_err()
+                .category,
             Category::Poison
         );
     }

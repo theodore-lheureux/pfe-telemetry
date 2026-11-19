@@ -15,7 +15,7 @@ import {
 } from "../analytics/series-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
-import { activityNode, decodeLineage, nanosecondsDate } from "./codec.server";
+import { activityNode, decodeDelivery, nanosecondsDate } from "./codec.server";
 import type {
 	ExplorerInput,
 	JsonObject,
@@ -348,11 +348,11 @@ export async function readPoint(
 		)
 		.join(",");
 	const rows = await query<JsonObject>(
-		`SELECT * EXCEPT(delivery_id,original_position,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_nano,last_seen_unix_nano,logical_series_id,resource_kind,metric_kind,temporality,monotonic,value_kind,statistics_present)
+		`SELECT * EXCEPT(original_position,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_nano,last_seen_unix_nano,logical_series_id,resource_kind,metric_kind,temporality,monotonic,value_kind,statistics_present)
 REPLACE (${["count", "sum", "min", "max", "scale", "zero_count", "zero_threshold", "positive_offset", "negative_offset"].map((name, i) => `if(bitTest(statistics_present,${i}),${name},NULL) AS ${name}`).join(",")}),
 toUInt8(resource_kind) AS resource_kind,toUInt8(metric_kind) AS metric_kind,toUInt8(temporality) AS temporality,
 nullIf(toUInt8(monotonic),2) AS monotonic,
-hex(delivery_id) AS delivery_hex,hex(stream_id) AS stream_id_hex,hex(original_position) AS original_hex,
+hex(stream_id) AS stream_id_hex,hex(original_position) AS original_hex,
 arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
 FROM (${seriesPointSource(
 			" AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_nano <= {time:UInt64} AND last_seen_unix_nano >= {time:UInt64}",
@@ -391,10 +391,16 @@ FROM (${seriesPointSource(
 		Object.fromEntries(
 			names.map((key) => [key, row[key] ?? null]),
 		) as JsonObject;
-	const [delivery] = await query<{ lineage: string }>(
-		`SELECT hex(lineage) AS lineage FROM deliveries FINAL
-		WHERE project_id={project:String} AND delivery_id=unhex({delivery:String}) LIMIT 1`,
-		{ project: input.projectId, delivery: String(row.delivery_hex) },
+	const [delivery] = await query<{ evidence: string }>(
+		`SELECT hex(delivery_evidence) AS evidence FROM deliveries FINAL
+		WHERE project_id={project:String} AND source_id={source:String}
+		  AND received_unix_nano={received:UInt64} AND receipt_tag={tag:UInt32} LIMIT 1`,
+		{
+			project: input.projectId,
+			source: input.sourceId,
+			received: String(row.received_unix_nano),
+			tag: Number(row.receipt_tag),
+		},
 		signal,
 		connection,
 	);
@@ -403,8 +409,11 @@ FROM (${seriesPointSource(
 			"UNAVAILABLE",
 			"Measurement provenance is not yet available",
 		);
-	const provenance = decodeLineage(delivery.lineage, String(row.original_hex));
-	delete row.delivery_hex;
+	const provenance = decodeDelivery(
+		delivery.evidence,
+		String(row.original_hex),
+	);
+	delete row.receipt_tag;
 	delete row.original_hex;
 	// Binary values from ClickHouse use base64 at this JSON integration boundary.
 	const raw = { ...row, lineage: provenance };

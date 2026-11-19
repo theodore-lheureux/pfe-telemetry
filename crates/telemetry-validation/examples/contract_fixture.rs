@@ -29,7 +29,7 @@ fn main() {
     }
     let ordinary = matches!(
         args.get(1).map(String::as_str),
-        Some("--ordinary" | "--ordinary-new" | "--ordinary-new-2")
+        Some("--ordinary" | "--ordinary-new" | "--ordinary-new-2" | "--browser")
     );
     let mut raw = if ordinary {
         cases::ordinary_cpu_process()
@@ -48,6 +48,23 @@ fn main() {
         return;
     }
     let mut rows = recount_telemetry_validation::validate::raw(&raw, Default::default()).unwrap();
+    if matches!(
+        args.get(1).map(String::as_str),
+        Some("--browser" | "--storage" | "--ordinary-new" | "--ordinary-new-2" | "--verify")
+    ) {
+        let compact =
+            recount_telemetry_validation::validate::retained_delivery(&raw, Default::default())
+                .unwrap();
+        let evidence = compact[0].delivery_evidence.clone();
+        for (row, compact) in rows.iter_mut().zip(compact) {
+            row.sample_id.clear();
+            row.lineage.clear();
+            row.delivery_evidence = evidence.clone();
+            row.original_position = compact.original_position;
+            row.received_unix_nano = compact.received_unix_nano;
+            row.receipt_tag = compact.receipt_tag;
+        }
+    }
     if args.get(1).map(String::as_str) == Some("--stats") {
         let sizes: Vec<_> = rows
             .iter()
@@ -67,8 +84,6 @@ fn main() {
             actual.push(AnalyticalPoint::decode_length_delimited(&mut remaining).unwrap());
         }
         for row in &mut rows {
-            recount_telemetry_schema::series::split_delivery(row).unwrap();
-            row.delivery_id.clear();
             // The raw fixture can set a device; analytical storage does not persist it.
             row.device_id = None;
         }

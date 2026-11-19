@@ -270,7 +270,6 @@ async fn scenario_with_linger(
         .unwrap();
         let points = prepare_rows(bytes, Some(&key), Default::default()).unwrap();
         for mut point in points {
-            series::split_delivery(&mut point).unwrap();
             let dimensions = series::split(&mut point);
             expected_ids.push(format!(
                 "{}\t{}\t{}\t{}\t{}",
@@ -278,7 +277,7 @@ async fn scenario_with_linger(
                 dimensions.series_id,
                 identity::hex(&point.stream_id),
                 dimensions.logical_series_id,
-                identity::hex(&point.delivery_id),
+                point.receipt_tag,
             ));
             expected.push(point.time_unix_nano);
         }
@@ -384,10 +383,12 @@ async fn scenario_with_linger(
         (0, 0)
     );
     let actual = sql(&format!(
-            "SELECT p.time_unix_nano, p.series_id, lower(hex(p.stream_id)), s.logical_series_id, lower(hex(p.delivery_id))
+            "SELECT p.time_unix_nano, p.series_id, lower(hex(p.stream_id)), s.logical_series_id, p.receipt_tag
             FROM (SELECT * FROM {db}.metric_points FINAL) AS p
             INNER JOIN (SELECT * FROM {db}.metric_series FINAL) AS s USING (project_id, series_id)
-            INNER JOIN (SELECT * FROM {db}.deliveries FINAL) AS d USING (project_id, delivery_id)"
+            INNER JOIN (SELECT * FROM {db}.deliveries FINAL) AS d
+                ON p.project_id=d.project_id AND s.source_id=d.source_id
+                AND p.received_unix_nano=d.received_unix_nano AND p.receipt_tag=d.receipt_tag"
         ));
     let mut actual: Vec<_> = actual.lines().collect();
     actual.sort_unstable();
@@ -395,6 +396,11 @@ async fn scenario_with_linger(
     assert_eq!(
         actual,
         expected_ids.iter().map(String::as_str).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        sql(&format!("SELECT count() FROM {db}.deliveries")).trim(),
+        input.len().to_string(),
+        "one delivery row per raw request",
     );
     let logical_rows = sql(&format!(
         "SELECT hex(formatRow('RowBinary', *)) FROM {db}.metric_points FINAL ORDER BY series_id,stream_id,time_unix_nano"

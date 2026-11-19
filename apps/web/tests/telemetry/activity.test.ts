@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { readPoints } from "../../src/activity/points.server";
+import { readPoint, readPoints } from "../../src/activity/points.server";
 import {
 	createPointFixture,
 	from,
@@ -119,4 +119,28 @@ test("Explorer filters by metric and attributes and searches past empty windows"
 	expect(
 		projected.points[0]?.fields['resource.attributes["missing"]'],
 	).toBeNull();
+});
+
+test("inspector restores request provenance from a compact delivery", async () => {
+	const projectId = randomUUID();
+	await cpu(projectId, 1n, "user");
+	const [point] = (await page(projectId)).points;
+	const detail = await readPoint(
+		{
+			projectId,
+			organizationId: "organization",
+			sourceId: point.sourceId,
+			resourceId: point.resourceId,
+			metricName: point.metricName,
+			timeNs: point.timeNs,
+			sampleId: point.sampleId,
+		},
+		undefined,
+		fixture.reader,
+	);
+	expect(detail.provenance.record_id).toBeTruthy();
+	expect(detail.provenance.payload_kind).toBe("OTLP_METRICS");
+	expect(detail.provenance.original).toBeDefined();
+	expect(detail.provenance.access).toBeDefined();
+	expect(detail.raw.lineage).toEqual(detail.provenance);
 });

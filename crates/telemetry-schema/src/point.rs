@@ -128,10 +128,57 @@ pub fn normalize_bounded(
     max_record_bytes: usize,
     max_batch_bytes: usize,
 ) -> Result<Vec<AnalyticalPoint>, &'static str> {
+    lower(
+        raw,
+        request,
+        max_points,
+        max_record_bytes,
+        max_batch_bytes,
+        false,
+    )
+}
+
+pub fn normalize_delivery(
+    raw: &RawRecord,
+    request: &ExportMetricsServiceRequest,
+    max_points: usize,
+    max_record_bytes: usize,
+    max_batch_bytes: usize,
+) -> Result<Vec<AnalyticalPoint>, &'static str> {
+    lower(
+        raw,
+        request,
+        max_points,
+        max_record_bytes,
+        max_batch_bytes,
+        true,
+    )
+}
+
+fn lower(
+    raw: &RawRecord,
+    request: &ExportMetricsServiceRequest,
+    max_points: usize,
+    max_record_bytes: usize,
+    max_batch_bytes: usize,
+    compact: bool,
+) -> Result<Vec<AnalyticalPoint>, &'static str> {
     if max_points == 0 || max_record_bytes == 0 || max_record_bytes > max_batch_bytes {
         return Err("positive coherent normalized bounds required");
     }
     let security = raw.security.as_ref().ok_or("missing trusted scope")?;
+    let mut evidence = crate::wire::DeliveryEvidence {
+        common: Some(PointLineage {
+            batch: raw.batch.clone(),
+            record_id: raw.record_id.clone(),
+            received_unix_nano: raw.received_unix_nano,
+            payload_kind: raw.payload_kind,
+            delivery: raw.delivery.as_ref().map(delivery_context),
+            ..Default::default()
+        }),
+        resources: Vec::new(),
+    };
+    let receipt_tag = crate::series::receipt_tag(&raw.record_id);
     if raw.bindings.len() != request.resource_metrics.len() {
         return Err("one binding per original resource required");
     }
@@ -190,15 +237,19 @@ pub fn normalize_bounded(
             }),
             ..Default::default()
         };
-        let lineage = PointLineage {
-            batch: raw.batch.clone(),
-            record_id: raw.record_id.clone(),
-            received_unix_nano: raw.received_unix_nano,
-            payload_kind: raw.payload_kind,
-            relationships: context.relationships.clone(),
-            access: context.access.clone(),
-            delivery: raw.delivery.as_ref().map(delivery_context),
-            ..Default::default()
+        let lineage = if compact {
+            evidence.resources.push(crate::wire::DeliveryResource {
+                resource: r.try_into().map_err(|_| "position overflow")?,
+                relationships: context.relationships.clone(),
+                access: context.access.clone(),
+            });
+            None
+        } else {
+            Some(PointLineage {
+                relationships: context.relationships.clone(),
+                access: context.access.clone(),
+                ..evidence.common.clone().unwrap()
+            })
         };
         for (s, scope) in resource.scope_metrics.iter().enumerate() {
             if scope.metrics.iter().all(empty_metric) {
@@ -285,7 +336,11 @@ pub fn normalize_bounded(
                     h.field(&attrs.canonical);
                     h.u64(observation.start());
                     let mut row = AnalyticalPoint {
-                        sample_id: identity::sample_id(raw, &original)?.to_vec(),
+                        sample_id: if compact {
+                            Vec::new()
+                        } else {
+                            identity::sample_id(raw, &original)?.to_vec()
+                        },
                         stream_id: h.finish().to_vec(),
                         time_unix_nano: observation.time(),
                         start_time_unix_nano: observation.start(),
@@ -297,11 +352,20 @@ pub fn normalize_bounded(
                         flags: observation.flags(),
                         event_day: (observation.time() / 86_400_000_000_000) as u32,
                         point_attributes: attrs.nodes,
-                        lineage: PointLineage {
-                            original: Some(original),
-                            ..lineage.clone()
-                        }
-                        .encode_to_vec(),
+                        lineage: lineage.as_ref().map_or_else(Vec::new, |lineage| {
+                            PointLineage {
+                                original: Some(original),
+                                ..lineage.clone()
+                            }
+                            .encode_to_vec()
+                        }),
+                        original_position: if compact {
+                            original.encode_to_vec()
+                        } else {
+                            Vec::new()
+                        },
+                        received_unix_nano: if compact { raw.received_unix_nano } else { 0 },
+                        receipt_tag: if compact { receipt_tag } else { 0 },
                         ..metric_row.clone()
                     };
                     lower_observation(&mut row, observation)?;
@@ -316,6 +380,16 @@ pub fn normalize_bounded(
                     out.push(row);
                 }
             }
+        }
+    }
+    if compact && let Some(first) = out.first_mut() {
+        first.delivery_evidence = evidence.encode_to_vec();
+        let size = crate::series::singleton_size_bound(first);
+        let total = bytes
+            .checked_add(first.delivery_evidence.len() + 8)
+            .ok_or("normalized byte overflow")?;
+        if size > max_record_bytes || total > max_batch_bytes {
+            return Err("normalized delivery byte limit");
         }
     }
     Ok(out)

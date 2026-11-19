@@ -74,14 +74,13 @@ function fixtureViews(layout: Layout) {
 		`arrayMap(i -> tuple(toUInt32(i-1), ${column}[i]), arrayFilter(i -> arrayExists(a -> NOT (${predicate}), [${column}[i]]), arrayEnumerate(${column})))`;
 	return [
 		`CREATE MATERIALIZED VIEW fixture_deliveries TO deliveries AS
-		SELECT project_id, substring(SHA256(lineage),1,16) AS delivery_id, lineage FROM fixture_input`,
+		SELECT project_id, source_id, received_unix_nano, receipt_tag, delivery_evidence FROM fixture_input`,
 		`CREATE MATERIALIZED VIEW fixture_series TO metric_series AS
 		SELECT ${layout.seriesSelect} FROM (SELECT * REPLACE (${id} AS series_id, ${logical} AS logical_series_id,
 		time_unix_nano AS first_seen_unix_nano, time_unix_nano AS last_seen_unix_nano) FROM (${clean})) src`,
 		`CREATE MATERIALIZED VIEW fixture_points TO metric_points AS
 		SELECT ${layout.pointSelect} FROM (
 			SELECT * REPLACE (series_key AS series_id,
-			substring(SHA256(lineage),1,16) AS delivery_id,
 			${continuity("resource_attributes", resource)} AS resource_continuity,
 			${continuity("point_attributes", point)} AS point_continuity)
 			FROM (SELECT *, ${id
@@ -119,7 +118,7 @@ export async function createPointFixture(
 	const layout: Layout = JSON.parse(
 		(await output("--storage-layout")).toString(),
 	);
-	const binary = await output("--ordinary");
+	const binary = await output("--browser");
 	const suffix = randomUUID().replaceAll("-", "");
 	const name = `recount_tooling_reader_${suffix}`;
 	const readerName = `recount_tooling_reader_${suffix}`;

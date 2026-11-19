@@ -138,6 +138,15 @@ message PointLineage {
   ResourceAccess access = 7;
   DeliveryContext delivery = 8;
 }
+message DeliveryEvidence {
+  PointLineage common = 1;
+  repeated DeliveryResource resources = 2;
+}
+message DeliveryResource {
+  uint32 resource = 1;
+  repeated Relationship relationships = 2;
+  ResourceAccess access = 3;
+}
 message ContinuityNode {
   uint32 ordinal = 1;
   AttributeNode node = 2;
@@ -201,7 +210,9 @@ message AnalyticalPoint {
   fixed64 last_seen_unix_nano = 55;
   repeated ContinuityNode resource_continuity = 56;
   repeated ContinuityNode point_continuity = 57;
-  bytes delivery_id = 58;
+  reserved 58;
   bytes original_position = 59;
   fixed64 received_unix_nano = 60;
+  fixed32 receipt_tag = 61;
+  bytes delivery_evidence = 62;
 }

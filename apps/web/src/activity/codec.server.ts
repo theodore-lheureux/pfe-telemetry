@@ -14,7 +14,8 @@ const rawType = root.lookupType("recount.telemetry.RawRecord");
 const requestType = root.lookupType(
 	"opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
 );
-const lineageType = root.lookupType("recount.telemetry.PointLineage");
+const evidenceType = root.lookupType("recount.telemetry.DeliveryEvidence");
+const positionType = root.lookupType("recount.telemetry.Position");
 const notificationType = root.lookupType("recount.telemetry.LiveNotification");
 const options = {
 	longs: String,
@@ -64,17 +65,28 @@ export function nanosecondsDate(value: string): Date {
 		throw new Error("Invalid telemetry timestamp");
 	return date;
 }
-export function decodeLineage(hex: string, position?: string): JsonObject {
-	const message = lineageType.decode(Buffer.from(hex, "hex"));
-	const result = lineageType.toObject(message, options) as JsonObject;
-	if (position !== undefined && !result.original) {
-		const type = root.lookupType("recount.telemetry.Position");
-		result.original = type.toObject(
-			type.decode(Buffer.from(position, "hex")),
-			options,
-		) as JsonObject;
-	}
-	return result;
+export function decodeDelivery(hex: string, position: string): JsonObject {
+	const original = positionType.toObject(
+		positionType.decode(Buffer.from(position, "hex")),
+		options,
+	) as JsonObject;
+	const evidence = evidenceType.toObject(
+		evidenceType.decode(Buffer.from(hex, "hex")),
+		options,
+	);
+	const resource = (evidence.resources as JsonObject[] | undefined)?.find(
+		(entry) => (entry.resource ?? 0) === (original.resource ?? 0),
+	);
+	if (!evidence.common || !resource)
+		throw new Error("Incomplete delivery evidence");
+	return {
+		...evidence.common,
+		original,
+		...(resource.relationships
+			? { relationships: resource.relationships }
+			: {}),
+		...(resource.access ? { access: resource.access } : {}),
+	};
 }
 
 function preview(value: JsonValue): { value: JsonValue; truncated: boolean } {

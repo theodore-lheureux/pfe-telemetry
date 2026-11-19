@@ -45,5 +45,5 @@ fn prepare_rows(
     if key != Some(identity::raw_routing_key(&raw).map_err(poison)?.as_slice()) {
         return Err(poison("raw routing key mismatch"));
     }
-    validate::retained_raw(&raw, limits)
+    validate::retained_delivery(&raw, limits)
 }

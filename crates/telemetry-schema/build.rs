@@ -78,7 +78,7 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
             "AnalyticalPoint",
             "sample_id"
             | "stream_id"
-            | "delivery_id"
+            | "delivery_evidence"
             | "original_position"
             | "lineage"
             | "exemplars"
@@ -113,6 +113,7 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
             | "negative_counts",
         ) => Type::Fixed64,
         ("AnalyticalPoint", "scale" | "positive_offset" | "negative_offset") => Type::Sint32,
+        ("AnalyticalPoint", "receipt_tag") => Type::Fixed32,
         ("AnalyticalPoint" | "AttributeNode", "int_value") => Type::Sint64,
         (
             "AnalyticalPoint",
@@ -196,7 +197,7 @@ fn sql_type(
         check_analytical_field(owner, field);
     }
     if owner == ".recount.telemetry.AnalyticalPoint"
-        && matches!(field.name(), "sample_id" | "stream_id" | "delivery_id")
+        && matches!(field.name(), "sample_id" | "stream_id")
     {
         assert_eq!(
             field.r#type(),
@@ -212,12 +213,7 @@ fn sql_type(
             !field.proto3_optional.unwrap_or(false),
             "analytical identity is required"
         );
-        return if field.name() == "delivery_id" {
-            "FixedString(16)"
-        } else {
-            "FixedString(32)"
-        }
-        .into();
+        return "FixedString(32)".into();
     }
     let base = match field.r#type() {
         Type::String => "String".into(),
@@ -323,19 +319,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect();
             let delivery: Vec<_> = typed
                 .iter()
-                .filter(|(name, _)| matches!(*name, "project_id" | "delivery_id" | "lineage"))
+                .filter(|(name, _)| {
+                    matches!(
+                        *name,
+                        "project_id"
+                            | "source_id"
+                            | "received_unix_nano"
+                            | "receipt_tag"
+                            | "delivery_evidence"
+                    )
+                })
                 .cloned()
                 .collect();
             write_projection(&out, "delivery", &delivery)?;
             let kafka: Vec<_> = typed
                 .iter()
-                .filter(|(name, _)| !matches!(*name, "sample_id" | "device_id"))
+                .filter(|(name, _)| !matches!(*name, "sample_id" | "device_id" | "lineage"))
                 .cloned()
                 .collect();
             write_projection(&out, "kafka", &kafka)?;
             let mut points: Vec<_> = typed
                 .iter()
-                .filter(|(name, _)| !matches!(*name, "sample_id" | "lineage" | "device_id"))
+                .filter(|(name, _)| {
+                    !matches!(
+                        *name,
+                        "sample_id" | "lineage" | "device_id" | "delivery_evidence"
+                    )
+                })
                 .filter(|(name, _)| {
                     matches!(*name, "project_id" | "series_id" | "metric_name")
                         || !SERIES_FIELDS.contains(name)

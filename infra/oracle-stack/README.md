@@ -306,6 +306,14 @@ mounted schemas under running consumers.
 
 ### Cut over to split metric storage
 
+Use the same procedure for the compact-delivery release. Its normalized
+Protobuf and `deliveries` key change together. When the source is already a
+split release, the drop lists below also remove its existing provenance and
+series objects. Before deleting output, verify the retained raw backlog fits
+the compact normalizer's single evidence-frame budget. Older admission checked
+the per-point frames, not the complete evidence bundle. An oversized retained
+request fails closed and blocks that normalizer; do not skip its raw offset.
+
 This maintenance procedure discards the existing metric history in ClickHouse
 and unread normalized/late output. It preserves PostgreSQL, execution
 participants, raw Kafka records and the normalizer's raw checkpoints. The new
@@ -357,6 +365,10 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    ch <<'SQL'
    DROP TABLE IF EXISTS telemetry.ingest_metric_points SYNC;
    DROP TABLE IF EXISTS telemetry.ingest_late_metric_points SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_metric_series SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_late_metric_series SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_deliveries SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_late_deliveries SYNC;
    DROP TABLE IF EXISTS telemetry.normalized_kafka SYNC;
    DROP TABLE IF EXISTS telemetry.late_kafka SYNC;
    SQL
@@ -412,6 +424,8 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    DROP TABLE IF EXISTS telemetry.discover_point_attributes SYNC;
    DROP TABLE IF EXISTS telemetry.metric_definitions SYNC;
    DROP TABLE IF EXISTS telemetry.attribute_definitions SYNC;
+   DROP TABLE IF EXISTS telemetry.metric_series SYNC;
+   DROP TABLE IF EXISTS telemetry.deliveries SYNC;
    DROP TABLE telemetry.metric_points SYNC;
    SQL
    ch < /opt/recount/backend/schema/metric-schema.sql

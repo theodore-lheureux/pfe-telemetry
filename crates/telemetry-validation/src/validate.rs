@@ -303,7 +303,7 @@ pub fn raw(raw: &RawRecord, limits: Limits) -> Result<Vec<AnalyticalPoint>, Issu
     let request = ExportMetricsServiceRequest::decode(raw.otlp_request.as_slice())
         .map_err(|_| invalid("otlp", "invalid OTLP encoding"))?;
     self::request(&request, limits)?;
-    lower(raw, &request, limits)
+    lower(raw, &request, limits, false)
 }
 
 // Admission only, after authorization: `request` has passed `request()` with
@@ -316,7 +316,7 @@ pub fn preflight(
 ) -> Result<Vec<AnalyticalPoint>, Issue> {
     let limits = limits.validate()?;
     envelope(raw, limits)?;
-    lower(raw, request, limits)
+    lower(raw, request, limits, true)
 }
 
 fn envelope(raw: &RawRecord, limits: Limits) -> Result<(), Issue> {
@@ -348,6 +348,7 @@ fn lower(
     raw: &RawRecord,
     request: &ExportMetricsServiceRequest,
     limits: Limits,
+    compact: bool,
 ) -> Result<Vec<AnalyticalPoint>, Issue> {
     let mut positions = BTreeSet::new();
     for b in &raw.bindings {
@@ -417,7 +418,12 @@ fn lower(
         ));
     }
     crate::policy::requested_authorities(raw, limits.distinct_authorities)?;
-    point::normalize_bounded(
+    let normalize = if compact {
+        point::normalize_delivery
+    } else {
+        point::normalize_bounded
+    };
+    normalize(
         raw,
         request,
         limits.points,
@@ -429,6 +435,24 @@ fn lower(
 
 pub fn retained_raw(record: &RawRecord, limits: Limits) -> Result<Vec<AnalyticalPoint>, Issue> {
     raw(record, limits).map_err(|mut issue| {
+        issue.category = Category::Poison;
+        issue
+    })
+}
+
+pub fn retained_delivery(
+    record: &RawRecord,
+    limits: Limits,
+) -> Result<Vec<AnalyticalPoint>, Issue> {
+    let decode = || {
+        let limits = limits.validate()?;
+        envelope(record, limits)?;
+        let request = ExportMetricsServiceRequest::decode(record.otlp_request.as_slice())
+            .map_err(|_| invalid("otlp", "invalid OTLP encoding"))?;
+        self::request(&request, limits)?;
+        lower(record, &request, limits, true)
+    };
+    decode().map_err(|mut issue| {
         issue.category = Category::Poison;
         issue
     })

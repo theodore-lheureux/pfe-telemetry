@@ -1,6 +1,6 @@
 use crate::{
     identity::TypedHash,
-    wire::{AnalyticalPoint, AttributeNode, ContinuityNode, PointLineage},
+    wire::{AnalyticalPoint, AttributeNode, ContinuityNode},
 };
 use prost::Message;
 
@@ -62,7 +62,7 @@ fn without_markers(
 pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
     let mut series = AnalyticalPoint {
         project_id: point.project_id.clone(),
-        source_id: std::mem::take(&mut point.source_id),
+        source_id: point.source_id.clone(),
         resource_id: std::mem::take(&mut point.resource_id),
         resource_kind: std::mem::take(&mut point.resource_kind),
         host_id: point.host_id.take(),
@@ -87,6 +87,9 @@ pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
         resource_entity_refs: std::mem::take(&mut point.resource_entity_refs),
         ..Default::default()
     };
+    if point.delivery_evidence.is_empty() {
+        point.source_id.clear();
+    }
     (series.resource_attributes, point.resource_continuity) = without_markers(
         std::mem::take(&mut point.resource_attributes),
         RESOURCE_MARKERS,
@@ -137,25 +140,11 @@ pub fn with_series(mut frame: AnalyticalPoint, series: &AnalyticalPoint) -> Anal
     frame
 }
 
-/// Lower request evidence to a content-addressed delivery and a point position.
-/// Receipt and resolved resource context participate in the delivery hash; a
-/// later transport attempt cannot overwrite evidence referenced by other points.
-pub fn split_delivery(point: &mut AnalyticalPoint) -> Result<(), &'static str> {
-    let mut lineage =
-        PointLineage::decode(point.lineage.as_slice()).map_err(|_| "invalid lineage")?;
-    point.original_position = lineage
-        .original
-        .take()
-        .map_or_else(Vec::new, |p| p.encode_to_vec());
-    point.received_unix_nano = lineage.received_unix_nano;
-    point.lineage = lineage.encode_to_vec();
-    let mut hash = TypedHash::new("recount.delivery");
-    hash.field(point.project_id.as_bytes());
-    hash.field(point.source_id.as_bytes());
-    hash.field(&point.lineage);
-    point.delivery_id = hash.finish()[..16].to_vec();
-    point.sample_id.clear();
-    Ok(())
+/// Disambiguate deliveries from the same source at the same receipt time.
+pub fn receipt_tag(record_id: &str) -> u32 {
+    let mut hash = TypedHash::new("recount.receipt");
+    hash.field(record_id.as_bytes());
+    u32::from_be_bytes(hash.finish()[..4].try_into().unwrap())
 }
 
 #[cfg(test)]

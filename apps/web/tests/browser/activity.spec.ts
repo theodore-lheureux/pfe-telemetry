@@ -63,7 +63,7 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 	const root = protobuf.Root.fromJSON(descriptor.schema);
 	const pointType = root.lookupType("recount.telemetry.AnalyticalPoint"),
 		notificationType = root.lookupType("recount.telemetry.LiveNotification"),
-		lineageType = root.lookupType("recount.telemetry.PointLineage"),
+		evidenceType = root.lookupType("recount.telemetry.DeliveryEvidence"),
 		rawType = root.lookupType("recount.telemetry.RawRecord"),
 		requestType = root.lookupType(
 			"opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
@@ -173,18 +173,21 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 				{ timeout: 15000 },
 			)
 			.toBe(true);
-		const lineage = lineageType
+		const deliveryEvidence = evidenceType
 			.encode(
-				lineageType.fromObject({
-					record_id: randomUUID(),
-					received_unix_nano: time.toString(),
-					delivery: {
-						collector_connection_id: connection.connection_id,
-						collector_hostname: connection.hostname,
-						collector_local_address: connection.local_address,
-						collector_peer_address: connection.peer_address,
-						ingestion_peer_address: "203.0.113.1:52100",
-						local_interfaces: connection.interfaces,
+				evidenceType.fromObject({
+					resources: [{ resource: 0 }],
+					common: {
+						record_id: randomUUID(),
+						received_unix_nano: time.toString(),
+						delivery: {
+							collector_connection_id: connection.connection_id,
+							collector_hostname: connection.hostname,
+							collector_local_address: connection.local_address,
+							collector_peer_address: connection.peer_address,
+							ingestion_peer_address: "203.0.113.1:52100",
+							local_interfaces: connection.interfaces,
+						},
 					},
 				}),
 			)
@@ -205,10 +208,8 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 						metric_name: "recount.node.memory.total",
 						unit: "By",
 						metric_kind: 1,
-						delivery_id: createHash("sha256")
-							.update(project.id)
-							.digest()
-							.subarray(0, 16),
+						received_unix_nano: time.toString(),
+						receipt_tag: 1,
 						stream_id: createHash("sha256").update(project.id).digest(),
 						time_unix_nano: (time - BigInt(index)).toString(),
 						event_day: Number(time / 86400000000000n),
@@ -223,7 +224,7 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 						point_attributes: [
 							{ path: "/opaque", kind: 6, bytes_value: Buffer.from([0, 255]) },
 						],
-						lineage,
+						delivery_evidence: deliveryEvidence,
 					}),
 				)
 				.finish(),
@@ -233,9 +234,9 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 			const query =
 				table === "metric_points"
 					? `INSERT INTO telemetry.metric_points
-					(project_id, metric_name, series_id, stream_id, delivery_id, event_day, time_unix_nano, int_value, value_kind)
+					(project_id, metric_name, series_id, stream_id, received_unix_nano, receipt_tag, event_day, time_unix_nano, int_value, value_kind)
 					SELECT *, 'INTEGER' FROM input('project_id String, metric_name String, series_id UInt64,
-						stream_id FixedString(32), delivery_id FixedString(16), event_day UInt32,
+						stream_id FixedString(32), received_unix_nano UInt64, receipt_tag UInt32, event_day UInt32,
 						time_unix_nano UInt64, int_value Int64') FORMAT Protobuf`
 					: `INSERT INTO telemetry.${table} FORMAT Protobuf`;
 			const result = await clickhouse.exec({
