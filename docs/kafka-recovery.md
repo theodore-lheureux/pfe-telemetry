@@ -266,3 +266,9 @@ new arrivals were stopped during drain. These results support finite current-sch
 catch-up, not a sustained fleet rate or a 24-hour
 guarantee. The outage duration, admitted aggregate load and disk allocation
 remain owner decisions.
+
+## Chart coverage and Kafka lag
+
+The web application estimates how far ingestion has progressed by reading the next uncommitted record in each lagging partition of the raw, recent normalized and late normalized topics. The watermark is the oldest receive time among those records, or the current time when all three consumer groups are caught up. The ingestion API sets the raw Kafka record timestamp to receive time. The normalizer copies it to `recount-raw-received-ms` on each output; packing stays within one raw delivery. The normalized Kafka timestamp stays at publication time so replay does not shorten retention.
+
+Match the web application's Kafka topic and group settings to the deployed pipeline, including `RECOUNT_CLICKHOUSE_GROUP` and `RECOUNT_CLICKHOUSE_LATE_GROUP` when the schema bundle uses non-default group names. The web application caches the watermark for five seconds and falls back to the latest stored heartbeat bucket for the project if Kafka cannot supply it. Charts hatch buckets whose end plus the normal collector send delay (one default 1 s collection cycle plus 60 s default clock skew) is newer than the watermark. The default one-hour maximum submission age allows spool replay; it is not normal send delay.

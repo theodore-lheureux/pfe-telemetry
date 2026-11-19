@@ -4,7 +4,9 @@ import { parseProjectReference } from "../organizations/validation";
 import {
 	type CollectorAdapter,
 	type CreateEnrollmentKeyInput,
+	DEFAULT_CLOCK_SKEW_SECONDS,
 	DEFAULT_LINUX_LOCAL_KINDS,
+	DEFAULT_SUBMISSION_AGE_SECONDS,
 	type EnrollmentKeyReference,
 	type EnrollNodeInput,
 	type ListNodesInput,
@@ -93,8 +95,16 @@ export function parseCreateEnrollmentKeyInput(value: unknown) {
 		(adapter === "standard" && kinds.length)
 	)
 		throw new Error("Invalid local resource kinds");
-	const maximumSubmissionAge = seconds(input.maximumSubmissionAge, 3600, 1);
-	const allowedClockSkew = seconds(input.allowedClockSkew, 60, 0);
+	const maximumSubmissionAge = seconds(
+		input.maximumSubmissionAge,
+		DEFAULT_SUBMISSION_AGE_SECONDS,
+		1,
+	);
+	const allowedClockSkew = seconds(
+		input.allowedClockSkew,
+		DEFAULT_CLOCK_SKEW_SECONDS,
+		0,
+	);
 	if (
 		maximumSubmissionAge + allowedClockSkew >
 		MAX_U64_NANOSECONDS_DURATION_SECONDS

@@ -68,7 +68,7 @@ export async function calculateIngestedThrough(
 	now = Date.now(),
 ) {
 	// Snapshot upstream first: a raw commit can hand work off to either storage lane.
-	const snapshots = [];
+	const snapshots: Position[][] = [];
 	for (const lane of lanes) snapshots.push(await pendingOffsets(admin, lane));
 	const timestamps = await Promise.all(
 		lanes.map(async (lane, index) => {

@@ -1,3 +1,7 @@
+import {
+	DEFAULT_CLOCK_SKEW_SECONDS,
+	DEFAULT_SUBMISSION_AGE_SECONDS,
+} from "../../collectors/contracts";
 import type { ChartPoint } from "../charts";
 
 // Charts span the whole requested range on the interval's bucket grid, so a missing
@@ -31,27 +35,58 @@ export function onGrid(points: ChartPoint[], grid: number[]): ChartPoint[] {
 
 export type Coverage = Record<string, number[]> | null;
 
-/** Whether a node, or any node when none is given, reported during a bucket; null when unknown. */
-export function online(
-	coverage: Coverage,
-	bucketMs: number,
-	node?: string | null,
-): boolean | null {
-	if (!coverage) return null;
-	if (node) return node in coverage ? coverage[node].includes(bucketMs) : null;
-	return Object.values(coverage).some((buckets) => buckets.includes(bucketMs));
+// The collector exports on its sampling cadence (collector config: 1 s by default).
+// Ingestion accepts age + skew; only one normal cycle, not the spool lifetime, is grace.
+const COLLECTOR_INTERVAL_MS = 1000;
+export const NORMAL_SEND_DELAY_MS =
+	Math.min(COLLECTOR_INTERVAL_MS, DEFAULT_SUBMISSION_AGE_SECONDS * 1000) +
+	DEFAULT_CLOCK_SKEW_SECONDS * 1000;
+
+export function stillArriving(
+	bucket: number,
+	step: number,
+	ingestedThrough: Date | null,
+) {
+	return (
+		ingestedThrough !== null &&
+		bucket + step + NORMAL_SEND_DELAY_MS > ingestedThrough.getTime()
+	);
 }
 
-/** Contiguous runs of buckets in which no node reported, as [from, to) in ms. */
-export function offlineBands(grid: number[], coverage: Coverage, step: number) {
-	if (!coverage) return [];
-	const reported = new Set(Object.values(coverage).flat());
-	const bands: { from: number; to: number }[] = [];
+export function coverageState(
+	coverage: Coverage,
+	bucketMs: number,
+	step: number,
+	ingestedThrough: Date | null,
+	node?: string | null,
+) {
+	if (stillArriving(bucketMs, step, ingestedThrough)) return "arriving";
+	const buckets = node
+		? coverage?.[node]
+		: coverage && Object.values(coverage).flat();
+	if (!buckets) return "unknown";
+	if (buckets.includes(bucketMs)) return "reported";
+	return ingestedThrough ? "missing" : "unknown";
+}
+
+export function coverageBands(
+	grid: number[],
+	coverage: Coverage,
+	step: number,
+	ingestedThrough: Date | null,
+) {
+	if (!ingestedThrough) return [];
+	const reported = new Set(Object.values(coverage ?? {}).flat());
+	const bands: { from: number; to: number; kind: "missing" | "arriving" }[] =
+		[];
 	for (const bucket of grid) {
-		if (reported.has(bucket)) continue;
+		const arriving = stillArriving(bucket, step, ingestedThrough);
+		if (!arriving && (!coverage || reported.has(bucket))) continue;
+		const kind = arriving ? "arriving" : "missing";
 		const last = bands.at(-1);
-		if (last && last.to === bucket) last.to = bucket + step;
-		else bands.push({ from: bucket, to: bucket + step });
+		if (last && last.kind === kind && last.to === bucket)
+			last.to = bucket + step;
+		else bands.push({ from: bucket, to: bucket + step, kind });
 	}
 	return bands;
 }

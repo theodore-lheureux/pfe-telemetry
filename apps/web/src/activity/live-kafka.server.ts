@@ -97,7 +97,7 @@ export function partitionConsumer(
 				name: "recount-live-partition",
 				version: 0,
 				protocol: ({ topics }) => ({
-					name: "recount-reader-partitions",
+					name: "recount-live-partition",
 					metadata: AssignerProtocol.MemberMetadata.encode({
 						version: 0,
 						topics,

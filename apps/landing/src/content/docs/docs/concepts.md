@@ -33,6 +33,8 @@ An execution doesn't track whether a job is running or finished. It records the 
 
 Recount never fills in gaps. When a reading is missing, the chart shows a gap instead of a zero. Measurements keep their original timestamps, even when they arrive late.
 
+Insights and time-series dashboard panels, including Node health, mark periods that may not be stored yet with a hatched **Data still arriving** band. Hover over it for the estimated delay. A **No data received** band means no collector heartbeat was stored for that period after allowing for the normal send delay. It does not mean the machines were offline: collectors can send queued measurements later.
+
 ## Next steps
 
 - [Connect a machine](/docs/quick-start/) and record your first execution.

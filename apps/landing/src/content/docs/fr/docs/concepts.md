@@ -33,6 +33,8 @@ Une exécution ne suit pas l’état d’une tâche, en cours ou terminée. Elle
 
 Recount ne comble jamais les trous. Quand une mesure manque, le graphique affiche un vide plutôt qu’un zéro. Les mesures gardent leur horodatage d’origine, même quand elles arrivent en retard.
 
+Les analyses et les graphiques temporels des tableaux de bord, dont l’état des nœuds, hachurent les périodes dont les données ne sont peut-être pas encore stockées. Survolez la bande **Données encore en cours d’arrivée** pour voir le retard estimé. Une bande **Aucune donnée reçue** indique qu’aucun signal de présence n’a été stocké pour cette période, compte tenu du délai d’envoi habituel. Cela ne signifie pas que les machines étaient hors ligne : les collecteurs peuvent envoyer plus tard les mesures mises en file d’attente.
+
 ## Prochaines étapes
 
 - [Connectez une machine](/fr/docs/quick-start/) et enregistrez votre première exécution.

@@ -105,6 +105,7 @@ function TooltipCard({
 	series,
 	format,
 	gapLabel,
+	bands,
 	timeZone,
 }: {
 	active?: boolean;
@@ -113,6 +114,7 @@ function TooltipCard({
 	series: ChartSeries[];
 	format: (value: number) => string;
 	gapLabel?: (key: string, bucketMs: number) => string | null;
+	bands: ChartBand[];
 	timeZone: string;
 }) {
 	// Recharts keeps a tooltip inside the plot only when it fits; a wider one overflows the tile.
@@ -120,6 +122,7 @@ function TooltipCard({
 	if (!active || !payload?.length || typeof label !== "number") return null;
 	const row = payload[0]?.payload as Record<string, number | null>;
 	const locale = getLocale();
+	const bandLabel = bands.find((band) => label >= band.from && label < band.to);
 	return (
 		<div
 			className="grid min-w-0 gap-1.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md"
@@ -132,6 +135,11 @@ function TooltipCard({
 					timeZone,
 				}).format(label)}
 			</p>
+			{bandLabel && (
+				<p className="text-muted-foreground">
+					{bandLabel.detail ?? bandLabel.label}
+				</p>
+			)}
 			{series.map((entry) => {
 				const value = row[entry.key] ?? row[`${entry.key}${TAIL}`] ?? null;
 				const band = (row as Record<string, unknown>)[`${entry.key}${BAND}`] as
@@ -177,6 +185,32 @@ function TooltipCard({
 export type ChartType = "auto" | "line" | "area" | "bar" | "stacked";
 const MAX_VALUE_LABELS = 16;
 
+type ChartBand = {
+	from: number;
+	to: number;
+	label: string;
+	hatched?: boolean;
+	detail?: string;
+};
+
+function CoverageHatch({ id }: { id: string }) {
+	return (
+		<pattern
+			id={id}
+			width="6"
+			height="6"
+			patternUnits="userSpaceOnUse"
+			patternTransform="rotate(45)"
+		>
+			<path
+				d="M 0 0 V 6"
+				stroke="var(--muted-foreground)"
+				strokeOpacity={0.2}
+			/>
+		</pattern>
+	);
+}
+
 export function TimeseriesChart({
 	series,
 	bucketSeconds,
@@ -189,7 +223,6 @@ export function TimeseriesChart({
 	goal,
 	domain,
 	bands = [],
-	bandLabel,
 	gapLabel,
 	onZoom,
 	legend = true,
@@ -218,8 +251,7 @@ export function TimeseriesChart({
 	/** The time axis bounds in ms; defaults to the data's extent. */
 	domain?: [number, number];
 	/** Shaded time spans, such as periods when no node reported. */
-	bands?: { from: number; to: number }[];
-	bandLabel?: string;
+	bands?: ChartBand[];
 	/** Why a series has no value in a bucket, shown in the tooltip. */
 	gapLabel?: (key: string, bucketMs: number) => string | null;
 	/** Dragging across the chart selects a span, from the first bucket's start to the last one's end. */
@@ -245,6 +277,7 @@ export function TimeseriesChart({
 	height?: string;
 }) {
 	const gradient = useId().replace(/:/g, "");
+	const hatch = `${gradient}-hatch`;
 	const timeZone = useDisplayTimeZone();
 	// Opacity for a series: faded while another one is highlighted.
 	const emphasis = (key: string) =>
@@ -488,6 +521,7 @@ export function TimeseriesChart({
 					onMouseLeave={() => setSelection(null)}
 				>
 					<defs>
+						<CoverageHatch id={hatch} />
 						<linearGradient id={gradient} x1="0" y1="0" x2="0" y2="1">
 							<stop
 								offset="0%"
@@ -507,14 +541,14 @@ export function TimeseriesChart({
 							key={band.from}
 							x1={band.from}
 							x2={band.to}
-							fill="var(--muted-foreground)"
-							fillOpacity={0.08}
+							fill={band.hatched ? `url(#${hatch})` : "var(--muted-foreground)"}
+							fillOpacity={band.hatched ? 1 : 0.08}
 							strokeOpacity={0}
 							ifOverflow="hidden"
 							label={
-								bandLabel && band.to - band.from >= (span || 1) / 12
+								band.to - band.from >= (span || 1) / 12
 									? {
-											value: bandLabel,
+											value: band.label,
 											position: "insideTop",
 											fontSize: 11,
 											fill: "var(--muted-foreground)",
@@ -594,6 +628,7 @@ export function TimeseriesChart({
 					)}
 					<Tooltip
 						isAnimationActive={false}
+						filterNull={false}
 						cursor={{ stroke: "var(--border)", strokeWidth: 1 }}
 						content={(props) => (
 							<TooltipCard
@@ -601,6 +636,7 @@ export function TimeseriesChart({
 								series={drawn}
 								format={format}
 								gapLabel={gapLabel}
+								bands={bands}
 								timeZone={timeZone}
 							/>
 						)}

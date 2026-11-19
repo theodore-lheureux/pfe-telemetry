@@ -96,3 +96,5 @@ export interface IssuedNodeToken {
 	token: string;
 	expiresAt: Date;
 }
+export const DEFAULT_SUBMISSION_AGE_SECONDS = 3600;
+export const DEFAULT_CLOCK_SKEW_SECONDS = 60;
