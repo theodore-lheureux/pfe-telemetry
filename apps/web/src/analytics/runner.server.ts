@@ -16,6 +16,11 @@ import { metricDefinitions } from "./discovery.server";
 import { formulaSeries } from "./formula-series";
 import { pipelineIngestedThrough } from "./ingested-through.server";
 import {
+	POINT_WINDOW,
+	SERIES_WINDOW,
+	seriesPointSource,
+} from "./series-source.server";
+import {
 	ALLOWED_CALCULATIONS,
 	comparisonRange,
 	resolveRange,
@@ -198,11 +203,7 @@ async function coverage(
 		const result = await connection.query({
 			query: `SELECT source_id AS node,
   arraySort(groupUniqArray(toString(intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64}))) AS buckets
-FROM metric_points
-WHERE project_id = {project:String}
-  AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}
-  AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}
-  AND metric_name = {heartbeat:String}
+FROM (${seriesPointSource(`${SERIES_WINDOW} AND metric_name = {heartbeat:String}`, POINT_WINDOW, "s.source_id")})
 GROUP BY node
 LIMIT 500`,
 			format: "JSONEachRow",

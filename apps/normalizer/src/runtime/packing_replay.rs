@@ -10,7 +10,7 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord},
 };
 use recount_telemetry_schema::{
-    ExportMetricsServiceRequest, RAW_RECEIVED_MS_HEADER, identity, metrics::metric::Data,
+    ExportMetricsServiceRequest, RAW_RECEIVED_MS_HEADER, ddl::Schema, identity, metrics::metric::Data, series,
     wire::AnalyticalPoint,
 };
 use ruststream_rdkafka::prelude::*;
@@ -213,41 +213,31 @@ async fn scenario_with_linger(
             .iter()
             .all(Result::is_ok)
     );
-    sql(&format!("CREATE DATABASE {db}"));
-    for table in ["metric_points", "normalized_kafka", "ingest_metric_points"] {
-        let mut ddl = sql(&format!(
-            "SHOW CREATE TABLE telemetry.{table} FORMAT TSVRaw"
-        ))
-        .replace("telemetry.", &format!("{db}."));
-        if table == "normalized_kafka" {
-            for (setting, value) in [
-                ("kafka_topic_list", format!("'{recent}'")),
-                ("kafka_group_name", format!("'{storage_group}'")),
-                (
-                    "kafka_format",
-                    if packed {
-                        "'Protobuf'"
-                    } else {
-                        "'ProtobufSingle'"
-                    }
-                    .into(),
-                ),
-                ("kafka_max_block_size", "16384".into()),
-                (
-                    "kafka_poll_max_batch_size",
-                    if packed { "16" } else { "1024" }.into(),
-                ),
-            ] {
-                let prefix = format!("{setting} = ");
-                let start = ddl.find(&prefix).unwrap() + prefix.len();
-                let end = ddl[start..].find(',').map_or(ddl.len(), |n| start + n);
-                ddl.replace_range(start..end, &value);
-            }
-            assert!(
-                ddl.contains(&format!("'{recent}'")) && ddl.contains(&format!("'{storage_group}'"))
-            );
-        }
-        sql(&ddl);
+    let ddl = Schema {
+        database: db,
+        bootstrap: &setting("RECOUNT_PACKING_TEST_NATIVE_BOOTSTRAP"),
+        topic: &recent,
+        group: &storage_group,
+        late_topic: &late,
+        late_group: &format!("{storage_group}.late"),
+        partition_limit: 128,
+        poll_ms: 100,
+        flush_ms: 2000,
+        if_not_exists: false,
+    }
+    .render()
+    .unwrap();
+    let ddl = if packed {
+        ddl
+    } else {
+        ddl.replacen(
+            "kafka_format = 'Protobuf'",
+            "kafka_format = 'ProtobufSingle'",
+            1,
+        )
+    };
+    for statement in ddl.split(';').map(str::trim).filter(|q| !q.is_empty()) {
+        sql(statement);
     }
     let (stop, stopped) = tokio::sync::oneshot::channel();
     let run = tokio::spawn(async move {
@@ -269,6 +259,7 @@ async fn scenario_with_linger(
         .unwrap();
     let timeout = Duration::from_secs(3);
     let mut expected = Vec::new();
+    let mut expected_ids = Vec::new();
     let start = Instant::now();
     let received_ms = (unix_nanos() / 1_000_000) as i64 - 60_000;
     let mut delays = Vec::new();
@@ -278,11 +269,17 @@ async fn scenario_with_linger(
         )
         .unwrap();
         let points = prepare(bytes, Some(&key), 1, Default::default()).unwrap();
-        expected.extend(points.into_iter().map(|r| {
-            AnalyticalPoint::decode(r.payload.as_slice())
-                .unwrap()
-                .sample_id
-        }));
+        for record in points {
+            let mut point = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
+            let dimensions = series::split(&mut point);
+            expected_ids.push(format!(
+                "{}\t{}\t{}",
+                identity::hex(&point.sample_id),
+                dimensions.series_id,
+                dimensions.logical_series_id,
+            ));
+            expected.push(point.sample_id);
+        }
         let sent = Instant::now();
         producer
             .send(
@@ -397,6 +394,18 @@ async fn scenario_with_linger(
     stored.sort();
     encoded.sort();
     assert_eq!(stored, encoded);
+    expected_ids.sort_unstable();
+    assert_eq!(
+        sql(&format!(
+            "SELECT lower(hex(p.sample_id)), p.series_id, s.logical_series_id
+            FROM (SELECT * FROM {db}.metric_points FINAL) AS p
+            INNER JOIN (SELECT * FROM {db}.metric_series FINAL) AS s USING (project_id, series_id)
+            ORDER BY p.sample_id"
+        ))
+        .lines()
+        .collect::<Vec<_>>(),
+        expected_ids.iter().map(String::as_str).collect::<Vec<_>>(),
+    );
     let logical_rows = sql(&format!(
         "SELECT hex(formatRow('RowBinary', *)) FROM {db}.metric_points FINAL ORDER BY sample_id"
     ));

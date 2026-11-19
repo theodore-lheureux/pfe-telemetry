@@ -2,9 +2,10 @@ import type { ClickHouseClient } from "@clickhouse/client";
 import { readExecutions } from "../executions/participants.server";
 import { compileFields } from "./compile.server";
 import type { AttributeDefinition, MetricDefinition } from "./contracts";
+import { seriesPointSource } from "./series-source.server";
 import { metricBehavior } from "./validation";
 
-// Catalog reads are small: aggregated definition rows, never raw points.
+// Catalogs scan series definitions, never raw samples.
 const SETTINGS = {
 	max_execution_time: 5,
 	max_threads: 1,
@@ -47,10 +48,10 @@ function definition(row: MetricRow): MetricDefinition {
 }
 
 const METRICS = `SELECT metric_name AS name, metric_kind AS kind, temporality,
-    monotonic_state AS monotonic, unit, anyLast(description) AS description,
+    ifNull(monotonic, 2) AS monotonic_state, unit, argMax(description, last_seen_unix_nano) AS description,
     toString(min(first_seen_unix_nano)) AS firstSeenNs,
     toString(max(last_seen_unix_nano)) AS lastSeenNs
-  FROM metric_definitions
+  FROM metric_series
   WHERE project_id = {project:String}`;
 
 /**
@@ -63,10 +64,10 @@ export async function listMetrics(
 	signal?: AbortSignal,
 ): Promise<MetricDefinition[]> {
 	const result = await connection.query({
-		query: `${METRICS}
-  GROUP BY name, kind, temporality, monotonic, unit
+		query: `SELECT * EXCEPT(monotonic_state), monotonic_state AS monotonic FROM (${METRICS}
+  GROUP BY name, kind, temporality, monotonic_state, unit
   ORDER BY name, max(last_seen_unix_nano) DESC
-  LIMIT ${MAX_METRICS}`,
+  LIMIT ${MAX_METRICS})`,
 		format: "JSONEachRow",
 		query_params: { project: projectId },
 		abort_signal: signal,
@@ -83,10 +84,10 @@ export async function metricDefinitions(
 	signal?: AbortSignal,
 ): Promise<Map<string, MetricDefinition>> {
 	const result = await connection.query({
-		query: `${METRICS} AND metric_name IN {metrics:Array(String)}
-  GROUP BY name, kind, temporality, monotonic, unit
+		query: `SELECT * EXCEPT(monotonic_state), monotonic_state AS monotonic FROM (${METRICS} AND metric_name IN {metrics:Array(String)}
+  GROUP BY name, kind, temporality, monotonic_state, unit
   ORDER BY max(last_seen_unix_nano) DESC
-  LIMIT 1 BY name`,
+  LIMIT 1 BY name)`,
 		format: "JSONEachRow",
 		query_params: { project: projectId, metrics: [...new Set(metrics)] },
 		abort_signal: signal,
@@ -97,6 +98,17 @@ export async function metricDefinitions(
 	);
 }
 
+const attributeSource = (allMetrics: boolean) => `
+  SELECT metric_name, last_seen_unix_nano, entry.1 AS scope,
+    substring(entry.2, 2) AS attribute_key, entry.3 AS value_kind
+  FROM metric_series
+  ARRAY JOIN arrayConcat(
+    arrayMap(a -> tuple('point', a.path, a.kind), point_attributes),
+    arrayMap(a -> tuple('resource', a.path, a.kind), resource_attributes)
+  ) AS entry
+  WHERE project_id = {project:String}${allMetrics ? "" : " AND metric_name = {metric:String}"}
+    AND value_kind BETWEEN 2 AND 6 AND position(attribute_key, '/') = 0`;
+
 /** Attribute keys seen on one metric, for grouping and filtering choices. */
 export async function listAttributes(
 	connection: ClickHouseClient,
@@ -106,8 +118,7 @@ export async function listAttributes(
 ): Promise<AttributeDefinition[]> {
 	const result = await connection.query({
 		query: `SELECT ${metric === undefined ? "''" : "metric_name"} AS metric, scope, attribute_key AS key, value_kind AS kind
-  FROM attribute_definitions
-  WHERE project_id = {project:String}${metric === undefined ? "" : " AND metric_name = {metric:String}"}
+  FROM (${attributeSource(metric === undefined)})
   GROUP BY metric, scope, key, kind
   ORDER BY scope, key
   LIMIT ${MAX_ATTRIBUTES}`,
@@ -147,8 +158,7 @@ export async function listAttributeCatalog(
 		query: `SELECT scope, attribute_key AS key, value_kind AS kind,
     toString(max(last_seen_unix_nano)) AS lastSeenNs,
     arraySort(groupUniqArray(${MAX_ATTRIBUTE_METRICS})(metric_name)) AS metrics
-  FROM attribute_definitions
-  WHERE project_id = {project:String}${metric === undefined ? "" : " AND metric_name = {metric:String}"}
+  FROM (${attributeSource(metric === undefined)})
   GROUP BY scope, key, kind
   ORDER BY scope, key
   LIMIT ${MAX_ATTRIBUTES}`,
@@ -166,13 +176,13 @@ export async function listAttributeCatalog(
 	}));
 }
 
-/** Examples come from a bounded sample of the metric's points in the last hour. */
+/** Examples come from a bounded sample of the metric's series active in the last hour. */
 const EXAMPLE_WINDOW_MS = 3_600_000;
-const EXAMPLE_POINTS = 2000;
+const EXAMPLE_SERIES = 2000;
 
 /**
  * One recent value for each attribute of a metric, as text, keyed by `scope/key`.
- * The sample stops after a bounded number of points, so a busy metric still answers.
+ * The sample stops after a bounded number of series, so a busy metric still answers.
  */
 export async function metricAttributeExamples(
 	connection: ClickHouseClient,
@@ -188,10 +198,10 @@ export async function metricAttributeExamples(
 		query: `SELECT entry.1 AS scope, entry.2 AS key, any(entry.3) AS example
   FROM (
     SELECT point_attributes, resource_attributes
-    FROM metric_points
+    FROM metric_series FINAL
     WHERE project_id = {project:String} AND metric_name = {metric:String}
-      AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}
-    LIMIT ${EXAMPLE_POINTS}
+      AND last_seen_unix_nano >= {from:UInt64}
+    LIMIT ${EXAMPLE_SERIES}
   )
   ARRAY JOIN arrayConcat(${value("point")}, ${value("resource")}) AS entry
   GROUP BY scope, key
@@ -200,7 +210,6 @@ export async function metricAttributeExamples(
 		query_params: {
 			project: projectId,
 			metric,
-			firstDay: Math.floor(from / 86_400_000),
 			from: String(BigInt(from) * 1_000_000n),
 		},
 		abort_signal: signal,
@@ -219,7 +228,7 @@ export async function metricAttributeExamples(
 }
 
 /**
- * The most frequent values of one attribute in a bounded sample of recent points from
+ * The most frequent values of one attribute in a bounded sample of recent series from
  * the metrics that carry it, as text.
  */
 export async function attributeValueSample(
@@ -233,16 +242,20 @@ export async function attributeValueSample(
 ): Promise<string[]> {
 	const from = now - EXAMPLE_WINDOW_MS;
 	const column = scope === "point" ? "point_attributes" : "resource_attributes";
+	const points = seriesPointSource(
+		" AND metric_name IN {metrics:Array(String)} AND last_seen_unix_nano >= {from:UInt64}",
+		"AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}",
+		"s.suggested",
+		"",
+		[`${column} AS suggested`],
+	);
 	const result = await connection.query({
 		query: `SELECT value FROM (
     SELECT arrayJoin(arrayMap(a -> coalesce(a.string_value, toString(a.int_value), toString(a.double_value), if(a.bool_value = 1, 'true', 'false')),
-      arrayFilter(a -> a.path = {path:String} AND a.kind BETWEEN 2 AND 5, ${column}))) AS value
+      arrayFilter(a -> a.path = {path:String} AND a.kind BETWEEN 2 AND 5, suggested))) AS value
     FROM (
-      SELECT ${column}
-      FROM metric_points
-      WHERE project_id = {project:String} AND metric_name IN {metrics:Array(String)}
-        AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}
-      LIMIT ${EXAMPLE_POINTS}
+      SELECT suggested FROM (${points})
+      LIMIT ${EXAMPLE_SERIES}
     )
   )
   WHERE value IS NOT NULL AND value != ''
@@ -263,7 +276,7 @@ export async function attributeValueSample(
 	return (await result.json<{ value: string }>()).map((row) => row.value);
 }
 
-/** Suggested values come from the last day of points, most frequent first. */
+/** Suggested values come from points in the last day, most frequent first. */
 const VALUE_WINDOW_MS = 86_400_000;
 export const MAX_VALUE_SUGGESTIONS = 20;
 
@@ -288,14 +301,15 @@ export async function listAttributeValues(
 		params,
 	} = compileFields([field]);
 	const from = now - VALUE_WINDOW_MS;
+	const points = seriesPointSource(
+		` AND last_seen_unix_nano >= {from:UInt64}${metric === undefined ? "" : " AND metric_name = {metric:String}"}`,
+		"AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}",
+		"s.suggested",
+		"",
+		[`${value} AS suggested`],
+	);
 	const result = await connection.query({
-		query: `SELECT value FROM (
-    SELECT ${value} AS value
-    FROM metric_points
-    WHERE project_id = {project:String}
-      AND event_day >= {firstDay:UInt32}
-      AND time_unix_nano >= {from:UInt64}${metric === undefined ? "" : "\n      AND metric_name = {metric:String}"}
-  )
+		query: `SELECT suggested AS value FROM (${points})
   WHERE value IS NOT NULL AND value != ''
   GROUP BY value
   ORDER BY count() DESC, value

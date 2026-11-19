@@ -176,5 +176,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             write_projection(&out, "series", &series)?;
         }
     }
+    fs::write(
+        out.join("attach-series.rs"),
+        format!(
+            "{{ {} }}",
+            SERIES_FIELDS
+                .iter()
+                .filter(|name| !matches!(**name, "project_id" | "series_id"))
+                .map(|name| format!("frame.{name} = series.{name}.clone();"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        ),
+    )?;
     Ok(())
 }

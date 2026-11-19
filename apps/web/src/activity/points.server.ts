@@ -5,6 +5,7 @@ import {
 } from "@clickhouse/client";
 import { compileFields, compileFilters } from "../analytics/compile.server";
 import { executionPointSource } from "../analytics/execution-source.server";
+import { seriesPointSource } from "../analytics/series-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
 import { activityNode, decodeLineage, nanosecondsDate } from "./codec.server";
@@ -92,22 +93,25 @@ interface Row {
 interface Key {
 	timeNs: string;
 	sampleId: string;
-	sourceId: string;
-	resourceId: string;
-	metricName: string;
+	seriesId: string;
 	day: number;
 }
 
 // Points are sorted by series, so the newest points of a window are found by sorting
 // only their narrow key columns. Without FINAL, a resent point can appear more than once
 // until merges remove its copies.
-function keyQuery(conditions: string[], execution: boolean) {
-	const points = `SELECT * FROM metric_points WHERE project_id={project:String}
-AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
-AND time_unix_nano>={lower:UInt64} AND time_unix_nano<={cursorTime:UInt64}`;
-	return `SELECT toString(time_unix_nano) AS timeNs,hex(sample_id) AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,event_day AS day
-FROM ${execution ? executionPointSource(points) : "metric_points"} WHERE project_id={project:String} AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
-AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String}))${conditions.map((condition) => `\nAND ${condition}`).join("")}
+function keyQuery(seriesFilters: string[], executionFilters: string[]) {
+	const points = seriesPointSource(
+		` AND last_seen_unix_nano >= {lower:UInt64} AND first_seen_unix_nano <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
+		`AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
+AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String}))`,
+		executionFilters.length
+			? "s.source_id, s.resource_id, s.resource_kind"
+			: "",
+	);
+	return `SELECT toString(time_unix_nano) AS timeNs,hex(sample_id) AS sampleId,toString(series_id) AS seriesId,event_day AS day
+FROM ${executionFilters.length ? executionPointSource(points) : `(${points})`}
+${executionFilters.length ? `WHERE ${executionFilters.join(" AND ")}` : ""}
 ORDER BY time_unix_nano DESC,sample_id DESC LIMIT {limit:UInt32}`;
 }
 
@@ -115,12 +119,16 @@ ORDER BY time_unix_nano DESC,sample_id DESC LIMIT {limit:UInt32}`;
 // paying for FINAL, which merges every part overlapping the fetched keys.
 function pointListQuery(fields: string[]) {
 	const projected = fields.length ? `[${fields.join(",")}] AS fields,` : "";
+	const points = seriesPointSource(
+		" AND series_id IN arrayMap(id -> toUInt64(id), {ids:Array(String)})",
+		`AND event_day IN {days:Array(UInt32)}
+AND (series_id,time_unix_nano) IN {series:Array(Tuple(UInt64,UInt64))}
+AND hex(sample_id) IN {samples:Array(String)}`,
+	);
 	return `SELECT ${projected}hex(sample_id) AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
 host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
 resource_kind AS resourceKind,metric_kind AS kind,toString(int_value) AS integer,double_value AS double,toString(count) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
-FROM metric_points WHERE project_id={project:String} AND event_day IN {days:Array(UInt32)}
-AND (source_id,resource_id,metric_name,time_unix_nano) IN {series:Array(Tuple(String,String,String,UInt64))}
-AND hex(sample_id) IN {samples:Array(String)}
+FROM (${points})
 ORDER BY time_unix_nano DESC,sample_id DESC LIMIT 1 BY time_unix_nano,sample_id`;
 }
 
@@ -238,7 +246,12 @@ export async function readPoints(
 	const to = input.cursor?.to ?? input.to ?? new Date(),
 		from = input.cursor?.from ?? input.from ?? new Date(to.getTime() - 3600000);
 	const filters = compileFilters(input.filters ?? []);
-	const conditions = [...filters.conditions];
+	const conditions = filters.conditions.filter(
+		(_, i) => input.filters?.[i].field !== "execution",
+	);
+	const execution = filters.conditions.filter(
+		(_, i) => input.filters?.[i].field === "execution",
+	);
 	if (input.metric !== undefined)
 		conditions.push("metric_name={metric:String}");
 	const fields = input.fields ?? [];
@@ -252,10 +265,7 @@ export async function readPoints(
 	};
 	const fromNs = BigInt(from.getTime()) * NS_PER_MS;
 	const search = await searchKeys(
-		keyQuery(
-			conditions,
-			(input.filters ?? []).some((filter) => filter.field === "execution"),
-		),
+		keyQuery(conditions, execution),
 		params,
 		fromNs,
 		input.cursor
@@ -273,14 +283,9 @@ export async function readPoints(
 					...projections.params,
 					project: input.projectId,
 					days: [...new Set(keys.map((key) => key.day))],
+					ids: [...new Set(keys.map((key) => key.seriesId))],
 					series: keys.map(
-						(key) =>
-							new TupleParam([
-								key.sourceId,
-								key.resourceId,
-								key.metricName,
-								BigInt(key.timeNs),
-							]),
+						(key) => new TupleParam([BigInt(key.seriesId), BigInt(key.timeNs)]),
 					),
 					samples: keys.map((key) => key.sampleId),
 				},
@@ -326,15 +331,17 @@ export async function readPoint(
 	const projected = attributes
 		.map(
 			(name) =>
-				`arrayMap(a -> CAST(tuple(a.path,a.kind,a.string_value,a.int_value,a.double_value,a.bool_value,base64Encode(a.bytes_value)), 'Tuple(path String,kind UInt8,string_value Nullable(String),int_value Nullable(Int64),double_value Nullable(Float64),bool_value Nullable(UInt8),bytes_value Nullable(String))'),${name}) AS ${name}_json`,
+				`arrayMap(a -> CAST(tuple(a.path,a.kind,a.string_value,a.int_value,a.double_value,a.bool_value,base64Encode(a.bytes_value)), 'Tuple(path String,kind UInt8,string_value Nullable(String),int_value Nullable(Int64),double_value Nullable(Float64),bool_value Nullable(UInt8),bytes_value Nullable(String))'),${inspectorAttributes(name)}) AS ${name}_json`,
 		)
 		.join(",");
 	const rows = await query<JsonObject>(
-		`SELECT * EXCEPT(lineage,sample_id,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs),
+		`SELECT * EXCEPT(lineage,sample_id,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_nano,last_seen_unix_nano,logical_series_id),
 hex(sample_id) AS sample_id_hex,hex(stream_id) AS stream_id_hex,hex(lineage) AS lineage_hex,
 arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
-FROM metric_points FINAL WHERE project_id={project:String} AND source_id={source:String}
-AND resource_id={resource:String} AND metric_name={metric:String} AND event_day={day:UInt32} AND time_unix_nano={time:UInt64} AND sample_id=unhex({sample:String}) LIMIT 1`,
+FROM (${seriesPointSource(
+			" AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_nano <= {time:UInt64} AND last_seen_unix_nano >= {time:UInt64}",
+			"AND event_day={day:UInt32} AND time_unix_nano={time:UInt64} AND sample_id=unhex({sample:String})",
+		)}) LIMIT 1`,
 		{
 			project: input.projectId,
 			source: input.sourceId,
@@ -419,4 +426,14 @@ AND resource_id={resource:String} AND metric_name={metric:String} AND event_day=
 		provenance,
 		raw,
 	};
+}
+
+function inspectorAttributes(name: string) {
+	if (name !== "resource_attributes" && name !== "point_attributes")
+		return name;
+	const markers =
+		name === "resource_attributes" ? "resource_continuity" : "point_continuity";
+	// Insert in ascending original ordinal, restoring the source's depth-first order.
+	return `arrayFold((attrs, c) -> arrayConcat(arraySlice(attrs, 1, c.ordinal), [c.node],
+		arraySlice(attrs, c.ordinal + 1)), ${markers}, ${name})`;
 }

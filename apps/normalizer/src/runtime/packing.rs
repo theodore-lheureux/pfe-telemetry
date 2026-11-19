@@ -17,7 +17,16 @@ struct Packet {
 }
 
 fn frame_size(point: &AnalyticalPoint, metadata: Option<&AnalyticalPoint>) -> usize {
-    let len = point.encoded_len() + metadata.map_or(0, Message::encoded_len);
+    let len = point.encoded_len()
+        + metadata.map_or(0, |row| {
+            row.encoded_len()
+                - AnalyticalPoint {
+                    project_id: row.project_id.clone(),
+                    series_id: row.series_id,
+                    ..Default::default()
+                }
+                .encoded_len()
+        });
     prost::length_delimiter_len(len) + len
 }
 
@@ -40,9 +49,9 @@ impl Packet {
             if let Some((first, metadata)) = self.series.get(&point.series_id)
                 && *first == index
             {
-                let frame = series::encode_with_series(&point, metadata);
-                prost::encode_length_delimiter(frame.len(), &mut payload).unwrap();
-                payload.extend(frame);
+                series::with_series(point, metadata)
+                    .encode_length_delimited(&mut payload)
+                    .unwrap();
             } else {
                 point.encode_length_delimited(&mut payload).unwrap();
             }
@@ -71,11 +80,12 @@ pub(super) fn pack(
             .ok_or("positive partition count required")?;
         let metadata = series::split(&mut point);
         if !packed_recent || !recent(point.time_unix_nano, now) {
-            let payload = series::encode_with_series(&point, &metadata);
+            let time_unix_nano = point.time_unix_nano;
+            let payload = series::with_series(point, &metadata).encode_to_vec();
             body_fits(payload.len(), broker_bytes)?;
             output.push(RoutedRecord {
                 partition,
-                time_unix_nano: point.time_unix_nano,
+                time_unix_nano,
                 payload,
             });
             continue;

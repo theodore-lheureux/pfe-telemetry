@@ -6,6 +6,15 @@ use recount_telemetry_schema::{ANALYTICAL_COLUMNS, projection, wire::AnalyticalP
 use std::io::Write;
 fn main() {
     let args: Vec<_> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--storage-layout") {
+        use recount_telemetry_schema::{POINT_COLUMNS, POINT_NAMES, SERIES_COLUMNS, SERIES_NAMES};
+        println!(
+            "{}",
+            serde_json::json!({ "pointColumns": POINT_COLUMNS, "pointNames": POINT_NAMES,
+            "seriesColumns": SERIES_COLUMNS, "seriesNames": SERIES_NAMES })
+        );
+        return;
+    }
     if args.get(1).map(String::as_str) == Some("--participant-columns") {
         print!("{}", recount_telemetry_schema::PARTICIPANT_COLUMNS);
         return;

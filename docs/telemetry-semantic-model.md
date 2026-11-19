@@ -108,12 +108,12 @@ The runner resolves the project from the authorized request and adds it to every
 
 ## Discovery
 
-Selectors and query validation need to know which metrics and attributes exist in a project. ClickHouse materialized views on `metric_points` maintain two small tables as points arrive:
+Selectors and query validation aggregate the project's `metric_series` rows:
 
 - **Metric definitions:** project, metric name, kind, unit, temporality, monotonicity, description, first and last seen.
-- **Attribute definitions:** project, metric name, attribute scope (resource, scope or point), key and observed value kind.
+- **Attribute definitions:** project, metric name, attribute scope (resource or point), key and observed scalar value kind.
 
-Both aggregate continuously, so discovery adds no write path to ingestion and no PostgreSQL writes. Value suggestions are separate bounded queries over recent points, not stored dictionaries. Discovery describes what has arrived; it never acts as an allowlist that rejects new metrics. Adding these tables is a ClickHouse schema change, applied with the existing prepare-and-recreate workflow for disposable data.
+Discovery has no dedicated write path. Example values come from recent series; frequency-ranked suggestions join those series to recent points. Discovery describes what has arrived; it never acts as an allowlist that rejects new metrics.
 
 ## Executions
 

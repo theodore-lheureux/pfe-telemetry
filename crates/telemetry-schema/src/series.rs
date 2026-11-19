@@ -19,8 +19,8 @@ fn is_marker(path: &str, markers: &[&str]) -> bool {
 /// Bound the extra fields in a singleton before admission. Packet elision can
 /// only make the frame smaller. Protobuf record-length framing is budgeted separately.
 pub(crate) fn wire_overhead(point: &AnalyticalPoint) -> usize {
-    // Two storage keys, a logical key and two timestamp bounds are fixed64s.
-    let mut overhead = 5 * 10 + 2 + point.project_id.len();
+    // A storage key, a logical key and two timestamp bounds are fixed64s.
+    let mut overhead = 4 * 10;
     for (nodes, markers) in [
         (&point.resource_attributes, RESOURCE_MARKERS),
         (&point.point_attributes, POINT_MARKERS),
@@ -134,13 +134,10 @@ pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
     series
 }
 
-/// Add a series payload to a point frame. Every metadata field is disjoint
-/// except project_id and series_id, whose scalar values match.
-pub fn encode_with_series(point: &AnalyticalPoint, series: &AnalyticalPoint) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(point.encoded_len() + series.encoded_len());
-    point.encode_raw(&mut bytes);
-    series.encode_raw(&mut bytes);
-    bytes
+/// Encode one message in field order, with a single copy of each shared key.
+pub fn with_series(mut frame: AnalyticalPoint, series: &AnalyticalPoint) -> AnalyticalPoint {
+    include!(concat!(env!("OUT_DIR"), "/attach-series.rs"));
+    frame
 }
 
 #[cfg(test)]
@@ -179,8 +176,12 @@ mod tests {
         assert_eq!(point.point_continuity[0].ordinal, 0);
         assert_eq!(series.resource_attributes.len(), 1);
         assert_eq!(series.point_attributes.len(), 1);
-        let decoded =
-            AnalyticalPoint::decode(encode_with_series(&point, &series).as_slice()).unwrap();
+        let decoded = AnalyticalPoint::decode(
+            with_series(point.clone(), &series)
+                .encode_to_vec()
+                .as_slice(),
+        )
+        .unwrap();
         assert_eq!(decoded.series_id, series.series_id);
         assert_eq!(decoded.logical_series_id, series.logical_series_id);
         assert_eq!(decoded.first_seen_unix_nano, point.time_unix_nano);

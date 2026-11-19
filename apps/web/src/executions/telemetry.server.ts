@@ -4,6 +4,11 @@ import {
 	createClient,
 } from "@clickhouse/client";
 import * as z from "zod";
+import {
+	POINT_WINDOW,
+	SERIES_WINDOW,
+	seriesPointSource,
+} from "../analytics/series-source.server";
 import { httpUrl } from "../lib/env.server";
 import { OperationError } from "../lib/operation-error";
 import type {
@@ -23,43 +28,46 @@ export interface TelemetryScope {
 
 // Attribute paths retain array indexes and container kinds. Sorting canonicalizes
 // maps without conflating integers, bytes, absent values or Float64 bit patterns.
-function dimensions(column: string, excluded: string[] = []) {
-	const nodes = excluded.length
-		? `arrayFilter(a -> a.path NOT IN (${excluded.map((p) => `'${p}'`).join(",")}), ${column})`
-		: column;
+function dimensions(column: string) {
 	return `arraySort(a -> a.1, arrayMap(a -> tuple(a.path,a.kind,a.string_value,a.int_value,
     if(isNull(a.double_value),NULL,reinterpretAsUInt64(assumeNotNull(a.double_value))),
-    a.bool_value,a.bytes_value), ${nodes}))`;
+    a.bool_value,a.bytes_value), ${column}))`;
 }
+
+const executionTelemetrySource = seriesPointSource(
+	`${SERIES_WINDOW} AND source_id={source:String}
+    AND ({allHosts:UInt8}=1 OR host_id={host:String})
+    AND resource_kind=1
+    AND arrayExists(a -> a.path='/recount.collection.scope' AND a.kind=2 AND a.string_value='node',resource_attributes)
+    AND ((metric_name='recount.node.cpu.time' AND unit='s' AND metric_kind=2 AND temporality=2 AND monotonic=1)
+      OR (metric_name IN ('recount.node.memory.total','recount.node.memory.available') AND unit='By' AND metric_kind=1))`,
+	`${POINT_WINDOW}
+    AND (bitAnd(flags,1)!=0 OR (isNull(int_value) AND double_value>=0)
+      OR (isNull(double_value) AND int_value>=0))`,
+	"s.chart_id, s.metric_name, s.unit, s.host_id, s.cpu_mode",
+	"",
+	[
+		`hex(SHA256(toString(tuple(project_id,source_id,resource_id,resource_kind,host_id,device_id,
+    resource_present,scope_present,scope_name,scope_version,resource_schema_url,scope_schema_url,
+    metric_name,unit,metric_kind,temporality,monotonic,
+    ${dimensions("resource_attributes")},${dimensions("scope_attributes")},${dimensions("point_attributes")})))) AS chart_id`,
+		"arrayFirst(a -> a.path='/cpu.mode' AND a.kind=2,point_attributes).string_value AS cpu_mode",
+	],
+);
 
 // Each bucket keeps its latest sample through argMax over (time, sample); replayed
 // copies of a sample are identical, so duplicates cannot change the result and FINAL
 // is unnecessary. Only supported node scalars and their dimensions are read.
 export const telemetryQuery = `
 WITH samples AS (
-  SELECT hex(SHA256(toString(tuple(project_id,source_id,resource_id,resource_kind,host_id,device_id,
-    resource_present,scope_present,scope_name,scope_version,resource_schema_url,scope_schema_url,
-    metric_name,unit,metric_kind,temporality,monotonic,
-    ${dimensions("resource_attributes", ["/recount.host.boot_id", "/recount.collection.epoch_id"])},
-    ${dimensions("scope_attributes")},
-    ${dimensions("point_attributes", ["/recount.counter.segment_id"])})))) AS id,
+  SELECT chart_id AS id,
     hex(stream_id) AS segment, metric_name AS metric, unit, host_id AS hostId,
-    arrayFirst(a -> a.path='/cpu.mode' AND a.kind=2,point_attributes).string_value AS cpuMode,
+    cpu_mode AS cpuMode,
     time_unix_nano, sample_id, flags,
     if(bitAnd(flags,1)=0,int_value,NULL) AS integer_value,
     if(bitAnd(flags,1)=0,double_value,NULL) AS scalar_double,
     intDiv(time_unix_nano-{from:UInt64},{step:UInt64}) AS bucket
-  FROM metric_points
-  WHERE project_id={project:String} AND source_id={source:String}
-    AND event_day >= {firstDay:UInt32} AND event_day <= {lastDay:UInt32}
-    AND time_unix_nano >= {from:UInt64} AND time_unix_nano < {to:UInt64}
-    AND ({allHosts:UInt8}=1 OR host_id={host:String})
-    AND resource_kind=1
-    AND arrayExists(a -> a.path='/recount.collection.scope' AND a.kind=2 AND a.string_value='node',resource_attributes)
-    AND ((metric_name='recount.node.cpu.time' AND unit='s' AND metric_kind=2 AND temporality=2 AND monotonic=1)
-      OR (metric_name IN ('recount.node.memory.total','recount.node.memory.available') AND unit='By' AND metric_kind=1))
-    AND (bitAnd(flags,1)!=0 OR (isNull(int_value) AND double_value>=0)
-      OR (isNull(double_value) AND int_value>=0))
+  FROM (${executionTelemetrySource})
 )
 SELECT id,segment,metric,unit,hostId,cpuMode,
   toString({from:UInt64}+bucket*{step:UInt64}) AS bucketNs,

@@ -21,37 +21,72 @@ const withoutComments = (statement: string) =>
 		.join("\n")
 		.trim();
 
-/** The point table from the schema template, with the contract's generated columns. */
-function pointTableStatement(columns: string) {
-	const source = template();
-	const start = source.indexOf(
-		"CREATE TABLE __CREATE_GUARD____DATABASE__.metric_points",
-	);
-	if (start < 0)
-		throw new Error("Point table DDL is missing from the template");
-	return withoutComments(
-		source
-			.slice(start, source.indexOf(";", start))
-			.replace("__CREATE_GUARD____DATABASE__.", "")
-			.replace("__ANALYTICAL_COLUMNS__", columns.trim()),
-	);
+interface Layout {
+	pointColumns: string;
+	seriesColumns: string;
+	pointNames: string;
+	seriesNames: string;
 }
 
-/** Discovery tables and views from the ClickHouse schema template, for one database. */
-function discoveryStatements(database: string) {
-	const source = template();
-	const start = source.indexOf(
-		"CREATE TABLE __CREATE_GUARD____DATABASE__.metric_definitions",
-	);
-	if (start < 0)
-		throw new Error("Discovery DDL is missing from the schema template");
-	return source
-		.slice(start)
-		.replaceAll("__CREATE_GUARD__", "")
-		.replaceAll("__DATABASE__", database)
+function storageStatements(layout: Layout) {
+	return template()
 		.split(";")
-		.map(withoutComments)
-		.filter(Boolean);
+		.slice(1, 3)
+		.map((statement) =>
+			withoutComments(
+				statement
+					.replace("__CREATE_GUARD____DATABASE__.", "")
+					.replace("__POINT_COLUMNS__", layout.pointColumns)
+					.replace("__SERIES_COLUMNS__", layout.seriesColumns),
+			),
+		);
+}
+
+// Synthetic SQL mutations (including generated high-volume rows) rekey their
+// dimensions with a fixture-only hash. Production packets carry Rust keys.
+function fixtureViews(layout: Layout) {
+	const resource =
+		"a.path NOT IN ('/recount.host.boot_id', '/recount.collection.epoch_id')";
+	const point = "a.path != '/recount.counter.segment_id'";
+	const clean = `SELECT * REPLACE (arrayFilter(a -> ${resource}, resource_attributes) AS resource_attributes,
+		arrayFilter(a -> ${point}, point_attributes) AS point_attributes) FROM fixture_input`;
+	const dimensions = layout.seriesNames
+		.split(", ")
+		.filter(
+			(key) =>
+				![
+					"series_id",
+					"logical_series_id",
+					"first_seen_unix_nano",
+					"last_seen_unix_nano",
+				].includes(key),
+		)
+		.join(", ");
+	const logical = `cityHash64(tuple(project_id,source_id,resource_id,resource_kind,host_id,device_id,scope_name,scope_version,metric_name,unit,
+		arraySort(a -> a.path,resource_attributes),arraySort(a -> a.path,scope_attributes),arraySort(a -> a.path,point_attributes)))`;
+	const id = `cityHash64(tuple(${dimensions}))`;
+	const continuity = (column: string, predicate: string) =>
+		`arrayMap(i -> tuple(toUInt32(i-1), ${column}[i]), arrayFilter(i -> arrayExists(a -> NOT (${predicate}), [${column}[i]]), arrayEnumerate(${column})))`;
+	return [
+		`CREATE MATERIALIZED VIEW fixture_series TO metric_series AS
+		SELECT ${layout.seriesNames} FROM (SELECT * REPLACE (${id} AS series_id, ${logical} AS logical_series_id,
+		time_unix_nano AS first_seen_unix_nano, time_unix_nano AS last_seen_unix_nano) FROM (${clean}))`,
+		`CREATE MATERIALIZED VIEW fixture_points TO metric_points AS
+		SELECT ${layout.pointNames} FROM (
+			SELECT * REPLACE (series_key AS series_id,
+			${continuity("resource_attributes", resource)} AS resource_continuity,
+			${continuity("point_attributes", point)} AS point_continuity)
+			FROM (SELECT *, ${id
+				.replace(
+					"resource_attributes",
+					`arrayFilter(a -> ${resource},resource_attributes)`,
+				)
+				.replace(
+					"point_attributes",
+					`arrayFilter(a -> ${point},point_attributes)`,
+				)} AS series_key FROM fixture_input)
+		)`,
+	];
 }
 
 export async function createPointFixture(
@@ -73,6 +108,9 @@ export async function createPointFixture(
 			})
 		).stdout;
 	const columns = (await output("--columns")).toString();
+	const layout: Layout = JSON.parse(
+		(await output("--storage-layout")).toString(),
+	);
 	const binary = await output("--ordinary");
 	const suffix = randomUUID().replaceAll("-", "");
 	const name = `recount_tooling_reader_${suffix}`;
@@ -119,7 +157,8 @@ export async function createPointFixture(
 	try {
 		await admin.command({ query: `CREATE DATABASE ${name}` });
 		created = true;
-		await client.command({ query: pointTableStatement(columns) });
+		for (const query of storageStatements(layout))
+			await client.command({ query });
 		if (options.participants) {
 			const participantColumns = (
 				await output("--participant-columns")
@@ -139,13 +178,14 @@ export async function createPointFixture(
 				query: "SYSTEM STOP MERGES execution_participants",
 			});
 		}
-		// The real discovery DDL from the schema template, so tests exercise its views.
-		for (const statement of discoveryStatements(name))
-			await client.command({ query: statement });
 		await client.command({ query: "SYSTEM STOP MERGES metric_points" });
 		await client.command({
-			query: "CREATE TABLE fixture AS metric_points ENGINE=Memory",
+			query: `CREATE TABLE fixture (${columns}) ENGINE=Memory`,
 		});
+		await client.command({
+			query: "CREATE TABLE fixture_input AS fixture ENGINE=Null",
+		});
+		for (const query of fixtureViews(layout)) await client.command({ query });
 		const inserted = await client.exec({
 			query: "INSERT INTO fixture FORMAT Protobuf",
 			values: Readable.from([binary]),
@@ -166,8 +206,7 @@ export async function createPointFixture(
 		readerCreated = true;
 		for (const table of [
 			"metric_points",
-			"metric_definitions",
-			"attribute_definitions",
+			"metric_series",
 			...(options.participants ? ["execution_participants"] : []),
 		])
 			await admin.command({
@@ -232,7 +271,7 @@ export function insertPoints(
 		resource_attributes: `[${stringNode("/host.id", "{host:String}")},${stringNode("/recount.collection.scope", "'node'")},${stringNode("/recount.collection.epoch_id", "{epoch:String}")},${stringNode("/recount.host.boot_id", "{epoch:String}")}]`,
 		...replacements,
 	};
-	return `INSERT INTO metric_points SELECT seed.* REPLACE (${Object.entries(
+	return `INSERT INTO fixture_input SELECT seed.* REPLACE (${Object.entries(
 		fields,
 	)
 		.map(([key, value]) => `${value} AS ${key}`)

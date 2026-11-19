@@ -97,7 +97,7 @@ test("rootless lifecycles retain first-process metadata while memberships supply
 test("execution pages use bounded project-qualified key cursors and never stamp points", async () => {
 	const project = randomUUID();
 	await fixture.client.command({
-		query: "INSERT INTO metric_points SELECT * FROM fixture",
+		query: "INSERT INTO fixture_input SELECT * FROM fixture",
 	});
 	const identities = () =>
 		fixture.client

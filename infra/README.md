@@ -151,7 +151,7 @@ For raw topic budget B, normalizer per-partition fetch is B, total fetch is 2B, 
 
 The normalizer sends each point to the normalized topic when its time is within 24 hours of the normalizer's clock, either way, and to the late topic otherwise. Both topics have the same partition count, and a point takes the same partition index on either. The ingestion API already rejects points dated after the source's allowed clock skew or before its maximum submission age, measured from receipt, so late points come mostly from long submission ages and replays of old raw records.
 
-ClickHouse consumes the normalized topic into `telemetry.normalized_kafka` and the late topic into `telemetry.late_kafka`; `telemetry.ingest_metric_points` and `telemetry.ingest_late_metric_points` insert unchanged rows into `telemetry.metric_points`. The groups are `recount-clickhouse` and `recount-clickhouse-late`; new groups start at retained earliest. The target uses `ReplacingMergeTree`, event-day partitions and `(project_id, source_id, resource_id, metric_name, time_unix_nano, sample_id)` ordering. Inserts fsync data and part directories. Native input rows/block and fetch/queue bytes are conservative targets, not a hard decoded-memory proof: an indivisible wide record can overshoot a row/block target, and decoded nested attributes consume more than wire bytes. Measure native peak memory and sparse flush behavior before claiming capacity.
+ClickHouse consumes the normalized and late topics through `telemetry.normalized_kafka` and `telemetry.late_kafka`. Separate materialized views project observation and dimension fields. `metric_points` is a `ReplacingMergeTree`, partitioned by event day and ordered by `(project_id, series_id, time_unix_nano, sample_id)` with index granularity 1024. `metric_series` is an `AggregatingMergeTree`, ordered by `(project_id, metric_name, series_id)`, with min/max event bounds. The groups are `recount-clickhouse` and `recount-clickhouse-late`; new groups start at retained earliest. Both tables fsync data and part directories. Native input rows/block and fetch/queue bytes are conservative targets, not hard decoded-memory bounds. See the [analytical storage contract](../docs/telemetry-contract.md#analytical-identity-and-storage).
 
 Both tables use a **2-second** flush target. The exporter retains `max_partitions_per_insert_block=R` with throwing enabled, where `R = RECOUNT_NORMALIZER_OUTPUT_ROWS` ranges 1–16384 and defaults to 128.
 
@@ -173,7 +173,7 @@ The [Kafka recovery guide](../docs/kafka-recovery.md) evaluates 24 hours as a pr
 Web receives only `RECOUNT_CLICKHOUSE_URL` and `RECOUNT_CLICKHOUSE_READER_PASSWORD`; `telemetry_reader` can SELECT the point table, not insert, alter or query the Kafka source. `telemetry_admin` is reserved for provisioning/operations. No application writer account, Rust storage service or PostgreSQL telemetry-index role remains.
 
 ```sh
-just local query 'SELECT project_id, source_id, count() FROM telemetry.metric_points FINAL GROUP BY project_id, source_id LIMIT 20'
+just local query 'SELECT project_id, source_id, count() FROM telemetry.metric_series FINAL GROUP BY project_id, source_id LIMIT 20'
 just local compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server kafka:9092 --describe --group recount-clickhouse
 just local compose --file compose.yaml --file compose.apps.yaml logs --tail 20 normalizer
 just local stop
