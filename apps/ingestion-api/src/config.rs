@@ -51,7 +51,10 @@ pub struct Config {
     pub raw_broker_max_bytes: usize,
     #[command(flatten)]
     pub validation: LimitArgs,
-    #[arg(long, env = "RECOUNT_INGESTION_MAX_IN_FLIGHT", default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..))]
+    /// Requests decoded at once across all connections. Each may decode up to the request
+    /// byte limit, so this bounds decode memory; collectors exporting in the same instant
+    /// are rejected rather than queued once it is reached.
+    #[arg(long, env = "RECOUNT_INGESTION_MAX_IN_FLIGHT", default_value_t = 8, value_parser = clap::value_parser!(u32).range(1..))]
     pub max_in_flight: u32,
 }
 
