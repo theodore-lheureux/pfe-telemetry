@@ -14,6 +14,17 @@
       <heartbeat_interval_ms>3000</heartbeat_interval_ms>
       <enable_auto_commit>false</enable_auto_commit>
       <enable_auto_offset_store>false</enable_auto_offset_store>
+      <kafka_topic>
+        <name>recount.metrics.normalized-packed</name>
+        <!-- A full shared prefetch queue must not defer this partition's fetch for a full second. -->
+        <fetch_queue_backoff_ms>100</fetch_queue_backoff_ms>
+        <!-- Leave room for all three partitions in one fetch response. -->
+        <fetch_max_bytes>6291456</fetch_max_bytes>
+        <fetch_message_max_bytes>2097152</fetch_message_max_bytes>
+        <receive_message_max_bytes>6292480</receive_message_max_bytes>
+        <queued_max_messages_kbytes>4096</queued_max_messages_kbytes>
+        <statistics_interval_ms>3000</statistics_interval_ms>
+      </kafka_topic>
     </consumer>
   </kafka>
   <merge_tree>
