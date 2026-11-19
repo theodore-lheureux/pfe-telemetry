@@ -64,8 +64,9 @@ impl ParticipantSchema<'_> {
     }
 }
 /// Rows per insert from the recent topic. Its points lie within a day of the normalizer's
-/// clock, so a block touches a few day partitions however many rows it holds.
-pub const RECENT_BLOCK_ROWS: u32 = 16_384;
+/// clock, so a block touches a few day partitions however many rows it holds. Larger
+/// inserts create fewer parts: at matched load, doubling from 16K halved parts and merge CPU.
+pub const RECENT_BLOCK_ROWS: u32 = 49_152;
 // A poll of 16 packed messages can deliver up to 2,048 rows.
 pub const RECENT_POLL_MESSAGES: u32 = 16;
 /// Settings both Kafka tables share; each adds its topic, group and batching.
@@ -258,7 +259,7 @@ mod tests {
         )));
         assert!(sql.contains("CREATE TABLE disposable.metric_series"));
         assert!(sql.contains("index_granularity = 1024, merge_max_block_size = 8192, merge_max_block_size_bytes = 10485760"));
-        assert!(sql.contains("kafka_max_block_size = 16384"));
+        assert!(sql.contains("kafka_max_block_size = 49152"));
         assert!(sql.contains("kafka_max_block_size = 64,"));
         assert_eq!(sql.matches("kafka_format = 'ProtobufSingle'").count(), 1);
         assert_eq!(sql.matches("kafka_format = 'Protobuf'").count(), 1);
