@@ -10,6 +10,10 @@ Actions builds. Its [layout decision](oracle-stack/layout.md) records inspected
 resources and deployment limits. Host setup and release activation require
 explicit approval; local recipes do not deploy to Oracle.
 
+The [temporary-demo Semaphore control](semaphore/README.md) runs separately on
+that VM and manages only [temporary collectors](demo/README.md). It does not
+replace the permanent Oracle/AWS deployment workflows.
+
 ## Native development loop
 
 Keep one initialized PostgreSQL/Kafka/ClickHouse Compose instance running across development and browser-test runs. Use host Node for Playwright, native Bun for the web application, and native ingestion API/normalizer processes where supported. The collector's Linux sampling paths run in a reused Linux container or an existing VM. Isolate test data with disposable databases, projects and topic/group namespaces; do not rebuild infrastructure for every test.
