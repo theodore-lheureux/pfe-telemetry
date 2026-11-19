@@ -1,4 +1,4 @@
-"""Publish a bounded, read-only snapshot of ClickHouse and its data device."""
+"""Publish a bounded, read-only snapshot of the ingestion host."""
 
 import json
 import os
@@ -8,7 +8,13 @@ import subprocess
 import tempfile
 import time
 
-CONTAINER = "recount-ingestion-clickhouse-1"
+PROJECT = "recount-ingestion"
+CONTAINER = f"{PROJECT}-clickhouse-1"
+POSTGRES = f"{PROJECT}-postgres-1"
+CPU_SERVICES = ("ingestion-api", "normalizer", "kafka", "clickhouse")
+TABLES = ("metric_points", "metric_series", "deliveries")
+TABLE_LIST = ",".join(f"'{table}'" for table in TABLES)
+PART_WINDOW_SECONDS = 120
 CLICKHOUSE_EVENTS = {
     "SelectQuery": "select_queries_total",
     "FailedSelectQuery": "failed_select_queries_total",
@@ -17,21 +23,32 @@ CLICKHOUSE_EVENTS = {
 
 
 def command(*args):
-    return subprocess.check_output(args, text=True, timeout=4)
+    return subprocess.check_output(args, text=True, timeout=3)
 
 
-def cpu_metrics(pid):
+def cpu_metrics(service, pid):
     path = next(line[3:] for line in Path(f"/proc/{pid}/cgroup").read_text().splitlines()
                 if line.startswith("0::"))
     group = Path("/sys/fs/cgroup") / path.lstrip("/")
     stats = dict(line.split() for line in (group / "cpu.stat").read_text().splitlines())
-    for field, metric in (("nr_periods", "cpu_periods_total"),
-                          ("nr_throttled", "cpu_throttled_periods_total")):
-        yield f"recount_clickhouse_{metric} {int(stats[field])}"
-    yield f"recount_clickhouse_cpu_seconds_total {int(stats['usage_usec']) / 1e6}"
-    quota, period = (group / "cpu.max").read_text().split()
-    if quota != "max":
-        yield f"recount_clickhouse_cpu_limit_cores {int(quota) / int(period)}"
+    label = f'{{service="{service}"}}'
+    yield f"recount_ingestion_container_cpu_seconds_total{label} {int(stats['usage_usec']) / 1e6}"
+    if service == "clickhouse":
+        for field, metric in (("nr_periods", "cpu_periods_total"),
+                              ("nr_throttled", "cpu_throttled_periods_total")):
+            yield f"recount_clickhouse_{metric} {int(stats[field])}"
+        quota, period = (group / "cpu.max").read_text().split()
+        if quota != "max":
+            yield f"recount_clickhouse_cpu_limit_cores {int(quota) / int(period)}"
+
+
+def containers():
+    ids = command("docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={PROJECT}").split()
+    if not ids:
+        return {}
+    rows = command("docker", "inspect", "--format", "{{.Name}}\t{{.State.Pid}}\t{{json .Mounts}}", *ids)
+    return {name.lstrip("/"): (int(pid), json.loads(mounts))
+            for name, pid, mounts in (line.split("\t") for line in rows.splitlines()) if int(pid) > 0}
 
 
 def disk_metrics(data_path):
@@ -60,14 +77,44 @@ def query_metrics():
             yield f"recount_clickhouse_{name} {value}"
 
 
-def point_metrics():
-    value = command(
-        "docker", "exec", CONTAINER, "clickhouse-client", "--max_execution_time=2",
-        "--readonly=1", "--query", "SELECT sum(rows) FROM system.part_log "
-        "WHERE event_date >= today()-1 AND event_time >= now()-120 "
-        "AND database='telemetry' AND table='metric_points' AND event_type='NewPart'",
+def part_metrics():
+    rows = clickhouse_query(
+        "SELECT t.name, sumIf(l.rows,l.event_type='NewPart'), "
+        "sumIf(l.read_rows,l.event_type='MergeParts'), "
+        "sumIf(l.ProfileEvents['OSCPUVirtualTimeMicroseconds'],l.event_type='MergeParts') "
+        "FROM system.tables AS t LEFT JOIN "
+        "(SELECT table_uuid,event_type,rows,read_rows,ProfileEvents FROM system.part_log "
+        f"WHERE event_date >= today()-1 AND event_time >= now()-{PART_WINDOW_SECONDS} "
+        f"AND database='telemetry' AND table IN ({TABLE_LIST}) "
+        "AND event_type IN ('NewPart','MergeParts') AND error=0) AS l ON t.uuid=l.table_uuid "
+        f"WHERE t.database='telemetry' AND t.name IN ({TABLE_LIST}) GROUP BY t.name FORMAT TSV"
     )
-    yield f"recount_clickhouse_points_written_per_second {int(value) / 120}"
+    for table, inserted, merged, cpu_usec in (line.split("\t") for line in rows.splitlines()):
+        label = f'{{table="{table}"}}'
+        yield f"recount_clickhouse_new_rows_per_second{label} {int(inserted) / PART_WINDOW_SECONDS}"
+        yield f"recount_clickhouse_merge_cpu_seconds_per_second{label} {int(cpu_usec) / (1e6 * PART_WINDOW_SECONDS)}"
+        if int(inserted):
+            yield f"recount_clickhouse_merge_rows_per_new_row{label} {int(merged) / int(inserted)}"
+
+
+def active_part_metrics():
+    rows = clickhouse_query(
+        "SELECT t.name, countIf(p.active = 1) FROM system.tables AS t LEFT JOIN "
+        f"(SELECT table, active FROM system.parts WHERE database='telemetry' AND table IN ({TABLE_LIST}) AND active) AS p "
+        f"ON t.name=p.table WHERE t.database='telemetry' AND t.name IN ({TABLE_LIST}) GROUP BY t.name FORMAT TSV"
+    )
+    for table, parts in (line.split("\t") for line in rows.splitlines()):
+        yield f'recount_clickhouse_active_parts{{table="{table}"}} {int(parts)}'
+
+
+def active_node_metrics():
+    count = command(
+        "docker", "exec", "-e", "PGOPTIONS=-c statement_timeout=1000 -c default_transaction_read_only=on",
+        POSTGRES, "psql", "-XqAt", "-v", "ON_ERROR_STOP=1", "-U", "recount", "-d", "recount",
+        "-c", "SELECT count(*) FROM ingestion.collector_node WHERE revoked_at IS NULL "
+        "AND last_seen_at >= statement_timestamp() - interval '60 seconds'",
+    )
+    yield f"recount_ingestion_active_nodes {int(count)}"
 
 
 def lineage_received_ns(data):
@@ -109,7 +156,7 @@ def lineage_received_ns(data):
     return None
 
 
-def freshness_query(sql):
+def clickhouse_query(sql):
     return command("docker", "exec", CONTAINER, "clickhouse-client",
                    "--max_execution_time=2", "--max_threads=1", "--readonly=2", "--query", sql)
 
@@ -117,7 +164,7 @@ def freshness_query(sql):
 def freshness_metrics():
     # NewPart excludes background merges; only original parts still readable can
     # contribute. Bound both the candidate parts and the amount scanned.
-    parts = freshness_query(
+    parts = clickhouse_query(
         "SELECT l.part_name, toUnixTimestamp64Nano(max(l.event_time_microseconds)) "
         "FROM system.part_log AS l INNER JOIN "
         "(SELECT name, uuid FROM system.tables WHERE database='telemetry' AND name='metric_points') AS t "
@@ -138,7 +185,7 @@ def freshness_metrics():
     newest = 0
     if inserted:
         selected = ",".join(f"'{part}'" for part in inserted)
-        points = freshness_query(
+        points = clickhouse_query(
             "SELECT _part, hex(lineage) FROM telemetry.metric_points "
             f"PREWHERE _part IN ({selected}) AND cityHash64(sample_id) % 32 = 0 "
             "WHERE length(lineage) BETWEEN 1 AND 4096 LIMIT 8192 "
@@ -164,18 +211,20 @@ def freshness_metrics():
 def snapshot():
     lines = [f"recount_ingestion_host_sample_timestamp_seconds {int(time.time())}"]
     try:
-        pid = int(command("docker", "inspect", "--format", "{{.State.Pid}}", CONTAINER))
-        if pid < 1:
-            raise ValueError("ClickHouse is not running")
-        mounts = json.loads(command("docker", "inspect", "--format", "{{json .Mounts}}", CONTAINER))
-        data_path = next(mount["Source"] for mount in mounts if mount["Destination"] == "/var/lib/clickhouse")
+        running = containers()
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, StopIteration):
-        pid, data_path = None, None
+        running = {}
+    mounts = running.get(CONTAINER, (None, []))[1]
+    data_path = next((mount["Source"] for mount in mounts if mount["Destination"] == "/var/lib/clickhouse"), None)
     for name, collect in (
-        ("cpu", lambda: cpu_metrics(pid) if pid else ()),
+        *(("cpu" if service == "clickhouse" else f"cpu_{service}",
+           lambda service=service: cpu_metrics(service, running[f"{PROJECT}-{service}-1"][0]))
+          for service in CPU_SERVICES),
         ("disk", lambda: disk_metrics(data_path) if data_path else ()),
         ("queries", query_metrics),
-        ("points", point_metrics),
+        ("part_log", part_metrics),
+        ("active_parts", active_part_metrics),
+        ("active_nodes", active_node_metrics),
         ("freshness", freshness_metrics),
     ):
         try:

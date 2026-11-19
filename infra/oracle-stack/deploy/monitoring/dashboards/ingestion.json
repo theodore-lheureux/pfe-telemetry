@@ -4,198 +4,1023 @@
   "schemaVersion": 39,
   "editable": false,
   "refresh": "30s",
-  "time": { "from": "now-30m", "to": "now" },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
   "panels": [
     {
       "id": 1,
       "type": "stat",
-      "title": "Kafka metrics",
-      "description": "Scrape health only. Missing group data is unknown, not zero lag.",
-      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "Kafka scrape",
+      "description": "Kafka exporter scrape status.",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
-        { "refId": "A", "expr": "up{job=\"kafka\"}", "instant": true }
+        {
+          "refId": "A",
+          "expr": "up{job=\"kafka\"}",
+          "instant": true,
+          "range": false
+        }
       ],
       "fieldConfig": {
         "defaults": {
+          "unit": "none",
           "noValue": "Unknown",
           "mappings": [
             {
               "type": "value",
               "options": {
-                "0": { "text": "Unavailable", "color": "red" },
-                "1": { "text": "Scraping", "color": "green" }
+                "0": {
+                  "text": "Down",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Up",
+                  "color": "green"
+                }
               }
             }
           ]
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "text": {
+          "titleSize": 11,
+          "valueSize": 22
+        },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
         }
       }
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "Queued records by stage",
-      "description": "Raw records are submissions; normalized records are Kafka messages. Do not add these quantities across stages.",
-      "gridPos": { "x": 6, "y": 0, "w": 12, "h": 5 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "Queued messages",
+      "description": "Total lag across reported partitions.",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (consumergroup) (kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\"} >= 0)",
-          "legendFormat": "{{consumergroup}}",
-          "instant": true
+          "expr": "sum(kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-late|-participants)?\"} >= 0)",
+          "instant": true,
+          "range": false
         }
       ],
-      "options": { "colorMode": "none" },
-      "fieldConfig": { "defaults": { "noValue": "Unknown", "decimals": 0 } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: msgs",
+          "noValue": "Unknown",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10000
+              },
+              {
+                "color": "red",
+                "value": 100000
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "text": {
+          "titleSize": 11,
+          "valueSize": 22
+        },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Active nodes",
+      "description": "Non-revoked nodes seen in the last 60 seconds.",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(recount_ingestion_active_nodes) and on() (recount_ingestion_host_source_up{source=\"active_nodes\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "Unknown",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "text": {
+          "titleSize": 11,
+          "valueSize": 22
+        },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      }
     },
     {
       "id": 14,
       "type": "stat",
-      "title": "ClickHouse CPU quota hit",
-      "description": "Share of scheduling periods throttled over two minutes. Missing or stale host samples are unknown.",
-      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "ClickHouse throttling",
+      "description": "CPU periods throttled over the last 2 minutes.",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "(rate(recount_clickhouse_cpu_throttled_periods_total[2m]) / (rate(recount_clickhouse_cpu_periods_total[2m]) > 0)) and on() (recount_ingestion_host_source_up{source=\"cpu\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
-          "instant": true
+          "instant": true,
+          "range": false
         }
       ],
-      "options": { "colorMode": "none" },
       "fieldConfig": {
-        "defaults": { "noValue": "Unknown", "unit": "percentunit" }
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "Unknown",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.15
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "text": {
+          "titleSize": 11,
+          "valueSize": 22
+        },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "stat",
+      "title": "Write delay p95",
+      "description": "API receive to ClickHouse insert; sampled from recent point parts.",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(last_over_time(recount_ingestion_freshness_p95_seconds[2m]) and on() (time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m]) < 120) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1)) or on() ((-1 * (recount_ingestion_freshness_samples >= bool 0)) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "Unknown",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "No sample",
+                  "color": "gray"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "text": {
+          "titleSize": 11,
+          "valueSize": 22
+        },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "stat",
+      "title": "Points in sample",
+      "description": "At least 20 points are needed for p95.",
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(recount_ingestion_freshness_samples) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: pts",
+          "noValue": "Unknown",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 20
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "text": {
+          "titleSize": 11,
+          "valueSize": 22
+        },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
       }
     },
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Backlog trend by stage",
-      "description": "Rising lag identifies the stage where demand exceeds progress.",
-      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "Normalizer lag",
+      "description": "Uncommitted messages, stacked by partition.",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (consumergroup) (kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\"} >= 0)",
-          "legendFormat": "{{consumergroup}}"
+          "expr": "kafka_consumergroup_lag{consumergroup=\"recount-normalizer\",topic=\"recount.metrics.raw\"} >= 0",
+          "legendFormat": "p{{partition}}"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: msgs",
+          "noValue": "Unknown",
+          "custom": {
+            "fillOpacity": 35,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "lag"
+            }
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "ClickHouse recent lag",
+      "description": "Uncommitted messages, stacked by partition.",
+      "gridPos": {
+        "x": 8,
+        "y": 4,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kafka_consumergroup_lag{consumergroup=\"recount-clickhouse\",topic=\"recount.metrics.normalized-packed\"} >= 0",
+          "legendFormat": "p{{partition}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: msgs",
+          "noValue": "Unknown",
+          "custom": {
+            "fillOpacity": 35,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "lag"
+            }
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "ClickHouse late lag",
+      "description": "Uncommitted messages by partition; an empty partition has zero lag.",
+      "gridPos": {
+        "x": 16,
+        "y": 4,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(kafka_consumergroup_lag{consumergroup=\"recount-clickhouse-late\",topic=\"recount.metrics.late\"} >= 0) or on (topic, partition) ((kafka_topic_partition_current_offset{topic=\"recount.metrics.late\"} - kafka_topic_partition_oldest_offset{topic=\"recount.metrics.late\"}) == 0)",
+          "legendFormat": "p{{partition}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: msgs",
+          "noValue": "Unknown",
+          "custom": {
+            "fillOpacity": 35,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "lag"
+            }
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 4,
-      "type": "timeseries",
-      "title": "Lag by partition",
-      "description": "A single rising line can reveal partition skew hidden by totals.",
-      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "type": "bargauge",
+      "title": "Partition lag now",
+      "description": "Current lag by topic and partition.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\"} >= 0",
-          "legendFormat": "{{consumergroup}} / {{partition}}"
+          "expr": "sort_desc(kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-late|-participants)?\"} >= 0)",
+          "legendFormat": "{{topic}} / p{{partition}}",
+          "instant": true,
+          "range": false
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: msgs",
+          "noValue": "Unknown",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1000
+              },
+              {
+                "color": "red",
+                "value": 10000
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic",
+        "sizing": "auto",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        }
+      }
     },
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Normalizer · arrival vs committed progress",
-      "description": "Raw Kafka records per second, estimated from the slope of offsets over two minutes.",
-      "gridPos": { "x": 0, "y": 18, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "Normalizer throughput",
+      "description": "Committed Kafka messages per second over 2 minutes.",
+      "gridPos": {
+        "x": 8,
+        "y": 10,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(clamp_min(deriv(kafka_topic_partition_current_offset{topic=\"recount.metrics.raw\"}[2m]), 0))",
-          "legendFormat": "Arriving"
-        },
-        {
-          "refId": "B",
-          "expr": "sum(clamp_min(deriv(kafka_consumergroup_current_offset{consumergroup=\"recount-normalizer\",topic=\"recount.metrics.raw\"}[2m]), 0))",
+          "expr": "sum by (topic) (clamp_min(deriv((kafka_consumergroup_current_offset{consumergroup=\"recount-normalizer\",topic=\"recount.metrics.raw\"} >= 0)[2m:15s]), 0))",
           "legendFormat": "Committed"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "rps" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: msg/s",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 6,
       "type": "timeseries",
-      "title": "ClickHouse · arrival vs committed progress",
-      "description": "Kafka messages per second, not telemetry points per second or query freshness.",
-      "gridPos": { "x": 12, "y": 18, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "ClickHouse throughput",
+      "description": "Committed Kafka messages per second over 2 minutes.",
+      "gridPos": {
+        "x": 16,
+        "y": 10,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (topic) (clamp_min(deriv(kafka_topic_partition_current_offset{topic=~\"recount[.]metrics[.](normalized-packed|late)\"}[2m]), 0))",
-          "legendFormat": "{{topic}} · arriving"
-        },
-        {
-          "refId": "B",
-          "expr": "sum by (topic) (clamp_min(deriv(kafka_consumergroup_current_offset{consumergroup=~\"recount-clickhouse(-late)?\",topic=~\"recount[.]metrics[.](normalized-packed|late)\"}[2m]), 0))",
-          "legendFormat": "{{topic}} · committed"
+          "expr": "sum by (topic) (clamp_min(deriv((kafka_consumergroup_current_offset{consumergroup=~\"recount-clickhouse(-late)?\",topic=~\"recount[.]metrics[.](normalized-packed|late)\"} >= 0)[2m:15s]), 0))",
+          "legendFormat": "{{topic}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "rps" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: msg/s",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Backlog growth by stage",
-      "description": "Five-minute slope in Kafka messages per second. Positive values mean the queue is growing; a brief spike is not a sustained backlog.",
-      "gridPos": { "x": 0, "y": 26, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "Net backlog change",
+      "description": "Arrival minus commits over 5 minutes; orange means growth.",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (consumergroup) (deriv((kafka_consumergroup_lag >= 0)[5m:15s]))",
+          "expr": "sum by (consumergroup) (deriv((kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-late|-participants)?\"} >= 0)[5m:15s]))",
           "legendFormat": "{{consumergroup}}"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "rps" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: msg/s",
+          "noValue": "Unknown",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 85,
+            "lineWidth": 0,
+            "gradientMode": "scheme",
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1e-6
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 8,
       "type": "timeseries",
-      "title": "Retained offset headroom · worst partition",
-      "description": "Committed offset minus the oldest retained offset on the closest partition. Negative means the checkpoint is behind retained data. Not a time-to-expiry estimate.",
-      "gridPos": { "x": 12, "y": 26, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "Retention headroom",
+      "description": "Committed offset minus oldest retained offset; worst partition.",
+      "gridPos": {
+        "x": 8,
+        "y": 16,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "min by (consumergroup) ((kafka_consumergroup_current_offset >= 0) - on (topic, partition) group_left() kafka_topic_partition_oldest_offset)",
+          "expr": "min by (consumergroup) ((kafka_consumergroup_current_offset{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-late|-participants)?\"} >= 0) - on (topic, partition) group_left() kafka_topic_partition_oldest_offset)",
           "legendFormat": "{{consumergroup}}"
-        }
-      ]
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "ClickHouse CPU quota hit",
-      "description": "Percentage of cgroup scheduling periods throttled. This measures how often throttling occurs, not how much CPU time was lost.",
-      "gridPos": { "x": 0, "y": 34, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "(rate(recount_clickhouse_cpu_throttled_periods_total[2m]) / (rate(recount_clickhouse_cpu_periods_total[2m]) > 0)) and on() (recount_ingestion_host_source_up{source=\"cpu\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
-          "legendFormat": "Throttled periods"
         }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "percentunit", "min": 0, "max": 1 }
+        "defaults": {
+          "unit": "suffix: msgs",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Points written",
+      "description": "Rows inserted into metric_points over 2 minutes.",
+      "gridPos": {
+        "x": 16,
+        "y": 16,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(recount_clickhouse_new_rows_per_second{table=\"metric_points\"}) and on() (recount_ingestion_host_source_up{source=\"part_log\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "legendFormat": "Points"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: pts/s",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Container CPU",
+      "description": "Cgroup CPU usage averaged over 2 minutes; dashed line is the ClickHouse limit.",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(rate(recount_ingestion_container_cpu_seconds_total[2m]) and on (service) recount_ingestion_container_cpu_seconds_total) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{service}}"
+        },
+        {
+          "refId": "B",
+          "expr": "(recount_clickhouse_cpu_limit_cores) and on() (recount_ingestion_host_source_up{source=\"cpu\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "legendFormat": "ClickHouse limit"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: cores",
+          "noValue": "Unknown"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ClickHouse limit"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [6, 4]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Merge CPU",
+      "description": "CPU spent on completed merges over 2 minutes.",
+      "gridPos": {
+        "x": 8,
+        "y": 22,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(recount_clickhouse_merge_cpu_seconds_per_second) and on() (recount_ingestion_host_source_up{source=\"part_log\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "legendFormat": "{{table}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: cores",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Rows merged per new row",
+      "description": "Merge input rows divided by rows inserted over 2 minutes; blank when no rows were inserted.",
+      "gridPos": {
+        "x": 16,
+        "y": 22,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(recount_clickhouse_merge_rows_per_new_row) and on() (recount_ingestion_host_source_up{source=\"part_log\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "legendFormat": "{{table}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: ×",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Active parts",
+      "description": "Active parts per telemetry table, when present.",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(recount_clickhouse_active_parts) and on() (recount_ingestion_host_source_up{source=\"active_parts\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "legendFormat": "{{table}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: parts",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       }
     },
     {
       "id": 10,
       "type": "timeseries",
       "title": "Data volume latency",
-      "description": "Mean completed read and write request latency on ClickHouse’s data device, including other workloads that share that device.",
-      "gridPos": { "x": 12, "y": 34, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "description": "Mean seconds per device I/O over 2 minutes.",
+      "gridPos": {
+        "x": 8,
+        "y": 28,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
@@ -208,136 +1033,102 @@
           "legendFormat": "Write"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
     },
     {
       "id": 11,
       "type": "timeseries",
-      "title": "ClickHouse reads · mean latency",
-      "description": "All ClickHouse SELECTs, including monitoring. Not dashboard-only latency or a percentile.",
-      "gridPos": { "x": 0, "y": 42, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "title": "ClickHouse read latency",
+      "description": "Mean seconds per SELECT over 2 minutes.",
+      "gridPos": {
+        "x": 16,
+        "y": 28,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
           "expr": "(rate(recount_clickhouse_select_query_seconds_total[2m]) / (rate(recount_clickhouse_select_queries_total[2m]) > 0)) and on() (recount_ingestion_host_source_up{source=\"queries\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
-          "legendFormat": "Mean SELECT latency"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "s" } }
-    },
-    {
-      "id": 12,
-      "type": "timeseries",
-      "title": "ClickHouse reads · failures",
-      "description": "Failed SELECTs per second across ClickHouse, not just dashboard requests.",
-      "gridPos": { "x": 12, "y": 42, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "rate(recount_clickhouse_failed_select_queries_total[2m]) and on() (recount_ingestion_host_source_up{source=\"queries\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
-          "legendFormat": "Failed SELECTs"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "rps" } }
-    },
-    {
-      "id": 13,
-      "type": "timeseries",
-      "title": "Telemetry points written per second",
-      "description": "Rows in new metric_points parts over two minutes. Excludes merges, includes possible replayed rows, and is delayed by ClickHouse part-log flushing.",
-      "gridPos": { "x": 0, "y": 50, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "recount_clickhouse_points_written_per_second and on() (recount_ingestion_host_source_up{source=\"points\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
-          "legendFormat": "Points written/s"
-        }
-      ]
-    },
-    {
-      "id": 15,
-      "type": "stat",
-      "title": "Host metric sources",
-      "description": "A stopped sampler or a failed source is not evidence of healthy ingestion.",
-      "gridPos": { "x": 12, "y": 50, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "recount_ingestion_host_source_up and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
-          "legendFormat": "{{source}}",
-          "instant": true
+          "legendFormat": "SELECT"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "noValue": "Unknown",
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "0": { "text": "Unavailable", "color": "red" },
-                "1": { "text": "Reporting", "color": "green" }
-              }
-            }
-          ]
+          "unit": "s",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
         }
       }
     },
     {
-      "id": 16,
-      "type": "stat",
-      "title": "Ingestion freshness · sampled p95",
-      "description": "API receipt to ClickHouse new-part write, using regular telemetry. Shows the last valid sample of at least 20 points while the sampler is healthy and the newest write in that sample is less than two minutes old. Compare with backlog when ingestion stalls.",
-      "gridPos": { "x": 0, "y": 5, "w": 12, "h": 5 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "id": 12,
+      "type": "timeseries",
+      "title": "ClickHouse read failures",
+      "description": "Failed SELECT queries per second over 2 minutes.",
+      "gridPos": {
+        "x": 0,
+        "y": 34,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
       "targets": [
         {
           "refId": "A",
-          "expr": "last_over_time(recount_ingestion_freshness_p95_seconds[2m]) and on() (time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m]) < 120) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1)",
-          "instant": true
+          "expr": "(rate(recount_clickhouse_failed_select_queries_total[2m]) or on() (0 * rate(recount_clickhouse_select_queries_total[2m]))) and on() (recount_ingestion_host_source_up{source=\"queries\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "legendFormat": "Failed SELECT"
         }
       ],
-      "options": { "colorMode": "none" },
       "fieldConfig": {
-        "defaults": { "unit": "s", "noValue": "No recent data" }
-      }
-    },
-    {
-      "id": 17,
-      "type": "stat",
-      "title": "Points in the p95 sample",
-      "gridPos": { "x": 12, "y": 5, "w": 6, "h": 5 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "last_over_time(recount_ingestion_freshness_p95_samples[2m]) and on() (time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m]) < 120) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1)",
-          "instant": true
+        "defaults": {
+          "unit": "suffix: queries/s",
+          "noValue": "Unknown"
         }
-      ],
-      "options": { "colorMode": "none" },
-      "fieldConfig": { "defaults": { "noValue": "Unknown" } }
-    },
-    {
-      "id": 18,
-      "type": "stat",
-      "title": "Newest write in the p95 sample",
-      "gridPos": { "x": 18, "y": 5, "w": 6, "h": 5 },
-      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "(time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m])) and on() (time() - last_over_time(recount_ingestion_freshness_p95_write_timestamp_seconds[2m]) < 120) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45) and on() (recount_ingestion_host_source_up{source=\"freshness\"} == 1)",
-          "instant": true
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
         }
-      ],
-      "options": { "colorMode": "none" },
-      "fieldConfig": {
-        "defaults": { "unit": "s", "noValue": "No recent data" }
       }
     }
   ]
