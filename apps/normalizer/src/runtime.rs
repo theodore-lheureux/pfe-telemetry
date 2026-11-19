@@ -176,9 +176,7 @@ fn app(config: Config, packed_recent: bool) -> impl App {
         )
         .producer_config(
             "queue.buffering.max.kbytes",
-            (config.normalized_broker_max_bytes * 2)
-                .div_ceil(1024)
-                .to_string(),
+            config.producer_queue_kib().to_string(),
         )
         .producer_config(
             "queue.buffering.max.messages",

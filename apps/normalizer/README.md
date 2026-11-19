@@ -19,6 +19,25 @@ Kafka permissions must allow raw consumption, normalized production, group check
 
 ## First start and recovery
 
+`RECOUNT_NORMALIZER_MAX_ACTIVE` sets the number of raw records the worker can
+handle concurrently (default 8, range 1–32). The shared producer payload queue
+scales with the slot count and the normalized output budget per raw record. It
+has a floor of one configured Kafka record, subject to a 128 MiB cap. The
+producer also limits queued messages to the slot count times the point limit,
+capped at one million.
+
+With default limits, each active slot can retain up to 4 MiB of copied raw
+bytes and 16 MiB of normalized output bodies before framing. Eight slots account
+for up to 160 MiB of those buffers, plus up to 128 MiB of queued producer payload.
+At 32 slots the corresponding budget is up to 768 MiB. Neither total is an RSS
+bound: native fetch buffers and producer batches, decoded OTLP and projected
+rows, allocator overhead, thread stacks and the series cache are additional.
+Encoded byte and item limits constrain input growth but do not cap decoded heap
+bytes. Under the Oracle 1 GiB limit, check peak RSS on wide valid requests before
+raising concurrency beyond the default; reduce slots or payload budgets if
+headroom is inadequate. A raw offset is still acknowledged only after every
+output delivery succeeds.
+
 Normalizers in the same consumer group can run on multiple replicas. With
 three raw partitions, at most three replicas receive work. Startup checks
 topic topology and transport settings without claiming exclusive ownership.

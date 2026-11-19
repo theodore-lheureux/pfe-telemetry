@@ -201,6 +201,8 @@ async fn scenario_with_linger(
         "1",
         "--linger-ms",
         linger_ms.unwrap_or("30"),
+        "--max-active",
+        "16",
     ])
     .unwrap()
     .into_config()

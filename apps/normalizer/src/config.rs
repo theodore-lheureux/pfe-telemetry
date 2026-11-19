@@ -10,6 +10,8 @@ use recount_telemetry_validation::{
 };
 use std::{path::PathBuf, time::Duration};
 
+const MAX_PRODUCER_QUEUE_BYTES: usize = 128 * 1024 * 1024;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "recount-normalizer",
@@ -37,7 +39,7 @@ pub struct Cli {
     raw_partitions: u32,
     #[arg(long, env = "RECOUNT_NORMALIZED_PARTITIONS", default_value_t = 3, value_parser = clap::value_parser!(u32).range(1..=4096))]
     normalized_partitions: u32,
-    #[arg(long, env = "RECOUNT_NORMALIZER_MAX_ACTIVE", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=8))]
+    #[arg(long, env = "RECOUNT_NORMALIZER_MAX_ACTIVE", default_value_t = 8, value_parser = clap::value_parser!(u32).range(1..=32))]
     max_active: u32,
     /// Time to wait for more records in a Kafka producer batch.
     #[arg(long, env = "RECOUNT_NORMALIZER_LINGER_MS", default_value_t = 30, value_parser = clap::value_parser!(u32).range(0..=1000))]
@@ -144,6 +146,14 @@ pub struct Config {
 }
 
 impl Config {
+    pub(crate) fn producer_queue_kib(&self) -> usize {
+        self.limits
+            .normalized_batch_bytes
+            .saturating_mul(self.max_active)
+            .max(self.normalized_broker_max_bytes)
+            .min(MAX_PRODUCER_QUEUE_BYTES)
+            .div_ceil(1024)
+    }
     /// Read environment settings without consuming the embedding process's arguments.
     pub fn from_env() -> Result<Self, clap::Error> {
         Cli::try_parse_from(["recount-normalizer"])?.into_config()
@@ -151,15 +161,17 @@ impl Config {
 
     pub fn validate_transport(&self) -> Result<(), &'static str> {
         transport::body_fits(self.limits.decoded_bytes, self.raw_broker_max_bytes)?;
-        transport::body_fits(
-            self.limits
-                .normalized_record_bytes
-                .checked_add(prost::length_delimiter_len(
-                    self.limits.normalized_record_bytes,
-                ))
-                .ok_or("normalized record framing exceeds the transport budget")?,
-            self.normalized_broker_max_bytes,
-        )
+        let frame = self
+            .limits
+            .normalized_record_bytes
+            .checked_add(prost::length_delimiter_len(
+                self.limits.normalized_record_bytes,
+            ))
+            .ok_or("normalized record framing exceeds the transport budget")?;
+        if frame > MAX_PRODUCER_QUEUE_BYTES {
+            return Err("a normalized frame cannot exceed the producer queue cap");
+        }
+        transport::body_fits(frame, self.normalized_broker_max_bytes)
     }
 }
 
@@ -197,7 +209,7 @@ mod tests {
             (config.raw_partitions, config.normalized_partitions),
             (3, 3)
         );
-        assert_eq!(config.max_active, 2);
+        assert_eq!(config.max_active, 8);
         assert_eq!(config.retry, Duration::from_millis(1000));
         assert_eq!(config.delivery, Duration::from_millis(10000));
         assert_eq!(config.shutdown, Duration::from_millis(15000));
@@ -224,11 +236,22 @@ mod tests {
     }
 
     #[test]
+    fn producer_queue_grows_with_slots_and_caps_at_128_mib() {
+        for (slots, mib) in [("1", 16), ("2", 32), ("8", 128), ("32", 128)] {
+            let config = parse(&["normalizer", "--max-active", slots])
+                .unwrap()
+                .into_config()
+                .unwrap();
+            assert_eq!(config.producer_queue_kib(), mib * 1024);
+        }
+    }
+
+    #[test]
     fn scalar_bounds_reject_zero_overflow_and_nonintegers() {
         for (flag, max) in [
             ("--raw-partitions", 4096),
             ("--normalized-partitions", 4096),
-            ("--max-active", 8),
+            ("--max-active", 32),
             ("--retry-ms", 60_000),
             ("--delivery-ms", 60_000),
             ("--shutdown-ms", 120_000),
@@ -331,7 +354,7 @@ mod tests {
             ("RECOUNT_KAFKA_BOOTSTRAP", ""),
             ("RECOUNT_RAW_TOPIC", " \t"),
             ("RECOUNT_MAX_POINTS", "0"),
-            ("RECOUNT_NORMALIZER_MAX_ACTIVE", "9"),
+            ("RECOUNT_NORMALIZER_MAX_ACTIVE", "33"),
             ("RECOUNT_RAW_BROKER_MAX_BYTES", "4194304"),
             ("RECOUNT_NORMALIZED_MAX_OUTPUT_BYTES", "1"),
         ] {
