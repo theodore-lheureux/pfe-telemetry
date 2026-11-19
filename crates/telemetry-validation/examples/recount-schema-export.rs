@@ -141,6 +141,7 @@ fn prepare(options: &Options) -> Result<()> {
         if_not_exists: true,
     }
     .render()?;
+    let metric_sql = sql.clone();
     sql.push_str(
         &ParticipantSchema {
             database: "telemetry",
@@ -156,6 +157,7 @@ fn prepare(options: &Options) -> Result<()> {
         ("schemas/recount.proto", PROTO.to_owned()),
         ("schemas/executions.proto", PARTICIPANT_PROTO.to_owned()),
         ("schema.sql", sql),
+        ("metric-schema.sql", metric_sql),
         ("analytical-columns.sql", format!("{columns}\n")),
         (
             "expected-columns.tsv",
@@ -376,6 +378,12 @@ mod tests {
         assert!(prepare(&conflict).is_err());
         assert!(!conflict.output.exists());
         prepare(&first).unwrap();
+        let metric_sql = fs::read_to_string(first.output.join("metric-schema.sql")).unwrap();
+        let bootstrap_sql = fs::read_to_string(first.output.join("schema.sql")).unwrap();
+        assert!(metric_sql.contains("CREATE TABLE IF NOT EXISTS telemetry.metric_points"));
+        assert!(!metric_sql.contains("execution_participants"));
+        assert!(bootstrap_sql.starts_with(&metric_sql));
+        assert!(bootstrap_sql.contains("CREATE TABLE telemetry.execution_participants"));
         prepare(&second).unwrap();
         assert_eq!(
             fs::read(first.output.join("SHA256SUMS")).unwrap(),

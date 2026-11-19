@@ -414,12 +414,14 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    DROP TABLE IF EXISTS telemetry.attribute_definitions SYNC;
    DROP TABLE telemetry.metric_points SYNC;
    SQL
-   ch < /opt/recount/backend/schema/schema.sql
+   ch < /opt/recount/backend/schema/metric-schema.sql
    docker compose exec -T clickhouse sh /etc/recount-healthcheck.sh
    ```
 
    Do not restart between dropping `metric_points` and recreating it. The
-   generated `IF NOT EXISTS` statements leave participant objects intact.
+   generated `metric-schema.sql` contains only metric objects. Do not apply
+   `schema.sql` here: it also contains the participant bootstrap statements,
+   which fail when participant objects already exist.
 
 5. Run `bash "$release/activate.sh" "$release"` with the existing raw normalizer
    group. Verify raw checkpoints advance from the saved positions, both new
