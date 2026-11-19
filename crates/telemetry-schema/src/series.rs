@@ -39,22 +39,25 @@ fn id(hash: TypedHash) -> u64 {
 }
 
 fn without_markers(
-    attributes: Vec<AttributeNode>,
+    mut attributes: Vec<AttributeNode>,
     markers: &[&str],
 ) -> (Vec<AttributeNode>, Vec<ContinuityNode>) {
-    let mut dimensions = Vec::new();
     let mut continuity = Vec::new();
-    for (ordinal, node) in attributes.into_iter().enumerate() {
+    let mut ordinal = 0;
+    attributes.retain_mut(|node| {
+        let position = ordinal;
+        ordinal += 1;
         if is_marker(&node.path, markers) {
             continuity.push(ContinuityNode {
-                ordinal: ordinal as u32,
-                node: Some(node),
+                ordinal: position,
+                node: Some(std::mem::take(node)),
             });
+            false
         } else {
-            dimensions.push(node);
+            true
         }
-    }
-    (dimensions, continuity)
+    });
+    (attributes, continuity)
 }
 
 /// Pull out metadata without losing inspector details. A metadata revision changes
@@ -150,6 +153,36 @@ pub fn receipt_tag(record_id: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extracting_continuity_preserves_order_and_original_positions() {
+        let (dimensions, continuity) = without_markers(
+            vec![
+                attr("/plain-a", "a"),
+                attr("/recount.host.boot_id", "boot"),
+                attr("/plain-b", "b"),
+                attr("/recount.collection.epoch_id", "epoch"),
+            ],
+            RESOURCE_MARKERS,
+        );
+        assert_eq!(
+            dimensions,
+            vec![attr("/plain-a", "a"), attr("/plain-b", "b")]
+        );
+        assert_eq!(
+            continuity,
+            vec![
+                ContinuityNode {
+                    ordinal: 1,
+                    node: Some(attr("/recount.host.boot_id", "boot"))
+                },
+                ContinuityNode {
+                    ordinal: 3,
+                    node: Some(attr("/recount.collection.epoch_id", "epoch"))
+                },
+            ],
+        );
+    }
 
     fn attr(path: &str, value: &str) -> AttributeNode {
         AttributeNode {
