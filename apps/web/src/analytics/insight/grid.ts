@@ -1,7 +1,3 @@
-import {
-	DEFAULT_CLOCK_SKEW_SECONDS,
-	DEFAULT_SUBMISSION_AGE_SECONDS,
-} from "../../collectors/contracts";
 import type { ChartPoint } from "../charts";
 
 // Charts span the whole requested range on the interval's bucket grid, so a missing
@@ -35,12 +31,9 @@ export function onGrid(points: ChartPoint[], grid: number[]): ChartPoint[] {
 
 export type Coverage = Record<string, number[]> | null;
 
-// The collector exports on its sampling cadence (collector config: 1 s by default).
-// Ingestion accepts age + skew; only one normal cycle, not the spool lifetime, is grace.
-const COLLECTOR_INTERVAL_MS = 1000;
-export const NORMAL_SEND_DELAY_MS =
-	Math.min(COLLECTOR_INTERVAL_MS, DEFAULT_SUBMISSION_AGE_SECONDS * 1000) +
-	DEFAULT_CLOCK_SKEW_SECONDS * 1000;
+// How long a sample normally takes to reach ingestion: the collector's 1 s export
+// cadence plus delivery. Storage lag is covered separately by ingestedThrough.
+export const NORMAL_SEND_DELAY_MS = 3000;
 
 export function stillArriving(
 	bucket: number,

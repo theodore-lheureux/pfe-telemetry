@@ -289,7 +289,8 @@ attestation of that run's archive against this repository's release workflow on
 `main`, computes its SHA-256, then runs `ansible/deploy.yml` over SSH as
 `recount-deploy`. The playbook checks that the release matches the VM's
 architecture, uploads the archive and checks its digest, checks its embedded
-release identity and runs the archive's `activate.sh`. To roll back, re-run the
+release identity and runs the archive's `activate.sh`. Activation removes older
+release directories and application images from the host. To roll back, re-run the
 deploy job of an earlier run while its artifacts are retained (7 days).
 
 Releases ship only the web, ingestion API and normalizer images, compressed

@@ -36,4 +36,14 @@ ln -sfn "$directory" /opt/recount/current
 install -m 0644 "$directory/monitoring/recount-ingestion-sample.service" "$directory/monitoring/recount-ingestion-sample.timer" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now recount-ingestion-sample.timer
-printf 'Activated ingestion release %s\n' "$(cat release)"
+# Rollback re-runs an earlier deploy job, which uploads its own archive, so older
+# releases and their images are not kept on the host.
+release=$(cat release)
+for old in /opt/recount/releases/*; do
+    [[ $old == "$directory" ]] || rm -rf "$old"
+done
+docker image ls --format '{{.Repository}}:{{.Tag}}' |
+    grep -E '^recount-(ingestion-api|normalizer|web):' |
+    { grep -v ":$release\$" || true; } |
+    xargs -r docker image rm >/dev/null
+printf 'Activated ingestion release %s\n' "$release"
