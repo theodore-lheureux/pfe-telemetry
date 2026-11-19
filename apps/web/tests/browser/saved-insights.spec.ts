@@ -3,6 +3,7 @@ import { ClickHouseLogLevel, createClient } from "@clickhouse/client";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
+import { clearTelemetry, seedRecentTelemetry } from "./telemetry-seed";
 
 const allowed = process.env.RECOUNT_ACTIVITY_TEST_ALLOW_PUBLISH === "1";
 test.skip(
@@ -42,15 +43,13 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 		log: { level: ClickHouseLogLevel.OFF },
 	});
 	try {
-		await clickhouse.command({
-			query: `INSERT INTO telemetry.metric_points
-        SELECT * REPLACE ({project:String} AS project_id)
-        FROM telemetry.metric_points
-        WHERE metric_name = 'recount.node.cpu.time'
-          AND time_unix_nano > toUInt64(now() - INTERVAL 15 MINUTE) * 1000000000
-        LIMIT 20000`,
-			query_params: { project: project.id },
-		});
+		await seedRecentTelemetry(
+			clickhouse,
+			project.id,
+			["recount.node.cpu.time"],
+			15,
+			20_000,
+		);
 		const insights = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}/insights`;
 		await page.goto(insights);
 		await expect(
@@ -242,15 +241,7 @@ test("insights are saved from Explore and managed from the Saved list", async ({
 			page.getByRole("button", { name: /^Breakdown:/ }),
 		).toHaveAccessibleName("Breakdown: Host name");
 	} finally {
-		for (const table of [
-			"metric_points",
-			"metric_definitions",
-			"attribute_definitions",
-		])
-			await clickhouse.command({
-				query: `ALTER TABLE telemetry.${table} DELETE WHERE project_id = {project:String} SETTINGS mutations_sync = 1`,
-				query_params: { project: project.id },
-			});
+		await clearTelemetry(clickhouse, project.id);
 		await clickhouse.close();
 	}
 });

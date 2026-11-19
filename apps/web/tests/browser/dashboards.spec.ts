@@ -11,6 +11,7 @@ import { createOrganization } from "../../src/organizations/organizations.server
 import { createProject } from "../../src/organizations/projects.server";
 import { settingsPath } from "../settings-path";
 import { data, expect, test } from "./fixtures";
+import { clearTelemetry, seedRecentTelemetry } from "./telemetry-seed";
 
 const allowed = process.env.RECOUNT_ACTIVITY_TEST_ALLOW_PUBLISH === "1";
 test.skip(
@@ -75,16 +76,13 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		log: { level: ClickHouseLogLevel.OFF },
 	});
 	try {
-		await clickhouse.command({
-			query: `INSERT INTO telemetry.metric_points
-        SELECT * REPLACE ({project:String} AS project_id)
-        FROM telemetry.metric_points
-        WHERE metric_name = 'recount.node.cpu.time'
-          AND event_day >= toUInt32(intDiv(toUnixTimestamp(now() - INTERVAL 30 MINUTE), 86400))
-          AND time_unix_nano > toUInt64(now() - INTERVAL 30 MINUTE) * 1000000000
-        LIMIT 20000`,
-			query_params: { project: project.id },
-		});
+		await seedRecentTelemetry(
+			clickhouse,
+			project.id,
+			["recount.node.cpu.time"],
+			30,
+			20_000,
+		);
 		await page.goto(
 			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}/dashboards`,
 		);
@@ -382,11 +380,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			page.getByRole("heading", { name: "Fleet health", level: 1 }),
 		).toBeVisible();
 	} finally {
-		await clickhouse.command({
-			query:
-				"ALTER TABLE telemetry.metric_points DELETE WHERE project_id = {project:String} SETTINGS mutations_sync = 1",
-			query_params: { project: project.id },
-		});
+		await clearTelemetry(clickhouse, project.id);
 		await clickhouse.close();
 	}
 });

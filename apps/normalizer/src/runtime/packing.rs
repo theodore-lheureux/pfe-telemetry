@@ -65,7 +65,7 @@ impl Packet {
     }
 }
 
-pub(super) fn pack(
+pub(crate) fn pack(
     points: Vec<AnalyticalPoint>,
     partitions: u32,
     now: u64,

@@ -305,7 +305,7 @@ pub fn normalize_bounded(
                         ..metric_row.clone()
                     };
                     lower_observation(&mut row, observation)?;
-                    let size = row.encoded_len() + crate::series::wire_overhead(&row);
+                    let size = crate::series::singleton_size_bound(&row);
                     if size > max_record_bytes {
                         return Err("normalized record byte limit");
                     }

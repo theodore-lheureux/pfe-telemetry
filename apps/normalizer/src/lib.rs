@@ -13,7 +13,7 @@ use recount_telemetry_validation::{
     validate::{self, Limits},
 };
 
-/// Revalidate accepted context without refreshing authority or submission age.
+/// Revalidate accepted context and encode self-contained singleton frames.
 pub fn prepare(
     payload: &[u8],
     key: Option<&[u8]>,
@@ -21,8 +21,14 @@ pub fn prepare(
     limits: Limits,
 ) -> Result<Vec<point::RoutedRecord>, Issue> {
     let rows = prepare_rows(payload, key, limits)?;
-    point::kafka_records(&rows, partitions, limits.normalized_record_bytes)
-        .map_err(|reason| Issue::new(Category::Poison, "raw", reason))
+    runtime::packing::pack(
+        rows,
+        partitions,
+        0,
+        limits.normalized_record_bytes + recount_telemetry_validation::transport::FRAMING_RESERVE,
+        false,
+    )
+    .map_err(|reason| Issue::new(Category::Poison, "raw", reason))
 }
 
 fn prepare_rows(

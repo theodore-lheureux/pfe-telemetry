@@ -1028,7 +1028,7 @@ fn rejects_nonfinite_shapes_expansion_and_metadata_heavy_requests_before_accepta
 }
 
 #[test]
-fn exact_byte_limits_use_final_bare_messages_for_records_and_total_output() {
+fn byte_limits_bound_singleton_packets_and_total_output() {
     let mut raw = cases::raw();
     let mut request = cases::request();
     request.resource_metrics[0]
@@ -1054,8 +1054,17 @@ fn exact_byte_limits_use_final_bare_messages_for_records_and_total_output() {
             .as_deref(),
         Some("\"\\\n雪é")
     );
-    let row_bytes = rows.iter().map(Vec::len).max().unwrap();
-    let total_bytes = rows.iter().map(Vec::len).sum::<usize>();
+    let packet_bounds: Vec<_> = points
+        .iter()
+        .map(recount_telemetry_schema::series::singleton_size_bound)
+        .collect();
+    for (mut point, bound) in points.iter().cloned().zip(&packet_bounds) {
+        use recount_telemetry_schema::series;
+        let dimensions = series::split(&mut point);
+        assert!(series::with_series(point, &dimensions).encoded_len() <= *bound);
+    }
+    let row_bytes = *packet_bounds.iter().max().unwrap();
+    let total_bytes = packet_bounds.iter().sum::<usize>();
     let raw_bytes = raw.encoded_len();
     assert!(raw_bytes > raw.otlp_request.len());
     for adjustment in [-1isize, 0, 1] {
@@ -1107,7 +1116,7 @@ fn exact_byte_limits_use_final_bare_messages_for_records_and_total_output() {
     let grouped = point::kafka_records(&points, 8, row_bytes).unwrap();
     assert_eq!(
         grouped.iter().map(|r| r.payload.len()).sum::<usize>(),
-        total_bytes
+        rows.iter().map(Vec::len).sum::<usize>()
     );
 }
 

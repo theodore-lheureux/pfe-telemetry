@@ -17,7 +17,7 @@ use tokio::sync::Semaphore;
 
 #[cfg(test)]
 mod delivery_tests;
-mod packing;
+pub(crate) mod packing;
 #[cfg(test)]
 mod packing_replay;
 

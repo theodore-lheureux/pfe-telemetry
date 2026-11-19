@@ -63,6 +63,24 @@ class Params {
 	}
 }
 
+function continuityColumn(field: ParsedField) {
+	if (field.type !== "attribute") return undefined;
+	const root = field.key.split("/", 1)[0];
+	if (
+		field.scope === "resource" &&
+		["recount.host.boot_id", "recount.collection.epoch_id"].includes(root)
+	)
+		return "resource_continuity";
+	if (field.scope === "point" && root === "recount.counter.segment_id")
+		return "point_continuity";
+}
+
+export function isPointField(field: string) {
+	return (
+		field === "execution" || continuityColumn(parseField(field)) !== undefined
+	);
+}
+
 function fieldExpression(field: ParsedField, params: Params) {
 	if (field.type === "core") {
 		switch (field.name) {
@@ -80,8 +98,12 @@ function fieldExpression(field: ParsedField, params: Params) {
 				return "scope_name";
 		}
 	}
-	const column =
+	const continuity = continuityColumn(field);
+	const attributes =
 		field.scope === "resource" ? "resource_attributes" : "point_attributes";
+	const column = continuity
+		? `arrayMap(c -> c.node, ${continuity})`
+		: attributes;
 	// Attribute paths are JSON-pointer style; top-level keys are `/key`.
 	const node = `arrayFirst(a -> a.path = ${params.bind(`/${field.key}`, "String")}, ${column})`;
 	return `multiIf(tupleElement(${node}, 'kind') = 2, tupleElement(${node}, 'string_value'),
@@ -226,26 +248,28 @@ function measureSelect(
 	const metric = params.bind(measure.metric, "String");
 	const groupColumns = groupBy.map((_, column) => `g${column}`);
 	const staticGroups = groupBy.flatMap((field, column) =>
-		field === "execution"
+		isPointField(field)
 			? []
 			: [
 					`${fieldExpression(parseField(field), params)} AS ${groupColumns[column]}`,
 				],
 	);
 	const seriesFilters = allFilters
-		.filter((filter) => filter.field !== "execution")
+		.filter((filter) => !isPointField(filter.field))
 		.map((filter) => ` AND ${filterExpression(filter, params)}`)
 		.join("");
-	const executionFilters = allFilters
-		.filter((filter) => filter.field === "execution")
+	const pointFilters = allFilters
+		.filter((filter) => isPointField(filter.field))
 		.map((filter) => filterExpression(filter, params));
-	const executionColumn = groupBy.indexOf("execution");
 	const groupSelect = groupColumns
-		.map((name, index) =>
-			index === executionColumn
-				? `${executionGroup(allFilters, params)} AS ${name}`
-				: name,
-		)
+		.map((name, index) => {
+			const field = groupBy[index];
+			if (field === "execution")
+				return `${executionGroup(allFilters, params)} AS ${name}`;
+			if (isPointField(field))
+				return `${fieldExpression(parseField(field), params)} AS ${name}`;
+			return name;
+		})
 		.join(", ");
 	const points = seriesPointSource(
 		`${SERIES_WINDOW} AND metric_name = ${metric} AND CAST(metric_kind, 'Int16') = ${params.bind(scope.kind, "Int16")}${seriesFilters}`,
@@ -256,7 +280,7 @@ function measureSelect(
 				? ["s.source_id", "s.resource_id", "s.resource_kind"]
 				: []),
 			...groupColumns
-				.filter((_, index) => index !== executionColumn)
+				.filter((_, index) => !isPointField(groupBy[index]))
 				.map((column) => `s.${column}`),
 		].join(", "),
 		POINT_DEDUP,
@@ -290,7 +314,7 @@ FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
     ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_nano AS t, sample_id,
     ${bucket} AS bucket, ${VALUE} AS v
   FROM ${usesExecution ? executionPointSource(points) : `(${points})`}
-  ${executionFilters.length ? `WHERE ${executionFilters.join(" AND ")}` : ""}
+  ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
 ),
 ${perSeries(measure, scope.behavior, groups, query.shape === "timeseries")},
 combined AS (

@@ -12,7 +12,7 @@ The web application uses TanStack Start and shadcn/ui, with shared English/Frenc
 | Ingestion API              | Authenticate each submission, resolve root/independent-resource grants, validate the whole request and exact output expansion, then acknowledge confirmed raw Kafka publication. |
 | Normalizer                 | Revalidate retained context and publish one bare point per record; RustStream tracks settled prefixes only after every required output acknowledgement.                          |
 | Kafka                      | Retain raw and normalized records separately and track each downstream group's progress.                                                                                         |
-| ClickHouse                 | Consume normalized Protobuf through its native Kafka engine and a non-aggregating materialized view into point rows.                                                             |
+| ClickHouse                 | Consume normalized Protobuf through its native Kafka engine and project series metadata and narrow point rows into separate tables.                                              |
 | TanStack Start application | Manage application state and independently authorize private server operations before querying ClickHouse with a read-only account.                                              |
 | PostgreSQL                 | Maintain Better Auth memberships/sessions, projects, execution windows and collector enrollment keys and nodes.                                                                  |
 
@@ -26,9 +26,11 @@ flowchart LR
     ingest --> raw["Kafka: raw metrics"]
     raw --> normalizer["Rust normalizer"]
     normalizer --> normalized["Kafka: analytical Protobuf rows"]
-    normalized --> native["ClickHouse Kafka source and non-aggregating MV"]
+    normalized --> native["ClickHouse Kafka source and materialized views"]
     native --> points["ReplacingMergeTree: telemetry.metric_points"]
+    native --> series["AggregatingMergeTree: telemetry.metric_series"]
     web["TanStack Start application"] -->|Authorized read-only queries| points
+    web --> series
     ingest -->|Revoked node IDs every 30 s| postgres["PostgreSQL: application and authority"]
     collectors -->|Enrollment and access tokens| web
     web -->|Sessions, projects and executions| postgres

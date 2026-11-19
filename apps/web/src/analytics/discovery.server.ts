@@ -1,6 +1,6 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { readExecutions } from "../executions/participants.server";
-import { compileFields } from "./compile.server";
+import { compileFields, isPointField } from "./compile.server";
 import type { AttributeDefinition, MetricDefinition } from "./contracts";
 import { seriesPointSource } from "./series-source.server";
 import { metricBehavior } from "./validation";
@@ -301,15 +301,16 @@ export async function listAttributeValues(
 		params,
 	} = compileFields([field]);
 	const from = now - VALUE_WINDOW_MS;
+	const onPoint = isPointField(field);
 	const points = seriesPointSource(
 		` AND last_seen_unix_nano >= {from:UInt64}${metric === undefined ? "" : " AND metric_name = {metric:String}"}`,
 		"AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}",
-		"s.suggested",
+		onPoint ? "" : "s.suggested",
 		"",
-		[`${value} AS suggested`],
+		onPoint ? [] : [`${value} AS suggested`],
 	);
 	const result = await connection.query({
-		query: `SELECT suggested AS value FROM (${points})
+		query: `SELECT ${onPoint ? value : "suggested"} AS value FROM (${points})
   WHERE value IS NOT NULL AND value != ''
   GROUP BY value
   ORDER BY count() DESC, value

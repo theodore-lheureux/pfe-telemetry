@@ -3,7 +3,11 @@ import {
 	ClickHouseError,
 	TupleParam,
 } from "@clickhouse/client";
-import { compileFields, compileFilters } from "../analytics/compile.server";
+import {
+	compileFields,
+	compileFilters,
+	isPointField,
+} from "../analytics/compile.server";
 import { executionPointSource } from "../analytics/execution-source.server";
 import { seriesPointSource } from "../analytics/series-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
@@ -100,18 +104,20 @@ interface Key {
 // Points are sorted by series, so the newest points of a window are found by sorting
 // only their narrow key columns. Without FINAL, a resent point can appear more than once
 // until merges remove its copies.
-function keyQuery(seriesFilters: string[], executionFilters: string[]) {
+function keyQuery(
+	seriesFilters: string[],
+	pointFilters: string[],
+	execution: boolean,
+) {
 	const points = seriesPointSource(
 		` AND last_seen_unix_nano >= {lower:UInt64} AND first_seen_unix_nano <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
 		`AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
 AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,sample_id)<tuple({cursorTime:UInt64},unhex({cursorSample:String}))`,
-		executionFilters.length
-			? "s.source_id, s.resource_id, s.resource_kind"
-			: "",
+		execution ? "s.source_id, s.resource_id, s.resource_kind" : "",
 	);
 	return `SELECT toString(time_unix_nano) AS timeNs,hex(sample_id) AS sampleId,toString(series_id) AS seriesId,event_day AS day
-FROM ${executionFilters.length ? executionPointSource(points) : `(${points})`}
-${executionFilters.length ? `WHERE ${executionFilters.join(" AND ")}` : ""}
+FROM ${execution ? executionPointSource(points) : `(${points})`}
+${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
 ORDER BY time_unix_nano DESC,sample_id DESC LIMIT {limit:UInt32}`;
 }
 
@@ -246,11 +252,12 @@ export async function readPoints(
 	const to = input.cursor?.to ?? input.to ?? new Date(),
 		from = input.cursor?.from ?? input.from ?? new Date(to.getTime() - 3600000);
 	const filters = compileFilters(input.filters ?? []);
+	const fieldsInFilters = (input.filters ?? []).map((filter) => filter.field);
 	const conditions = filters.conditions.filter(
-		(_, i) => input.filters?.[i].field !== "execution",
+		(_, i) => !isPointField(fieldsInFilters[i]),
 	);
-	const execution = filters.conditions.filter(
-		(_, i) => input.filters?.[i].field === "execution",
+	const pointConditions = filters.conditions.filter((_, i) =>
+		isPointField(fieldsInFilters[i]),
 	);
 	if (input.metric !== undefined)
 		conditions.push("metric_name={metric:String}");
@@ -265,7 +272,11 @@ export async function readPoints(
 	};
 	const fromNs = BigInt(from.getTime()) * NS_PER_MS;
 	const search = await searchKeys(
-		keyQuery(conditions, execution),
+		keyQuery(
+			conditions,
+			pointConditions,
+			fieldsInFilters.includes("execution"),
+		),
 		params,
 		fromNs,
 		input.cursor

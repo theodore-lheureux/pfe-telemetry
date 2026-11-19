@@ -18,7 +18,7 @@ fn is_marker(path: &str, markers: &[&str]) -> bool {
 
 /// Bound the extra fields in a singleton before admission. Packet elision can
 /// only make the frame smaller. Protobuf record-length framing is budgeted separately.
-pub(crate) fn wire_overhead(point: &AnalyticalPoint) -> usize {
+pub fn singleton_size_bound(point: &AnalyticalPoint) -> usize {
     // A storage key, a logical key and two timestamp bounds are fixed64s.
     let mut overhead = 4 * 10;
     for (nodes, markers) in [
@@ -31,7 +31,7 @@ pub(crate) fn wire_overhead(point: &AnalyticalPoint) -> usize {
             .count()
             * 20;
     }
-    overhead
+    point.encoded_len() + overhead
 }
 
 fn id(hash: TypedHash) -> u64 {

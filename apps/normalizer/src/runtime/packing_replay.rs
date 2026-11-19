@@ -1,5 +1,5 @@
 use super::{app, unix_nanos};
-use crate::{config::Cli, prepare};
+use crate::{config::Cli, prepare_rows};
 use clap::Parser;
 use prost::Message;
 use rdkafka::{
@@ -10,8 +10,8 @@ use rdkafka::{
     producer::{FutureProducer, FutureRecord},
 };
 use recount_telemetry_schema::{
-    ExportMetricsServiceRequest, RAW_RECEIVED_MS_HEADER, ddl::Schema, identity, metrics::metric::Data, series,
-    wire::AnalyticalPoint,
+    ExportMetricsServiceRequest, RAW_RECEIVED_MS_HEADER, ddl::Schema, identity, metrics::metric::Data,
+    series,
 };
 use ruststream_rdkafka::prelude::*;
 use std::{
@@ -268,9 +268,8 @@ async fn scenario_with_linger(
             &recount_telemetry_schema::wire::RawRecord::decode(bytes.as_slice()).unwrap(),
         )
         .unwrap();
-        let points = prepare(bytes, Some(&key), 1, Default::default()).unwrap();
-        for record in points {
-            let mut point = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
+        let points = prepare_rows(bytes, Some(&key), Default::default()).unwrap();
+        for mut point in points {
             let dimensions = series::split(&mut point);
             expected_ids.push(format!(
                 "{}\t{}\t{}",

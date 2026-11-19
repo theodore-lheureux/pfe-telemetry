@@ -5,17 +5,24 @@ WITH memberships AS (
     FROM telemetry.execution_participants FINAL
     WHERE project_id = {project:String} AND execution_key = {execution:String}
       AND kind = 2 AND retracted = 0 AND process_resource_id IS NOT NULL
+), selected_series AS (
+    SELECT * FROM telemetry.metric_series FINAL
+    WHERE project_id = {project:String}
+      AND last_seen_unix_nano >= {start:UInt64} AND first_seen_unix_nano <= {end:UInt64}
+      AND (source_id, resource_id) IN (SELECT node_id, resource FROM memberships)
 )
 SELECT project_id, source_id, resource_id, metric_name, unit,
        hex(sample_id) AS sample_id, series_id, time_unix_nano,
        start_time_unix_nano, int_value, double_value, temporality,
        monotonic, scope_name, scope_version,
        arrayMap(a -> (a.path, a.string_value), point_attributes) AS attributes
-FROM telemetry.metric_points
-WHERE project_id = {project:String}
-  AND time_unix_nano >= {start:UInt64} AND time_unix_nano <= {end:UInt64}
-  AND (source_id, resource_id) IN (SELECT node_id, resource FROM memberships)
-  AND arrayExists(
+FROM (
+    SELECT * FROM telemetry.metric_points
+    WHERE project_id = {project:String} AND series_id IN (SELECT series_id FROM selected_series)
+      AND event_day BETWEEN intDiv({start:UInt64}, 86400000000000) AND intDiv({end:UInt64}, 86400000000000)
+      AND time_unix_nano >= {start:UInt64} AND time_unix_nano <= {end:UInt64}
+) INNER JOIN selected_series USING (project_id, series_id)
+WHERE arrayExists(
       m -> m.1 = source_id AND m.2 = resource_id
            AND time_unix_nano >= m.3 AND time_unix_nano < m.4,
       (SELECT groupArray((node_id, resource, start, end)) FROM memberships)

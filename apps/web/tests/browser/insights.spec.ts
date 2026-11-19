@@ -3,6 +3,7 @@ import { ClickHouseLogLevel, createClient } from "@clickhouse/client";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
+import { clearTelemetry, seedRecentTelemetry } from "./telemetry-seed";
 
 const allowed = process.env.RECOUNT_ACTIVITY_TEST_ALLOW_PUBLISH === "1";
 test.skip(
@@ -42,30 +43,19 @@ test("Insights shows the Node health template and charts discovered metrics in E
 		log: { level: ClickHouseLogLevel.OFF },
 	});
 	try {
-		// Copy an hour of real node CPU points into this disposable project; the discovery
-		// views catalog them on insert, exactly as for collector traffic.
-		await clickhouse.command({
-			query: `INSERT INTO telemetry.metric_points
-        SELECT * REPLACE ({project:String} AS project_id)
-        FROM telemetry.metric_points
-        WHERE metric_name IN ('recount.node.cpu.time', 'recount.node.memory.total',
-            'recount.node.memory.available', 'recount.collection.discovered.processes')
-          AND event_day >= toUInt32(intDiv(toUnixTimestamp(now() - INTERVAL 1 HOUR), 86400))
-          AND time_unix_nano > toUInt64(now() - INTERVAL 1 HOUR) * 1000000000
-        LIMIT 50000`,
-			query_params: { project: project.id },
-		});
-		// The same points an hour earlier, so the previous period has data to compare with
-		// even when the local stack was recreated recently.
-		await clickhouse.command({
-			query: `INSERT INTO telemetry.metric_points
-        SELECT * REPLACE (
-            time_unix_nano - 3600000000000 AS time_unix_nano,
-            toUInt32(intDiv(time_unix_nano - 3600000000000, 86400000000000)) AS event_day)
-        FROM telemetry.metric_points
-        WHERE project_id = {project:String}`,
-			query_params: { project: project.id },
-		});
+		await seedRecentTelemetry(
+			clickhouse,
+			project.id,
+			[
+				"recount.node.cpu.time",
+				"recount.node.memory.total",
+				"recount.node.memory.available",
+				"recount.collection.discovered.processes",
+			],
+			60,
+			50_000,
+			true,
+		);
 		await page.goto(
 			`${workspace.origin}/organizations/${organization.id}/projects/${project.id}`,
 		);
@@ -380,15 +370,7 @@ test("Insights shows the Node health template and charts discovered metrics in E
 			fullPage: true,
 		});
 	} finally {
-		for (const table of [
-			"metric_points",
-			"metric_definitions",
-			"attribute_definitions",
-		])
-			await clickhouse.command({
-				query: `ALTER TABLE telemetry.${table} DELETE WHERE project_id = {project:String} SETTINGS mutations_sync = 1`,
-				query_params: { project: project.id },
-			});
+		await clearTelemetry(clickhouse, project.id);
 		await clickhouse.close();
 	}
 });
