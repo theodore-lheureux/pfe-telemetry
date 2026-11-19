@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import pathlib
+import re
 import subprocess
 import sys
 import urllib.request
@@ -14,6 +15,7 @@ CLICKHOUSE = "recount-ingestion-clickhouse-1"
 KAFKA = "recount-ingestion-kafka-1"
 RUNNER = "recount-demo-semaphore-runner-1"
 SEMAPHORE = "http://127.0.0.1:3100/api/project/1/"
+KAFKA_ENGINE_SETTINGS = ("kafka_max_block_size", "kafka_poll_max_batch_size", "kafka_flush_interval_ms")
 
 
 def command(*args):
@@ -46,12 +48,18 @@ def inventory():
             result[f"clickhouse-file:{directory}/{pathlib.PurePosixPath(path).name}"] = digest(
                 command("docker", "exec", CLICKHOUSE, "cat", path)
             )
-    query = """SELECT name, create_table_query FROM system.tables
+    query = """SELECT name, engine, create_table_query FROM system.tables
         WHERE database='telemetry' ORDER BY name FORMAT JSONEachRow"""
     for line in command("docker", "exec", CLICKHOUSE, "clickhouse-client",
                         "--readonly=1", "--max_execution_time=5", "-q", query).splitlines():
         row = json.loads(line)
         result["telemetry-ddl:" + row["name"]] = digest(row["create_table_query"].encode())
+        if row["engine"] == "Kafka":
+            for setting in KAFKA_ENGINE_SETTINGS:
+                matches = re.findall(rf"(?<!\w){setting}\s*=\s*(\d+)\b", row["create_table_query"])
+                if len(matches) != 1:
+                    raise RuntimeError("missing or ambiguous Kafka batching declaration")
+                result[f"telemetry-kafka-setting:{row['name']}:{setting}"] = int(matches[0])
 
     kafka = ("docker", "exec", KAFKA, "/opt/kafka/bin/")
     endpoint = ("--bootstrap-server", "localhost:9092")
@@ -120,8 +128,10 @@ def inventory():
         with urllib.request.urlopen(request, timeout=8) as response:
             rows = json.load(response)
         for row in rows:
-            # Hash the entire object, including settings not known to this checker.
-            result[f"semaphore:{endpoint}:{int(row['id'])}"] = fingerprint(row)
+            # Template responses also carry task-run history, not configuration.
+            config = ({key: value for key, value in row.items() if key not in ("last_task", "tasks")}
+                      if endpoint == "templates" else row)
+            result[f"semaphore:{endpoint}:{int(row['id'])}"] = fingerprint(config)
     return result
 
 
@@ -146,8 +156,12 @@ def main():
             raise ValueError("empty or invalid expected inventory")
         changed = differences(expected, live)
         for key, before, after in changed:
-            # Keys identify objects; never print expected or live values.
-            print(f"{key}: {'changed' if before and after else 'missing' if before else 'unexpected'}")
+            # Only the explicitly inventoried numeric batching settings are safe to display.
+            if (key.startswith("telemetry-kafka-setting:")
+                    and type(expected.get(key)) is int and type(live.get(key)) is int):
+                print(f"{key}: expected {expected[key]}, found {live[key]}")
+            else:
+                print(f"{key}: {'changed' if before and after else 'missing' if before else 'unexpected'}")
         if not changed:
             print("Oracle configuration matches the approved inventory.")
         return int(bool(changed))
