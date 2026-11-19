@@ -367,6 +367,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ("value_kind", VALUE_KIND.into()),
                 ("statistics_present", "UInt16".into()),
             ]);
+            let mut changes = Vec::new();
+            for (name, ty) in &mut points {
+                if matches!(*name, "time_unix_nano" | "received_unix_nano") {
+                    ty.push_str(" CODEC(DoubleDelta, LZ4)");
+                    changes.push(format!("    MODIFY COLUMN {name} {ty}"));
+                }
+            }
+            fs::write(
+                out.join("point-timestamp-codecs.sql"),
+                format!(
+                    "ALTER TABLE telemetry.metric_points\n{};\n",
+                    changes.join(",\n")
+                ),
+            )?;
             let series: Vec<_> = typed
                 .into_iter()
                 .filter(|(name, _)| SERIES_FIELDS.contains(name))

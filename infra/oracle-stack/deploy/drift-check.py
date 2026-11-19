@@ -61,6 +61,14 @@ def inventory():
                     raise RuntimeError("missing or ambiguous Kafka batching declaration")
                 result[f"telemetry-kafka-setting:{row['name']}:{setting}"] = int(matches[0])
 
+    codecs = """SELECT name, compression_codec FROM system.columns
+        WHERE database='telemetry' AND table='metric_points'
+        AND name IN ('time_unix_nano','received_unix_nano') FORMAT JSONEachRow"""
+    for line in command("docker", "exec", CLICKHOUSE, "clickhouse-client",
+                        "--readonly=1", "--max_execution_time=5", "-q", codecs).splitlines():
+        row = json.loads(line)
+        result[f"telemetry-codec:metric_points:{row['name']}"] = row["compression_codec"]
+
     kafka = ("docker", "exec", KAFKA, "/opt/kafka/bin/")
     endpoint = ("--bootstrap-server", "localhost:9092")
     topics = command(*kafka[:3], kafka[3] + "kafka-topics.sh", *endpoint,

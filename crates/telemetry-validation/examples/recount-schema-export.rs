@@ -108,6 +108,7 @@ fn expected_columns(columns: &str) -> String {
                 .trim_end_matches(',')
                 .split_once(' ')
                 .expect("generated name/type column");
+            let kind = kind.split_once(" CODEC(").map_or(kind, |(kind, _)| kind);
             format!("{name}\t{kind}\n")
         })
         .collect()
@@ -158,6 +159,10 @@ fn prepare(options: &Options) -> Result<()> {
         ("schemas/executions.proto", PARTICIPANT_PROTO.to_owned()),
         ("schema.sql", sql),
         ("metric-schema.sql", metric_sql),
+        (
+            "point-timestamp-codecs.sql",
+            recount_telemetry_schema::POINT_TIMESTAMP_CODECS.to_owned(),
+        ),
         ("analytical-columns.sql", format!("{columns}\n")),
         (
             "expected-columns.tsv",
@@ -381,6 +386,15 @@ mod tests {
         let metric_sql = fs::read_to_string(first.output.join("metric-schema.sql")).unwrap();
         let bootstrap_sql = fs::read_to_string(first.output.join("schema.sql")).unwrap();
         assert!(metric_sql.contains("CREATE TABLE IF NOT EXISTS telemetry.metric_points"));
+        let alter = fs::read_to_string(first.output.join("point-timestamp-codecs.sql")).unwrap();
+        let types = fs::read_to_string(first.output.join("expected-columns.tsv")).unwrap();
+        for name in ["time_unix_nano", "received_unix_nano"] {
+            let definition = format!("{name} UInt64 CODEC(DoubleDelta, LZ4)");
+            assert!(metric_sql.contains(&format!("    {definition}")));
+            assert!(alter.contains(&format!("MODIFY COLUMN {definition}")));
+            assert!(types.contains(&format!("\n{name}\tUInt64\n")));
+        }
+        assert!(!recount_telemetry_schema::KAFKA_COLUMNS.contains("CODEC("));
         assert!(!metric_sql.contains("execution_participants"));
         assert!(bootstrap_sql.starts_with(&metric_sql));
         assert!(bootstrap_sql.contains("CREATE TABLE telemetry.execution_participants"));

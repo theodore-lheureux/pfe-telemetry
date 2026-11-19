@@ -304,6 +304,33 @@ Live and web with `--no-deps --pull never`; it never restarts shared backends. A
 backend/schema change fails for separate maintenance review instead of replacing
 mounted schemas under running consumers.
 
+### Change point timestamp codecs in place
+
+This maintenance changes only compression metadata on the existing point
+table. It does not reset topics, move checkpoints or delete history.
+
+1. Stage the approved, attested release without activating it. As root, run
+   `bash "$release/apply-point-timestamp-codecs.sh" "$release"` with the full
+   staged `/opt/recount/releases/RELEASE_ID` path. The script verifies the
+   backend checksums, applies the generated ALTER and prints the active
+   codecs. Both timestamp columns should show `CODEC(DoubleDelta, LZ4)`.
+2. Install the verified release's backend tree and `backend.SHA256SUMS`
+   together, as in the backend installation and ClickHouse image steps
+   below: build `recount-clickhouse:$id` from the release schema, select it in
+   `/etc/recount/ingestion.env`, stop only ClickHouse before exchanging
+   bind-mounted files, and recreate only ClickHouse on the same volume.
+   Preserve all credentials, paths and data identities. Do **not** follow
+   the table-drop, topic-deletion or schema-application steps below.
+   Verify schema health, then activate the release normally. Do not patch
+   the installed checksum manifest by hand.
+3. Capture a candidate private inventory with `drift-check.py --inventory`.
+   Review the timestamp codec entries, the `telemetry-ddl:metric_points`
+   fingerprint and expected release mount changes. Approve the updated
+   inventory separately, then verify with `drift-check.py --expected FILE`.
+
+New parts use the new codecs immediately; ordinary merges recompress old
+parts as they are rewritten. Do not force an all-history rewrite during rollout.
+
 ### Cut over to split metric storage
 
 Use the same procedure for the compact-delivery release. Its normalized
