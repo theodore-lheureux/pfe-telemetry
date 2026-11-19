@@ -33,3 +33,23 @@ Milliseconds, p50 / p95. All results matched, with Float64 calculations compared
 ## Method
 
 The [first trial](series-points-split.md) describes the isolated ClickHouse container and benchmark commands. Rerun them with the current fixture and harness to reproduce this comparison. The updated fixture uses pseudorandom 32-byte legacy sample IDs and groups provenance into batches of 128 measurements across 10 source identities. The benchmark uses actual views over local `Null` stand-ins for Kafka tables, merges after loading, then measures 20 queries per variant after warm-up. CPU figures exclude Kafka and the normalizer and do not represent sustained ingestion. The Kafka path was checked separately with a packed replay that joined stored points, series and delivery references.
+
+## Codecs
+
+Keep default LZ4. On the metric-first layout, no tested codec lowered the combined measured insert and merge CPU. Time DoubleDelta saved the most space, but increased insert CPU by 21%. Gorilla increased both CPU and final size. Every variant produced the same checksum over all 600,000 stored points.
+
+| Variant                            | Insert CPU-s | Merge CPU-s (`part_log`) | Merge CPU-s (container) | Final point bytes | Final total bytes |
+| ---------------------------------- | -----------: | -----------------------: | ----------------------: | ----------------: | ----------------: |
+| Default LZ4                        |         2.31 |                     1.27 |                    1.51 |        12,335,839 |        35,745,035 |
+| Event time: DoubleDelta + LZ4      |         2.80 |                     1.20 |                    1.33 |         8,780,375 |        32,189,571 |
+| Start time: Delta + ZSTD(1)        |         2.82 |                     1.19 |                    1.32 |        12,317,495 |        35,726,691 |
+| Double gauge: Gorilla + LZ4        |         2.80 |                     1.37 |                    1.70 |        12,703,117 |        36,112,313 |
+| Integer counter: DoubleDelta + LZ4 |         2.77 |                     1.43 |                    1.69 |        12,319,550 |        35,728,746 |
+| Integer counter: T64 + ZSTD(1)     |         2.57 |                     1.51 |                    1.73 |        12,319,751 |        35,728,947 |
+| Server rule: ZSTD(1) from 8 MiB    |         3.90 |                     1.39 |                    1.53 |        11,485,038 |        34,894,234 |
+
+The codec fixture uses integer counters with nonzero start times and double gauges. Each explicit treatment changes one column; IDs keep default LZ4. The [server rule](../tooling/clickhouse-compression-trial.xml) ran in a separate container: `system.parts` reported LZ4 for every fresh point part and ZSTD(1) for the final point part. Fresh point bytes were identical to control; the higher observed insert CPU on the separately started server is not evidence of extra ZSTD work on fresh point parts. The rule saved 2.4% total space and did not show a merge CPU win in this single run.
+
+The [sparse probe](../tooling/clickhouse-sparse-trial.sql) used 600,000 rows and a 95% default-ratio threshold. `Nullable(Int64)` was `Default` (25,086 compressed bytes), while the non-nullable value and presence columns were `Sparse` (738 and 720 bytes). The presence bit preserved present zero and absent values exactly. This verifies the mechanism, not a production CPU win; no point scalar representation was changed.
+
+Generate packets with the example's `codecs` argument and pass `codecs` as the final harness argument. Run `threshold` against a separate server with the compression XML mounted under its `config.d`. Run the sparse SQL with `clickhouse-client --multiquery` against a disposable server.
