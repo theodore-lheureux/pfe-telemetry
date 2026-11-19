@@ -1,0 +1,3917 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "collector" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          {
+            "key": "recount.collection.visibility",
+            "value": { "stringValue": "restricted" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "recount.collection.scan.duration",
+              "unit": "s",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "0",
+                    "asDouble": 0.000916836,
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "recount.clock.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  { "timeUnixNano": "0", "asInt": "0", "attributes": [] }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "node" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "recount.node.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-864961",
+                    "startTimeUnixNano": "-185085743881895",
+                    "asDouble": 61565.76,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-1" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-864961",
+                    "startTimeUnixNano": "-185085743881895",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "nice" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-2" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-864961",
+                    "startTimeUnixNano": "-185085743881895",
+                    "asDouble": 19766.02,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-3" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-864961",
+                    "startTimeUnixNano": "-185085743881895",
+                    "asDouble": 2731321.16,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "idle" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-4" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-864961",
+                    "startTimeUnixNano": "-185085743881895",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "interrupt" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-5" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-864961",
+                    "startTimeUnixNano": "-185085743881895",
+                    "asDouble": 16171.32,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "softirq" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-6" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-864961",
+                    "startTimeUnixNano": "-185085743881895",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "steal" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-7" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.node.memory.total",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-818752",
+                    "asInt": "6280474624",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "recount.node.memory.available",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-818752",
+                    "asInt": "1635053568",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "system.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-1" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-8" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-1" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-9" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-2" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-10" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-2" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-11" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-3" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-12" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-3" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-13" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-4" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-14" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-4" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-15" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-5" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-16" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-5" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-17" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-6" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-18" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-6" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-19" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-7" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-20" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-7" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-21" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-8" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-22" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-8" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-23" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "89229783040",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-9" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-24" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-9" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-25" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "805028602368",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-10" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-26" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "570844049408",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-10" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-27" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "805028564992",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-11" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-28" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "570844049408",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-11" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-29" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "12288",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-12" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-30" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "4096",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-12" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-31" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "65389080576",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-13" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-32" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "90942689280",
+                    "attributes": [
+                      {
+                        "key": "system.device",
+                        "value": { "stringValue": "fixture-disk-13" }
+                      },
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-33" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-864961",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.node.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-818752",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.node.memory.total" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-818752",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": {
+                          "stringValue": "recount.node.memory.available"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-469710",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "system.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "1" } },
+          { "key": "process.parent_pid", "value": { "intValue": "0" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:100" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "100" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-368043",
+                    "asDouble": 0.01,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-34" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-368043",
+                    "asDouble": 0.02,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-35" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-346501",
+                    "asInt": "8470528",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-337960",
+                    "asInt": "499712",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-36" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-337960",
+                    "asInt": "1077248",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-37" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-368043",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-346501",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-337960",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "2" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-300376",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-38" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-300376",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-39" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-297001",
+                    "asInt": "1347584",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-291793",
+                    "asInt": "86016",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-40" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-291793",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-41" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-300376",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-297001",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-291793",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "3" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-274543",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-42" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-274543",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-43" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-271501",
+                    "asInt": "1318912",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-267543",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-44" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-267543",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-45" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-274543",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-271501",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-267543",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "4" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-254084",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-46" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-254084",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-47" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-251918",
+                    "asInt": "1368064",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-249126",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-48" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-249126",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-49" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-254084",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-251918",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-249126",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "5" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-236459",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-50" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-236459",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-51" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-234168",
+                    "asInt": "1355776",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-231251",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-52" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-231251",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-53" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-236459",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-234168",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-231251",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "6" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-219334",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-54" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-219334",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-55" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-213543",
+                    "asInt": "1355776",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-210334",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-56" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-210334",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-57" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-219334",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-213543",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-210334",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "7" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-197959",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-58" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-197959",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-59" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-195834",
+                    "asInt": "1335296",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-189918",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-60" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-189918",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-61" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-197959",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-195834",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-189918",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "8" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-177334",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-62" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-177334",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-63" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-171293",
+                    "asInt": "1376256",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-168376",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-64" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-168376",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-65" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-177334",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-171293",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-168376",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "9" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-155417",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-66" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-155417",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-67" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-153209",
+                    "asInt": "1339392",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-150209",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-68" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-150209",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-69" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-155417",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-153209",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-150209",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "10" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-139292",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-70" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-139292",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-71" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-131376",
+                    "asInt": "1376256",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-125376",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-72" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-125376",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-73" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-139292",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-131376",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-125376",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "11" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-112626",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-74" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-112626",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-75" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-110459",
+                    "asInt": "1363968",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-107792",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-76" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-107792",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-77" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-112626",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-110459",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-107792",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "12" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-96876",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-78" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-96876",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-79" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-94584",
+                    "asInt": "1351680",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-92042",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-80" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-92042",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-81" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-96876",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-94584",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-92042",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "13" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-81251",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-82" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-81251",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-83" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-79209",
+                    "asInt": "1359872",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-76751",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-84" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-76751",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-85" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-81251",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-79209",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-76751",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "14" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-65959",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-86" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-65959",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-87" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-63626",
+                    "asInt": "1368064",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-60917",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-88" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-60917",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-89" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-65959",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-63626",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-60917",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "15" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-50292",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-90" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-50292",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-91" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-48001",
+                    "asInt": "1351680",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-45501",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-92" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-45501",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-93" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-50292",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-48001",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-45501",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "16" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-35209",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-94" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-35209",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-95" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-33126",
+                    "asInt": "1331200",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-30334",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-96" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-30334",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-97" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-35209",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-33126",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-30334",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "process" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          { "key": "process.pid", "value": { "intValue": "17" } },
+          { "key": "process.parent_pid", "value": { "intValue": "1" } },
+          {
+            "key": "recount.process.namespace_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.process.incarnation_id",
+            "value": { "stringValue": "start-ticks:101" }
+          },
+          {
+            "key": "recount.process.start_time_ticks",
+            "value": { "stringValue": "101" }
+          },
+          {
+            "key": "recount.linux.clock_ticks_per_second",
+            "value": { "intValue": "100" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "process.cpu.time",
+              "unit": "s",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-12125",
+                    "asDouble": 0,
+                    "attributes": [
+                      { "key": "cpu.mode", "value": { "stringValue": "user" } },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-98" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-12125",
+                    "asDouble": 0,
+                    "attributes": [
+                      {
+                        "key": "cpu.mode",
+                        "value": { "stringValue": "system" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-99" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.process.memory.rss",
+              "unit": "By",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-9709",
+                    "asInt": "1363968",
+                    "attributes": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "process.disk.io",
+              "unit": "By",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-7125",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "read" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-100" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-7125",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "disk.io.direction",
+                        "value": { "stringValue": "write" }
+                      },
+                      {
+                        "key": "recount.counter.segment_id",
+                        "value": { "stringValue": "segment-101" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            },
+            {
+              "name": "recount.collection.read.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "-12125",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.cpu.time" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-9709",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "recount.process.memory.rss" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "-7125",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "recount.metric.name",
+                        "value": { "stringValue": "process.disk.io" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          { "key": "host.id", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.host.boot_id",
+            "value": { "stringValue": "fixture" }
+          },
+          { "key": "os.type", "value": { "stringValue": "linux" } },
+          {
+            "key": "recount.collection.source",
+            "value": { "stringValue": "rust-procfs" }
+          },
+          { "key": "host.name", "value": { "stringValue": "fixture" } },
+          {
+            "key": "recount.collection.scope",
+            "value": { "stringValue": "collector" }
+          },
+          {
+            "key": "recount.collection.epoch_id",
+            "value": { "stringValue": "fixture" }
+          },
+          {
+            "key": "recount.collection.interval_ns",
+            "value": { "intValue": "1000000000" }
+          },
+          {
+            "key": "recount.collection.visibility",
+            "value": { "stringValue": "restricted" }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": { "name": "recount.collector.procfs", "version": "0.1.0" },
+          "metrics": [
+            {
+              "name": "recount.collection.discovery.status",
+              "unit": "1",
+              "gauge": {
+                "dataPoints": [
+                  { "timeUnixNano": "0", "asInt": "0", "attributes": [] }
+                ]
+              }
+            },
+            {
+              "name": "recount.collection.discovered.processes",
+              "unit": "{process}",
+              "gauge": {
+                "dataPoints": [
+                  { "timeUnixNano": "0", "asInt": "17", "attributes": [] }
+                ]
+              }
+            },
+            {
+              "name": "recount.collection.discarded.processes",
+              "unit": "{process}",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "0",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "reason",
+                        "value": { "stringValue": "identity_unverified" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "0",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "reason",
+                        "value": { "stringValue": "disappeared" }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "recount.collection.dropped.points",
+              "unit": "{point}",
+              "sum": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "0",
+                    "startTimeUnixNano": "-2003517103",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "reason",
+                        "value": { "stringValue": "buffer_full" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "0",
+                    "startTimeUnixNano": "-2003517103",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "reason",
+                        "value": { "stringValue": "buffer_expired" }
+                      }
+                    ]
+                  },
+                  {
+                    "timeUnixNano": "0",
+                    "startTimeUnixNano": "-2003517103",
+                    "asInt": "0",
+                    "attributes": [
+                      {
+                        "key": "reason",
+                        "value": { "stringValue": "permanent_rejection" }
+                      }
+                    ]
+                  }
+                ],
+                "aggregationTemporality": 2,
+                "isMonotonic": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
