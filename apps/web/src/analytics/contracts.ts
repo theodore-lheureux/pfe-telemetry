@@ -214,10 +214,11 @@ export interface QueryResult {
 	limited: boolean;
 	/** The comparison window, when one was requested. */
 	compared: { from: Date; to: Date } | null;
+	/** Pipeline receive-time watermark, or the latest stored heartbeat bucket when unavailable. */
+	ingestedThrough: Date | null;
 	/**
 	 * Per node, the bucket starts (ms) in which its collector reported at all, which tells
-	 * a node that was offline from one that sent no points for this metric. Null when
-	 * unknown: table results, or projects whose sources do not send collector heartbeats.
+	 * missing heartbeats from missing metric points. Null when coverage is unknown.
 	 */
 	coverage: Record<string, number[]> | null;
 	/** How groups were collapsed, when they were. */

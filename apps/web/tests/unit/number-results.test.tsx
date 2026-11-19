@@ -41,6 +41,7 @@ test("Number results show a current headline and its comparison, not a second nu
 		limited: false,
 		compared: { from: new Date(-60_000), to: new Date(0) },
 		coverage: null,
+		ingestedThrough: null,
 	};
 	const display = {
 		...DEFAULT_DISPLAY,

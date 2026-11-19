@@ -48,7 +48,7 @@ export async function createLiveGateway() {
 			return offset;
 		},
 		start(partition, from, signal, receive, failed) {
-			const consumer = partitionConsumer(kafka, settings.topic, partition);
+			const consumer = partitionConsumer(kafka, settings.topic, [partition]);
 			const timeoutController = new AbortController();
 			const timer = setTimeout(() => timeoutController.abort(), 10000);
 			const deadline = AbortSignal.any([signal, timeoutController.signal]);

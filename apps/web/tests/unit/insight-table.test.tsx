@@ -29,6 +29,7 @@ const result: QueryResult = {
 	limited: false,
 	compared: null,
 	coverage: null,
+	ingestedThrough: null,
 };
 const view = seriesView(
 	result,

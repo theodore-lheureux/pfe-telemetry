@@ -177,6 +177,7 @@ test("calculated query execution hides inputs, preserves window isolation and co
 		limited: false,
 		compared: { from: new Date(-120_000), to: new Date(0) },
 		coverage: null,
+		ingestedThrough: null,
 	};
 	const result = plan.finish(raw);
 	expect(result.measures).toEqual([

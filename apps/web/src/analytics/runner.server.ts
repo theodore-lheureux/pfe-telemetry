@@ -14,6 +14,7 @@ import {
 } from "./contracts";
 import { metricDefinitions } from "./discovery.server";
 import { formulaSeries } from "./formula-series";
+import { pipelineIngestedThrough } from "./ingested-through.server";
 import {
 	ALLOWED_CALCULATIONS,
 	comparisonRange,
@@ -218,9 +219,6 @@ LIMIT 500`,
 			clickhouse_settings: SETTINGS,
 		});
 		const rows = await result.json<{ node: string; buckets: string[] }>();
-		// No heartbeat at all means this project's sources don't send one, not that every
-		// node was offline.
-		if (!rows.length) return null;
 		return Object.fromEntries(
 			rows.map((row) => [
 				row.node,
@@ -266,10 +264,18 @@ export async function runQuery(
 	const deadline = AbortSignal.timeout(10_000);
 	const abort = signal ? AbortSignal.any([signal, deadline]) : deadline;
 	try {
+		const bucketSeconds =
+			query.shape === "timeseries" && query.interval
+				? INTERVALS[query.interval]
+				: null;
+		const watermark = bucketSeconds ? pipelineIngestedThrough() : null;
 		const definitions = await metricDefinitions(
 			connection,
 			projectId,
-			query.measures.map((measure) => measure.metric),
+			[
+				...query.measures.map((measure) => measure.metric),
+				...(bucketSeconds ? [HEARTBEAT] : []),
+			],
 			abort,
 		);
 		const scopes = query.measures.map((measure) => {
@@ -312,25 +318,27 @@ export async function runQuery(
 			}),
 		);
 		const all = [...series, ...formulaSeries(query, series)];
+		const heartbeat = definitions.get(HEARTBEAT);
+		const ingestedThrough = await watermark;
 		return {
 			shape: query.shape,
 			from,
 			to,
 			coverage:
-				query.shape === "timeseries" && query.interval
+				bucketSeconds && heartbeat && heartbeat.firstSeen < to
 					? await coverage(
 							connection,
 							projectId,
 							from,
 							to,
-							INTERVALS[query.interval],
+							bucketSeconds,
 							abort,
 						)
 					: null,
-			bucketSeconds:
-				query.shape === "timeseries" && query.interval
-					? INTERVALS[query.interval]
-					: null,
+			ingestedThrough:
+				ingestedThrough ??
+				latestHeartbeatBucket(heartbeat?.lastSeen, bucketSeconds),
+			bucketSeconds,
 			groupBy: query.groupBy ?? [],
 			measures,
 			formulas: query.formulas ?? [],
@@ -344,4 +352,13 @@ export async function runQuery(
 	} catch (error) {
 		analyticsError(error, signal);
 	}
+}
+
+export function latestHeartbeatBucket(
+	latest: Date | undefined,
+	bucketSeconds: number | null,
+) {
+	if (!latest || !bucketSeconds) return null;
+	const step = bucketSeconds * 1000;
+	return new Date(Math.floor(latest.getTime() / step) * step);
 }

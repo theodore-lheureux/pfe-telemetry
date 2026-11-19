@@ -26,7 +26,7 @@ CompressionCodecs[CompressionTypes.ZSTD] = () => ({
 const brokersError =
 	"RECOUNT_ACTIVITY_KAFKA_BROKERS must list host:port brokers, separated by commas";
 
-function topicName(name: string) {
+export function topicName(name: string) {
 	return z
 		.string()
 		.regex(/^[a-zA-Z0-9_.-]{1,200}$/, `${name} must be a Kafka topic name`);
@@ -76,15 +76,15 @@ export function liveKafkaSettings() {
 	};
 }
 
-// Each ephemeral reader owns precisely one partition, without joining pipeline groups.
+// Ephemeral readers use explicit assignments without joining pipeline groups.
 export function partitionConsumer(
 	kafka: Kafka,
 	topic: string,
-	partition: number,
+	partitions: number[],
 	raw = false,
 ) {
 	return kafka.consumer({
-		groupId: `recount-live-${createHash("sha256").update(topic).digest("hex").slice(0, 12)}-${randomUUID()}`,
+		groupId: `recount-reader-${createHash("sha256").update(topic).digest("hex").slice(0, 12)}-${randomUUID()}`,
 		allowAutoTopicCreation: false,
 		retry: { retries: 2, restartOnFailure: async () => false },
 		sessionTimeout: 10000,
@@ -97,7 +97,7 @@ export function partitionConsumer(
 				name: "recount-live-partition",
 				version: 0,
 				protocol: ({ topics }) => ({
-					name: "recount-live-partition",
+					name: "recount-reader-partitions",
 					metadata: AssignerProtocol.MemberMetadata.encode({
 						version: 0,
 						topics,
@@ -109,7 +109,7 @@ export function partitionConsumer(
 						memberId: member.memberId,
 						memberAssignment: AssignerProtocol.MemberAssignment.encode({
 							version: 0,
-							assignment: { [topic]: [partition] },
+							assignment: { [topic]: partitions },
 							userData: Buffer.alloc(0),
 						}),
 					})),
@@ -143,7 +143,7 @@ export function readRawPacket(
 	signal: AbortSignal,
 	topic = liveKafkaSettings().rawTopic,
 ) {
-	const consumer = partitionConsumer(kafka, topic, input.partition, true);
+	const consumer = partitionConsumer(kafka, topic, [input.partition], true);
 	const timeoutController = new AbortController();
 	const deadline = AbortSignal.any([signal, timeoutController.signal]);
 	const timeout = setTimeout(() => timeoutController.abort(), 10000);

@@ -274,6 +274,7 @@ test("calculated metrics enforce project access and preserve references through 
 			limited: false,
 			compared: null,
 			coverage: null,
+			ingestedThrough: null,
 		};
 	};
 	const result = await runAnalyticsQuery(
