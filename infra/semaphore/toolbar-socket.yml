@@ -1,0 +1,93 @@
+- name: Connect Recount web to Semaphore through a private socket
+  hosts: semaphore
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Install the private socket directory definition
+      ansible.builtin.copy:
+        dest: /etc/tmpfiles.d/recount-semaphore-api.conf
+        mode: "0644"
+        content: |
+          d /run/recount-semaphore-api 0750 0 1000 -
+
+    - name: Create the private runtime directory
+      ansible.builtin.command:
+        argv:
+          [
+            systemd-tmpfiles,
+            --create,
+            /etc/tmpfiles.d/recount-semaphore-api.conf,
+          ]
+      changed_when: false
+
+    - name: Install the private socket listener
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/recount-semaphore-api.socket
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Private Semaphore API socket for Recount web
+          After=systemd-tmpfiles-setup.service
+
+          [Socket]
+          ListenStream=/run/recount-semaphore-api/api.sock
+          SocketUser=0
+          SocketGroup=1000
+          SocketMode=0660
+          RemoveOnStop=yes
+
+          [Install]
+          WantedBy=sockets.target
+
+    - name: Install the loopback-only socket forwarder
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/recount-semaphore-api.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Forward the private Recount web socket to Semaphore loopback
+          Requires=recount-demo-semaphore.service
+          After=recount-demo-semaphore.service
+
+          [Service]
+          ExecStart=/usr/lib/systemd/systemd-socket-proxyd --connections-max=32 127.0.0.1:3100
+          DynamicUser=yes
+          NoNewPrivileges=yes
+          ProtectSystem=strict
+          ProtectHome=yes
+          PrivateTmp=yes
+          PrivateDevices=yes
+          ProtectKernelTunables=yes
+          ProtectKernelModules=yes
+          ProtectControlGroups=yes
+          RestrictNamespaces=yes
+          RestrictAddressFamilies=AF_UNIX AF_INET
+          CapabilityBoundingSet=
+          IPAddressDeny=any
+          IPAddressAllow=localhost
+
+    - name: Start the Unix socket without exposing a TCP listener
+      ansible.builtin.systemd_service:
+        name: recount-semaphore-api.socket
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Verify the socket is usable by the web image's group
+      ansible.builtin.command:
+        argv:
+          - setpriv
+          - --reuid=1000
+          - --regid=1000
+          - --clear-groups
+          - curl
+          - --max-time
+          - "15"
+          - --fail
+          - --silent
+          - --unix-socket
+          - /run/recount-semaphore-api/api.sock
+          - http://semaphore.local/api/ping
+      register: semaphore_socket_probe
+      changed_when: false
+      failed_when: semaphore_socket_probe.rc != 0 or (semaphore_socket_probe.stdout | trim | lower) != "pong"
