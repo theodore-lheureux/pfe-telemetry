@@ -47,8 +47,8 @@ function definition(row: MetricRow): MetricDefinition {
 	};
 }
 
-const METRICS = `SELECT metric_name AS name, metric_kind AS kind, temporality,
-    ifNull(monotonic, 2) AS monotonic_state, unit, argMax(description, last_seen_unix_nano) AS description,
+const METRICS = `SELECT metric_name AS name, toUInt8(metric_kind) AS kind, toUInt8(temporality) AS temporal,
+    toUInt8(monotonic) AS monotonic_state, unit, argMax(description, last_seen_unix_nano) AS description,
     toString(min(first_seen_unix_nano)) AS firstSeenNs,
     toString(max(last_seen_unix_nano)) AS lastSeenNs
   FROM metric_series
@@ -64,8 +64,8 @@ export async function listMetrics(
 	signal?: AbortSignal,
 ): Promise<MetricDefinition[]> {
 	const result = await connection.query({
-		query: `SELECT * EXCEPT(monotonic_state), monotonic_state AS monotonic FROM (${METRICS}
-  GROUP BY name, kind, temporality, monotonic_state, unit
+		query: `SELECT * EXCEPT(monotonic_state, temporal), monotonic_state AS monotonic, temporal AS temporality FROM (${METRICS}
+  GROUP BY name, kind, temporal, monotonic_state, unit
   ORDER BY name, max(last_seen_unix_nano) DESC
   LIMIT ${MAX_METRICS})`,
 		format: "JSONEachRow",
@@ -84,8 +84,8 @@ export async function metricDefinitions(
 	signal?: AbortSignal,
 ): Promise<Map<string, MetricDefinition>> {
 	const result = await connection.query({
-		query: `SELECT * EXCEPT(monotonic_state), monotonic_state AS monotonic FROM (${METRICS} AND metric_name IN {metrics:Array(String)}
-  GROUP BY name, kind, temporality, monotonic_state, unit
+		query: `SELECT * EXCEPT(monotonic_state, temporal), monotonic_state AS monotonic, temporal AS temporality FROM (${METRICS} AND metric_name IN {metrics:Array(String)}
+  GROUP BY name, kind, temporal, monotonic_state, unit
   ORDER BY max(last_seen_unix_nano) DESC
   LIMIT 1 BY name)`,
 		format: "JSONEachRow",
@@ -100,7 +100,7 @@ export async function metricDefinitions(
 
 const attributeSource = (allMetrics: boolean) => `
   SELECT metric_name, last_seen_unix_nano, entry.1 AS scope,
-    substring(entry.2, 2) AS attribute_key, entry.3 AS value_kind
+    substring(entry.2, 2) AS attribute_key, toUInt8(entry.3) AS value_kind
   FROM metric_series
   ARRAY JOIN arrayConcat(
     arrayMap(a -> tuple('point', a.path, a.kind), point_attributes),

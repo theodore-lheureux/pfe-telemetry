@@ -10,6 +10,8 @@ pub const PARTICIPANT_COLUMNS: &str =
     include_str!(concat!(env!("OUT_DIR"), "/participant-columns.sql"));
 pub const POINT_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/point-columns.sql"));
 pub const POINT_NAMES: &str = include_str!(concat!(env!("OUT_DIR"), "/point-names.sql"));
+pub const POINT_SELECT: &str = include_str!(concat!(env!("OUT_DIR"), "/point-select.sql"));
+pub const SERIES_SELECT: &str = include_str!(concat!(env!("OUT_DIR"), "/series-select.sql"));
 pub const KAFKA_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/kafka-columns.sql"));
 pub const DELIVERY_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/delivery-columns.sql"));
 pub const SERIES_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/series-columns.sql"));

@@ -176,9 +176,9 @@ impl Schema<'_> {
             ("__KAFKA_COLUMNS__", columns.to_owned()),
             ("__DELIVERY_COLUMNS__", crate::DELIVERY_COLUMNS.to_owned()),
             ("__POINT_COLUMNS__", crate::POINT_COLUMNS.to_owned()),
-            ("__POINT_NAMES__", crate::POINT_NAMES.to_owned()),
+            ("__POINT_SELECT__", crate::POINT_SELECT.to_owned()),
             ("__SERIES_COLUMNS__", crate::SERIES_COLUMNS.to_owned()),
-            ("__SERIES_NAMES__", crate::SERIES_NAMES.to_owned()),
+            ("__SERIES_SELECT__", crate::SERIES_SELECT.to_owned()),
             ("__KAFKA_BOOTSTRAP__", self.bootstrap.to_owned()),
             ("__NORMALIZED_TOPIC__", self.topic.to_owned()),
             ("__CONSUMER_GROUP__", self.group.to_owned()),
@@ -254,9 +254,10 @@ mod tests {
         assert!(sql.contains("CREATE TABLE disposable.late_kafka"));
         assert!(sql.contains(&format!(
             "TO disposable.metric_points AS SELECT {} FROM disposable.late_kafka",
-            crate::POINT_NAMES
+            crate::POINT_SELECT
         )));
         assert!(sql.contains("CREATE TABLE disposable.metric_series"));
+        assert!(sql.contains("index_granularity = 1024, merge_max_block_size = 8192, merge_max_block_size_bytes = 10485760"));
         assert!(sql.contains("kafka_max_block_size = 16384"));
         assert!(sql.contains("kafka_max_block_size = 64,"));
         assert_eq!(sql.matches("kafka_format = 'ProtobufSingle'").count(), 1);

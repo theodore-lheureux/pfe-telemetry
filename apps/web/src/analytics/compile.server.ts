@@ -84,11 +84,11 @@ function fieldExpression(field: ParsedField, params: Params) {
 			case "node":
 				return "source_id";
 			case "host":
-				return "host_id";
+				return "nullIf(host_id, '')";
 			case "resource.id":
 				return "resource_id";
 			case "resource.kind":
-				return "toString(resource_kind)";
+				return "toString(toUInt8(resource_kind))";
 			case "scope.name":
 				return "scope_name";
 		}

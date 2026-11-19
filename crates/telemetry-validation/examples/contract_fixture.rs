@@ -8,14 +8,14 @@ fn main() {
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--storage-layout") {
         use recount_telemetry_schema::{
-            DELIVERY_COLUMNS, KAFKA_COLUMNS, POINT_COLUMNS, POINT_NAMES, SERIES_COLUMNS,
-            SERIES_NAMES,
+            DELIVERY_COLUMNS, KAFKA_COLUMNS, POINT_COLUMNS, POINT_NAMES, POINT_SELECT,
+            SERIES_COLUMNS, SERIES_NAMES, SERIES_SELECT,
         };
         println!(
             "{}",
             serde_json::json!({ "pointColumns": POINT_COLUMNS, "pointNames": POINT_NAMES,
             "seriesColumns": SERIES_COLUMNS, "seriesNames": SERIES_NAMES,
-            "deliveryColumns": DELIVERY_COLUMNS, "kafkaColumns": KAFKA_COLUMNS })
+            "deliveryColumns": DELIVERY_COLUMNS, "kafkaColumns": KAFKA_COLUMNS, "pointSelect": POINT_SELECT, "seriesSelect": SERIES_SELECT })
         );
         return;
     }

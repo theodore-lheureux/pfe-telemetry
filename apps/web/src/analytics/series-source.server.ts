@@ -2,7 +2,7 @@
 export function seriesPointSource(
 	seriesWhere: string,
 	pointWhere: string,
-	dimensions = "s.* EXCEPT (project_id, series_id, metric_name)",
+	dimensions = "s.* EXCEPT (project_id, series_id, metric_name, host_id), nullIf(s.host_id,'') AS host_id",
 	pointMetric = "",
 	seriesExpressions: string[] = [],
 ) {
@@ -12,7 +12,8 @@ export function seriesPointSource(
 )
 SELECT p.*${dimensions ? `, ${dimensions}` : ""}
 FROM (
-  SELECT * FROM metric_points FINAL
+  SELECT * REPLACE (if(value_kind=1,int_value,NULL) AS int_value,
+    if(value_kind=2,double_value,NULL) AS double_value) FROM metric_points FINAL
   WHERE project_id = {project:String} AND series_id IN (SELECT series_id FROM selected_series)
     ${pointWhere}
     ${pointMetric ? `AND metric_name IN (SELECT metric_name FROM selected_series) ${pointMetric}` : ""}

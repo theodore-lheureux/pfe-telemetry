@@ -131,7 +131,7 @@ AND ${POINT_KEY} IN {samples:Array(String)}`,
 	);
 	return `SELECT ${projected}${POINT_KEY} AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
 host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
-resource_kind AS resourceKind,metric_kind AS kind,toString(int_value) AS integer,double_value AS double,toString(count) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
+toUInt8(resource_kind) AS resourceKind,toUInt8(metric_kind) AS kind,toString(int_value) AS integer,double_value AS double,toString(if(bitTest(statistics_present,0),count,NULL)) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
 FROM (${points})
 ORDER BY time_unix_nano DESC,sampleId DESC`;
 }
@@ -344,7 +344,10 @@ export async function readPoint(
 		)
 		.join(",");
 	const rows = await query<JsonObject>(
-		`SELECT * EXCEPT(delivery_id,original_position,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_nano,last_seen_unix_nano,logical_series_id),
+		`SELECT * EXCEPT(delivery_id,original_position,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_nano,last_seen_unix_nano,logical_series_id,resource_kind,metric_kind,temporality,monotonic,value_kind,statistics_present)
+REPLACE (${["count", "sum", "min", "max", "scale", "zero_count", "zero_threshold", "positive_offset", "negative_offset"].map((name, i) => `if(bitTest(statistics_present,${i}),${name},NULL) AS ${name}`).join(",")}),
+toUInt8(resource_kind) AS resource_kind,toUInt8(metric_kind) AS metric_kind,toUInt8(temporality) AS temporality,
+nullIf(toUInt8(monotonic),2) AS monotonic,
 hex(delivery_id) AS delivery_hex,hex(stream_id) AS stream_id_hex,hex(original_position) AS original_hex,
 arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
 FROM (${seriesPointSource(
@@ -438,7 +441,6 @@ FROM (${seriesPointSource(
 			"resource_id",
 			"resource_kind",
 			"host_id",
-			"device_id",
 			"resource_attributes",
 			"resource_schema_url",
 		]),

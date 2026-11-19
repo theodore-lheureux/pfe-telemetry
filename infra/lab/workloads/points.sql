@@ -13,8 +13,9 @@ WITH memberships AS (
 )
 SELECT project_id, source_id, resource_id, metric_name, unit,
        hex(stream_id) AS stream_id, series_id, time_unix_nano,
-       start_time_unix_nano, int_value, double_value, temporality,
-       monotonic, scope_name, scope_version,
+       start_time_unix_nano, if(value_kind=1,int_value,NULL) AS int_value,
+       if(value_kind=2,double_value,NULL) AS double_value, toUInt8(temporality) AS temporality,
+       nullIf(toUInt8(monotonic),2) AS monotonic, scope_name, scope_version,
        arrayMap(a -> (a.path, a.string_value), point_attributes) AS attributes
 FROM (
     SELECT * FROM telemetry.metric_points FINAL

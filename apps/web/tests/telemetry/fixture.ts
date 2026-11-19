@@ -27,6 +27,9 @@ interface Layout {
 	pointNames: string;
 	seriesNames: string;
 	deliveryColumns: string;
+	pointSelect: string;
+	seriesSelect: string;
+	kafkaColumns: string;
 }
 
 function storageStatements(layout: Layout) {
@@ -73,10 +76,10 @@ function fixtureViews(layout: Layout) {
 		`CREATE MATERIALIZED VIEW fixture_deliveries TO deliveries AS
 		SELECT project_id, substring(SHA256(lineage),1,16) AS delivery_id, lineage FROM fixture_input`,
 		`CREATE MATERIALIZED VIEW fixture_series TO metric_series AS
-		SELECT ${layout.seriesNames} FROM (SELECT * REPLACE (${id} AS series_id, ${logical} AS logical_series_id,
-		time_unix_nano AS first_seen_unix_nano, time_unix_nano AS last_seen_unix_nano) FROM (${clean}))`,
+		SELECT ${layout.seriesSelect} FROM (SELECT * REPLACE (${id} AS series_id, ${logical} AS logical_series_id,
+		time_unix_nano AS first_seen_unix_nano, time_unix_nano AS last_seen_unix_nano) FROM (${clean})) src`,
 		`CREATE MATERIALIZED VIEW fixture_points TO metric_points AS
-		SELECT ${layout.pointNames} FROM (
+		SELECT ${layout.pointSelect} FROM (
 			SELECT * REPLACE (series_key AS series_id,
 			substring(SHA256(lineage),1,16) AS delivery_id,
 			${continuity("resource_attributes", resource)} AS resource_continuity,
@@ -90,7 +93,7 @@ function fixtureViews(layout: Layout) {
 					"point_attributes",
 					`arrayFilter(a -> ${point},point_attributes)`,
 				)} AS series_key FROM fixture_input)
-		)`,
+		) src`,
 	];
 }
 
@@ -222,6 +225,7 @@ export async function createPointFixture(
 			client,
 			reader,
 			readerConfig,
+			kafkaColumns: layout.kafkaColumns,
 			createConnection(options: { username: string; password: string }) {
 				return createClient({ ...config, database: name, ...options });
 			},

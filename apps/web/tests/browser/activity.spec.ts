@@ -230,8 +230,16 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 		);
 		inserted = true;
 		for (const table of ["deliveries", "metric_series", "metric_points"]) {
+			const query =
+				table === "metric_points"
+					? `INSERT INTO telemetry.metric_points
+					(project_id, metric_name, series_id, stream_id, delivery_id, event_day, time_unix_nano, int_value, value_kind)
+					SELECT *, 'INTEGER' FROM input('project_id String, metric_name String, series_id UInt64,
+						stream_id FixedString(32), delivery_id FixedString(16), event_day UInt32,
+						time_unix_nano UInt64, int_value Int64') FORMAT Protobuf`
+					: `INSERT INTO telemetry.${table} FORMAT Protobuf`;
 			const result = await clickhouse.exec({
-				query: `INSERT INTO telemetry.${table} FORMAT Protobuf`,
+				query,
 				values: Readable.from([Buffer.concat(rows)]),
 				clickhouse_settings: {
 					format_schema: "recount.proto:AnalyticalPoint",

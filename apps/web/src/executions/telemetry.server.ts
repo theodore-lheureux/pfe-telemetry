@@ -42,12 +42,12 @@ const executionTelemetrySource = seriesPointSource(
     AND ((metric_name='recount.node.cpu.time' AND unit='s' AND metric_kind=2 AND temporality=2 AND monotonic=1)
       OR (metric_name IN ('recount.node.memory.total','recount.node.memory.available') AND unit='By' AND metric_kind=1))`,
 	`${POINT_WINDOW}
-    AND (bitAnd(flags,1)!=0 OR (isNull(int_value) AND double_value>=0)
-      OR (isNull(double_value) AND int_value>=0))`,
-	"s.chart_id, s.unit, s.host_id, s.cpu_mode",
+    AND (bitAnd(flags,1)!=0 OR (value_kind=2 AND double_value>=0)
+      OR (value_kind=1 AND int_value>=0))`,
+	"s.chart_id, s.unit, nullIf(s.host_id,'') AS host_id, s.cpu_mode",
 	"AND metric_name IN ('recount.node.cpu.time','recount.node.memory.total','recount.node.memory.available')",
 	[
-		`hex(SHA256(toString(tuple(project_id,source_id,resource_id,resource_kind,host_id,device_id,
+		`hex(SHA256(toString(tuple(project_id,source_id,resource_id,resource_kind,host_id,
     resource_present,scope_present,scope_name,scope_version,resource_schema_url,scope_schema_url,
     metric_name,unit,metric_kind,temporality,monotonic,
     ${dimensions("resource_attributes")},${dimensions("scope_attributes")},${dimensions("point_attributes")})))) AS chart_id`,

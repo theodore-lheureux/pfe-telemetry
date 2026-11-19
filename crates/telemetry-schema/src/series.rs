@@ -66,7 +66,6 @@ pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
         resource_id: std::mem::take(&mut point.resource_id),
         resource_kind: std::mem::take(&mut point.resource_kind),
         host_id: point.host_id.take(),
-        device_id: point.device_id.take(),
         metric_name: point.metric_name.clone(),
         unit: std::mem::take(&mut point.unit),
         metric_kind: std::mem::take(&mut point.metric_kind),
@@ -104,10 +103,8 @@ pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
         logical.field(value.as_bytes());
     }
     logical.u64(series.resource_kind as u64);
-    for value in [&series.host_id, &series.device_id] {
-        logical.u64(u64::from(value.is_some()));
-        logical.field(value.as_deref().unwrap_or_default().as_bytes());
-    }
+    logical.u64(u64::from(series.host_id.is_some()));
+    logical.field(series.host_id.as_deref().unwrap_or_default().as_bytes());
     for value in [
         &series.scope_name,
         &series.scope_version,
