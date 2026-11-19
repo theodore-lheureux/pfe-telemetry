@@ -36,6 +36,9 @@ pub struct Cli {
     normalized_partitions: u32,
     #[arg(long, env = "RECOUNT_NORMALIZER_MAX_ACTIVE", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..=8))]
     max_active: u32,
+    /// Time to wait for more records in a Kafka producer batch.
+    #[arg(long, env = "RECOUNT_NORMALIZER_LINGER_MS", default_value_t = 30, value_parser = clap::value_parser!(u32).range(0..=1000))]
+    linger_ms: u32,
     /// Native producer retry backoff in milliseconds, within the delivery deadline.
     #[arg(long, env = "RECOUNT_NORMALIZER_RETRY_MS", default_value_t = 1000, value_parser = clap::value_parser!(u32).range(1..=60_000))]
     retry_ms: u32,
@@ -81,6 +84,7 @@ impl Cli {
             raw_partitions: self.raw_partitions,
             normalized_partitions: self.normalized_partitions,
             max_active: self.max_active as usize,
+            linger_ms: self.linger_ms,
             retry: Duration::from_millis(self.retry_ms.into()),
             delivery: Duration::from_millis(self.delivery_ms.into()),
             shutdown: Duration::from_millis(self.shutdown_ms.into()),
@@ -94,6 +98,11 @@ impl Cli {
         if config.normalized_topic == "recount.metrics.normalized" {
             return Err(invalid(
                 "packed records require a separate normalized topic",
+            ));
+        }
+        if self.linger_ms >= self.delivery_ms {
+            return Err(invalid(
+                "producer linger must be shorter than the delivery timeout",
             ));
         }
         config.validate_transport().map_err(invalid)?;
@@ -115,6 +124,7 @@ pub struct Config {
     pub raw_partitions: u32,
     pub normalized_partitions: u32,
     pub max_active: usize,
+    pub linger_ms: u32,
     pub retry: Duration,
     pub delivery: Duration,
     pub shutdown: Duration,

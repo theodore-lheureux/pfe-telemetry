@@ -119,7 +119,39 @@ async fn real_normalizer_packed_recent_points_reach_clickhouse() {
     assert_eq!(unpacked, packed, "logical ClickHouse rows changed");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires explicitly authorized disposable topics on the initialized OrbStack services"]
+async fn real_normalizer_linger_preserves_points_and_checkpoints() {
+    assert_eq!(
+        std::env::var("RECOUNT_NORMALIZER_TEST_ALLOW_PUBLISH").as_deref(),
+        Ok("1")
+    );
+    assert!(std::env::var_os("DOCKER_HOST").is_none());
+    assert_eq!(local(&["context", "show"]).trim(), "orbstack");
+    let broker = setting("RECOUNT_NORMALIZER_TEST_BROKER");
+    assert_eq!(broker, "127.0.0.1:19092");
+    let now = unix_nanos();
+    let input: Vec<_> = (0..4)
+        .map(|i| batch(now + i * 1_000_000, i as usize))
+        .collect();
+    for burst in [false, true] {
+        let baseline = scenario_with_linger(&broker, &input, true, Some("5"), burst).await;
+        let trial = scenario_with_linger(&broker, &input, true, Some("30"), burst).await;
+        assert_eq!(baseline, trial, "logical ClickHouse rows changed");
+    }
+}
+
 async fn scenario(broker: &str, input: &[Vec<u8>], packed: bool) -> String {
+    scenario_with_linger(broker, input, packed, None, false).await
+}
+
+async fn scenario_with_linger(
+    broker: &str,
+    input: &[Vec<u8>],
+    packed: bool,
+    linger_ms: Option<&'static str>,
+    burst: bool,
+) -> String {
     let database = Database(format!("recount_pack_{}", unix_nanos()));
     let db = &database.0;
     let raw = format!("recount.local.{db}.raw");
@@ -148,6 +180,8 @@ async fn scenario(broker: &str, input: &[Vec<u8>], packed: bool) -> String {
         "1",
         "--normalized-partitions",
         "1",
+        "--linger-ms",
+        linger_ms.unwrap_or("30"),
     ])
     .unwrap()
     .into_config()
@@ -235,7 +269,7 @@ async fn scenario(broker: &str, input: &[Vec<u8>], packed: bool) -> String {
     let mut expected = Vec::new();
     let start = Instant::now();
     let mut delays = Vec::new();
-    for bytes in input {
+    for (index, bytes) in input.iter().enumerate() {
         let key = identity::raw_routing_key(
             &recount_telemetry_schema::wire::RawRecord::decode(bytes.as_slice()).unwrap(),
         )
@@ -254,6 +288,9 @@ async fn scenario(broker: &str, input: &[Vec<u8>], packed: bool) -> String {
             )
             .await
             .unwrap();
+        if burst && index + 1 < input.len() {
+            continue;
+        }
         loop {
             let count: usize = sql(&format!(
                 "SELECT uniqExact(sample_id) FROM {db}.metric_points"
@@ -281,7 +318,7 @@ async fn scenario(broker: &str, input: &[Vec<u8>], packed: bool) -> String {
             .find_partition(&raw, 0)
             .unwrap()
             .offset()
-            == Offset::Offset(4)
+            == Offset::Offset(input.len() as i64)
         {
             break;
         }
@@ -293,7 +330,14 @@ async fn scenario(broker: &str, input: &[Vec<u8>], packed: bool) -> String {
     }
     assert_eq!(
         observer.fetch_watermarks(&recent, 0, timeout).unwrap(),
-        (0, if packed { 4 } else { expected.len() as i64 })
+        (
+            0,
+            if packed {
+                input.len() as i64
+            } else {
+                expected.len() as i64
+            }
+        )
     );
     assert_eq!(
         observer.fetch_watermarks(&late, 0, timeout).unwrap(),
@@ -316,7 +360,7 @@ async fn scenario(broker: &str, input: &[Vec<u8>], packed: bool) -> String {
         "SELECT hex(formatRow('RowBinary', *)) FROM {db}.metric_points FINAL ORDER BY sample_id"
     ));
     eprintln!(
-        "packed={packed}: {} verified points; observed visibility delays {delays:?}",
+        "packed={packed} linger={linger_ms:?} burst={burst}: {} verified points; observed visibility delays {delays:?}",
         stored.len()
     );
     stop.send(()).unwrap();

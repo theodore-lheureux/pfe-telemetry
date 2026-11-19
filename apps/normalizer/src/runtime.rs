@@ -143,6 +143,7 @@ fn app(config: Config, packed_recent: bool) -> impl App {
         // Rows repeat their resource, scope and identity fields, so batches compress well;
         // the topic declares the same codec, so the broker stores them unchanged.
         .producer_config("compression.type", "zstd")
+        .producer_config("linger.ms", config.linger_ms.to_string())
         .producer_config(
             "message.max.bytes",
             config.normalized_broker_max_bytes.to_string(),
