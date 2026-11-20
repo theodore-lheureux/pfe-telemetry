@@ -33,13 +33,14 @@ def cpu_metrics(service, name, pid, container_id):
     stats = dict(line.split() for line in (group / "cpu.stat").read_text().splitlines())
     label = f'{{service="{service}",container="{name}",container_id="{container_id}"}}'
     yield f"recount_ingestion_container_cpu_seconds_total{label} {int(stats['usage_usec']) / 1e6}"
-    if service == "clickhouse":
-        for field, metric in (("nr_periods", "cpu_periods_total"),
-                              ("nr_throttled", "cpu_throttled_periods_total")):
-            yield f"recount_clickhouse_{metric} {int(stats[field])}"
-        quota, period = (group / "cpu.max").read_text().split()
-        if quota != "max":
-            yield f"recount_clickhouse_cpu_limit_cores {int(quota) / int(period)}"
+    yield f"recount_ingestion_container_cpu_periods_total{label} {int(stats['nr_periods'])}"
+    yield f"recount_ingestion_container_cpu_throttled_periods_total{label} {int(stats['nr_throttled'])}"
+    quota, period = (group / "cpu.max").read_text().split()
+    if quota != "max":
+        yield f"recount_ingestion_container_cpu_limit_cores{label} {int(quota) / int(period)}"
+    # Anonymous memory excludes page cache, which ClickHouse and Kafka fill by design.
+    memory = dict(line.split() for line in (group / "memory.stat").read_text().splitlines())
+    yield f"recount_ingestion_container_memory_bytes{label} {int(memory['anon'])}"
 
 
 def containers():
@@ -88,7 +89,7 @@ def query_metrics():
 
 def part_metrics():
     rows = clickhouse_query(
-        "SELECT t.name, sumIf(l.rows,l.event_type='NewPart'), "
+        "SELECT t.name, sumIf(l.rows,l.event_type='NewPart'), countIf(l.event_type='NewPart'), "
         "sumIf(l.read_rows,l.event_type='MergeParts'), "
         "sumIf(l.ProfileEvents['OSCPUVirtualTimeMicroseconds'],l.event_type='MergeParts') "
         "FROM system.tables AS t LEFT JOIN "
@@ -98,9 +99,10 @@ def part_metrics():
         "AND event_type IN ('NewPart','MergeParts') AND error=0) AS l ON t.uuid=l.table_uuid "
         f"WHERE t.database='telemetry' AND t.name IN ({TABLE_LIST}) GROUP BY t.name FORMAT TSV"
     )
-    for table, inserted, merged, cpu_usec in (line.split("\t") for line in rows.splitlines()):
+    for table, inserted, parts, merged, cpu_usec in (line.split("\t") for line in rows.splitlines()):
         label = f'{{table="{table}"}}'
         yield f"recount_clickhouse_new_rows_per_second{label} {int(inserted) / PART_WINDOW_SECONDS}"
+        yield f"recount_clickhouse_new_parts_per_second{label} {int(parts) / PART_WINDOW_SECONDS}"
         yield f"recount_clickhouse_merge_cpu_seconds_per_second{label} {int(cpu_usec) / (1e6 * PART_WINDOW_SECONDS)}"
         if int(inserted):
             yield f"recount_clickhouse_merge_rows_per_new_row{label} {int(merged) / int(inserted)}"

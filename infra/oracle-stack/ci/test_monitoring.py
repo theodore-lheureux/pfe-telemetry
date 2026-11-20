@@ -44,14 +44,16 @@ class SamplerTest(unittest.TestCase):
                 "recount_clickhouse_select_query_seconds_total 2.5",
             ])
         with patch.object(sample, "clickhouse_query", side_effect=[
-            "metric_points\t12000\t18000\t60000000\nmetric_series\t0\t24\t12000000\n",
+            "metric_points\t12000\t6\t18000\t60000000\nmetric_series\t0\t0\t24\t12000000\n",
             "metric_points\t17\nmetric_series\t0\n",
         ]):
             self.assertEqual(list(sample.part_metrics()), [
                 'recount_clickhouse_new_rows_per_second{table="metric_points"} 100.0',
+                'recount_clickhouse_new_parts_per_second{table="metric_points"} 0.05',
                 'recount_clickhouse_merge_cpu_seconds_per_second{table="metric_points"} 0.5',
                 'recount_clickhouse_merge_rows_per_new_row{table="metric_points"} 1.5',
                 'recount_clickhouse_new_rows_per_second{table="metric_series"} 0.0',
+                'recount_clickhouse_new_parts_per_second{table="metric_series"} 0.0',
                 'recount_clickhouse_merge_cpu_seconds_per_second{table="metric_series"} 0.1',
             ])
             self.assertEqual(list(sample.active_part_metrics()), [
@@ -59,22 +61,27 @@ class SamplerTest(unittest.TestCase):
                 'recount_clickhouse_active_parts{table="metric_series"} 0',
             ])
 
-    def test_cgroup_cpu_counters_and_clickhouse_limit(self):
+    def test_cgroup_cpu_memory_and_limits(self):
         files = {
             "/proc/42/cgroup": "0::/test\n",
             "/sys/fs/cgroup/test/cpu.stat": "usage_usec 1500000\nnr_periods 20\nnr_throttled 3\n",
             "/sys/fs/cgroup/test/cpu.max": "200000 100000\n",
+            "/sys/fs/cgroup/test/memory.stat": "anon 1048576\nfile 4096\n",
         }
+        label = '{service="clickhouse",container="clickhouse-1",container_id="id2"}'
         with patch.object(Path, "read_text", lambda path: files[str(path)]):
-            self.assertEqual(list(sample.cpu_metrics("kafka", "kafka-1", 42, "id1")), [
-                'recount_ingestion_container_cpu_seconds_total{service="kafka",container="kafka-1",container_id="id1"} 1.5',
-            ])
             self.assertEqual(list(sample.cpu_metrics("clickhouse", "clickhouse-1", 42, "id2")), [
-                'recount_ingestion_container_cpu_seconds_total{service="clickhouse",container="clickhouse-1",container_id="id2"} 1.5',
-                "recount_clickhouse_cpu_periods_total 20",
-                "recount_clickhouse_cpu_throttled_periods_total 3",
-                "recount_clickhouse_cpu_limit_cores 2.0",
+                f"recount_ingestion_container_cpu_seconds_total{label} 1.5",
+                f"recount_ingestion_container_cpu_periods_total{label} 20",
+                f"recount_ingestion_container_cpu_throttled_periods_total{label} 3",
+                f"recount_ingestion_container_cpu_limit_cores{label} 2.0",
+                f"recount_ingestion_container_memory_bytes{label} 1048576",
             ])
+            files["/sys/fs/cgroup/test/cpu.max"] = "max 100000\n"
+            self.assertNotIn(
+                "recount_ingestion_container_cpu_limit_cores",
+                "".join(sample.cpu_metrics("kafka", "kafka-1", 42, "id1")),
+            )
 
     def test_normalizer_replicas_keep_distinct_cpu_counters(self):
         running = {

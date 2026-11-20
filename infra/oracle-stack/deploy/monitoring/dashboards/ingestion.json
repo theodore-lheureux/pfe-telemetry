@@ -86,7 +86,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-late|-participants)?\"} >= 0)",
+          "expr": "sum(kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-participants)?\"} >= 0)",
           "instant": true,
           "range": false
         }
@@ -196,7 +196,7 @@
       "id": 14,
       "type": "stat",
       "title": "ClickHouse throttling",
-      "description": "CPU periods throttled over the last 2 minutes.",
+      "description": "ClickHouse CPU periods throttled over the last 2 minutes.",
       "gridPos": {
         "x": 12,
         "y": 0,
@@ -210,7 +210,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(rate(recount_clickhouse_cpu_throttled_periods_total[2m]) / (rate(recount_clickhouse_cpu_periods_total[2m]) > 0)) and on() (recount_ingestion_host_source_up{source=\"cpu\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "expr": "(sum(rate(recount_ingestion_container_cpu_throttled_periods_total{service=\"clickhouse\"}[2m])) / (sum(rate(recount_ingestion_container_cpu_periods_total{service=\"clickhouse\"}[2m])) > 0)) and on() (recount_ingestion_host_source_up{source=\"cpu\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
           "instant": true,
           "range": false
         }
@@ -490,10 +490,10 @@
       }
     },
     {
-      "id": 21,
+      "id": 26,
       "type": "timeseries",
-      "title": "ClickHouse late lag",
-      "description": "Uncommitted messages by partition; an empty partition has zero lag.",
+      "title": "CPU per 1k points",
+      "description": "CPU seconds per 1,000 points written to metric_points, by service. Lower is cheaper; hidden below 1k points/s.",
       "gridPos": {
         "x": 16,
         "y": 4,
@@ -507,23 +507,15 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(kafka_consumergroup_lag{consumergroup=\"recount-clickhouse-late\",topic=\"recount.metrics.late\"} >= 0) or on (topic, partition) ((kafka_topic_partition_current_offset{topic=\"recount.metrics.late\"} - kafka_topic_partition_oldest_offset{topic=\"recount.metrics.late\"}) == 0)",
-          "legendFormat": "p{{partition}}"
+          "expr": "(sum by (service) (rate(recount_ingestion_container_cpu_seconds_total[2m]) and recount_ingestion_container_cpu_seconds_total) / on() group_left() (sum(recount_clickhouse_new_rows_per_second{table=\"metric_points\"}) / 1000 > 1)) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{service}}"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: msgs",
+          "unit": "suffix: CPU-s",
           "noValue": "Unknown",
-          "custom": {
-            "fillOpacity": 35,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "stacking": {
-              "mode": "normal",
-              "group": "lag"
-            }
-          }
+          "decimals": 4
         }
       },
       "options": {
@@ -556,7 +548,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sort_desc(kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-late|-participants)?\"} >= 0)",
+          "expr": "sort_desc(kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-participants)?\"} >= 0)",
           "legendFormat": "{{topic}} / p{{partition}}",
           "instant": true,
           "range": false
@@ -657,7 +649,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (topic) (clamp_min(deriv((kafka_consumergroup_current_offset{consumergroup=~\"recount-clickhouse(-late)?\",topic=~\"recount[.]metrics[.](normalized-packed|late)\"} >= 0)[2m:15s]), 0))",
+          "expr": "sum by (topic) (clamp_min(deriv((kafka_consumergroup_current_offset{consumergroup=~\"recount-clickhouse\",topic=~\"recount[.]metrics[.]normalized-packed\"} >= 0)[2m:15s]), 0))",
           "legendFormat": "{{topic}}"
         }
       ],
@@ -697,7 +689,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (consumergroup) (deriv((kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-late|-participants)?\"} >= 0)[5m:15s]))",
+          "expr": "sum by (consumergroup) (deriv((kafka_consumergroup_lag{topic=~\"recount[.](metrics[.](raw|normalized-packed)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-participants)?\"} >= 0)[5m:15s]))",
           "legendFormat": "{{consumergroup}}"
         }
       ],
@@ -762,7 +754,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "min by (consumergroup) ((kafka_consumergroup_current_offset{topic=~\"recount[.](metrics[.](raw|normalized-packed|late)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-late|-participants)?\"} >= 0) - on (topic, partition) group_left() kafka_topic_partition_oldest_offset)",
+          "expr": "min by (consumergroup) ((kafka_consumergroup_current_offset{topic=~\"recount[.](metrics[.](raw|normalized-packed)|participants)\",consumergroup=~\"recount-normalizer|recount-clickhouse(-participants)?\"} >= 0) - on (topic, partition) group_left() kafka_topic_partition_oldest_offset)",
           "legendFormat": "{{consumergroup}}"
         }
       ],
@@ -828,7 +820,7 @@
       "id": 22,
       "type": "timeseries",
       "title": "Container CPU",
-      "description": "Cgroup CPU rates summed by service, with individual normalizer replicas shown separately. The dashed line is the ClickHouse limit.",
+      "description": "Cgroup CPU rates summed by service, with individual normalizer replicas and the ingestion total. The dashed line is the ClickHouse limit; the VM has 4 cores.",
       "gridPos": {
         "x": 0,
         "y": 22,
@@ -847,13 +839,18 @@
         },
         {
           "refId": "B",
-          "expr": "(recount_clickhouse_cpu_limit_cores) and on() (recount_ingestion_host_source_up{source=\"cpu\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "expr": "(recount_ingestion_container_cpu_limit_cores{service=\"clickhouse\"}) and on() (recount_ingestion_host_source_up{source=\"cpu\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
           "legendFormat": "ClickHouse limit"
         },
         {
           "refId": "C",
           "expr": "(rate(recount_ingestion_container_cpu_seconds_total{service=\"normalizer\",container!=\"\"}[2m]) and recount_ingestion_container_cpu_seconds_total) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
           "legendFormat": "{{container}}"
+        },
+        {
+          "refId": "D",
+          "expr": "sum(rate(recount_ingestion_container_cpu_seconds_total[2m]) and recount_ingestion_container_cpu_seconds_total) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "All ingestion services"
         }
       ],
       "fieldConfig": {
@@ -892,13 +889,93 @@
       }
     },
     {
+      "id": 27,
+      "type": "timeseries",
+      "title": "CPU throttling by service",
+      "description": "Share of CPU periods throttled by each container's CPU limit.",
+      "gridPos": {
+        "x": 8,
+        "y": 22,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by (service) (rate(recount_ingestion_container_cpu_throttled_periods_total[2m])) / (sum by (service) (rate(recount_ingestion_container_cpu_periods_total[2m])) > 0)) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "Memory by service",
+      "description": "Anonymous memory per service, excluding page cache; normalizer replicas are summed.",
+      "gridPos": {
+        "x": 16,
+        "y": 22,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (recount_ingestion_container_memory_bytes) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
       "id": 23,
       "type": "timeseries",
       "title": "Merge CPU",
       "description": "CPU spent on completed merges over 2 minutes.",
       "gridPos": {
-        "x": 8,
-        "y": 22,
+        "x": 0,
+        "y": 28,
         "w": 8,
         "h": 6
       },
@@ -937,8 +1014,8 @@
       "title": "Rows merged per new row",
       "description": "Merge input rows divided by rows inserted over 2 minutes; blank when no rows were inserted.",
       "gridPos": {
-        "x": 16,
-        "y": 22,
+        "x": 8,
+        "y": 28,
         "w": 8,
         "h": 6
       },
@@ -955,7 +1032,47 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: ×",
+          "unit": "suffix: \u00d7",
+          "noValue": "Unknown"
+        }
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 29,
+      "type": "timeseries",
+      "title": "New parts per minute",
+      "description": "Parts created by inserts per telemetry table; fewer, larger parts mean less merge work.",
+      "gridPos": {
+        "x": 16,
+        "y": 28,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ingestion-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(recount_clickhouse_new_parts_per_second * 60) and on() (recount_ingestion_host_source_up{source=\"part_log\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
+          "legendFormat": "{{table}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: parts/min",
           "noValue": "Unknown"
         }
       },
@@ -978,7 +1095,7 @@
       "description": "Active parts per telemetry table, when present.",
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 34,
         "w": 8,
         "h": 6
       },
@@ -1018,7 +1135,7 @@
       "description": "Mean seconds per device I/O over 2 minutes.",
       "gridPos": {
         "x": 8,
-        "y": 28,
+        "y": 34,
         "w": 8,
         "h": 6
       },
@@ -1063,7 +1180,7 @@
       "description": "Mean seconds per SELECT over 2 minutes.",
       "gridPos": {
         "x": 16,
-        "y": 28,
+        "y": 34,
         "w": 8,
         "h": 6
       },
@@ -1103,7 +1220,7 @@
       "description": "Failed SELECT queries per second over 2 minutes.",
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 40,
         "w": 8,
         "h": 6
       },
@@ -1135,6 +1252,70 @@
           "sort": "desc"
         }
       }
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Late queue (unused)",
+      "collapsed": true,
+      "gridPos": {
+        "x": 0,
+        "y": 46,
+        "w": 24,
+        "h": 1
+      },
+      "targets": [],
+      "panels": [
+        {
+          "id": 21,
+          "type": "timeseries",
+          "title": "ClickHouse late lag",
+          "description": "Uncommitted messages by partition; an empty partition has zero lag.",
+          "gridPos": {
+            "x": 0,
+            "y": 47,
+            "w": 8,
+            "h": 6
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "ingestion-prometheus"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "(kafka_consumergroup_lag{consumergroup=\"recount-clickhouse-late\",topic=\"recount.metrics.late\"} >= 0) or on (topic, partition) ((kafka_topic_partition_current_offset{topic=\"recount.metrics.late\"} - kafka_topic_partition_oldest_offset{topic=\"recount.metrics.late\"}) == 0)",
+              "legendFormat": "p{{partition}}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "suffix: msgs",
+              "noValue": "Unknown",
+              "custom": {
+                "fillOpacity": 35,
+                "lineWidth": 1,
+                "showPoints": "never",
+                "stacking": {
+                  "mode": "normal",
+                  "group": "lag"
+                }
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "showLegend": true,
+              "displayMode": "list",
+              "placement": "bottom"
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        }
+      ]
     }
   ]
 }
