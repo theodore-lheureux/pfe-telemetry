@@ -257,8 +257,8 @@ pub fn partition(key: &[u8; 32], partitions: u32) -> Option<u32> {
 }
 
 pub fn raw_routing_key(raw: &RawRecord) -> Result<[u8; 32], &'static str> {
-    // One bounded original request per record preserves its acknowledgement and positions.
-    let mut h = TypedHash::new("recount.raw-route");
-    h.field(&sample_id(raw, &Position::default())?);
+    let scope = raw.security.as_ref().ok_or("missing trusted scope")?;
+    let mut h = TypedHash::new("recount.raw-source");
+    security(&mut h, scope);
     Ok(h.finish())
 }

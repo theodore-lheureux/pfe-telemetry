@@ -532,17 +532,26 @@ fn immutable_identity_survives_receipts_rotation_but_not_original_position() {
         without_batch[0].sample_id,
         validate::raw(&raw, Limits::default()).unwrap()[0].sample_id
     );
-    // Credential IDs deliberately do not exist in the raw identity schema.
-    let partitions: std::collections::BTreeSet<_> = (0..100)
-        .map(|i| {
-            raw.batch = Some(BatchIdentity {
-                client_id: format!("batch-{i}"),
-                created_unix_nano: 1,
-            });
-            identity::partition(&identity::raw_routing_key(&raw).unwrap(), 8).unwrap()
-        })
-        .collect();
-    assert!(partitions.len() > 1);
+}
+
+#[test]
+fn raw_routing_uses_project_and_source_not_delivery_identity() {
+    let mut raw = cases::raw();
+    let route = identity::raw_routing_key(&raw).unwrap();
+    raw.record_id = "other-receipt".into();
+    raw.batch.as_mut().unwrap().client_id = "other-batch".into();
+    assert_eq!(route, identity::raw_routing_key(&raw).unwrap());
+    raw.batch = None;
+    assert_eq!(route, identity::raw_routing_key(&raw).unwrap());
+
+    let scope = raw.security.clone().unwrap();
+    raw.security.as_mut().unwrap().source_id.push('x');
+    assert_ne!(route, identity::raw_routing_key(&raw).unwrap());
+    raw.security = Some(scope);
+    raw.security.as_mut().unwrap().project_id.push('x');
+    assert_ne!(route, identity::raw_routing_key(&raw).unwrap());
+    raw.security = None;
+    assert!(identity::raw_routing_key(&raw).is_err());
 }
 
 #[test]
