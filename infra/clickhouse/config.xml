@@ -23,7 +23,8 @@
         <fetch_max_bytes>6291456</fetch_max_bytes>
         <fetch_message_max_bytes>2097152</fetch_message_max_bytes>
         <receive_message_max_bytes>6292480</receive_message_max_bytes>
-        <queued_max_messages_kbytes>4096</queued_max_messages_kbytes>
+        <!-- Each consumer's queue was full most of the time at 40 nodes; memory is plentiful. -->
+        <queued_max_messages_kbytes>65536</queued_max_messages_kbytes>
         <statistics_interval_ms>3000</statistics_interval_ms>
       </kafka_topic>
     </consumer>
