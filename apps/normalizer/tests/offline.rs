@@ -41,12 +41,12 @@ fn declaration_validation_needs_no_backends_and_preserves_cli_precedence() {
             "--raw-broker-max-bytes",
             "1000000000",
             "--normalized-max-record-bytes",
-            // The normalized record must also leave room for its 5-byte length.
-            "999934459",
+            // The frame, including a 4-byte length, can fill the 128 MiB queue.
+            "134217724",
             "--normalized-max-output-bytes",
-            "999934464",
+            "134217728",
             "--normalized-broker-max-bytes",
-            "1000000000",
+            "134283264",
             "validate",
         ],
     ] {
