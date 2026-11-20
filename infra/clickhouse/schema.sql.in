@@ -39,6 +39,7 @@ __KAFKA_COLUMNS__
 ENGINE = Kafka
 SETTINGS
 __KAFKA_SETTINGS__
+    kafka_num_consumers = __RECENT_CONSUMERS__,
     kafka_topic_list = '__NORMALIZED_TOPIC__',
     kafka_format = 'Protobuf',
     kafka_group_name = '__CONSUMER_GROUP__',
@@ -66,6 +67,7 @@ __KAFKA_COLUMNS__
 ENGINE = Kafka
 SETTINGS
 __KAFKA_SETTINGS__
+    kafka_num_consumers = 1,
     kafka_topic_list = '__LATE_TOPIC__',
     kafka_format = 'ProtobufSingle',
     kafka_group_name = '__LATE_CONSUMER_GROUP__',
