@@ -83,7 +83,7 @@ pub struct Authorization {
 }
 
 impl Authorization {
-    #[cfg(test)]
+    #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn new(
         token: watch::Receiver<Option<MetadataValue<Ascii>>>,
         stale: Arc<Notify>,
