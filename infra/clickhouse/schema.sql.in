@@ -46,7 +46,7 @@ __KAFKA_SETTINGS__
     kafka_max_block_size = __RECENT_BLOCK_ROWS__,
     kafka_poll_max_batch_size = __RECENT_POLL_MESSAGES__,
     kafka_poll_timeout_ms = __POLL_MS__,
-    kafka_flush_interval_ms = __FLUSH_MS__;
+    kafka_flush_interval_ms = __RECENT_FLUSH_MS__;
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_series
 TO __DATABASE__.metric_series AS SELECT __SERIES_SELECT__ FROM __DATABASE__.normalized_kafka AS src

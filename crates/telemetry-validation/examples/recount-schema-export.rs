@@ -1,6 +1,6 @@
 use clap::Parser;
 use recount_telemetry_schema::ddl::{
-    Batching, FLUSH_MS, ParticipantSchema, RECENT_BLOCK_ROWS, Schema,
+    Batching, FLUSH_MS, ParticipantSchema, RECENT_BLOCK_ROWS, RECENT_FLUSH_MS, Schema,
 };
 use recount_telemetry_validation::transport::{
     ConsumerBudget, MAX_BROKER_BYTES, MAX_OUTPUT_ROWS, NORMALIZED_BROKER_BYTES, OUTPUT_ROWS,
@@ -246,7 +246,7 @@ fn prepare(options: &Options) -> Result<()> {
         "database": "telemetry", "consumer_group": options.group,
         "late_topic": options.late_topic, "late_consumer_group": options.late_group,
         "participant_topic": options.participant_topic, "participant_consumer_group": options.participant_group,
-        "recent_block_rows": RECENT_BLOCK_ROWS,
+        "recent_block_rows": RECENT_BLOCK_ROWS, "recent_flush_ms": RECENT_FLUSH_MS,
         "kafka_format": "Protobuf", "point_rows": recount_telemetry_schema::PACKED_POINTS,
         "late_kafka_format": "ProtobufSingle",
         "normalized_broker_max_bytes": options.normalized_broker_max_bytes,

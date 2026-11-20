@@ -66,7 +66,11 @@ impl ParticipantSchema<'_> {
 /// Rows per insert from the recent topic. Its points lie within a day of the normalizer's
 /// clock, so a block touches a few day partitions however many rows it holds. Larger
 /// inserts create fewer parts: at matched load, doubling from 16K halved parts and merge CPU.
-pub const RECENT_BLOCK_ROWS: u32 = 49_152;
+/// The cap sits above what one consumer gathers per flush, so the interval ends blocks.
+pub const RECENT_BLOCK_ROWS: u32 = 98_304;
+/// Each consumer flushes its own block, so splitting the topic across consumers shrinks
+/// parts unless the interval grows with them. This bounds the added freshness delay.
+pub const RECENT_FLUSH_MS: u32 = 4000;
 // A poll of 16 packed messages can deliver up to 2,048 rows.
 pub const RECENT_POLL_MESSAGES: u32 = 16;
 /// Consumers reading the recent topic, one per normalized partition. Each parses and
@@ -190,6 +194,7 @@ impl Schema<'_> {
             ("__RECENT_BLOCK_ROWS__", RECENT_BLOCK_ROWS.to_string()),
             ("__RECENT_POLL_MESSAGES__", RECENT_POLL_MESSAGES.to_string()),
             ("__RECENT_CONSUMERS__", RECENT_CONSUMERS.to_string()),
+            ("__RECENT_FLUSH_MS__", RECENT_FLUSH_MS.to_string()),
             ("__BLOCK_ROWS__", batching.block_rows.to_string()),
             ("__POLL_MESSAGES__", batching.poll_messages.to_string()),
             ("__POLL_MS__", self.poll_ms.to_string()),
@@ -262,7 +267,8 @@ mod tests {
         )));
         assert!(sql.contains("CREATE TABLE disposable.metric_series"));
         assert!(sql.contains("index_granularity = 1024, merge_max_block_size = 8192, merge_max_block_size_bytes = 10485760"));
-        assert!(sql.contains("kafka_max_block_size = 49152"));
+        assert!(sql.contains("kafka_max_block_size = 98304"));
+        assert_eq!(sql.matches("kafka_flush_interval_ms = 4000;").count(), 1);
         assert_eq!(sql.matches("kafka_num_consumers = 3,").count(), 1);
         assert_eq!(sql.matches("kafka_num_consumers = 1,").count(), 1);
         assert!(sql.contains("kafka_max_block_size = 64,"));
