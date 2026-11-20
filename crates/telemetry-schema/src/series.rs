@@ -3,7 +3,6 @@ use crate::{
     wire::{AnalyticalPoint, AttributeNode, ContinuityNode},
 };
 use prost::Message;
-use std::sync::Arc;
 
 const RESOURCE_MARKERS: &[&str] = &["/recount.host.boot_id", "/recount.collection.epoch_id"];
 const POINT_MARKERS: &[&str] = &["/recount.counter.segment_id"];
@@ -20,10 +19,6 @@ fn is_marker(path: &str, markers: &[&str]) -> bool {
 /// Bound the extra fields in a singleton before admission. Packet elision can
 /// only make the frame smaller. Protobuf record-length framing is budgeted separately.
 pub fn singleton_size_bound(point: &AnalyticalPoint) -> usize {
-    point.encoded_len() + singleton_overhead(point)
-}
-
-pub(crate) fn singleton_overhead(point: &AnalyticalPoint) -> usize {
     // A storage key, a logical key and two timestamp bounds are fixed64s.
     let mut overhead = 4 * 10 + 48;
     for (nodes, markers) in [
@@ -36,83 +31,7 @@ pub(crate) fn singleton_overhead(point: &AnalyticalPoint) -> usize {
             .count()
             * 20;
     }
-    overhead
-}
-
-/// A split point with optional shared series metadata. Uncached preparation
-/// leaves the point intact until packing.
-pub struct PreparedPoint {
-    pub frame: AnalyticalPoint,
-    pub metadata: Option<Arc<SeriesMetadata>>,
-}
-
-pub struct SeriesMetadata {
-    row: AnalyticalPoint,
-    // Exact prost encoding hashed for the storage identity, before IDs/bounds.
-    encoded: Vec<u8>,
-    attached_len: usize,
-}
-
-impl SeriesMetadata {
-    pub fn new(point: &mut AnalyticalPoint) -> Self {
-        Self::from_split(point, None)
-    }
-
-    pub(crate) fn from_split(
-        point: &mut AnalyticalPoint,
-        resource: Option<&ResourceAttributes>,
-    ) -> Self {
-        let (row, encoded) = split_identity(point, resource);
-        let mut attached_len = encoded.len();
-        // The frame already owns these fields. Source is restored from series
-        // on attachment if the frame did not carry delivery evidence.
-        attached_len -= (AnalyticalPoint {
-            project_id: row.project_id.clone(),
-            metric_name: row.metric_name.clone(),
-            ..Default::default()
-        })
-        .encoded_len();
-        attached_len += 10 * usize::from(row.logical_series_id != 0);
-        Self {
-            row,
-            encoded,
-            attached_len,
-        }
-    }
-
-    pub(crate) fn heap_bytes(&self) -> usize {
-        crate::identity_cache::row_heap_bytes(&self.row) + self.encoded.capacity()
-    }
-
-    pub fn attached_len(&self, source_in_frame: bool, first: u64, last: u64) -> usize {
-        self.attached_len
-            - if source_in_frame {
-                self.source_len()
-            } else {
-                0
-            }
-            + 10 * (usize::from(first != 0) + usize::from(last != 0))
-    }
-
-    pub(crate) fn source_len(&self) -> usize {
-        let len = self.row.source_id.len();
-        if len == 0 {
-            0
-        } else {
-            1 + prost::length_delimiter_len(len) + len
-        }
-    }
-
-    pub(crate) fn restore_source(&self, point: &mut AnalyticalPoint) {
-        point.source_id.clone_from(&self.row.source_id);
-    }
-
-    pub fn attach(&self, point: AnalyticalPoint, first: u64, last: u64) -> AnalyticalPoint {
-        let mut point = with_series(point, &self.row);
-        point.first_seen_unix_nano = first;
-        point.last_seen_unix_nano = last;
-        point
-    }
+    point.encoded_len() + overhead
 }
 
 fn id(hash: TypedHash) -> u64 {
@@ -141,34 +60,9 @@ fn without_markers(
     (attributes, continuity)
 }
 
-pub(crate) struct ResourceAttributes {
-    pub dimensions: Vec<AttributeNode>,
-    pub continuity: Vec<ContinuityNode>,
-}
-
-impl ResourceAttributes {
-    pub fn new(nodes: Vec<AttributeNode>) -> Self {
-        let (dimensions, continuity) = without_markers(nodes, RESOURCE_MARKERS);
-        Self {
-            dimensions,
-            continuity,
-        }
-    }
-}
-
 /// Pull out metadata without losing inspector details. A metadata revision changes
 /// the storage key but doesn't split the logical series used for dashboard math.
 pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
-    let (mut series, _) = split_identity(point, None);
-    series.first_seen_unix_nano = point.time_unix_nano;
-    series.last_seen_unix_nano = point.time_unix_nano;
-    series
-}
-
-fn split_identity(
-    point: &mut AnalyticalPoint,
-    resource: Option<&ResourceAttributes>,
-) -> (AnalyticalPoint, Vec<u8>) {
     let mut series = AnalyticalPoint {
         project_id: point.project_id.clone(),
         source_id: point.source_id.clone(),
@@ -199,16 +93,14 @@ fn split_identity(
     if point.delivery_evidence.is_empty() {
         point.source_id.clear();
     }
-    let nodes = std::mem::take(&mut point.resource_attributes);
-    (series.resource_attributes, point.resource_continuity) = resource.map_or_else(
-        || without_markers(nodes, RESOURCE_MARKERS),
-        |resource| (resource.dimensions.clone(), resource.continuity.clone()),
+    (series.resource_attributes, point.resource_continuity) = without_markers(
+        std::mem::take(&mut point.resource_attributes),
+        RESOURCE_MARKERS,
     );
     (series.point_attributes, point.point_continuity) =
         without_markers(std::mem::take(&mut point.point_attributes), POINT_MARKERS);
     let mut storage = TypedHash::new("recount.series");
-    let encoded = series.encode_to_vec();
-    storage.field(&encoded);
+    storage.field(&series.encode_to_vec());
     series.series_id = id(storage);
     point.series_id = series.series_id;
 
@@ -240,7 +132,9 @@ fn split_identity(
         }
     }
     series.logical_series_id = id(logical);
-    (series, encoded)
+    series.first_seen_unix_nano = point.time_unix_nano;
+    series.last_seen_unix_nano = point.time_unix_nano;
+    series
 }
 
 /// Encode one message in field order, with a single copy of each shared key.

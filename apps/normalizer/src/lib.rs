@@ -5,10 +5,7 @@ pub mod runtime;
 
 use prost::Message;
 use recount_telemetry_schema::{
-    identity,
-    identity_cache::IdentityCache,
-    point,
-    series::PreparedPoint,
+    identity, point,
     wire::{AnalyticalPoint, RawRecord},
 };
 use recount_telemetry_validation::{
@@ -39,21 +36,6 @@ fn prepare_rows(
     key: Option<&[u8]>,
     limits: Limits,
 ) -> Result<Vec<AnalyticalPoint>, Issue> {
-    let raw = decode_raw(payload, key, limits)?;
-    validate::retained_delivery(&raw, limits)
-}
-
-fn prepare_cached_rows(
-    payload: &[u8],
-    key: Option<&[u8]>,
-    limits: Limits,
-    cache: &IdentityCache,
-) -> Result<Vec<PreparedPoint>, Issue> {
-    let raw = decode_raw(payload, key, limits)?;
-    validate::retained_cached_delivery(&raw, limits, cache)
-}
-
-fn decode_raw(payload: &[u8], key: Option<&[u8]>, limits: Limits) -> Result<RawRecord, Issue> {
     let limits = limits.validate()?;
     let poison = |reason| Issue::new(Category::Poison, "raw", reason);
     if payload.len() > limits.decoded_bytes {
@@ -63,5 +45,5 @@ fn decode_raw(payload: &[u8], key: Option<&[u8]>, limits: Limits) -> Result<RawR
     if key != Some(identity::raw_routing_key(&raw).map_err(poison)?.as_slice()) {
         return Err(poison("raw routing key mismatch"));
     }
-    Ok(raw)
+    validate::retained_delivery(&raw, limits)
 }

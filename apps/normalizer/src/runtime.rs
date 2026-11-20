@@ -1,6 +1,6 @@
-use crate::{config::Config, kafka, prepare_cached_rows};
+use crate::{config::Config, kafka, prepare_rows};
 use futures_util::future::join_all;
-use recount_telemetry_schema::{RAW_RECEIVED_MS_HEADER, identity_cache::IdentityCache, recent};
+use recount_telemetry_schema::{RAW_RECEIVED_MS_HEADER, recent};
 use recount_telemetry_validation::transport::ConsumerBudget;
 use ruststream_rdkafka::{
     context::keys::{Key, TimestampMillis},
@@ -16,13 +16,7 @@ use std::{
 use tokio::sync::Semaphore;
 
 #[cfg(test)]
-#[allow(dead_code)]
-#[path = "../../../tests/fixtures/telemetry/cases.rs"]
-mod cases;
-#[cfg(test)]
 mod delivery_tests;
-#[cfg(test)]
-mod identity_cache_tests;
 pub(crate) mod packing;
 pub(crate) mod series_cache;
 use series_cache::SeriesCache;
@@ -39,7 +33,6 @@ struct RunState {
     preparation: Arc<Semaphore>,
     packed_recent: bool,
     series_cache: Arc<SeriesCache>,
-    identity_cache: Arc<IdentityCache>,
 }
 impl FromRef<RunState> for RunState {
     fn from_ref(state: &RunState) -> Self {
@@ -86,12 +79,11 @@ async fn normalize(
     let broker_bytes = state.config.normalized_broker_max_bytes;
     let packed_recent = state.packed_recent;
     let cache = state.series_cache.clone();
-    let identity_cache = state.identity_cache.clone();
     let (records, emissions) = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let rows = prepare_cached_rows(&payload, key.as_deref(), limits, &identity_cache)
+        let rows = prepare_rows(&payload, key.as_deref(), limits)
             .unwrap_or_else(|_| panic!("retained validation failed"));
-        packing::pack_prepared(
+        packing::pack_cached(
             rows,
             partitions,
             now,
@@ -241,7 +233,6 @@ fn app(config: Config, packed_recent: bool) -> impl App {
                 config.series_cache_entries,
                 config.series_resend_ns,
             )),
-            identity_cache: Arc::new(IdentityCache::default()),
             config,
             packed_recent,
         })

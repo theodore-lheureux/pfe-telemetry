@@ -1,4 +1,4 @@
-use super::{app, cases, unix_nanos};
+use super::{app, unix_nanos};
 use crate::{config::Cli, prepare_rows};
 use clap::Parser;
 use prost::Message;
@@ -18,6 +18,10 @@ use std::{
     process::Command,
     time::{Duration, Instant},
 };
+
+#[allow(dead_code)]
+#[path = "../../../../tests/fixtures/telemetry/cases.rs"]
+mod cases;
 
 fn local(args: &[&str]) -> String {
     let result = Command::new("docker").args(args).output().unwrap();

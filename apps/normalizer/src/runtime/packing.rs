@@ -3,61 +3,46 @@ use prost::Message;
 use recount_telemetry_schema::{
     PACKED_BYTES, PACKED_POINTS, identity,
     point::{RoutedRecord, normalized_routing_key},
-    recent,
-    series::{PreparedPoint, SeriesMetadata},
+    recent, series,
     wire::AnalyticalPoint,
 };
 use recount_telemetry_validation::transport::{FRAMING_RESERVE, body_fits};
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Default)]
 struct Packet {
     points: Vec<AnalyticalPoint>,
     // The index of the first frame and its metadata, including the packet bounds.
-    series: HashMap<u64, PacketSeries>,
+    series: HashMap<u64, (usize, AnalyticalPoint)>,
     bytes: usize,
 }
 
-struct PacketSeries {
-    index: usize,
-    metadata: Arc<SeriesMetadata>,
-    first: u64,
-    last: u64,
-}
-
-fn frame_size(point: &AnalyticalPoint, metadata: Option<&SeriesMetadata>) -> usize {
+fn frame_size(point: &AnalyticalPoint, metadata: Option<&AnalyticalPoint>) -> usize {
     let len = point.encoded_len()
         + metadata.map_or(0, |row| {
-            row.attached_len(
-                !point.source_id.is_empty(),
-                point.time_unix_nano,
-                point.time_unix_nano,
-            )
+            row.encoded_len()
+                - AnalyticalPoint {
+                    project_id: row.project_id.clone(),
+                    series_id: row.series_id,
+                    metric_name: row.metric_name.clone(),
+                    source_id: point.source_id.clone(),
+                    ..Default::default()
+                }
+                .encoded_len()
         });
     prost::length_delimiter_len(len) + len
 }
 
 impl Packet {
-    fn push(
-        &mut self,
-        point: AnalyticalPoint,
-        metadata: Option<Arc<SeriesMetadata>>,
-        bytes: usize,
-    ) {
+    fn push(&mut self, point: AnalyticalPoint, metadata: Option<AnalyticalPoint>, bytes: usize) {
         if let Some(metadata) = metadata {
-            self.series.entry(point.series_id).or_insert(PacketSeries {
-                index: self.points.len(),
-                metadata,
-                first: point.time_unix_nano,
-                last: point.time_unix_nano,
-            });
+            self.series
+                .entry(point.series_id)
+                .or_insert((self.points.len(), metadata));
         }
-        if let Some(bounds) = self.series.get_mut(&point.series_id) {
-            bounds.first = bounds.first.min(point.time_unix_nano);
-            bounds.last = bounds.last.max(point.time_unix_nano);
+        if let Some((_, bounds)) = self.series.get_mut(&point.series_id) {
+            bounds.first_seen_unix_nano = bounds.first_seen_unix_nano.min(point.time_unix_nano);
+            bounds.last_seen_unix_nano = bounds.last_seen_unix_nano.max(point.time_unix_nano);
         }
         self.points.push(point);
         self.bytes += bytes;
@@ -67,19 +52,17 @@ impl Packet {
         let time_unix_nano = self.points[0].time_unix_nano;
         let mut payload = Vec::with_capacity(self.bytes);
         for (index, point) in self.points.into_iter().enumerate() {
-            if let Some(series) = self.series.get(&point.series_id)
-                && series.index == index
+            if let Some((first, metadata)) = self.series.get(&point.series_id)
+                && *first == index
             {
                 emissions.push(Emission {
                     series: point.series_id,
-                    first: series.first,
-                    time: series.last,
+                    first: metadata.first_seen_unix_nano,
+                    time: metadata.last_seen_unix_nano,
                     emitted_at: now,
                     lane_partition: partition * 2,
                 });
-                series
-                    .metadata
-                    .attach(point, series.first, series.last)
+                series::with_series(point, metadata)
                     .encode_length_delimited(&mut payload)
                     .unwrap();
             } else {
@@ -102,15 +85,11 @@ pub(crate) fn pack(
     broker_bytes: usize,
     packed_recent: bool,
 ) -> Result<Vec<RoutedRecord>, &'static str> {
-    let points = points.into_iter().map(|frame| PreparedPoint {
-        frame,
-        metadata: None,
-    });
-    Ok(pack_prepared(points, partitions, now, broker_bytes, packed_recent, None)?.0)
+    Ok(pack_cached(points, partitions, now, broker_bytes, packed_recent, None)?.0)
 }
 
-pub(super) fn pack_prepared(
-    points: impl IntoIterator<Item = PreparedPoint>,
+pub(super) fn pack_cached(
+    points: Vec<AnalyticalPoint>,
     partitions: u32,
     now: u64,
     broker_bytes: usize,
@@ -121,14 +100,10 @@ pub(super) fn pack_prepared(
     let mut pending = BTreeMap::<u32, Packet>::new();
     let mut output = Vec::new();
     let mut emissions = Vec::new();
-    for PreparedPoint {
-        frame: mut point,
-        metadata,
-    } in points
-    {
+    for mut point in points {
         let partition = identity::partition(&normalized_routing_key(&point)?, partitions)
             .ok_or("positive partition count required")?;
-        let metadata = metadata.unwrap_or_else(|| Arc::new(SeriesMetadata::new(&mut point)));
+        let metadata = series::split(&mut point);
         let late = !recent(point.time_unix_nano, now);
         let emission = Emission {
             series: point.series_id,
@@ -143,9 +118,7 @@ pub(super) fn pack_prepared(
             let time_unix_nano = point.time_unix_nano;
             let payload = if let Some(metadata) = metadata {
                 emissions.push(emission);
-                metadata
-                    .attach(point, time_unix_nano, time_unix_nano)
-                    .encode_to_vec()
+                series::with_series(point, &metadata).encode_to_vec()
             } else {
                 point.encode_to_vec()
             };
@@ -161,14 +134,14 @@ pub(super) fn pack_prepared(
         let mut bytes = frame_size(
             &point,
             metadata
-                .as_deref()
+                .as_ref()
                 .filter(|_| !packet.series.contains_key(&point.series_id)),
         );
         if !packet.points.is_empty()
             && (packet.points.len() == PACKED_POINTS || packet.bytes + bytes > batch_bytes)
         {
             output.push(std::mem::take(packet).finish(partition, now, &mut emissions));
-            bytes = frame_size(&point, metadata.as_deref());
+            bytes = frame_size(&point, metadata.as_ref());
         }
         body_fits(packet.bytes + bytes, broker_bytes)?;
         packet.push(point, metadata, bytes);

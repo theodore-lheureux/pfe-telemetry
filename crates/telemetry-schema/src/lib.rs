@@ -1,7 +1,6 @@
 pub mod ddl;
 pub mod execution;
 pub mod identity;
-pub mod identity_cache;
 pub mod point;
 pub mod projection;
 pub mod series;
