@@ -2,7 +2,8 @@
   <max_server_memory_usage>1342177280</max_server_memory_usage>
   <background_pool_size>4</background_pool_size>
   <background_schedule_pool_size>8</background_schedule_pool_size>
-  <background_message_broker_schedule_pool_size>2</background_message_broker_schedule_pool_size>
+  <!-- Each Kafka consumer with kafka_thread_per_consumer needs its own thread: 3 recent, late and participants. -->
+  <background_message_broker_schedule_pool_size>8</background_message_broker_schedule_pool_size>
   <background_distributed_schedule_pool_size>2</background_distributed_schedule_pool_size>
   <format_schema_path>/etc/clickhouse-server/format_schemas/</format_schema_path>
   <kafka>
