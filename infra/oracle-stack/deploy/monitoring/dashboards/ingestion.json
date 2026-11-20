@@ -828,7 +828,7 @@
       "id": 22,
       "type": "timeseries",
       "title": "Container CPU",
-      "description": "Cgroup CPU usage averaged over 2 minutes; dashed line is the ClickHouse limit.",
+      "description": "Cgroup CPU rates summed by service, with individual normalizer replicas shown separately. The dashed line is the ClickHouse limit.",
       "gridPos": {
         "x": 0,
         "y": 22,
@@ -842,13 +842,18 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(rate(recount_ingestion_container_cpu_seconds_total[2m]) and on (service) recount_ingestion_container_cpu_seconds_total) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "expr": "sum by (service) (rate(recount_ingestion_container_cpu_seconds_total[2m]) and recount_ingestion_container_cpu_seconds_total) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
           "legendFormat": "{{service}}"
         },
         {
           "refId": "B",
           "expr": "(recount_clickhouse_cpu_limit_cores) and on() (recount_ingestion_host_source_up{source=\"cpu\"} == 1 and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45))",
           "legendFormat": "ClickHouse limit"
+        },
+        {
+          "refId": "C",
+          "expr": "(rate(recount_ingestion_container_cpu_seconds_total{service=\"normalizer\",container!=\"\"}[2m]) and recount_ingestion_container_cpu_seconds_total) and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{container}}"
         }
       ],
       "fieldConfig": {

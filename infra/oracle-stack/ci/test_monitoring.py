@@ -66,15 +66,30 @@ class SamplerTest(unittest.TestCase):
             "/sys/fs/cgroup/test/cpu.max": "200000 100000\n",
         }
         with patch.object(Path, "read_text", lambda path: files[str(path)]):
-            self.assertEqual(list(sample.cpu_metrics("kafka", 42)), [
-                'recount_ingestion_container_cpu_seconds_total{service="kafka"} 1.5',
+            self.assertEqual(list(sample.cpu_metrics("kafka", "kafka-1", 42, "id1")), [
+                'recount_ingestion_container_cpu_seconds_total{service="kafka",container="kafka-1",container_id="id1"} 1.5',
             ])
-            self.assertEqual(list(sample.cpu_metrics("clickhouse", 42)), [
-                'recount_ingestion_container_cpu_seconds_total{service="clickhouse"} 1.5',
+            self.assertEqual(list(sample.cpu_metrics("clickhouse", "clickhouse-1", 42, "id2")), [
+                'recount_ingestion_container_cpu_seconds_total{service="clickhouse",container="clickhouse-1",container_id="id2"} 1.5',
                 "recount_clickhouse_cpu_periods_total 20",
                 "recount_clickhouse_cpu_throttled_periods_total 3",
                 "recount_clickhouse_cpu_limit_cores 2.0",
             ])
+
+    def test_normalizer_replicas_keep_distinct_cpu_counters(self):
+        running = {
+            "normalizer-1": (41, [], "normalizer", "id1"),
+            "normalizer-2": (42, [], "normalizer", "id2"),
+            "normalizer-3": (43, [], "normalizer", "id3"),
+            "kafka-1": (44, [], "kafka", "id4"),
+        }
+        with patch.object(sample, "cpu_metrics", return_value=()) as cpu:
+            list(sample.service_cpu_metrics("normalizer", running))
+        self.assertEqual([c.args for c in cpu.call_args_list], [
+            ("normalizer", "normalizer-1", 41, "id1"),
+            ("normalizer", "normalizer-2", 42, "id2"),
+            ("normalizer", "normalizer-3", 43, "id3"),
+        ])
 
     def test_host_panels_gate_on_sampler_freshness(self):
         dashboard = json.loads((MONITORING / "dashboards/ingestion.json").read_text())

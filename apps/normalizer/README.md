@@ -38,8 +38,9 @@ raising concurrency beyond the default; reduce slots or payload budgets if
 headroom is inadequate. A raw offset is still acknowledged only after every
 output delivery succeeds.
 
-Normalizers in the same consumer group can run on multiple replicas. With
-three raw partitions, at most three replicas receive work. Startup checks
+Normalizers in the same consumer group can run on multiple replicas. Local
+Compose runs one replica; Oracle defaults to three. With three raw partitions,
+at most three replicas receive work; additional replicas sit idle. Startup checks
 topic topology and transport settings without claiming exclusive ownership.
 Use a distinct `RECOUNT_NORMALIZER_METRICS_FILE` per replica if exporting
 process metrics. To raise the ceiling, coordinate raw partition expansion

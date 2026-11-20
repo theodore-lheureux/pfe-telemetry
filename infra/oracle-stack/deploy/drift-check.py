@@ -110,8 +110,13 @@ def inventory():
                 "recount-ingestion-monitoring-grafana-1"}
     if not expected <= set(names):
         raise RuntimeError("one or more required ingestion, monitoring, or Semaphore containers are absent")
+    normalizer_replicas = 0
     for name in sorted(n for n in names if n.startswith(("recount-ingestion-", "recount-demo-semaphore-"))):
         config, = json.loads(command("docker", "inspect", name))
+        labels = config["Config"].get("Labels") or {}
+        if (labels.get("com.docker.compose.project") == "recount-ingestion"
+                and labels.get("com.docker.compose.service") == "normalizer"):
+            normalizer_replicas += 1
         host = config["HostConfig"]
         result[f"container:{name}:resources"] = [
             host.get(key) for key in ("NanoCpus", "Memory", "MemorySwap", "PidsLimit")
@@ -129,6 +134,7 @@ def inventory():
                   or (name == RUNNER and target in ("/run/demo", "/run/runner"))) and source.is_dir():
                 for path in sorted(p for p in source.rglob("*") if p.is_file()):
                     result[f"mount:{name}:{target}/{path.relative_to(source)}"] = digest(path.read_bytes())
+    result["compose:recount-ingestion:normalizer:running-replicas"] = normalizer_replicas
 
     token = pathlib.Path("/opt/recount-demo-semaphore/private/toolbar/semaphore-token").read_text().strip()
     for endpoint in ("templates", "repositories", "inventory", "environment"):
@@ -165,7 +171,7 @@ def main():
         changed = differences(expected, live)
         for key, before, after in changed:
             # Only the explicitly inventoried numeric batching settings are safe to display.
-            if (key.startswith("telemetry-kafka-setting:")
+            if ((key.startswith("telemetry-kafka-setting:") or key == "compose:recount-ingestion:normalizer:running-replicas")
                     and type(expected.get(key)) is int and type(live.get(key)) is int):
                 print(f"{key}: expected {expected[key]}, found {live[key]}")
             else:

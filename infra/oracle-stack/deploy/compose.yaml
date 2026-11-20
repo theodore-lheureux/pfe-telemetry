@@ -22,6 +22,8 @@ services:
     memswap_limit: 1024m
   normalizer:
     image: ${RECOUNT_NORMALIZER_IMAGE:?Select the release normalizer image}
+    deploy:
+      replicas: ${RECOUNT_NORMALIZER_REPLICAS:-3}
     mem_limit: 1024m
     memswap_limit: 1024m
   web:

@@ -25,6 +25,9 @@ if [[ -e $web_overlay || -L $web_overlay ]]; then
 fi
 bun --no-env-file /opt/recount/backend/infra/local/data.ts start
 docker compose config --quiet
+normalizer_replicas=$(docker compose config --format json | python3 -c \
+    'import json, sys; print(json.load(sys.stdin)["services"]["normalizer"]["deploy"]["replicas"])')
+[[ $normalizer_replicas =~ ^[1-9][0-9]*$ ]]
 docker compose run --rm --no-deps kafka-topics verify
 monitoring=(env -u COMPOSE_ENV_FILES docker compose --project-name recount-ingestion-monitoring --env-file /dev/null -f "$directory/monitoring/compose.yaml")
 install -d -m 0755 /var/lib/recount/monitoring
@@ -32,6 +35,11 @@ install -d -m 0755 /var/lib/recount/monitoring
 "${monitoring[@]}" up --no-build --detach --wait --wait-timeout 120
 docker image load --input images.tar.zst
 docker compose up --no-build --no-deps --pull never --detach --wait --wait-timeout 180 ingestion-api normalizer live web
+running_normalizers=$(docker compose ps --status running --quiet normalizer)
+[[ -n $running_normalizers && $(wc -l <<< "$running_normalizers") -eq $normalizer_replicas ]] || {
+    echo "Expected $normalizer_replicas running normalizer replicas after activation." >&2
+    exit 1
+}
 ln -sfn "$directory" /opt/recount/current
 install -m 0644 "$directory/monitoring/recount-ingestion-sample.service" "$directory/monitoring/recount-ingestion-sample.timer" /etc/systemd/system/
 systemctl daemon-reload

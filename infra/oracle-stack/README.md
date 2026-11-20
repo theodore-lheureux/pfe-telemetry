@@ -304,6 +304,19 @@ Live and web with `--no-deps --pull never`; it never restarts shared backends. A
 backend/schema change fails for separate maintenance review instead of replacing
 mounted schemas under running consumers.
 
+Oracle starts **three normalizer replicas** by default. Set
+`RECOUNT_NORMALIZER_REPLICAS` in `/etc/recount/ingestion.env` to override it.
+Local Compose still starts one. All replicas share the same Kafka consumer
+group. Each raw partition can be assigned to only one replica, so with three
+raw partitions any replicas beyond three sit idle.
+
+Activation waits for the requested containers to run and checks the replica
+count before marking the release current. A running container is not proof of
+Kafka readiness: check partition assignments and lag after a deployment.
+Grafana shows both total normalizer CPU and the CPU of each live replica.
+After an approved scale change, update the drift inventory to reflect the
+expected replica count and container configuration.
+
 ### Change point timestamp codecs in place
 
 This maintenance changes only compression metadata on the existing point

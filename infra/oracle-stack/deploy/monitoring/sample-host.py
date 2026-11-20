@@ -26,12 +26,12 @@ def command(*args):
     return subprocess.check_output(args, text=True, timeout=3)
 
 
-def cpu_metrics(service, pid):
+def cpu_metrics(service, name, pid, container_id):
     path = next(line[3:] for line in Path(f"/proc/{pid}/cgroup").read_text().splitlines()
                 if line.startswith("0::"))
     group = Path("/sys/fs/cgroup") / path.lstrip("/")
     stats = dict(line.split() for line in (group / "cpu.stat").read_text().splitlines())
-    label = f'{{service="{service}"}}'
+    label = f'{{service="{service}",container="{name}",container_id="{container_id}"}}'
     yield f"recount_ingestion_container_cpu_seconds_total{label} {int(stats['usage_usec']) / 1e6}"
     if service == "clickhouse":
         for field, metric in (("nr_periods", "cpu_periods_total"),
@@ -46,9 +46,18 @@ def containers():
     ids = command("docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={PROJECT}").split()
     if not ids:
         return {}
-    rows = command("docker", "inspect", "--format", "{{.Name}}\t{{.State.Pid}}\t{{json .Mounts}}", *ids)
-    return {name.lstrip("/"): (int(pid), json.loads(mounts))
-            for name, pid, mounts in (line.split("\t") for line in rows.splitlines()) if int(pid) > 0}
+    rows = command("docker", "inspect", "--format",
+                   '{{.Name}}\t{{.State.Pid}}\t{{json .Mounts}}\t{{index .Config.Labels "com.docker.compose.service"}}\t{{.Id}}',
+                   *ids)
+    return {name.lstrip("/"): (int(pid), json.loads(mounts), service, container_id)
+            for name, pid, mounts, service, container_id in
+            (line.split("\t") for line in rows.splitlines()) if int(pid) > 0}
+
+
+def service_cpu_metrics(service, running):
+    for name, (pid, _, container_service, container_id) in running.items():
+        if container_service == service:
+            yield from cpu_metrics(service, name, pid, container_id)
 
 
 def disk_metrics(data_path):
@@ -179,7 +188,7 @@ def snapshot():
     data_path = next((mount["Source"] for mount in mounts if mount["Destination"] == "/var/lib/clickhouse"), None)
     for name, collect in (
         *(("cpu" if service == "clickhouse" else f"cpu_{service}",
-           lambda service=service: cpu_metrics(service, running[f"{PROJECT}-{service}-1"][0]))
+           lambda service=service: service_cpu_metrics(service, running))
           for service in CPU_SERVICES),
         ("disk", lambda: disk_metrics(data_path) if data_path else ()),
         ("queries", query_metrics),
