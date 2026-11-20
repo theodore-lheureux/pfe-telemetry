@@ -46,8 +46,9 @@ test("the image-pinned schema verifier rejects coherent artifact tampering", asy
 			) {
 				for (const filename of [
 					"schema.sql",
+					"metric-schema.sql",
 					"analytical-columns.sql",
-					"expected-columns.tsv",
+					"expected-series-columns.tsv",
 				]) {
 					const original = await readFile(join(path, filename), "utf8");
 					const changed =
