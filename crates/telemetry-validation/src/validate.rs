@@ -4,8 +4,10 @@ use recount_telemetry_schema::{
     ExportMetricsServiceRequest,
     common::KeyValue,
     identity::{AttributeError, bounded_attributes},
+    identity_cache::IdentityCache,
     metrics::{self, metric::Data, number_data_point::Value},
     point::{self, Observation},
+    series::PreparedPoint,
     wire::{AnalyticalPoint, PayloadKind, RawRecord, RelationKind, ResourceKind},
 };
 use std::collections::BTreeSet;
@@ -350,6 +352,27 @@ fn lower(
     limits: Limits,
     compact: bool,
 ) -> Result<Vec<AnalyticalPoint>, Issue> {
+    validate_bindings(raw, request, limits)?;
+    let normalize = if compact {
+        point::normalize_delivery
+    } else {
+        point::normalize_bounded
+    };
+    normalize(
+        raw,
+        request,
+        limits.points,
+        limits.normalized_record_bytes,
+        limits.normalized_batch_bytes,
+    )
+    .map_err(|e| Issue::new(Category::Limit, "normalized", e))
+}
+
+fn validate_bindings(
+    raw: &RawRecord,
+    request: &ExportMetricsServiceRequest,
+    limits: Limits,
+) -> Result<(), Issue> {
     let mut positions = BTreeSet::new();
     for b in &raw.bindings {
         if b.original_resource as usize >= request.resource_metrics.len()
@@ -418,19 +441,7 @@ fn lower(
         ));
     }
     crate::policy::requested_authorities(raw, limits.distinct_authorities)?;
-    let normalize = if compact {
-        point::normalize_delivery
-    } else {
-        point::normalize_bounded
-    };
-    normalize(
-        raw,
-        request,
-        limits.points,
-        limits.normalized_record_bytes,
-        limits.normalized_batch_bytes,
-    )
-    .map_err(|e| Issue::new(Category::Limit, "normalized", e))
+    Ok(())
 }
 
 pub fn retained_raw(record: &RawRecord, limits: Limits) -> Result<Vec<AnalyticalPoint>, Issue> {
@@ -444,13 +455,42 @@ pub fn retained_delivery(
     record: &RawRecord,
     limits: Limits,
 ) -> Result<Vec<AnalyticalPoint>, Issue> {
+    decode_delivery(record, limits, |request, limits| {
+        lower(record, request, limits, true)
+    })
+}
+
+pub fn retained_cached_delivery(
+    record: &RawRecord,
+    limits: Limits,
+    cache: &IdentityCache,
+) -> Result<Vec<PreparedPoint>, Issue> {
+    decode_delivery(record, limits, |request, limits| {
+        validate_bindings(record, request, limits)?;
+        point::normalize_cached_delivery(
+            record,
+            request,
+            limits.points,
+            limits.normalized_record_bytes,
+            limits.normalized_batch_bytes,
+            cache,
+        )
+        .map_err(|e| Issue::new(Category::Limit, "normalized", e))
+    })
+}
+
+fn decode_delivery<T>(
+    record: &RawRecord,
+    limits: Limits,
+    lower: impl FnOnce(&ExportMetricsServiceRequest, Limits) -> Result<T, Issue>,
+) -> Result<T, Issue> {
     let decode = || {
         let limits = limits.validate()?;
         envelope(record, limits)?;
         let request = ExportMetricsServiceRequest::decode(record.otlp_request.as_slice())
             .map_err(|_| invalid("otlp", "invalid OTLP encoding"))?;
         self::request(&request, limits)?;
-        lower(record, &request, limits, true)
+        lower(&request, limits)
     };
     decode().map_err(|mut issue| {
         issue.category = Category::Poison;
