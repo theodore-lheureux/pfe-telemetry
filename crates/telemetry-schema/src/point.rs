@@ -199,7 +199,7 @@ fn lower(
         }),
         resources: Vec::new(),
     };
-    let receipt_tag = crate::series::receipt_tag(&raw.record_id);
+    let (mut min_event, mut max_event) = (u64::MAX, 0);
     if raw.bindings.len() != request.resource_metrics.len() {
         return Err("one binding per original resource required");
     }
@@ -401,8 +401,8 @@ fn lower(
                     } else {
                         Vec::new()
                     };
-                    row.received_unix_nano = if compact { raw.received_unix_nano } else { 0 };
-                    row.receipt_tag = if compact { receipt_tag } else { 0 };
+                    min_event = min_event.min(row.time_unix_nano);
+                    max_event = max_event.max(row.time_unix_nano);
                     lower_observation(&mut row, observation)?;
                     let mut source_len = 0;
                     if compact
@@ -412,8 +412,11 @@ fn lower(
                         metadata.restore_source(&mut row);
                         source_len = metadata.source_len();
                     }
-                    let size =
-                        row.encoded_len() - removed_len.1 - source_len + removed_len.0 + overhead;
+                    // Raw Kafka coordinates are unknown until publication.
+                    let size = row.encoded_len() - removed_len.1 - source_len
+                        + removed_len.0
+                        + overhead
+                        + if compact { 17 } else { 0 };
                     if out.is_empty() {
                         first_size = size;
                     }
@@ -434,16 +437,20 @@ fn lower(
         }
     }
     if compact && let Some(first) = out.first_mut() {
+        first.frame.received_unix_nano = raw.received_unix_nano;
+        first.frame.min_event_unix_nano = min_event;
+        first.frame.max_event_unix_nano = max_event;
         first.frame.delivery_evidence = evidence.encode_to_vec();
         let evidence_len = first.frame.delivery_evidence.len();
         let size = first_size
+            + 30
             + if evidence_len == 0 {
                 0
             } else {
                 2 + prost::length_delimiter_len(evidence_len) + evidence_len
             };
         let total = bytes
-            .checked_add(evidence_len + 8)
+            .checked_add(evidence_len + 38)
             .ok_or("normalized byte overflow")?;
         if size > max_record_bytes || total > max_batch_bytes {
             return Err("normalized delivery byte limit");

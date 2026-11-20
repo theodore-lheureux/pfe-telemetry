@@ -410,11 +410,12 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
     };
     for (view, final_clause) in [("verified_points", "FINAL"), ("verified_physical", "")] {
         storage.sql(&format!("CREATE VIEW {db}.{view} AS
-        SELECT p.* EXCEPT (project_id,metric_name,series_id,value_kind,statistics_present,received_unix_nano,receipt_tag)
+        SELECT p.* EXCEPT (project_id,metric_name,series_id,value_kind,statistics_present)
             REPLACE (if(value_kind=1,int_value,NULL) AS int_value, if(value_kind=2,double_value,NULL) AS double_value, {}),
             s.* EXCEPT (project_id,source_id,metric_name,series_id,logical_series_id,first_seen_unix_nano,last_seen_unix_nano,resource_attributes,point_attributes,host_id,monotonic),
             p.project_id AS project_id, p.metric_name AS metric_name, s.source_id AS source_id,
-            p.received_unix_nano AS received_unix_nano, p.receipt_tag AS receipt_tag,
+            if(empty(d.delivery_evidence),0,d.received_unix_nano) AS received_unix_nano,
+            d.min_event_unix_nano AS min_event_unix_nano, d.max_event_unix_nano AS max_event_unix_nano,
             nullIf(host_id,'') AS host_id, nullIf(toUInt8(monotonic),2) AS monotonic,
             d.delivery_evidence AS delivery_evidence, {}, {}
         FROM (SELECT * FROM {db}.metric_points {final_clause}) p
@@ -422,7 +423,7 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
         INNER JOIN (SELECT * FROM {db}.metric_streams FINAL) e ON p.project_id=e.project_id AND p.stream_id=e.stream_id
         INNER JOIN (SELECT * FROM {db}.deliveries FINAL) d
           ON p.project_id=d.project_id AND s.source_id=d.source_id
-          AND p.received_unix_nano=d.received_unix_nano AND p.receipt_tag=d.receipt_tag",
+          AND p.raw_partition=d.raw_partition AND p.raw_offset=d.raw_offset",
         ["count","sum","min","max","scale","zero_count","zero_threshold","positive_offset","negative_offset"].into_iter().enumerate().map(|(i, name)| format!("if(bitTest(statistics_present,{i}),{name},NULL) AS {name}")).collect::<Vec<_>>().join(","),
         restore("resource_attributes", "resource_continuity"),
         restore("point_attributes", "point_continuity"),

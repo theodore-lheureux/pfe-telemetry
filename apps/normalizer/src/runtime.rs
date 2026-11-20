@@ -3,7 +3,7 @@ use futures_util::future::join_all;
 use recount_telemetry_schema::{RAW_RECEIVED_MS_HEADER, identity_cache::IdentityCache, recent};
 use recount_telemetry_validation::transport::ConsumerBudget;
 use ruststream_rdkafka::{
-    context::keys::{Key, TimestampMillis},
+    context::keys::{Key, Offset, Partition, TimestampMillis},
     prelude::*,
 };
 use std::{
@@ -63,6 +63,8 @@ async fn normalize(
     frame: &Frame<'_>,
     Ctx(key): Ctx<Key>,
     Ctx(timestamp): Ctx<TimestampMillis>,
+    Ctx(raw_partition): Ctx<Partition>,
+    Ctx(raw_offset): Ctx<Offset>,
     State(state): State<RunState>,
     Out(out): Out<impl Publisher<Options = KafkaOptions>, Normalized>,
 ) -> HandlerOutcome {
@@ -91,8 +93,14 @@ async fn normalize(
     let identity_cache = state.identity_cache.clone();
     let (records, emissions) = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let rows = prepare_cached_rows(&payload, key.as_deref(), limits, &identity_cache)
+        let mut rows = prepare_cached_rows(&payload, key.as_deref(), limits, &identity_cache)
             .unwrap_or_else(|_| panic!("retained validation failed"));
+        let partition = u32::try_from(raw_partition).expect("nonnegative raw partition");
+        let offset = u64::try_from(raw_offset).expect("nonnegative raw offset");
+        for row in &mut rows {
+            row.frame.raw_partition = partition;
+            row.frame.raw_offset = offset;
+        }
         packing::pack_prepared(
             rows,
             partitions,

@@ -392,7 +392,7 @@ mod tests {
         assert!(metric_sql.contains("CREATE TABLE IF NOT EXISTS telemetry.metric_points"));
         let alter = fs::read_to_string(first.output.join("point-timestamp-codecs.sql")).unwrap();
         let types = fs::read_to_string(first.output.join("expected-columns.tsv")).unwrap();
-        for name in ["time_unix_nano", "received_unix_nano"] {
+        for name in ["time_unix_nano", "raw_offset"] {
             let definition = format!("{name} UInt64 CODEC(DoubleDelta, LZ4)");
             assert!(metric_sql.contains(&format!("    {definition}")));
             assert!(alter.contains(&format!("MODIFY COLUMN {definition}")));

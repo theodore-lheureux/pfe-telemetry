@@ -139,6 +139,8 @@ test("inspector restores request provenance from a compact delivery", async () =
 	expect(detail.provenance.payload_kind).toBe("OTLP_METRICS");
 	expect(detail.provenance.original).toBeDefined();
 	expect(detail.provenance.access).toBeDefined();
+	expect(detail.provenance.raw_offset).toBe("0");
+	expect(typeof detail.provenance.oldest_collection_delay_ns).toBe("string");
 	expect(detail.raw.lineage).toEqual(detail.provenance);
 	await fixture.client.command({
 		query:

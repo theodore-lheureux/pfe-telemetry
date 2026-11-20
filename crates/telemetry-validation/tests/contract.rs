@@ -123,6 +123,27 @@ fn point_lineage_keeps_socket_interface_context_without_repeating_the_full_inven
 }
 
 #[test]
+fn compact_delivery_carries_receipt_and_event_bounds_only_once() {
+    let raw = cases::raw();
+    let points = validate::retained_delivery(&raw, Limits::default()).unwrap();
+    let (first, tail) = points.split_first().unwrap();
+    assert_eq!(first.received_unix_nano, raw.received_unix_nano);
+    assert_eq!(
+        first.min_event_unix_nano,
+        points.iter().map(|p| p.time_unix_nano).min().unwrap()
+    );
+    assert_eq!(
+        first.max_event_unix_nano,
+        points.iter().map(|p| p.time_unix_nano).max().unwrap()
+    );
+    assert!(!first.delivery_evidence.is_empty());
+    assert!(tail.iter().all(|p| p.received_unix_nano == 0
+        && p.min_event_unix_nano == 0
+        && p.max_event_unix_nano == 0
+        && p.delivery_evidence.is_empty()));
+}
+
+#[test]
 fn analytical_wire_bytes_match_independent_known_vectors() {
     let vectors: serde_json::Value = serde_json::from_str(include_str!(
         "../../../tests/fixtures/telemetry/analytical-vectors.json"

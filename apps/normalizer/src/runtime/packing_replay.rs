@@ -338,7 +338,7 @@ async fn scenario_with_linger(
                 dimensions.series_id,
                 identity::hex(&point.stream_id),
                 dimensions.logical_series_id,
-                point.receipt_tag,
+                index / if replicas { 3 } else { 1 },
             ));
             expected.push(point.time_unix_nano);
         }
@@ -466,12 +466,12 @@ async fn scenario_with_linger(
         );
     }
     let actual = sql(&format!(
-            "SELECT p.time_unix_nano, p.series_id, lower(hex(p.stream_id)), s.logical_series_id, p.receipt_tag
+            "SELECT p.time_unix_nano, p.series_id, lower(hex(p.stream_id)), s.logical_series_id, p.raw_offset
             FROM (SELECT * FROM {db}.metric_points FINAL) AS p
             INNER JOIN (SELECT * FROM {db}.metric_series FINAL) AS s USING (project_id, series_id)
             INNER JOIN (SELECT * FROM {db}.deliveries FINAL) AS d
                 ON p.project_id=d.project_id AND s.source_id=d.source_id
-                AND p.received_unix_nano=d.received_unix_nano AND p.receipt_tag=d.receipt_tag"
+                AND p.raw_partition=d.raw_partition AND p.raw_offset=d.raw_offset"
         ));
     let mut actual: Vec<_> = actual.lines().collect();
     actual.sort_unstable();

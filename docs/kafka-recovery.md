@@ -38,6 +38,12 @@ ordinary graceful restart does not require a rewind.
 This recovers only data still retained in Kafka. It does not recover a lost
 Kafka disk or guarantee that a minute covers every crash.
 
+Raw positions are scoped to one incarnation of the raw topic. If you recreate
+that topic, recreate the disposable normalized topics, points and deliveries
+together: otherwise reused partition/offset pairs could refer to old evidence
+or lose replacement against old points. Replay in the existing topic keeps its
+positions; republishing its bytes to a new topic is not the same replay.
+
 When series caching is enabled, include at least one additional resend
 interval in the replay window where retained offsets allow it. Points can
 depend on metadata published earlier on the same output partition. Restart

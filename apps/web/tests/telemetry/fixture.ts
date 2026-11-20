@@ -76,7 +76,8 @@ function fixtureViews(layout: Layout) {
 		`arrayMap(a -> tuple(toUInt32(0), a), arraySort(a -> a.path, arrayFilter(a -> NOT (${predicate}), ${column})))`;
 	return [
 		`CREATE MATERIALIZED VIEW fixture_deliveries TO deliveries AS
-		SELECT project_id, source_id, received_unix_nano, receipt_tag, delivery_evidence FROM fixture_input`,
+		SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_evidence
+		FROM fixture_input WHERE notEmpty(delivery_evidence)`,
 		`CREATE MATERIALIZED VIEW fixture_streams TO metric_streams AS
 		SELECT project_id, stream_id,
 		${continuity("resource_attributes", resource)} AS resource_continuity,

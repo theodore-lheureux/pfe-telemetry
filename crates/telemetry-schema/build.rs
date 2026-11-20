@@ -94,6 +94,7 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
         (
             "AnalyticalPoint",
             "event_day"
+            | "raw_partition"
             | "flags"
             | "resource_dropped_attributes_count"
             | "scope_dropped_attributes_count",
@@ -104,6 +105,9 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
             "time_unix_nano"
             | "start_time_unix_nano"
             | "received_unix_nano"
+            | "raw_offset"
+            | "min_event_unix_nano"
+            | "max_event_unix_nano"
             | "series_id"
             | "logical_series_id"
             | "first_seen_unix_nano"
@@ -115,7 +119,6 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
             | "negative_counts",
         ) => Type::Fixed64,
         ("AnalyticalPoint", "scale" | "positive_offset" | "negative_offset") => Type::Sint32,
-        ("AnalyticalPoint", "receipt_tag") => Type::Fixed32,
         ("AnalyticalPoint" | "AttributeNode", "int_value") => Type::Sint64,
         (
             "AnalyticalPoint",
@@ -327,7 +330,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "project_id"
                             | "source_id"
                             | "received_unix_nano"
-                            | "receipt_tag"
+                            | "raw_partition"
+                            | "raw_offset"
+                            | "min_event_unix_nano"
+                            | "max_event_unix_nano"
                             | "delivery_evidence"
                     )
                 })
@@ -360,6 +366,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             | "lineage"
                             | "device_id"
                             | "delivery_evidence"
+                            | "received_unix_nano"
+                            | "min_event_unix_nano"
+                            | "max_event_unix_nano"
                             | "stream_evidence"
                             | "resource_continuity"
                             | "point_continuity"
@@ -388,7 +397,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ]);
             let mut changes = Vec::new();
             for (name, ty) in &mut points {
-                if matches!(*name, "time_unix_nano" | "received_unix_nano") {
+                if matches!(*name, "time_unix_nano" | "raw_offset") {
                     ty.push_str(" CODEC(DoubleDelta, LZ4)");
                     changes.push(format!("    MODIFY COLUMN {name} {ty}"));
                 }

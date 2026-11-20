@@ -209,7 +209,9 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 						unit: "By",
 						metric_kind: 1,
 						received_unix_nano: time.toString(),
-						receipt_tag: 1,
+						raw_offset: "1",
+						min_event_unix_nano: (time - 104n).toString(),
+						max_event_unix_nano: time.toString(),
 						stream_id: createHash("sha256").update(project.id).digest(),
 						time_unix_nano: (time - BigInt(index)).toString(),
 						event_day: Number(time / 86400000000000n),
@@ -230,13 +232,18 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 				.finish(),
 		);
 		inserted = true;
-		for (const table of ["deliveries", "metric_series", "metric_points"]) {
+		for (const table of [
+			"deliveries",
+			"metric_series",
+			"metric_streams",
+			"metric_points",
+		]) {
 			const query =
 				table === "metric_points"
 					? `INSERT INTO telemetry.metric_points
-					(project_id, metric_name, series_id, stream_id, received_unix_nano, receipt_tag, event_day, time_unix_nano, int_value, value_kind)
+					(project_id, metric_name, series_id, stream_id, raw_partition, raw_offset, event_day, time_unix_nano, int_value, value_kind)
 					SELECT *, 'INTEGER' FROM input('project_id String, metric_name String, series_id UInt64,
-						stream_id FixedString(32), received_unix_nano UInt64, receipt_tag UInt32, event_day UInt32,
+						stream_id FixedString(32), raw_partition UInt32, raw_offset UInt64, event_day UInt32,
 						time_unix_nano UInt64, int_value Int64') FORMAT Protobuf`
 					: `INSERT INTO telemetry.${table} FORMAT Protobuf`;
 			const result = await clickhouse.exec({

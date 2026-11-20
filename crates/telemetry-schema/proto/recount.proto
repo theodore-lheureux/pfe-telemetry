@@ -213,7 +213,11 @@ message AnalyticalPoint {
   reserved 58;
   bytes original_position = 59;
   fixed64 received_unix_nano = 60;
-  fixed32 receipt_tag = 61;
+  reserved 61;
   bytes delivery_evidence = 62;
   bool stream_evidence = 63;
+  uint32 raw_partition = 64;
+  fixed64 raw_offset = 65;
+  fixed64 min_event_unix_nano = 66;
+  fixed64 max_event_unix_nano = 67;
 }

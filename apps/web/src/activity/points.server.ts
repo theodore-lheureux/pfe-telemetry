@@ -408,15 +408,22 @@ FROM ${streamEvidenceSource(
 		Object.fromEntries(
 			names.map((key) => [key, row[key] ?? null]),
 		) as JsonObject;
-	const [delivery] = await query<{ evidence: string }>(
-		`SELECT hex(delivery_evidence) AS evidence FROM deliveries FINAL
+	const [delivery] = await query<{
+		evidence: string;
+		received: string;
+		oldest: string;
+		newest: string;
+	}>(
+		`SELECT hex(delivery_evidence) AS evidence, toString(received_unix_nano) AS received,
+		  toString(min_event_unix_nano) AS oldest, toString(max_event_unix_nano) AS newest
+		FROM deliveries FINAL
 		WHERE project_id={project:String} AND source_id={source:String}
-		  AND received_unix_nano={received:UInt64} AND receipt_tag={tag:UInt32} LIMIT 1`,
+		  AND raw_partition={partition:UInt32} AND raw_offset={offset:UInt64} LIMIT 1`,
 		{
 			project: input.projectId,
 			source: input.sourceId,
-			received: String(row.received_unix_nano),
-			tag: Number(row.receipt_tag),
+			partition: Number(row.raw_partition),
+			offset: String(row.raw_offset),
 		},
 		signal,
 		connection,
@@ -426,11 +433,17 @@ FROM ${streamEvidenceSource(
 			"UNAVAILABLE",
 			"Measurement provenance is not yet available",
 		);
-	const provenance = decodeDelivery(
-		delivery.evidence,
-		String(row.original_hex),
-	);
-	delete row.receipt_tag;
+	const received = BigInt(delivery.received);
+	const provenance = {
+		...decodeDelivery(delivery.evidence, String(row.original_hex)),
+		raw_partition: row.raw_partition,
+		raw_offset: String(row.raw_offset),
+		received_unix_nano: delivery.received,
+		min_event_unix_nano: delivery.oldest,
+		max_event_unix_nano: delivery.newest,
+		oldest_collection_delay_ns: String(received - BigInt(delivery.oldest)),
+		newest_collection_delay_ns: String(received - BigInt(delivery.newest)),
+	};
 	delete row.original_hex;
 	// Binary values from ClickHouse use base64 at this JSON integration boundary.
 	const raw = { ...row, lineage: provenance };

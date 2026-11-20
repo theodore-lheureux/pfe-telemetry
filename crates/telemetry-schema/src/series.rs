@@ -315,13 +315,6 @@ pub fn with_series(mut frame: AnalyticalPoint, series: &AnalyticalPoint) -> Anal
     frame
 }
 
-/// Disambiguate deliveries from the same source at the same receipt time.
-pub fn receipt_tag(record_id: &str) -> u32 {
-    let mut hash = TypedHash::new("recount.receipt");
-    hash.field(record_id.as_bytes());
-    u32::from_be_bytes(hash.finish()[..4].try_into().unwrap())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

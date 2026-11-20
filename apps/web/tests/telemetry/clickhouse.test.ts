@@ -436,7 +436,7 @@ test("the later receipt wins for one series, stream and timestamp before and aft
 		[1, "13"],
 	] as const)
 		await fixture.client.command({
-			query: insertPoints({ received_unix_nano: `toUInt64(${revision})` }),
+			query: insertPoints({ raw_offset: `toUInt64(${revision})` }),
 			query_params: {
 				project,
 				source,
