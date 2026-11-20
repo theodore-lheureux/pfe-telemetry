@@ -58,7 +58,13 @@ fn parity(raw: &RawRecord, cache: &IdentityCache) -> Vec<PreparedPoint> {
     assert_eq!(uncached.len(), points.len());
     for (mut expected, actual) in uncached.iter().cloned().zip(&points) {
         let metadata = series::split(&mut expected);
-        assert_eq!(expected.encode_to_vec(), actual.frame.encode_to_vec());
+        let mut frame = actual.frame.clone();
+        actual
+            .metadata
+            .as_ref()
+            .unwrap()
+            .restore_continuity(&mut frame, actual.resource.as_deref());
+        assert_eq!(expected.encode_to_vec(), frame.encode_to_vec());
         assert_eq!(
             series::with_series(expected, &metadata).encode_to_vec(),
             actual
@@ -66,7 +72,7 @@ fn parity(raw: &RawRecord, cache: &IdentityCache) -> Vec<PreparedPoint> {
                 .as_ref()
                 .unwrap()
                 .attach(
-                    actual.frame.clone(),
+                    frame,
                     actual.resource.as_deref(),
                     metadata.first_seen_unix_nano,
                     metadata.last_seen_unix_nano

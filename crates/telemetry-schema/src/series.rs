@@ -50,6 +50,8 @@ pub struct PreparedPoint {
 pub struct SeriesMetadata {
     row: AnalyticalPoint,
     attached_len: usize,
+    resource_continuity: Vec<ContinuityNode>,
+    point_continuity: Vec<ContinuityNode>,
 }
 
 impl SeriesMetadata {
@@ -76,11 +78,33 @@ impl SeriesMetadata {
             row.resource_attributes = Vec::new();
             row.resource_entity_refs = Vec::new();
         }
-        Self { row, attached_len }
+        let mut resource_continuity = std::mem::take(&mut point.resource_continuity);
+        if resource.is_some() {
+            resource_continuity = Vec::new();
+        }
+        Self {
+            row,
+            attached_len,
+            resource_continuity,
+            point_continuity: std::mem::take(&mut point.point_continuity),
+        }
     }
 
     pub(crate) fn heap_bytes(&self) -> usize {
         crate::identity_cache::row_heap_bytes(&self.row)
+            + continuity_heap_bytes(&self.resource_continuity)
+            + continuity_heap_bytes(&self.point_continuity)
+    }
+
+    pub fn restore_continuity(
+        &self,
+        point: &mut AnalyticalPoint,
+        resource: Option<&ResourceAttributes>,
+    ) {
+        point
+            .resource_continuity
+            .clone_from(resource.map_or(&self.resource_continuity, |r| &r.continuity));
+        point.point_continuity.clone_from(&self.point_continuity);
     }
 
     pub fn attached_len(&self, source_in_frame: bool, first: u64, last: u64) -> usize {
@@ -122,6 +146,11 @@ impl SeriesMetadata {
         point.last_seen_unix_nano = last;
         point
     }
+}
+
+fn continuity_heap_bytes(nodes: &Vec<ContinuityNode>) -> usize {
+    nodes.capacity() * std::mem::size_of::<ContinuityNode>()
+        + nodes.iter().map(Message::encoded_len).sum::<usize>()
 }
 
 fn id(hash: TypedHash) -> u64 {

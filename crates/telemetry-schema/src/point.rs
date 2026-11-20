@@ -348,7 +348,6 @@ fn lower(
                                 resource.split.as_deref(),
                             ));
                             let split_len = frame.encoded_len();
-                            frame.resource_continuity = Vec::new();
                             let bytes = identity_cache::row_heap_bytes(&frame)
                                 + metadata.heap_bytes()
                                 + std::mem::size_of::<SeriesMetadata>();
@@ -366,9 +365,6 @@ fn lower(
                             ))
                         })?;
                         let mut row = cached.frame.clone();
-                        if let Some(split) = &resource.split {
-                            row.resource_continuity.clone_from(&split.continuity);
-                        }
                         if cached.start != observation.start() {
                             row.stream_id = stream_id(&cached.stream, observation.start());
                         }

@@ -161,7 +161,6 @@ pub(super) fn pack_prepared(
             lane_partition: partition * 2 + u32::from(late),
         };
         let emit = cache.is_none_or(|c| c.should_emit(emission));
-        let metadata = emit.then_some(metadata);
         let stream_emission = Emission {
             series: stream,
             first: point.time_unix_nano,
@@ -170,15 +169,8 @@ pub(super) fn pack_prepared(
             lane_partition: emission.lane_partition,
         };
         let due = stream_cache.is_none_or(|c| c.should_emit(stream_emission));
-        let evidence = (
-            std::mem::take(&mut point.resource_continuity),
-            std::mem::take(&mut point.point_continuity),
-        );
-        let mut evidence = Some(evidence);
-        let mut attach = |point: &mut AnalyticalPoint| {
-            let (resource, attrs) = evidence.take().unwrap();
-            point.resource_continuity = resource;
-            point.point_continuity = attrs;
+        let attach = |point: &mut AnalyticalPoint| {
+            metadata.restore_continuity(point, resource.as_deref());
             point.stream_evidence = true;
         };
         if !packed_recent || late {
@@ -187,7 +179,7 @@ pub(super) fn pack_prepared(
                 emissions.streams.push(stream_emission);
             }
             let time_unix_nano = point.time_unix_nano;
-            let payload = if let Some(metadata) = metadata {
+            let payload = if emit {
                 emissions.series.push(emission);
                 metadata
                     .attach(point, resource.as_deref(), time_unix_nano, time_unix_nano)
@@ -209,9 +201,7 @@ pub(super) fn pack_prepared(
         }
         let mut bytes = frame_size(
             &point,
-            metadata
-                .as_deref()
-                .filter(|_| !packet.series.contains_key(&point.series_id)),
+            (emit && !packet.series.contains_key(&point.series_id)).then_some(metadata.as_ref()),
         );
         if !packet.points.is_empty()
             && (packet.points.len() == PACKED_POINTS || packet.bytes + bytes > batch_bytes)
@@ -220,14 +210,14 @@ pub(super) fn pack_prepared(
             if !point.stream_evidence && due {
                 attach(&mut point);
             }
-            bytes = frame_size(&point, metadata.as_deref());
+            bytes = frame_size(&point, emit.then_some(metadata.as_ref()));
         }
         body_fits(packet.bytes + bytes, broker_bytes)?;
         if point.stream_evidence {
             packet.streams.insert(stream);
             emissions.streams.push(stream_emission);
         }
-        packet.push(point, metadata, resource, bytes);
+        packet.push(point, emit.then_some(metadata), resource, bytes);
         // A valid indivisible point larger than the packing target travels alone.
         if packet.bytes >= batch_bytes {
             output.push(std::mem::take(packet).finish(partition, now, &mut emissions.series));
