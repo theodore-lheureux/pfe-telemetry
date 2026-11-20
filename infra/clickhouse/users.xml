@@ -27,6 +27,7 @@
         <query>GRANT SELECT ON telemetry.metric_series</query>
         <query>GRANT SELECT ON telemetry.metric_streams</query>
         <query>GRANT SELECT ON telemetry.deliveries</query>
+        <query>GRANT SELECT ON telemetry.delivery_contexts</query>
         <query>GRANT SELECT ON telemetry.execution_participants</query>
       </grants>
     </telemetry_reader>

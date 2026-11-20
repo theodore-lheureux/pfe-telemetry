@@ -411,6 +411,8 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    DROP TABLE IF EXISTS telemetry.ingest_late_metric_streams SYNC;
    DROP TABLE IF EXISTS telemetry.ingest_deliveries SYNC;
    DROP TABLE IF EXISTS telemetry.ingest_late_deliveries SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_delivery_contexts SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_late_delivery_contexts SYNC;
    DROP TABLE IF EXISTS telemetry.normalized_kafka SYNC;
    DROP TABLE IF EXISTS telemetry.late_kafka SYNC;
    SQL
@@ -469,6 +471,7 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    DROP TABLE IF EXISTS telemetry.metric_series SYNC;
    DROP TABLE IF EXISTS telemetry.metric_streams SYNC;
    DROP TABLE IF EXISTS telemetry.deliveries SYNC;
+   DROP TABLE IF EXISTS telemetry.delivery_contexts SYNC;
    DROP TABLE telemetry.metric_points SYNC;
    SQL
    ch < /opt/recount/backend/schema/metric-schema.sql

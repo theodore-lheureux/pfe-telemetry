@@ -414,16 +414,19 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
             REPLACE (if(value_kind=1,int_value,NULL) AS int_value, if(value_kind=2,double_value,NULL) AS double_value, {}),
             s.* EXCEPT (project_id,source_id,metric_name,series_id,logical_series_id,first_seen_unix_nano,last_seen_unix_nano,resource_attributes,point_attributes,host_id,monotonic),
             p.project_id AS project_id, p.metric_name AS metric_name, s.source_id AS source_id,
-            if(empty(d.delivery_evidence),0,d.received_unix_nano) AS received_unix_nano,
+            d.received_unix_nano AS received_unix_nano,
             d.min_event_unix_nano AS min_event_unix_nano, d.max_event_unix_nano AS max_event_unix_nano,
             nullIf(host_id,'') AS host_id, nullIf(toUInt8(monotonic),2) AS monotonic,
-            d.delivery_evidence AS delivery_evidence, {}, {}
+            d.delivery_request AS delivery_request, d.delivery_context_id AS delivery_context_id,
+            c.delivery_context AS delivery_context, {}, {}
         FROM (SELECT * FROM {db}.metric_points {final_clause}) p
         INNER JOIN (SELECT * FROM {db}.metric_series FINAL) s USING (project_id,series_id)
         INNER JOIN (SELECT * FROM {db}.metric_streams FINAL) e ON p.project_id=e.project_id AND p.stream_id=e.stream_id
         INNER JOIN (SELECT * FROM {db}.deliveries FINAL) d
           ON p.project_id=d.project_id AND s.source_id=d.source_id
-          AND p.raw_partition=d.raw_partition AND p.raw_offset=d.raw_offset",
+          AND p.raw_partition=d.raw_partition AND p.raw_offset=d.raw_offset
+        INNER JOIN (SELECT * FROM {db}.delivery_contexts FINAL) c
+          ON d.project_id=c.project_id AND d.source_id=c.source_id AND d.delivery_context_id=c.delivery_context_id",
         ["count","sum","min","max","scale","zero_count","zero_threshold","positive_offset","negative_offset"].into_iter().enumerate().map(|(i, name)| format!("if(bitTest(statistics_present,{i}),{name},NULL) AS {name}")).collect::<Vec<_>>().join(","),
         restore("resource_attributes", "resource_continuity"),
         restore("point_attributes", "point_continuity"),

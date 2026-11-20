@@ -63,7 +63,10 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 	const root = protobuf.Root.fromJSON(descriptor.schema);
 	const pointType = root.lookupType("recount.telemetry.AnalyticalPoint"),
 		notificationType = root.lookupType("recount.telemetry.LiveNotification"),
-		evidenceType = root.lookupType("recount.telemetry.DeliveryEvidence"),
+		requestEvidenceType = root.lookupType("recount.telemetry.PointLineage"),
+		contextEvidenceType = root.lookupType(
+			"recount.telemetry.DeliveryContextEvidence",
+		),
 		rawType = root.lookupType("recount.telemetry.RawRecord"),
 		requestType = root.lookupType(
 			"opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
@@ -173,25 +176,29 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 				{ timeout: 15000 },
 			)
 			.toBe(true);
-		const deliveryEvidence = evidenceType
+		const deliveryRequest = requestEvidenceType
 			.encode(
-				evidenceType.fromObject({
+				requestEvidenceType.fromObject({
+					record_id: randomUUID(),
+					delivery: { ingestion_peer_address: "203.0.113.1:52100" },
+				}),
+			)
+			.finish();
+		const deliveryContext = contextEvidenceType
+			.encode(
+				contextEvidenceType.fromObject({
 					resources: [{ resource: 0 }],
-					common: {
-						record_id: randomUUID(),
-						received_unix_nano: time.toString(),
-						delivery: {
-							collector_connection_id: connection.connection_id,
-							collector_hostname: connection.hostname,
-							collector_local_address: connection.local_address,
-							collector_peer_address: connection.peer_address,
-							ingestion_peer_address: "203.0.113.1:52100",
-							local_interfaces: connection.interfaces,
-						},
+					connection: {
+						collector_connection_id: connection.connection_id,
+						collector_hostname: connection.hostname,
+						collector_local_address: connection.local_address,
+						collector_peer_address: connection.peer_address,
+						local_interfaces: connection.interfaces,
 					},
 				}),
 			)
 			.finish();
+		const contextId = createHash("sha256").update(deliveryContext).digest();
 		const rows = Array.from({ length: 105 }, (_, index) =>
 			pointType
 				.encodeDelimited(
@@ -226,7 +233,9 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 						point_attributes: [
 							{ path: "/opaque", kind: 6, bytes_value: Buffer.from([0, 255]) },
 						],
-						delivery_evidence: deliveryEvidence,
+						delivery_request: deliveryRequest,
+						delivery_context_id: contextId,
+						delivery_context: deliveryContext,
 					}),
 				)
 				.finish(),
@@ -234,6 +243,7 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 		inserted = true;
 		for (const table of [
 			"deliveries",
+			"delivery_contexts",
 			"metric_series",
 			"metric_streams",
 			"metric_points",

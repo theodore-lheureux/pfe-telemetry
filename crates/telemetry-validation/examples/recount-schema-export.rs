@@ -181,6 +181,10 @@ fn prepare(options: &Options) -> Result<()> {
             expected_columns(recount_telemetry_schema::DELIVERY_COLUMNS),
         ),
         (
+            "expected-delivery-context-columns.tsv",
+            expected_columns(recount_telemetry_schema::DELIVERY_CONTEXT_COLUMNS),
+        ),
+        (
             "expected-participant-columns.tsv",
             expected_columns(PARTICIPANT_COLUMNS),
         ),

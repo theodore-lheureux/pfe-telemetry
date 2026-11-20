@@ -138,8 +138,8 @@ message PointLineage {
   ResourceAccess access = 7;
   DeliveryContext delivery = 8;
 }
-message DeliveryEvidence {
-  PointLineage common = 1;
+message DeliveryContextEvidence {
+  DeliveryContext connection = 1;
   repeated DeliveryResource resources = 2;
 }
 message DeliveryResource {
@@ -214,10 +214,12 @@ message AnalyticalPoint {
   bytes original_position = 59;
   fixed64 received_unix_nano = 60;
   reserved 61;
-  bytes delivery_evidence = 62;
+  bytes delivery_request = 62;
   bool stream_evidence = 63;
   uint32 raw_partition = 64;
   fixed64 raw_offset = 65;
   fixed64 min_event_unix_nano = 66;
   fixed64 max_event_unix_nano = 67;
+  bytes delivery_context_id = 68;
+  bytes delivery_context = 69;
 }

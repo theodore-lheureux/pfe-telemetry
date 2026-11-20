@@ -44,6 +44,10 @@ together: otherwise reused partition/offset pairs could refer to old evidence
 or lose replacement against old points. Replay in the existing topic keeps its
 positions; republishing its bytes to a new topic is not the same replay.
 
+Replay that rebuilds deliveries must also restore their referenced contexts.
+Use backup or retained raw data that covers the affected deliveries, and
+restart normalizers to clear their acknowledged context caches.
+
 When series caching is enabled, include at least one additional resend
 interval in the replay window where retained offsets allow it. Points can
 depend on metadata published earlier on the same output partition. Restart

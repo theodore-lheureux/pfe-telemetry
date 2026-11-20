@@ -182,6 +182,10 @@ impl Schema<'_> {
             ),
             ("__KAFKA_COLUMNS__", columns.to_owned()),
             ("__DELIVERY_COLUMNS__", crate::DELIVERY_COLUMNS.to_owned()),
+            (
+                "__DELIVERY_CONTEXT_COLUMNS__",
+                crate::DELIVERY_CONTEXT_COLUMNS.to_owned(),
+            ),
             ("__STREAM_COLUMNS__", crate::STREAM_COLUMNS.to_owned()),
             ("__POINT_COLUMNS__", crate::POINT_COLUMNS.to_owned()),
             ("__POINT_SELECT__", crate::POINT_SELECT.to_owned()),

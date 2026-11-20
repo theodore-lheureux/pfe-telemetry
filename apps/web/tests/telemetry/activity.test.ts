@@ -144,6 +144,17 @@ test("inspector restores request provenance from a compact delivery", async () =
 	expect(detail.raw.lineage).toEqual(detail.provenance);
 	await fixture.client.command({
 		query:
+			"ALTER TABLE delivery_contexts DELETE WHERE project_id = {project:String} SETTINGS mutations_sync = 2",
+		query_params: { project: projectId },
+	});
+	await expect(
+		readPoint(input, undefined, fixture.reader),
+	).rejects.toMatchObject({
+		code: "UNAVAILABLE",
+		message: "Measurement provenance is not yet available",
+	});
+	await fixture.client.command({
+		query:
 			"ALTER TABLE metric_streams DELETE WHERE project_id = {project:String} SETTINGS mutations_sync = 2",
 		query_params: { project: projectId },
 	});

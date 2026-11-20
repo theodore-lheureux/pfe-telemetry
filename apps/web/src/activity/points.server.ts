@@ -409,16 +409,19 @@ FROM ${streamEvidenceSource(
 			names.map((key) => [key, row[key] ?? null]),
 		) as JsonObject;
 	const [delivery] = await query<{
-		evidence: string;
+		request: string;
+		context: string;
 		received: string;
 		oldest: string;
 		newest: string;
 	}>(
-		`SELECT hex(delivery_evidence) AS evidence, toString(received_unix_nano) AS received,
+		`SELECT hex(d.delivery_request) AS request, hex(c.delivery_context) AS context, toString(received_unix_nano) AS received,
 		  toString(min_event_unix_nano) AS oldest, toString(max_event_unix_nano) AS newest
-		FROM deliveries FINAL
-		WHERE project_id={project:String} AND source_id={source:String}
-		  AND raw_partition={partition:UInt32} AND raw_offset={offset:UInt64} LIMIT 1`,
+		FROM (SELECT * FROM deliveries FINAL WHERE project_id={project:String} AND source_id={source:String}
+		  AND raw_partition={partition:UInt32} AND raw_offset={offset:UInt64}) d
+		INNER JOIN (SELECT delivery_context_id, delivery_context FROM delivery_contexts FINAL
+		  WHERE project_id={project:String} AND source_id={source:String}) c USING (delivery_context_id)
+		LIMIT 1`,
 		{
 			project: input.projectId,
 			source: input.sourceId,
@@ -435,7 +438,11 @@ FROM ${streamEvidenceSource(
 		);
 	const received = BigInt(delivery.received);
 	const provenance = {
-		...decodeDelivery(delivery.evidence, String(row.original_hex)),
+		...decodeDelivery(
+			delivery.request,
+			delivery.context,
+			String(row.original_hex),
+		),
 		raw_partition: row.raw_partition,
 		raw_offset: String(row.raw_offset),
 		received_unix_nano: delivery.received,

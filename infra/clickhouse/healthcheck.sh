@@ -14,6 +14,9 @@ expected=$(cat /etc/recount-schema/expected-stream-columns.tsv)
 actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT name, type FROM system.columns WHERE database = 'telemetry' AND table = 'deliveries' ORDER BY position FORMAT TSVRaw")
 expected=$(cat /etc/recount-schema/expected-delivery-columns.tsv)
 [ "$actual" = "$expected" ]
+actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT name, type FROM system.columns WHERE database = 'telemetry' AND table = 'delivery_contexts' ORDER BY position FORMAT TSVRaw")
+expected=$(cat /etc/recount-schema/expected-delivery-context-columns.tsv)
+[ "$actual" = "$expected" ]
 actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT name, type FROM system.columns WHERE database = 'telemetry' AND table = 'execution_participants' ORDER BY position FORMAT TSVRaw")
 expected=$(cat /etc/recount-schema/expected-participant-columns.tsv)
 [ "$actual" = "$expected" ]

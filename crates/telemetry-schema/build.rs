@@ -77,7 +77,9 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
             "AnalyticalPoint",
             "sample_id"
             | "stream_id"
-            | "delivery_evidence"
+            | "delivery_request"
+            | "delivery_context_id"
+            | "delivery_context"
             | "original_position"
             | "lineage"
             | "exemplars"
@@ -202,7 +204,10 @@ fn sql_type(
         check_analytical_field(owner, field);
     }
     if owner == ".recount.telemetry.AnalyticalPoint"
-        && matches!(field.name(), "sample_id" | "stream_id")
+        && matches!(
+            field.name(),
+            "sample_id" | "stream_id" | "delivery_context_id"
+        )
     {
         assert_eq!(
             field.r#type(),
@@ -334,12 +339,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             | "raw_offset"
                             | "min_event_unix_nano"
                             | "max_event_unix_nano"
-                            | "delivery_evidence"
+                            | "delivery_request"
+                            | "delivery_context_id"
                     )
                 })
                 .cloned()
                 .collect();
             write_projection(&out, "delivery", &delivery)?;
+            let contexts = typed
+                .iter()
+                .filter(|(name, _)| {
+                    matches!(
+                        *name,
+                        "project_id" | "source_id" | "delivery_context_id" | "delivery_context"
+                    )
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            write_projection(&out, "delivery-context", &contexts)?;
             let streams = typed
                 .iter()
                 .filter(|(name, _)| {
@@ -365,7 +382,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         "sample_id"
                             | "lineage"
                             | "device_id"
-                            | "delivery_evidence"
+                            | "delivery_request"
+                            | "delivery_context"
+                            | "delivery_context_id"
                             | "received_unix_nano"
                             | "min_event_unix_nano"
                             | "max_event_unix_nano"

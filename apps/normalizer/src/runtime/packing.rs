@@ -256,13 +256,13 @@ mod tests {
             .flat_map(|i| [point(now + i as u64, 0, i), point(now + i as u64, 1, i)])
             .chain([point(1, 0, 7)])
             .collect();
-        records[0].delivery_evidence = vec![1, 2, 3];
+        records[0].delivery_request = vec![1, 2, 3];
         let result = pack(records, 2, now, 2 * PACKED_BYTES, true).unwrap();
         assert_eq!(result.len(), 5);
         let late = result.iter().find(|p| p.time_unix_nano == 1).unwrap();
         let late = AnalyticalPoint::decode(late.payload.as_slice()).unwrap();
         assert_eq!(late.last_seen_unix_nano, 1);
-        assert!(late.delivery_evidence.is_empty());
+        assert!(late.delivery_request.is_empty());
         for partition in [0, 1] {
             let packets: Vec<Vec<_>> = result
                 .iter()
@@ -286,7 +286,7 @@ mod tests {
                 packets
                     .iter()
                     .flatten()
-                    .filter(|p| !p.delivery_evidence.is_empty())
+                    .filter(|p| !p.delivery_request.is_empty())
                     .count(),
                 usize::from(partition == 0),
             );
@@ -303,7 +303,7 @@ mod tests {
     fn framing_is_bounded_and_an_indivisible_point_fails_closed() {
         let now = 1_800_000_000_000_000_000;
         let wide = |size| AnalyticalPoint {
-            delivery_evidence: vec![1; size],
+            delivery_request: vec![1; size],
             ..point(now, 0, 0)
         };
         let packets = pack(

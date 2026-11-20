@@ -30,6 +30,14 @@ ENGINE = ReplacingMergeTree
 ORDER BY (project_id, source_id, raw_partition, raw_offset)
 SETTINGS fsync_after_insert = 0, fsync_part_directory = 1;
 
+CREATE TABLE __CREATE_GUARD____DATABASE__.delivery_contexts
+(
+__DELIVERY_CONTEXT_COLUMNS__
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (project_id, source_id, delivery_context_id)
+SETTINGS fsync_after_insert = 0, fsync_part_directory = 1;
+
 CREATE TABLE __CREATE_GUARD____DATABASE__.metric_streams
 (
 __STREAM_COLUMNS__
@@ -63,8 +71,12 @@ CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_points
 TO __DATABASE__.metric_points AS SELECT __POINT_SELECT__ FROM __DATABASE__.normalized_kafka AS src;
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_deliveries
-TO __DATABASE__.deliveries AS SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_evidence FROM __DATABASE__.normalized_kafka
-WHERE notEmpty(delivery_evidence);
+TO __DATABASE__.deliveries AS SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_request, delivery_context_id FROM __DATABASE__.normalized_kafka
+WHERE notEmpty(delivery_request);
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_delivery_contexts
+TO __DATABASE__.delivery_contexts AS SELECT project_id, source_id, delivery_context_id, delivery_context
+FROM __DATABASE__.normalized_kafka WHERE notEmpty(delivery_context);
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_streams
 TO __DATABASE__.metric_streams AS SELECT project_id, stream_id, resource_continuity, point_continuity
@@ -95,8 +107,12 @@ CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_metric_points
 TO __DATABASE__.metric_points AS SELECT __POINT_SELECT__ FROM __DATABASE__.late_kafka AS src;
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_deliveries
-TO __DATABASE__.deliveries AS SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_evidence FROM __DATABASE__.late_kafka
-WHERE notEmpty(delivery_evidence);
+TO __DATABASE__.deliveries AS SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_request, delivery_context_id FROM __DATABASE__.late_kafka
+WHERE notEmpty(delivery_request);
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_delivery_contexts
+TO __DATABASE__.delivery_contexts AS SELECT project_id, source_id, delivery_context_id, delivery_context
+FROM __DATABASE__.late_kafka WHERE notEmpty(delivery_context);
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_metric_streams
 TO __DATABASE__.metric_streams AS SELECT project_id, stream_id, resource_continuity, point_continuity

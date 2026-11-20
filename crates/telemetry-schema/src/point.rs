@@ -188,15 +188,16 @@ fn lower(
         return Err("positive coherent normalized bounds required");
     }
     let security = raw.security.as_ref().ok_or("missing trusted scope")?;
-    let mut evidence = crate::wire::DeliveryEvidence {
-        common: Some(PointLineage {
-            batch: raw.batch.clone(),
-            record_id: raw.record_id.clone(),
-            received_unix_nano: raw.received_unix_nano,
-            payload_kind: raw.payload_kind,
-            delivery: raw.delivery.as_ref().map(delivery_context),
-            ..Default::default()
-        }),
+    let mut request_lineage = PointLineage {
+        batch: raw.batch.clone(),
+        record_id: raw.record_id.clone(),
+        received_unix_nano: raw.received_unix_nano,
+        payload_kind: raw.payload_kind,
+        delivery: raw.delivery.as_ref().map(delivery_context),
+        ..Default::default()
+    };
+    let mut context_evidence = crate::wire::DeliveryContextEvidence {
+        connection: None,
         resources: Vec::new(),
     };
     let (mut min_event, mut max_event) = (u64::MAX, 0);
@@ -258,17 +259,19 @@ fn lower(
             Arc::new(project_resource(resource_metrics, security, context)?)
         };
         let lineage = if compact {
-            evidence.resources.push(crate::wire::DeliveryResource {
-                resource: r.try_into().map_err(|_| "position overflow")?,
-                relationships: context.relationships.clone(),
-                access: context.access.clone(),
-            });
+            context_evidence
+                .resources
+                .push(crate::wire::DeliveryResource {
+                    resource: r.try_into().map_err(|_| "position overflow")?,
+                    relationships: context.relationships.clone(),
+                    access: context.access.clone(),
+                });
             None
         } else {
             Some(PointLineage {
                 relationships: context.relationships.clone(),
                 access: context.access.clone(),
-                ..evidence.common.clone().unwrap()
+                ..request_lineage.clone()
             })
         };
         for (s, scope) in resource_metrics.scope_metrics.iter().enumerate() {
@@ -437,21 +440,30 @@ fn lower(
         }
     }
     if compact && let Some(first) = out.first_mut() {
+        let first_frame_len = first.frame.encoded_len();
         first.frame.received_unix_nano = raw.received_unix_nano;
         first.frame.min_event_unix_nano = min_event;
         first.frame.max_event_unix_nano = max_event;
-        first.frame.delivery_evidence = evidence.encode_to_vec();
-        let evidence_len = first.frame.delivery_evidence.len();
-        let size = first_size
-            + 30
-            + if evidence_len == 0 {
-                0
-            } else {
-                2 + prost::length_delimiter_len(evidence_len) + evidence_len
-            };
-        let total = bytes
-            .checked_add(evidence_len + 38)
-            .ok_or("normalized byte overflow")?;
+        // The per-delivery socket peer is independent of the collector connection.
+        if let Some(mut connection) = request_lineage.delivery.take() {
+            request_lineage.delivery = Some(DeliveryContext {
+                inventory_observed_unix_nano: connection.inventory_observed_unix_nano.take(),
+                ingestion_peer_address: connection.ingestion_peer_address.take(),
+                ..Default::default()
+            });
+            context_evidence.connection = Some(connection);
+        }
+        // Receipt time has its own delivery column.
+        request_lineage.received_unix_nano = 0;
+        first.frame.delivery_request = request_lineage.encode_to_vec();
+        first.frame.delivery_context = context_evidence.encode_to_vec();
+        let mut hash = TypedHash::new("recount.delivery-context.v1");
+        identity::security(&mut hash, security);
+        hash.field(&first.frame.delivery_context);
+        first.frame.delivery_context_id = hash.finish().to_vec();
+        let extra = first.frame.encoded_len() - first_frame_len;
+        let size = first_size + extra;
+        let total = bytes.checked_add(extra).ok_or("normalized byte overflow")?;
         if size > max_record_bytes || total > max_batch_bytes {
             return Err("normalized delivery byte limit");
         }

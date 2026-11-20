@@ -8,14 +8,14 @@ fn main() {
     let args: Vec<_> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("--storage-layout") {
         use recount_telemetry_schema::{
-            DELIVERY_COLUMNS, KAFKA_COLUMNS, POINT_COLUMNS, POINT_NAMES, POINT_SELECT,
-            SERIES_COLUMNS, SERIES_NAMES, SERIES_SELECT, STREAM_COLUMNS,
+            DELIVERY_COLUMNS, DELIVERY_CONTEXT_COLUMNS, KAFKA_COLUMNS, POINT_COLUMNS, POINT_NAMES,
+            POINT_SELECT, SERIES_COLUMNS, SERIES_NAMES, SERIES_SELECT, STREAM_COLUMNS,
         };
         println!(
             "{}",
             serde_json::json!({ "pointColumns": POINT_COLUMNS, "pointNames": POINT_NAMES,
             "seriesColumns": SERIES_COLUMNS, "seriesNames": SERIES_NAMES,
-            "deliveryColumns": DELIVERY_COLUMNS, "streamColumns": STREAM_COLUMNS, "kafkaColumns": KAFKA_COLUMNS, "pointSelect": POINT_SELECT, "seriesSelect": SERIES_SELECT })
+            "deliveryColumns": DELIVERY_COLUMNS, "deliveryContextColumns": DELIVERY_CONTEXT_COLUMNS, "streamColumns": STREAM_COLUMNS, "kafkaColumns": KAFKA_COLUMNS, "pointSelect": POINT_SELECT, "seriesSelect": SERIES_SELECT })
         );
         return;
     }
@@ -55,7 +55,9 @@ fn main() {
         let compact =
             recount_telemetry_validation::validate::retained_delivery(&raw, Default::default())
                 .unwrap();
-        let evidence = compact[0].delivery_evidence.clone();
+        let request = compact[0].delivery_request.clone();
+        let context = compact[0].delivery_context.clone();
+        let context_id = compact[0].delivery_context_id.clone();
         let (received, oldest, newest) = (
             compact[0].received_unix_nano,
             compact[0].min_event_unix_nano,
@@ -64,7 +66,9 @@ fn main() {
         for (row, compact) in rows.iter_mut().zip(compact) {
             row.sample_id.clear();
             row.lineage.clear();
-            row.delivery_evidence = evidence.clone();
+            row.delivery_request = request.clone();
+            row.delivery_context = context.clone();
+            row.delivery_context_id = context_id.clone();
             row.original_position = compact.original_position;
             row.received_unix_nano = received;
             row.min_event_unix_nano = oldest;

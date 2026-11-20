@@ -108,6 +108,36 @@ fn point_lineage_keeps_socket_interface_context_without_repeating_the_full_inven
     );
     assert_eq!(context.local_interfaces[0].addresses, ["10.0.0.2"]);
     assert_eq!(context.collector_hostname, collector.hostname);
+    let compact = |raw: &RawRecord| {
+        validate::retained_delivery(raw, Limits::default())
+            .unwrap()
+            .remove(0)
+    };
+    let first = compact(&raw);
+    let mut later = raw.clone();
+    let delivery = later.delivery.as_mut().unwrap();
+    delivery.ingestion_peer_address = Some("198.51.100.2:53000".into());
+    delivery
+        .collector
+        .as_mut()
+        .unwrap()
+        .inventory_observed_unix_nano += 1;
+    let later_frame = compact(&later);
+    assert_eq!(first.delivery_context_id, later_frame.delivery_context_id);
+    assert_eq!(first.delivery_context, later_frame.delivery_context);
+    assert_ne!(first.delivery_request, later_frame.delivery_request);
+    later
+        .delivery
+        .as_mut()
+        .unwrap()
+        .collector
+        .as_mut()
+        .unwrap()
+        .hostname = Some("changed".into());
+    assert_ne!(
+        first.delivery_context_id,
+        compact(&later).delivery_context_id
+    );
     assert_eq!(raw.encode_to_vec(), original);
     assert_eq!(
         RawRecord::decode(original.as_slice())
@@ -136,11 +166,14 @@ fn compact_delivery_carries_receipt_and_event_bounds_only_once() {
         first.max_event_unix_nano,
         points.iter().map(|p| p.time_unix_nano).max().unwrap()
     );
-    assert!(!first.delivery_evidence.is_empty());
+    assert!(!first.delivery_request.is_empty());
+    assert_eq!(first.delivery_context_id.len(), 32);
     assert!(tail.iter().all(|p| p.received_unix_nano == 0
         && p.min_event_unix_nano == 0
         && p.max_event_unix_nano == 0
-        && p.delivery_evidence.is_empty()));
+        && p.delivery_request.is_empty()
+        && p.delivery_context_id.is_empty()
+        && p.delivery_context.is_empty()));
 }
 
 #[test]
@@ -168,18 +201,26 @@ fn analytical_wire_bytes_match_independent_known_vectors() {
 
 #[test]
 fn compact_delivery_reassembles_every_original_lineage() {
-    use recount_telemetry_schema::wire::{DeliveryEvidence, Position};
+    use recount_telemetry_schema::wire::{DeliveryContextEvidence, Position};
     let raw = cases::raw();
     let before = validate::retained_raw(&raw, Limits::default()).unwrap();
     let after = validate::retained_delivery(&raw, Limits::default()).unwrap();
     assert_eq!(
         after
             .iter()
-            .filter(|p| !p.delivery_evidence.is_empty())
+            .filter(|p| !p.delivery_request.is_empty())
             .count(),
         1
     );
-    let bundle = DeliveryEvidence::decode(after[0].delivery_evidence.as_slice()).unwrap();
+    let bundle = DeliveryContextEvidence::decode(after[0].delivery_context.as_slice()).unwrap();
+    let mut common = PointLineage::decode(after[0].delivery_request.as_slice()).unwrap();
+    common.received_unix_nano = after[0].received_unix_nano;
+    if let Some(mut connection) = bundle.connection {
+        let delivery = common.delivery.take().unwrap();
+        connection.inventory_observed_unix_nano = delivery.inventory_observed_unix_nano;
+        connection.ingestion_peer_address = delivery.ingestion_peer_address;
+        common.delivery = Some(connection);
+    }
     for (old, point) in before.iter().zip(after) {
         let original = Position::decode(point.original_position.as_slice()).unwrap();
         let resource = bundle
@@ -191,7 +232,7 @@ fn compact_delivery_reassembles_every_original_lineage() {
             original: Some(original),
             relationships: resource.relationships.clone(),
             access: resource.access.clone(),
-            ..bundle.common.clone().unwrap()
+            ..common.clone()
         };
         assert_eq!(
             restored,

@@ -262,7 +262,7 @@ fn split_identity(
         resource_entity_refs: std::mem::take(&mut point.resource_entity_refs),
         ..Default::default()
     };
-    if point.delivery_evidence.is_empty() {
+    if point.delivery_request.is_empty() {
         point.source_id.clear();
     }
     let nodes = std::mem::take(&mut point.resource_attributes);

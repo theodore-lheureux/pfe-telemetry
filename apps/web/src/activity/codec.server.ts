@@ -14,7 +14,10 @@ const rawType = root.lookupType("recount.telemetry.RawRecord");
 const requestType = root.lookupType(
 	"opentelemetry.proto.collector.metrics.v1.ExportMetricsServiceRequest",
 );
-const evidenceType = root.lookupType("recount.telemetry.DeliveryEvidence");
+const requestEvidenceType = root.lookupType("recount.telemetry.PointLineage");
+const contextEvidenceType = root.lookupType(
+	"recount.telemetry.DeliveryContextEvidence",
+);
 const positionType = root.lookupType("recount.telemetry.Position");
 const notificationType = root.lookupType("recount.telemetry.LiveNotification");
 const options = {
@@ -65,22 +68,46 @@ export function nanosecondsDate(value: string): Date {
 		throw new Error("Invalid telemetry timestamp");
 	return date;
 }
-export function decodeDelivery(hex: string, position: string): JsonObject {
+export function decodeDelivery(
+	requestHex: string,
+	contextHex: string,
+	position: string,
+): JsonObject {
 	const original = positionType.toObject(
 		positionType.decode(Buffer.from(position, "hex")),
 		options,
 	) as JsonObject;
-	const evidence = evidenceType.toObject(
-		evidenceType.decode(Buffer.from(hex, "hex")),
+	const request = requestEvidenceType.toObject(
+		requestEvidenceType.decode(Buffer.from(requestHex, "hex")),
+		options,
+	) as JsonObject;
+	const context = contextEvidenceType.toObject(
+		contextEvidenceType.decode(Buffer.from(contextHex, "hex")),
 		options,
 	);
-	const resource = (evidence.resources as JsonObject[] | undefined)?.find(
+	const resource = (context.resources as JsonObject[] | undefined)?.find(
 		(entry) => (entry.resource ?? 0) === (original.resource ?? 0),
 	);
-	if (!evidence.common || !resource)
+	if (!request.record_id || !resource)
 		throw new Error("Incomplete delivery evidence");
+	const { inventory_observed_unix_nano, ingestion_peer_address } = object(
+		request.delivery,
+	);
 	return {
-		...evidence.common,
+		...request,
+		...(context.connection || request.delivery
+			? {
+					delivery: {
+						...object(context.connection),
+						...(inventory_observed_unix_nano === undefined
+							? {}
+							: { inventory_observed_unix_nano }),
+						...(ingestion_peer_address === undefined
+							? {}
+							: { ingestion_peer_address }),
+					},
+				}
+			: {}),
 		original,
 		...(resource.relationships
 			? { relationships: resource.relationships }

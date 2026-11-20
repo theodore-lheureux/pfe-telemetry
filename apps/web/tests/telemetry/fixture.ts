@@ -27,6 +27,7 @@ interface Layout {
 	pointNames: string;
 	seriesNames: string;
 	deliveryColumns: string;
+	deliveryContextColumns: string;
 	streamColumns: string;
 	pointSelect: string;
 	seriesSelect: string;
@@ -36,7 +37,7 @@ interface Layout {
 function storageStatements(layout: Layout) {
 	return template()
 		.split(";")
-		.slice(1, 5)
+		.slice(1, 6)
 		.map((statement) =>
 			withoutComments(
 				statement
@@ -44,6 +45,10 @@ function storageStatements(layout: Layout) {
 					.replace("__POINT_COLUMNS__", layout.pointColumns)
 					.replace("__SERIES_COLUMNS__", layout.seriesColumns)
 					.replace("__DELIVERY_COLUMNS__", layout.deliveryColumns)
+					.replace(
+						"__DELIVERY_CONTEXT_COLUMNS__",
+						layout.deliveryContextColumns,
+					)
 					.replace("__STREAM_COLUMNS__", layout.streamColumns),
 			),
 		);
@@ -76,8 +81,10 @@ function fixtureViews(layout: Layout) {
 		`arrayMap(a -> tuple(toUInt32(0), a), arraySort(a -> a.path, arrayFilter(a -> NOT (${predicate}), ${column})))`;
 	return [
 		`CREATE MATERIALIZED VIEW fixture_deliveries TO deliveries AS
-		SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_evidence
-		FROM fixture_input WHERE notEmpty(delivery_evidence)`,
+		SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_request, delivery_context_id
+		FROM fixture_input WHERE notEmpty(delivery_request)`,
+		`CREATE MATERIALIZED VIEW fixture_delivery_contexts TO delivery_contexts AS
+		SELECT project_id, source_id, delivery_context_id, delivery_context FROM fixture_input WHERE notEmpty(delivery_context)`,
 		`CREATE MATERIALIZED VIEW fixture_streams TO metric_streams AS
 		SELECT project_id, stream_id,
 		${continuity("resource_attributes", resource)} AS resource_continuity,
@@ -221,6 +228,7 @@ export async function createPointFixture(
 			"metric_series",
 			"metric_streams",
 			"deliveries",
+			"delivery_contexts",
 			...(options.participants ? ["execution_participants"] : []),
 		])
 			await admin.command({

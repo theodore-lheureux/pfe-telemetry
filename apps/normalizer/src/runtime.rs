@@ -40,6 +40,7 @@ struct RunState {
     packed_recent: bool,
     series_cache: Arc<SeriesCache>,
     stream_cache: Arc<SeriesCache<[u8; 32]>>,
+    delivery_cache: Arc<SeriesCache<[u8; 32]>>,
     identity_cache: Arc<IdentityCache>,
 }
 impl FromRef<RunState> for RunState {
@@ -90,8 +91,9 @@ async fn normalize(
     let packed_recent = state.packed_recent;
     let cache = state.series_cache.clone();
     let stream_cache = state.stream_cache.clone();
+    let delivery_cache = state.delivery_cache.clone();
     let identity_cache = state.identity_cache.clone();
-    let (records, emissions) = tokio::task::spawn_blocking(move || {
+    let (records, emissions, delivery) = tokio::task::spawn_blocking(move || {
         let _permit = permit;
         let mut rows = prepare_cached_rows(&payload, key.as_deref(), limits, &identity_cache)
             .unwrap_or_else(|_| panic!("retained validation failed"));
@@ -101,7 +103,27 @@ async fn normalize(
             row.frame.raw_partition = partition;
             row.frame.raw_offset = offset;
         }
-        packing::pack_prepared(
+        let delivery = rows.first_mut().and_then(|first| {
+            let frame = &mut first.frame;
+            let emission = series_cache::Emission {
+                series: frame
+                    .delivery_context_id
+                    .as_slice()
+                    .try_into()
+                    .expect("context digest"),
+                first: frame.min_event_unix_nano,
+                time: frame.max_event_unix_nano,
+                emitted_at: now,
+                lane_partition: u32::from(!recent(frame.time_unix_nano, now)),
+            };
+            if delivery_cache.should_emit(emission) {
+                Some(emission)
+            } else {
+                frame.delivery_context.clear();
+                None
+            }
+        });
+        let (records, emissions) = packing::pack_prepared(
             rows,
             partitions,
             now,
@@ -110,7 +132,8 @@ async fn normalize(
             Some(&cache),
             Some(&stream_cache),
         )
-        .expect("normalized record exceeds broker budget")
+        .expect("normalized record exceeds broker budget");
+        (records, emissions, delivery)
     })
     .await
     .expect("preparation failed");
@@ -154,6 +177,9 @@ async fn normalize(
     });
     state.series_cache.acknowledge(&emissions.series);
     state.stream_cache.acknowledge(&emissions.streams);
+    if let Some(delivery) = delivery {
+        state.delivery_cache.acknowledge(&[delivery]);
+    }
     HandlerOutcome::ack()
 }
 
@@ -255,6 +281,10 @@ fn app(config: Config, packed_recent: bool) -> impl App {
             )),
             identity_cache: Arc::new(IdentityCache::default()),
             stream_cache: Arc::new(SeriesCache::new(
+                config.series_cache_entries,
+                config.series_resend_ns,
+            )),
+            delivery_cache: Arc::new(SeriesCache::new(
                 config.series_cache_entries,
                 config.series_resend_ns,
             )),
