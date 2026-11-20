@@ -358,6 +358,44 @@ test("counters use positive differences within continuity segments", async () =>
 	).toEqual({ user: 100, system: 10 });
 });
 
+test("marker filters use stream evidence and fail when it is missing", async () => {
+	const project = randomUUID();
+	await counter(project, "node-a", 0n, 10);
+	await counter(project, "node-a", 30n, 40);
+	const measure = {
+		name: "cpu",
+		metric: "recount.node.cpu.time",
+		calculation: "increase" as const,
+		combine: "sum" as const,
+	};
+	const input = {
+		shape: "timeseries" as const,
+		range,
+		interval: "1m" as const,
+		measures: [measure],
+	};
+	const markers = {
+		...input,
+		filters: [
+			{
+				field: 'resource.attributes["recount.host.boot_id"]',
+				op: "in" as const,
+				values: ["epoch"],
+			},
+		],
+	};
+	expect((await run(project, markers)).series[0].points[0].value).toBe(30);
+	await fixture.client.command({
+		query:
+			"ALTER TABLE metric_streams DELETE WHERE project_id = {project:String} SETTINGS mutations_sync = 2",
+		query_params: { project },
+	});
+	await expect(run(project, markers)).rejects.toMatchObject({
+		code: "UNAVAILABLE",
+	});
+	expect((await run(project, input)).series[0].points[0].value).toBe(30);
+});
+
 test("calculations must suit the metric kind, and projects stay isolated", async () => {
 	const project = randomUUID(),
 		other = randomUUID();

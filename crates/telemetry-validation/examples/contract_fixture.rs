@@ -9,13 +9,13 @@ fn main() {
     if args.get(1).map(String::as_str) == Some("--storage-layout") {
         use recount_telemetry_schema::{
             DELIVERY_COLUMNS, KAFKA_COLUMNS, POINT_COLUMNS, POINT_NAMES, POINT_SELECT,
-            SERIES_COLUMNS, SERIES_NAMES, SERIES_SELECT,
+            SERIES_COLUMNS, SERIES_NAMES, SERIES_SELECT, STREAM_COLUMNS,
         };
         println!(
             "{}",
             serde_json::json!({ "pointColumns": POINT_COLUMNS, "pointNames": POINT_NAMES,
             "seriesColumns": SERIES_COLUMNS, "seriesNames": SERIES_NAMES,
-            "deliveryColumns": DELIVERY_COLUMNS, "kafkaColumns": KAFKA_COLUMNS, "pointSelect": POINT_SELECT, "seriesSelect": SERIES_SELECT })
+            "deliveryColumns": DELIVERY_COLUMNS, "streamColumns": STREAM_COLUMNS, "kafkaColumns": KAFKA_COLUMNS, "pointSelect": POINT_SELECT, "seriesSelect": SERIES_SELECT })
         );
         return;
     }
@@ -86,6 +86,8 @@ fn main() {
         for row in &mut rows {
             // The raw fixture can set a device; analytical storage does not persist it.
             row.device_id = None;
+            row.resource_attributes.sort_by(|a, b| a.path.cmp(&b.path));
+            row.point_attributes.sort_by(|a, b| a.path.cmp(&b.path));
         }
         let key = |point: &AnalyticalPoint| (point.time_unix_nano, point.stream_id.clone());
         rows.sort_by_key(key);

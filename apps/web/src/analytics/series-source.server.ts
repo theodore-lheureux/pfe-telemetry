@@ -4,6 +4,15 @@ export const POINT_FINAL_SETTINGS = {
 	do_not_merge_across_partitions_select_final: 1,
 } as const;
 
+export function streamEvidenceSource(points: string, streamFilter = "") {
+	return `(SELECT p.*, e.resource_continuity, e.point_continuity, e.evidence_present
+FROM (${points}) AS p
+LEFT JOIN (
+  SELECT stream_id, resource_continuity, point_continuity, toUInt8(1) AS evidence_present
+  FROM metric_streams FINAL WHERE project_id = {project:String}${streamFilter}
+) AS e USING (stream_id))`;
+}
+
 /** Project-scoped series first, then indexed points with the small set on the right. */
 export function seriesPointSource(
 	seriesWhere: string,

@@ -133,19 +133,25 @@ fn without_markers(
     markers: &[&str],
 ) -> (Vec<AttributeNode>, Vec<ContinuityNode>) {
     let mut continuity = Vec::new();
-    let mut ordinal = 0;
     attributes.retain_mut(|node| {
-        let position = ordinal;
-        ordinal += 1;
         if is_marker(&node.path, markers) {
             continuity.push(ContinuityNode {
-                ordinal: position,
+                ordinal: 0,
                 node: Some(std::mem::take(node)),
             });
             false
         } else {
             true
         }
+    });
+    // The stream key ignores map order. Its evidence must not depend on
+    // the order in which a collector happens to report those same keys.
+    continuity.sort_unstable_by(|a, b| {
+        a.node
+            .as_ref()
+            .unwrap()
+            .path
+            .cmp(&b.node.as_ref().unwrap().path)
     });
     (attributes, continuity)
 }
@@ -292,7 +298,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extracting_continuity_preserves_order_and_original_positions() {
+    fn extracting_continuity_sorts_markers_without_reordering_dimensions() {
         let (dimensions, continuity) = without_markers(
             vec![
                 attr("/plain-a", "a"),
@@ -310,12 +316,12 @@ mod tests {
             continuity,
             vec![
                 ContinuityNode {
-                    ordinal: 1,
-                    node: Some(attr("/recount.host.boot_id", "boot"))
+                    ordinal: 0,
+                    node: Some(attr("/recount.collection.epoch_id", "epoch"))
                 },
                 ContinuityNode {
-                    ordinal: 3,
-                    node: Some(attr("/recount.collection.epoch_id", "epoch"))
+                    ordinal: 0,
+                    node: Some(attr("/recount.host.boot_id", "boot"))
                 },
             ],
         );
@@ -349,7 +355,7 @@ mod tests {
         let mut point = fixture.clone();
         let series = split(&mut point);
         assert_eq!(series.series_id, point.series_id);
-        assert_eq!(point.resource_continuity[0].ordinal, 1);
+        assert_eq!(point.resource_continuity[0].ordinal, 0);
         assert_eq!(point.point_continuity[0].ordinal, 0);
         assert_eq!(series.resource_attributes.len(), 1);
         assert_eq!(series.point_attributes.len(), 1);

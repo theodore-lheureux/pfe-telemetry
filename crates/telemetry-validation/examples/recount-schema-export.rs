@@ -173,6 +173,10 @@ fn prepare(options: &Options) -> Result<()> {
             expected_columns(recount_telemetry_schema::SERIES_COLUMNS),
         ),
         (
+            "expected-stream-columns.tsv",
+            expected_columns(recount_telemetry_schema::STREAM_COLUMNS),
+        ),
+        (
             "expected-delivery-columns.tsv",
             expected_columns(recount_telemetry_schema::DELIVERY_COLUMNS),
         ),

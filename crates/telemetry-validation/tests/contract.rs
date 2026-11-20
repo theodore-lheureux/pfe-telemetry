@@ -1612,7 +1612,6 @@ fn cached_gpu_observations_are_distinct_positions_not_invented_counter_epochs() 
     assert_eq!(gpu[0].time_unix_nano, gpu[1].time_unix_nano);
     assert_ne!(gpu[0].sample_id, gpu[1].sample_id);
     assert_eq!(gpu[0].metric_kind, 1);
-    assert!(gpu[0].continuity.is_none());
 }
 
 #[test]

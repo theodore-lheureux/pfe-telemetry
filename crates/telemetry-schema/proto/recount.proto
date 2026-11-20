@@ -166,7 +166,7 @@ message AnalyticalPoint {
   fixed64 time_unix_nano = 12;
   fixed64 start_time_unix_nano = 13;
   uint32 event_day = 14;
-  optional string continuity = 15;
+  reserved 15;
   uint32 flags = 16;
   optional sint64 int_value = 17;
   optional double double_value = 18;
@@ -215,4 +215,5 @@ message AnalyticalPoint {
   fixed64 received_unix_nano = 60;
   fixed32 receipt_tag = 61;
   bytes delivery_evidence = 62;
+  bool stream_evidence = 63;
 }

@@ -39,6 +39,7 @@ struct RunState {
     preparation: Arc<Semaphore>,
     packed_recent: bool,
     series_cache: Arc<SeriesCache>,
+    stream_cache: Arc<SeriesCache<[u8; 32]>>,
     identity_cache: Arc<IdentityCache>,
 }
 impl FromRef<RunState> for RunState {
@@ -86,6 +87,7 @@ async fn normalize(
     let broker_bytes = state.config.normalized_broker_max_bytes;
     let packed_recent = state.packed_recent;
     let cache = state.series_cache.clone();
+    let stream_cache = state.stream_cache.clone();
     let identity_cache = state.identity_cache.clone();
     let (records, emissions) = tokio::task::spawn_blocking(move || {
         let _permit = permit;
@@ -98,6 +100,7 @@ async fn normalize(
             broker_bytes,
             packed_recent,
             Some(&cache),
+            Some(&stream_cache),
         )
         .expect("normalized record exceeds broker budget")
     })
@@ -141,7 +144,8 @@ async fn normalize(
     .unwrap_or_else(|error| {
         panic!("normalized publication failed; input remains unsettled: {error}")
     });
-    state.series_cache.acknowledge(&emissions);
+    state.series_cache.acknowledge(&emissions.series);
+    state.stream_cache.acknowledge(&emissions.streams);
     HandlerOutcome::ack()
 }
 
@@ -242,6 +246,10 @@ fn app(config: Config, packed_recent: bool) -> impl App {
                 config.series_resend_ns,
             )),
             identity_cache: Arc::new(IdentityCache::default()),
+            stream_cache: Arc::new(SeriesCache::new(
+                config.series_cache_entries,
+                config.series_resend_ns,
+            )),
             config,
             packed_recent,
         })

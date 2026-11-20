@@ -407,6 +407,8 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    DROP TABLE IF EXISTS telemetry.ingest_late_metric_points SYNC;
    DROP TABLE IF EXISTS telemetry.ingest_metric_series SYNC;
    DROP TABLE IF EXISTS telemetry.ingest_late_metric_series SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_metric_streams SYNC;
+   DROP TABLE IF EXISTS telemetry.ingest_late_metric_streams SYNC;
    DROP TABLE IF EXISTS telemetry.ingest_deliveries SYNC;
    DROP TABLE IF EXISTS telemetry.ingest_late_deliveries SYNC;
    DROP TABLE IF EXISTS telemetry.normalized_kafka SYNC;
@@ -465,6 +467,7 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    DROP TABLE IF EXISTS telemetry.metric_definitions SYNC;
    DROP TABLE IF EXISTS telemetry.attribute_definitions SYNC;
    DROP TABLE IF EXISTS telemetry.metric_series SYNC;
+   DROP TABLE IF EXISTS telemetry.metric_streams SYNC;
    DROP TABLE IF EXISTS telemetry.deliveries SYNC;
    DROP TABLE telemetry.metric_points SYNC;
    SQL

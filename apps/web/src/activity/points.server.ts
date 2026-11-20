@@ -6,6 +6,7 @@ import {
 import {
 	compileFields,
 	compileFilters,
+	isContinuityField,
 	isPointField,
 } from "../analytics/compile.server";
 import { executionPointSource } from "../analytics/execution-source.server";
@@ -13,6 +14,7 @@ import {
 	POINT_FINAL_SETTINGS,
 	seriesLastSeen,
 	seriesPointSource,
+	streamEvidenceSource,
 } from "../analytics/series-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
@@ -113,20 +115,24 @@ function keyQuery(
 	seriesFilters: string[],
 	pointFilters: string[],
 	execution: boolean,
+	evidence: boolean,
 ) {
-	const points = seriesPointSource(
+	const source = seriesPointSource(
 		` AND ${seriesLastSeen("{lower:UInt64}")} AND first_seen_unix_nano <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
 		`AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
 AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String})`,
 		execution ? "s.source_id, s.resource_id, s.resource_kind" : "",
 	);
+	const points = evidence
+		? `SELECT * FROM ${streamEvidenceSource(source)}`
+		: source;
 	return `SELECT toString(time_unix_nano) AS timeNs,${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,event_day AS day
 FROM ${execution ? executionPointSource(points) : `(${points})`}
 ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
 ORDER BY time_unix_nano DESC,sampleId DESC LIMIT {limit:UInt32}`;
 }
 
-function pointListQuery(fields: string[]) {
+function pointListQuery(fields: string[], evidence: boolean) {
 	const projected = fields.length ? `[${fields.join(",")}] AS fields,` : "";
 	const points = seriesPointSource(
 		" AND series_id IN arrayMap(id -> toUInt64(id), {ids:Array(String)})",
@@ -137,7 +143,7 @@ AND ${POINT_KEY} IN {samples:Array(String)}`,
 	return `SELECT ${projected}${POINT_KEY} AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
 host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
 toUInt8(resource_kind) AS resourceKind,toUInt8(metric_kind) AS kind,toString(int_value) AS integer,double_value AS double,toString(if(bitTest(statistics_present,0),count,NULL)) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
-FROM (${points})
+FROM ${evidence ? streamEvidenceSource(points) : `(${points})`}
 ORDER BY time_unix_nano DESC,sampleId DESC`;
 }
 
@@ -279,6 +285,7 @@ export async function readPoints(
 			conditions,
 			pointConditions,
 			fieldsInFilters.includes("execution"),
+			fieldsInFilters.some(isContinuityField),
 		),
 		params,
 		fromNs,
@@ -292,7 +299,7 @@ export async function readPoints(
 	const keys = search.keys.slice(0, PAGE_SIZE);
 	const rows = keys.length
 		? await query<Row>(
-				pointListQuery(projections.expressions),
+				pointListQuery(projections.expressions, fields.some(isContinuityField)),
 				{
 					...projections.params,
 					project: input.projectId,
@@ -355,12 +362,15 @@ toUInt8(resource_kind) AS resource_kind,toUInt8(metric_kind) AS metric_kind,toUI
 nullIf(toUInt8(monotonic),2) AS monotonic,
 hex(stream_id) AS stream_id_hex,hex(original_position) AS original_hex,
 arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
-FROM (${seriesPointSource(
-			` AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_nano <= {time:UInt64} AND ${seriesLastSeen("{time:UInt64}")}`,
-			`AND event_day={day:UInt32} AND time_unix_nano={time:UInt64} AND series_id={series:UInt64} AND stream_id=unhex({stream:String})`,
-			undefined,
-			"AND metric_name={metric:String}",
-		)}) LIMIT 1`,
+FROM ${streamEvidenceSource(
+			seriesPointSource(
+				` AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_nano <= {time:UInt64} AND ${seriesLastSeen("{time:UInt64}")}`,
+				`AND event_day={day:UInt32} AND time_unix_nano={time:UInt64} AND series_id={series:UInt64} AND stream_id=unhex({stream:String})`,
+				undefined,
+				"AND metric_name={metric:String}",
+			),
+			" AND stream_id=unhex({stream:String})",
+		)} LIMIT 1`,
 		{
 			project: input.projectId,
 			source: input.sourceId,
@@ -376,6 +386,12 @@ FROM (${seriesPointSource(
 	);
 	const row = rows[0];
 	if (!row) throw new OperationError("NOT_FOUND", "Measurement not found");
+	if (Number(row.evidence_present) !== 1)
+		throw new OperationError(
+			"UNAVAILABLE",
+			"Measurement continuity is not yet available",
+		);
+	delete row.evidence_present;
 	for (const name of attributes) {
 		row[name] = row[`${name}_json`];
 		delete row[`${name}_json`];
@@ -474,7 +490,5 @@ function inspectorAttributes(name: string) {
 		return name;
 	const markers =
 		name === "resource_attributes" ? "resource_continuity" : "point_continuity";
-	// Insert in ascending original ordinal, restoring the source's depth-first order.
-	return `arrayFold((attrs, c) -> arrayConcat(arraySlice(attrs, 1, c.ordinal), [c.node],
-		arraySlice(attrs, c.ordinal + 1)), ${markers}, ${name})`;
+	return `arraySort(a -> a.path, arrayConcat(${name}, arrayMap(c -> c.node, ${markers})))`;
 }

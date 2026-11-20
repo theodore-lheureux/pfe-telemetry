@@ -80,7 +80,8 @@ fn parity(raw: &RawRecord, cache: &IdentityCache) -> Vec<PreparedPoint> {
         (raw.received_unix_nano + 10_800_000_000_000, true),
     ] {
         let expected = pack(uncached.clone(), 3, now, 2 * 1024 * 1024, packed).unwrap();
-        let (actual, _) = pack_prepared(cached(), 3, now, 2 * 1024 * 1024, packed, None).unwrap();
+        let (actual, _) =
+            pack_prepared(cached(), 3, now, 2 * 1024 * 1024, packed, None, None).unwrap();
         assert_eq!(expected.len(), actual.len());
         for (expected, actual) in expected.iter().zip(actual) {
             assert_eq!(expected.partition, actual.partition);

@@ -12,7 +12,7 @@ SELECT throwIf(count() != 1, 'Int64 attributes remain typed') FROM __POINTS_TABL
 SELECT throwIf(count() != 1, 'nested attributes remain queryable') FROM __POINTS_TABLE__ FINAL WHERE metric_name = 'arbitrary.authorized.metric' AND flags = 0 AND arrayExists(a -> a.1 = '/nested~1a~0b/min' AND a.4 = toInt64('-9223372036854775808'), point_attributes);
 SELECT throwIf(count() != 1, 'native GPU timestamp') FROM __POINTS_TABLE__ FINAL WHERE resource_id = 'gpu-a' AND time_unix_nano = toUInt64('1780000000000000123');
 SELECT throwIf(count() != 2, 'gateway sensor resources do not need host or topology') FROM __POINTS_TABLE__ FINAL WHERE project_id = 'project-a' AND source_id = 'source-a' AND resource_kind = 8 AND host_id IS NULL;
-SELECT throwIf(count() != 2, 'counter continuity segments') FROM (SELECT DISTINCT stream_id, continuity FROM __POINTS_TABLE__ FINAL WHERE metric_name = 'counter');
+SELECT throwIf(count() != 2, 'counter continuity segments') FROM (SELECT DISTINCT stream_id FROM __POINTS_TABLE__ FINAL WHERE metric_name = 'counter');
 SELECT throwIf(count() != 1, 'project/resource/metric/time filter') FROM __POINTS_TABLE__ FINAL
 WHERE project_id = 'project-a' AND resource_id = 'sensor-a' AND metric_name = 'sensor.temperature'
   AND time_unix_nano >= toUInt64('1780000000000000300') AND time_unix_nano < toUInt64('1780000000000000301');

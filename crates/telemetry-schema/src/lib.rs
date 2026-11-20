@@ -17,6 +17,7 @@ pub const POINT_SELECT: &str = include_str!(concat!(env!("OUT_DIR"), "/point-sel
 pub const SERIES_SELECT: &str = include_str!(concat!(env!("OUT_DIR"), "/series-select.sql"));
 pub const KAFKA_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/kafka-columns.sql"));
 pub const DELIVERY_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/delivery-columns.sql"));
+pub const STREAM_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/stream-columns.sql"));
 pub const SERIES_COLUMNS: &str = include_str!(concat!(env!("OUT_DIR"), "/series-columns.sql"));
 pub const SERIES_NAMES: &str = include_str!(concat!(env!("OUT_DIR"), "/series-names.sql"));
 pub mod wire {

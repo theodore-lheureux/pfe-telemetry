@@ -10,6 +10,7 @@ import {
 	POINT_WINDOW,
 	SERIES_WINDOW,
 	seriesPointSource,
+	streamEvidenceSource,
 } from "./series-source.server";
 import { type ParsedField, parseField } from "./validation";
 
@@ -70,6 +71,10 @@ function continuityColumn(field: ParsedField) {
 		return "point_continuity";
 }
 
+export function isContinuityField(field: string) {
+	return continuityColumn(parseField(field)) !== undefined;
+}
+
 export function isPointField(field: string) {
 	return (
 		field === "execution" || continuityColumn(parseField(field)) !== undefined
@@ -97,7 +102,7 @@ function fieldExpression(field: ParsedField, params: Params) {
 	const attributes =
 		field.scope === "resource" ? "resource_attributes" : "point_attributes";
 	const column = continuity
-		? `arrayMap(c -> c.node, ${continuity})`
+		? `arrayMap(c -> c.node, if(throwIf(coalesce(evidence_present, 0) = 0, 'Stream evidence is not yet available') = 0, ${continuity}, []))`
 		: attributes;
 	// Attribute paths are JSON-pointer style; top-level keys are `/key`.
 	const node = `arrayFirst(a -> a.path = ${params.bind(`/${field.key}`, "String")}, ${column})`;
@@ -240,6 +245,10 @@ function measureSelect(
 	const usesExecution =
 		groupBy.includes("execution") ||
 		allFilters.some((filter) => filter.field === "execution");
+	const usesEvidence = [
+		...groupBy,
+		...allFilters.map(({ field }) => field),
+	].some((field) => continuityColumn(parseField(field)) !== undefined);
 	const metric = params.bind(measure.metric, "String");
 	const groupColumns = groupBy.map((_, column) => `g${column}`);
 	const staticGroups = groupBy.flatMap((field, column) =>
@@ -266,7 +275,7 @@ function measureSelect(
 			return name;
 		})
 		.join(", ");
-	const points = seriesPointSource(
+	const pointSource = seriesPointSource(
 		`${SERIES_WINDOW} AND metric_name = ${metric} AND CAST(metric_kind, 'Int16') = ${params.bind(scope.kind, "Int16")}${seriesFilters}`,
 		POINT_WINDOW,
 		[
@@ -281,6 +290,9 @@ function measureSelect(
 		`AND metric_name = ${metric}`,
 		staticGroups,
 	);
+	const points = usesEvidence
+		? `SELECT * FROM ${streamEvidenceSource(pointSource)}`
+		: pointSource;
 	// Timeseries buckets align to the interval; a table result is one bucket.
 	const bucket =
 		query.shape === "timeseries"

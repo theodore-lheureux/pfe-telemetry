@@ -350,6 +350,7 @@ fn decode(mut bytes: &[u8]) -> Vec<AnalyticalPoint> {
 
 fn packet(mut point: AnalyticalPoint) -> AnalyticalPoint {
     let metadata = series::split(&mut point);
+    point.stream_evidence = true;
     series::with_series(point, &metadata)
 }
 
@@ -404,13 +405,12 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
     let db = &storage.database;
     let restore = |attrs: &str, markers: &str| {
         format!(
-            "arrayFold((attrs, c) -> arrayConcat(arraySlice(attrs, 1, c.ordinal), [c.node],
-        arraySlice(attrs, c.ordinal + 1)), {markers}, {attrs}) AS {attrs}"
+            "arraySort(a -> a.path, arrayConcat({attrs}, arrayMap(c -> c.node, e.{markers}))) AS {attrs}"
         )
     };
     for (view, final_clause) in [("verified_points", "FINAL"), ("verified_physical", "")] {
         storage.sql(&format!("CREATE VIEW {db}.{view} AS
-        SELECT p.* EXCEPT (project_id,metric_name,series_id,resource_continuity,point_continuity,value_kind,statistics_present,received_unix_nano,receipt_tag)
+        SELECT p.* EXCEPT (project_id,metric_name,series_id,value_kind,statistics_present,received_unix_nano,receipt_tag)
             REPLACE (if(value_kind=1,int_value,NULL) AS int_value, if(value_kind=2,double_value,NULL) AS double_value, {}),
             s.* EXCEPT (project_id,source_id,metric_name,series_id,logical_series_id,first_seen_unix_nano,last_seen_unix_nano,resource_attributes,point_attributes,host_id,monotonic),
             p.project_id AS project_id, p.metric_name AS metric_name, s.source_id AS source_id,
@@ -419,6 +419,7 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
             d.delivery_evidence AS delivery_evidence, {}, {}
         FROM (SELECT * FROM {db}.metric_points {final_clause}) p
         INNER JOIN (SELECT * FROM {db}.metric_series FINAL) s USING (project_id,series_id)
+        INNER JOIN (SELECT * FROM {db}.metric_streams FINAL) e ON p.project_id=e.project_id AND p.stream_id=e.stream_id
         INNER JOIN (SELECT * FROM {db}.deliveries FINAL) d
           ON p.project_id=d.project_id AND s.source_id=d.source_id
           AND p.received_unix_nano=d.received_unix_nano AND p.receipt_tag=d.receipt_tag",

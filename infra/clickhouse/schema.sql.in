@@ -30,8 +30,15 @@ ENGINE = ReplacingMergeTree
 ORDER BY (project_id, source_id, received_unix_nano, receipt_tag)
 SETTINGS fsync_after_insert = 0, fsync_part_directory = 1;
 
--- Each packet is self-contained: its first frame for a series carries the
--- dimensions and the packet's event-time bounds. Other frames carry only points.
+CREATE TABLE __CREATE_GUARD____DATABASE__.metric_streams
+(
+__STREAM_COLUMNS__
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (project_id, stream_id)
+SETTINGS fsync_after_insert = 0, fsync_part_directory = 1;
+
+-- Due series and streams carry metadata on their first frame in the packet.
 CREATE TABLE __CREATE_GUARD____DATABASE__.normalized_kafka
 (
 __KAFKA_COLUMNS__
@@ -58,6 +65,10 @@ TO __DATABASE__.metric_points AS SELECT __POINT_SELECT__ FROM __DATABASE__.norma
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_deliveries
 TO __DATABASE__.deliveries AS SELECT project_id, source_id, received_unix_nano, receipt_tag, delivery_evidence FROM __DATABASE__.normalized_kafka
 WHERE notEmpty(delivery_evidence);
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_streams
+TO __DATABASE__.metric_streams AS SELECT project_id, stream_id, resource_continuity, point_continuity
+FROM __DATABASE__.normalized_kafka WHERE stream_evidence != 0;
 
 -- Late packets are singletons so a poll can't exceed the event-day partition guard.
 CREATE TABLE __CREATE_GUARD____DATABASE__.late_kafka
@@ -86,3 +97,7 @@ TO __DATABASE__.metric_points AS SELECT __POINT_SELECT__ FROM __DATABASE__.late_
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_deliveries
 TO __DATABASE__.deliveries AS SELECT project_id, source_id, received_unix_nano, receipt_tag, delivery_evidence FROM __DATABASE__.late_kafka
 WHERE notEmpty(delivery_evidence);
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_metric_streams
+TO __DATABASE__.metric_streams AS SELECT project_id, stream_id, resource_continuity, point_continuity
+FROM __DATABASE__.late_kafka WHERE stream_evidence != 0;

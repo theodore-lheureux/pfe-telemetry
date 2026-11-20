@@ -4,8 +4,8 @@ pub const DEFAULT_ENTRIES: u32 = 131_072;
 pub const MAX_ENTRIES: u32 = 1_048_576;
 
 #[derive(Clone, Copy, Default)]
-pub(super) struct Emission {
-    pub series: u64,
+pub(super) struct Emission<K = u64> {
+    pub series: K,
     pub time: u64,
     pub first: u64,
     pub emitted_at: u64,
@@ -13,16 +13,32 @@ pub(super) struct Emission {
 }
 
 #[derive(Clone, Copy, Default)]
-struct Entry {
-    emission: Emission,
+struct Entry<K> {
+    emission: Emission<K>,
 }
 
-pub(super) struct SeriesCache {
-    slots: Mutex<Box<[Entry]>>,
+pub(super) struct SeriesCache<K = u64> {
+    slots: Mutex<Box<[Entry<K>]>>,
     interval: u64,
 }
 
-impl SeriesCache {
+pub(super) trait CacheKey: Copy + Default + Eq {
+    fn prefix(self) -> u64;
+}
+
+impl CacheKey for u64 {
+    fn prefix(self) -> u64 {
+        self
+    }
+}
+
+impl CacheKey for [u8; 32] {
+    fn prefix(self) -> u64 {
+        u64::from_be_bytes(self[..8].try_into().unwrap())
+    }
+}
+
+impl<K: CacheKey> SeriesCache<K> {
     pub fn new(entries: usize, interval: u64) -> Self {
         Self {
             slots: Mutex::new(vec![Entry::default(); entries].into_boxed_slice()),
@@ -30,11 +46,13 @@ impl SeriesCache {
         }
     }
 
-    fn index(e: Emission, len: usize) -> usize {
-        (e.series ^ u64::from(e.lane_partition).wrapping_mul(0x9e37_79b9_7f4a_7c15)) as usize % len
+    fn index(e: Emission<K>, len: usize) -> usize {
+        (e.series.prefix() ^ u64::from(e.lane_partition).wrapping_mul(0x9e37_79b9_7f4a_7c15))
+            as usize
+            % len
     }
 
-    pub fn should_emit(&self, e: Emission) -> bool {
+    pub fn should_emit(&self, e: Emission<K>) -> bool {
         let slots = self.slots.lock().unwrap();
         if slots.is_empty() || self.interval == 0 {
             return true;
@@ -50,7 +68,7 @@ impl SeriesCache {
             || e.time.saturating_sub(old.time) >= self.interval
     }
 
-    pub fn acknowledge(&self, emissions: &[Emission]) {
+    pub fn acknowledge(&self, emissions: &[Emission<K>]) {
         let mut slots = self.slots.lock().unwrap();
         if slots.is_empty() || self.interval == 0 {
             return;
@@ -72,7 +90,7 @@ impl SeriesCache {
     }
 }
 
-const _: () = assert!(std::mem::size_of::<Entry>() == 40);
+const _: () = assert!(std::mem::size_of::<Entry<u64>>() == 40);
 
 #[cfg(test)]
 mod tests {

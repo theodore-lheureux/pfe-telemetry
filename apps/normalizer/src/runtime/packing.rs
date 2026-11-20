@@ -9,7 +9,7 @@ use recount_telemetry_schema::{
 };
 use recount_telemetry_validation::transport::{FRAMING_RESERVE, body_fits};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     sync::Arc,
 };
 
@@ -18,6 +18,7 @@ struct Packet {
     points: Vec<AnalyticalPoint>,
     // The index of the first frame and its metadata, including the packet bounds.
     series: HashMap<u64, PacketSeries>,
+    streams: HashSet<[u8; 32]>,
     bytes: usize,
 }
 
@@ -110,7 +111,22 @@ pub(crate) fn pack(
         metadata: None,
         resource: None,
     });
-    Ok(pack_prepared(points, partitions, now, broker_bytes, packed_recent, None)?.0)
+    Ok(pack_prepared(
+        points,
+        partitions,
+        now,
+        broker_bytes,
+        packed_recent,
+        None,
+        None,
+    )?
+    .0)
+}
+
+#[derive(Default)]
+pub(super) struct Emissions {
+    pub series: Vec<Emission>,
+    pub streams: Vec<Emission<[u8; 32]>>,
 }
 
 pub(super) fn pack_prepared(
@@ -120,19 +136,21 @@ pub(super) fn pack_prepared(
     broker_bytes: usize,
     packed_recent: bool,
     cache: Option<&SeriesCache>,
-) -> Result<(Vec<RoutedRecord>, Vec<Emission>), &'static str> {
+    stream_cache: Option<&SeriesCache<[u8; 32]>>,
+) -> Result<(Vec<RoutedRecord>, Emissions), &'static str> {
     let batch_bytes = PACKED_BYTES.min(broker_bytes.saturating_sub(FRAMING_RESERVE));
     let mut pending = BTreeMap::<u32, Packet>::new();
     let mut output = Vec::new();
-    let mut emissions = Vec::new();
+    let mut emissions = Emissions::default();
     for PreparedPoint {
         frame: mut point,
         metadata,
         resource,
     } in points
     {
-        let partition = identity::partition(&normalized_routing_key(&point)?, partitions)
-            .ok_or("positive partition count required")?;
+        let stream = normalized_routing_key(&point)?;
+        let partition =
+            identity::partition(&stream, partitions).ok_or("positive partition count required")?;
         let metadata = metadata.unwrap_or_else(|| Arc::new(SeriesMetadata::new(&mut point)));
         let late = !recent(point.time_unix_nano, now);
         let emission = Emission {
@@ -144,10 +162,33 @@ pub(super) fn pack_prepared(
         };
         let emit = cache.is_none_or(|c| c.should_emit(emission));
         let metadata = emit.then_some(metadata);
+        let stream_emission = Emission {
+            series: stream,
+            first: point.time_unix_nano,
+            time: point.time_unix_nano,
+            emitted_at: now,
+            lane_partition: emission.lane_partition,
+        };
+        let due = stream_cache.is_none_or(|c| c.should_emit(stream_emission));
+        let evidence = (
+            std::mem::take(&mut point.resource_continuity),
+            std::mem::take(&mut point.point_continuity),
+        );
+        let mut evidence = Some(evidence);
+        let mut attach = |point: &mut AnalyticalPoint| {
+            let (resource, attrs) = evidence.take().unwrap();
+            point.resource_continuity = resource;
+            point.point_continuity = attrs;
+            point.stream_evidence = true;
+        };
         if !packed_recent || late {
+            if due {
+                attach(&mut point);
+                emissions.streams.push(stream_emission);
+            }
             let time_unix_nano = point.time_unix_nano;
             let payload = if let Some(metadata) = metadata {
-                emissions.push(emission);
+                emissions.series.push(emission);
                 metadata
                     .attach(point, resource.as_deref(), time_unix_nano, time_unix_nano)
                     .encode_to_vec()
@@ -163,6 +204,9 @@ pub(super) fn pack_prepared(
             continue;
         }
         let packet = pending.entry(partition).or_default();
+        if due && !packet.streams.contains(&stream) {
+            attach(&mut point);
+        }
         let mut bytes = frame_size(
             &point,
             metadata
@@ -172,21 +216,28 @@ pub(super) fn pack_prepared(
         if !packet.points.is_empty()
             && (packet.points.len() == PACKED_POINTS || packet.bytes + bytes > batch_bytes)
         {
-            output.push(std::mem::take(packet).finish(partition, now, &mut emissions));
+            output.push(std::mem::take(packet).finish(partition, now, &mut emissions.series));
+            if !point.stream_evidence && due {
+                attach(&mut point);
+            }
             bytes = frame_size(&point, metadata.as_deref());
         }
         body_fits(packet.bytes + bytes, broker_bytes)?;
+        if point.stream_evidence {
+            packet.streams.insert(stream);
+            emissions.streams.push(stream_emission);
+        }
         packet.push(point, metadata, resource, bytes);
         // A valid indivisible point larger than the packing target travels alone.
         if packet.bytes >= batch_bytes {
-            output.push(std::mem::take(packet).finish(partition, now, &mut emissions));
+            output.push(std::mem::take(packet).finish(partition, now, &mut emissions.series));
         }
     }
     output.extend(
         pending
             .into_iter()
             .filter(|(_, p)| !p.points.is_empty())
-            .map(|(partition, p)| p.finish(partition, now, &mut emissions)),
+            .map(|(partition, p)| p.finish(partition, now, &mut emissions.series)),
     );
     Ok((output, emissions))
 }
@@ -277,5 +328,37 @@ mod tests {
         assert!(packets.iter().all(|p| p.payload.len() <= PACKED_BYTES));
         assert!(pack(vec![wide(PACKED_BYTES)], 1, now, 2 * PACKED_BYTES, true).is_ok());
         assert!(pack(vec![wide(PACKED_BYTES)], 1, now, PACKED_BYTES, true).is_err());
+    }
+
+    #[test]
+    fn stream_evidence_is_packet_local_and_only_acknowledged_output_suppresses_it() {
+        let now = 1_800_000_000_000_000_000;
+        let cache = SeriesCache::new(16, 60);
+        let pack = |at| {
+            let points = [point(now, 0, 1), point(now + 1, 0, 2), point(now + 2, 2, 3)]
+                .into_iter()
+                .map(|frame| PreparedPoint {
+                    frame,
+                    metadata: None,
+                    resource: None,
+                });
+            pack_prepared(points, 1, at, 2 * PACKED_BYTES, true, None, Some(&cache)).unwrap()
+        };
+        let (records, emissions) = pack(now);
+        let mut payload = records[0].payload.as_slice();
+        let mut evidence = Vec::new();
+        while !payload.is_empty() {
+            evidence.push(
+                AnalyticalPoint::decode_length_delimited(&mut payload)
+                    .unwrap()
+                    .stream_evidence,
+            );
+        }
+        // Even streams with no marker arrays need an explicit evidence row.
+        assert_eq!(evidence, [true, false, true]);
+        assert_eq!(pack(now).1.streams.len(), 2);
+        cache.acknowledge(&emissions.streams);
+        assert!(pack(now + 1).1.streams.is_empty());
+        assert_eq!(pack(now + 60).1.streams.len(), 2);
     }
 }

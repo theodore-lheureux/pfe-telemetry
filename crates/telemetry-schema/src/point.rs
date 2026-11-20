@@ -592,8 +592,6 @@ fn project_point(
     stream.field(&attrs.canonical);
     let row = AnalyticalPoint {
         stream_id: stream_id(&stream, observation.start()),
-        continuity: string_attribute(observation.attributes(), "recount.counter.segment_id")
-            .map(str::to_owned),
         point_attributes: attrs.nodes,
         ..metric.0.clone()
     };

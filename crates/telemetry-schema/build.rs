@@ -66,7 +66,6 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
             | "device_id"
             | "metric_name"
             | "unit"
-            | "continuity"
             | "scope_name"
             | "scope_version"
             | "resource_schema_url"
@@ -87,7 +86,10 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
         | ("AttributeNode", "bytes_value") => Type::Bytes,
         ("AnalyticalPoint", "resource_kind" | "metric_kind" | "temporality")
         | ("AttributeNode", "kind") => Type::Enum,
-        ("AnalyticalPoint", "resource_present" | "scope_present" | "monotonic")
+        (
+            "AnalyticalPoint",
+            "resource_present" | "scope_present" | "monotonic" | "stream_evidence",
+        )
         | ("AttributeNode", "bool_value") => Type::Bool,
         (
             "AnalyticalPoint",
@@ -332,6 +334,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .cloned()
                 .collect();
             write_projection(&out, "delivery", &delivery)?;
+            let streams = typed
+                .iter()
+                .filter(|(name, _)| {
+                    matches!(
+                        *name,
+                        "project_id" | "stream_id" | "resource_continuity" | "point_continuity"
+                    )
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            write_projection(&out, "stream", &streams)?;
             let kafka: Vec<_> = typed
                 .iter()
                 .filter(|(name, _)| !matches!(*name, "sample_id" | "device_id" | "lineage"))
@@ -343,7 +356,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .filter(|(name, _)| {
                     !matches!(
                         *name,
-                        "sample_id" | "lineage" | "device_id" | "delivery_evidence"
+                        "sample_id"
+                            | "lineage"
+                            | "device_id"
+                            | "delivery_evidence"
+                            | "stream_evidence"
+                            | "resource_continuity"
+                            | "point_continuity"
                     )
                 })
                 .filter(|(name, _)| {
