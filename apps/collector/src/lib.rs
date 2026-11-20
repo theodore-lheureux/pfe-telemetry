@@ -12,8 +12,8 @@ mod continuity;
 mod delivery;
 #[cfg(target_os = "linux")]
 mod diagnostics;
-#[cfg(target_os = "linux")]
-mod enrollment;
+#[cfg(unix)]
+pub mod enrollment;
 #[cfg(target_os = "linux")]
 mod gpu;
 #[cfg(any(target_os = "linux", test))]
@@ -30,8 +30,10 @@ mod participants;
 pub mod runtime;
 #[cfg(target_os = "linux")]
 pub mod spool;
-#[cfg(target_os = "linux")]
-mod transport;
+#[cfg(unix)]
+pub mod transport;
+
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[cfg(target_os = "linux")]
 pub use delivery::{LossReason, LossTracker, Scan, ScanContents, point_count};

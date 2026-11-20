@@ -4,7 +4,6 @@ use std::{
     io,
     os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt},
     path::Path,
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
@@ -20,8 +19,10 @@ use crate::{LossReason, LossTracker};
 #[cfg(test)]
 mod ownership_tests;
 
-pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-pub const MAX_REQUEST_BYTES: usize = 1024 * 1024;
+pub use crate::{
+    Result,
+    transport::{MAX_REQUEST_BYTES, unix_nanos},
+};
 
 /// An encoded OTLP request whose identity and payload stay unchanged on retry.
 #[derive(Clone, Debug)]
@@ -53,12 +54,6 @@ impl Batch {
     pub fn expired(&self, now_ns: u64, max_age_ns: u64) -> bool {
         now_ns.saturating_sub(self.created_ns) >= max_age_ns
     }
-}
-
-pub fn unix_nanos() -> Result<u64> {
-    Ok(u64::try_from(
-        SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos(),
-    )?)
 }
 
 /// A destination-bound SQLite upload queue with byte and batch-count limits.

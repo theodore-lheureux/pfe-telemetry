@@ -6,10 +6,7 @@ use std::{
 
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use prost::Message;
-use recount_telemetry_validation::{
-    catalogue::{self, Adapter},
-    metadata::{BATCH_CREATED, BATCH_ID, PROFILE},
-};
+use recount_telemetry_validation::catalogue::{self, Adapter};
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::{Notify, mpsc, watch};
 use tokio::task::JoinSet;
@@ -434,15 +431,11 @@ async fn export(
 }
 
 fn request(batch: &Batch) -> Result<tonic::Request<ExportMetricsServiceRequest>> {
-    let mut request = tonic::Request::new(ExportMetricsServiceRequest::decode(
-        batch.payload.as_slice(),
-    )?);
-    request.metadata_mut().insert(BATCH_ID, batch.id.parse()?);
-    request
-        .metadata_mut()
-        .insert(BATCH_CREATED, batch.created_ns.to_string().parse()?);
-    request.metadata_mut().insert(PROFILE, "linux".parse()?);
-    Ok(request)
+    crate::transport::batch_request(
+        ExportMetricsServiceRequest::decode(batch.payload.as_slice())?,
+        &batch.id,
+        batch.created_ns,
+    )
 }
 
 fn shutdown_signal() -> io::Result<impl Future<Output = ()>> {

@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 mod gpu;
 
 use std::{
@@ -16,7 +17,7 @@ use tokio::sync::{Notify, watch};
 use tonic::metadata::{Ascii, MetadataValue};
 use uuid::Uuid;
 
-use crate::spool::Result;
+use crate::Result;
 
 const NODE_FILE: &str = "node.json";
 const KEY_FILE: &str = "node.key";
@@ -26,7 +27,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_RETRY: Duration = Duration::from_secs(60);
 
 /// Where and how this collector enrolls.
-pub(crate) struct EnrollmentConfig {
+pub struct EnrollmentConfig {
     /// Web application base URL, ending in `/`.
     pub url: reqwest::Url,
     pub key_file: Option<PathBuf>,
@@ -75,10 +76,10 @@ impl std::fmt::Display for RequestError {
 
 /// The current upload bearer token, renewed in the background.
 #[derive(Clone)]
-pub(crate) struct Authorization {
+pub struct Authorization {
     token: watch::Receiver<Option<MetadataValue<Ascii>>>,
     stale: Arc<Notify>,
-    pub(crate) project: Option<Uuid>,
+    pub project: Option<Uuid>,
 }
 
 impl Authorization {
@@ -94,19 +95,19 @@ impl Authorization {
         }
     }
 
-    pub(crate) fn current(&self) -> Option<MetadataValue<Ascii>> {
+    pub fn current(&self) -> Option<MetadataValue<Ascii>> {
         self.token.borrow().clone()
     }
 
     /// Waits for a different token, or forever once renewal has stopped.
-    pub(crate) async fn changed(&mut self) {
+    pub async fn changed(&mut self) {
         if self.token.changed().await.is_err() {
             std::future::pending::<()>().await;
         }
     }
 
     /// Reports that the ingestion service refused the current token.
-    pub(crate) fn reject(&self) {
+    pub fn reject(&self) {
         self.stale.notify_one();
     }
 }
@@ -120,9 +121,23 @@ struct Node {
 
 /// Loads this node's identity, enrolling first if needed, and starts token renewal.
 /// The first enrollment retries transient failures until it succeeds.
-pub(crate) async fn start(
+pub async fn start(config: EnrollmentConfig, machine_id: &str) -> Result<(Uuid, Authorization)> {
+    let hostname = fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|name| name.trim().to_owned())
+        .ok()
+        .filter(|name| !name.is_empty());
+    start_as(
+        config,
+        machine_id,
+        hostname.as_deref().unwrap_or(machine_id),
+    )
+    .await
+}
+
+pub async fn start_as(
     config: EnrollmentConfig,
     machine_id: &str,
+    hostname: &str,
 ) -> Result<(Uuid, Authorization)> {
     // Another TLS user may already have installed the process-wide provider.
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -147,7 +162,15 @@ pub(crate) async fn start(
             let key_file = config.key_file.as_deref().ok_or_else(|| {
                 io::Error::other("Enrolling this node requires --enrollment-key-file")
             })?;
-            let issued = enroll(&client, &config.url, key_file, machine_id, &signing).await?;
+            let issued = enroll(
+                &client,
+                &config.url,
+                key_file,
+                machine_id,
+                hostname,
+                &signing,
+            )
+            .await?;
             write_private(
                 &node_path,
                 &serde_json::to_vec(&NodeFile {
@@ -185,14 +208,10 @@ async fn enroll(
     url: &reqwest::Url,
     key_file: &Path,
     machine_id: &str,
+    hostname: &str,
     signing: &SigningKey,
 ) -> Result<Issued> {
     let key = fs::read_to_string(key_file)?.trim().to_owned();
-    let hostname = fs::read_to_string("/proc/sys/kernel/hostname")
-        .map(|name| name.trim().to_owned())
-        .ok()
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| machine_id.to_owned());
     let body = serde_json::json!({
         "enrollmentKey": key,
         "machineId": machine_id,

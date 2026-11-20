@@ -12,7 +12,7 @@ import { collectorNode, user } from "../../apps/web/src/db/schema";
 import { createProject } from "../../apps/web/src/organizations/projects.server";
 
 const env = process.env;
-function required(name: string) {
+export function required(name: string) {
 	const value = env[name];
 	if (!value) throw new Error(`Set ${name}`);
 	return value;
@@ -23,9 +23,9 @@ function integer(name: string, fallback: number, min: number, max: number) {
 		throw new Error(`${name} must be an integer from ${min} to ${max}`);
 	return value;
 }
-const loopback = (url: URL) =>
+export const loopback = (url: URL) =>
 	["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-function endpoint(name: string) {
+export function endpoint(name: string) {
 	const url = new URL(required(name));
 	if (
 		url.username ||
@@ -42,7 +42,7 @@ function endpoint(name: string) {
 		);
 	return url;
 }
-type Run = {
+export type Run = {
 	organizationId: string;
 	projectId: string;
 	enrollmentKeyId: string;
@@ -72,7 +72,7 @@ async function main() {
 }
 
 type Database = ReturnType<typeof createDatabase>["db"];
-async function cleanup(database: Database, run: Run) {
+export async function cleanup(database: Database, run: Run) {
 	const { actorId, projectId, organizationId, enrollmentKeyId } = run;
 	const reference = { projectId, organizationId };
 	const actor = { id: actorId };
@@ -237,13 +237,14 @@ async function run(database: Database) {
 	}
 }
 
-try {
-	await main();
-} catch (error) {
-	console.error(
-		error instanceof Error && !("query" in error) && !("code" in error)
-			? error.message
-			: "Load test failed; inspect the local run state",
-	);
-	process.exitCode = 1;
-}
+if (import.meta.main)
+	try {
+		await main();
+	} catch (error) {
+		console.error(
+			error instanceof Error && !("query" in error) && !("code" in error)
+				? error.message
+				: "Load test failed; inspect the local run state",
+		);
+		process.exitCode = 1;
+	}
