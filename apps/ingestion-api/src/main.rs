@@ -7,6 +7,10 @@ use recount_ingestion_api::{
 };
 use std::{sync::Arc, time::Duration};
 
+// Many Tokio workers allocate small per-point objects; glibc's shared arenas contend.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() -> Result<()> {
     let config = Config::parse();
     let limits = config.limits().unwrap_or_else(|error| error.exit());

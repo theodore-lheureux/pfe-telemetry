@@ -5,6 +5,10 @@ use recount_normalizer::{
 };
 use tracing_subscriber::{filter::LevelFilter, prelude::*};
 
+// Many Tokio workers allocate small per-point objects; glibc's shared arenas contend.
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 fn main() {
     let cli = Cli::parse();
     let command = cli.command;
