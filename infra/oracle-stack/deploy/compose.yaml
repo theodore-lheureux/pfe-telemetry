@@ -10,6 +10,8 @@ services:
   clickhouse:
     mem_limit: 8192m
     memswap_limit: 8192m
+    # The app services freed CPU; ClickHouse was throttled 25% at 45 nodes under 2 cores.
+    cpus: 3
     volumes:
       - type: bind
         source: ../oracle-stack/deploy/clickhouse-memory.xml
