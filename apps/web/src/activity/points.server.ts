@@ -13,7 +13,6 @@ import { executionPointSource } from "../analytics/execution-source.server";
 import {
 	POINT_FINAL_SETTINGS,
 	seriesLastSeen,
-	seriesPointSource,
 	streamEvidenceSource,
 } from "../analytics/series-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
@@ -90,26 +89,35 @@ async function query<T>(
 		active--;
 	}
 }
-interface Row {
+interface PointRow {
 	sampleId: string;
-	sourceId: string;
-	resourceId: string;
+	seriesId: string;
 	metricName: string;
 	timeMs: string;
 	partition: number;
 	offset: string;
-	hostId: string | null;
-	hostname: string;
-	resourceKind: number;
-	kind: number;
 	integer: string | null;
 	double: number | null;
 	count: string | null;
-	unit: string;
 	flags: number;
+}
+interface SeriesRow {
+	seriesId: string;
+	metricName: string;
+	sourceId: string;
+	resourceId: string;
+	hostId: string | null;
+	resourceKind: number;
+	kind: number;
+	unit: string;
 	scopeName: string;
 	scopeVersion: string;
+	part: string;
 	fields?: (string | null)[];
+}
+interface StreamRow {
+	streamId: string;
+	fields: (string | null)[];
 }
 interface Key {
 	timeMs: string;
@@ -157,30 +165,28 @@ ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
 ORDER BY time_unix_milli DESC,series_id DESC,stream_id DESC LIMIT {limit:UInt32}`;
 }
 
-function pointListQuery(fields: string[], evidence: boolean) {
-	const projected = fields.length ? `[${fields.join(",")}] AS fields,` : "";
-	const points = seriesPointSource(
-		" AND (metric_name, series_id) IN {ids:Array(Tuple(String,UInt64))}",
-		`AND event_day IN {days:Array(UInt32)}
+const pointListQuery = `SELECT ${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,metric_name AS metricName,
+toString(time_unix_milli) AS timeMs,raw_partition AS partition,toString(raw_offset) AS offset,
+if(value_kind=1,toString(int_value),NULL) AS integer,if(value_kind=2,double_value,NULL) AS double,
+toString(if(bitTest(statistics_present,0),count,NULL)) AS count,flags
+FROM metric_points
+PREWHERE project_id={project:String} AND event_day IN {days:Array(UInt32)}
 AND metric_name IN {metrics:Array(String)}
 AND time_unix_milli BETWEEN {firstPoint:UInt64} AND {lastPoint:UInt64}
-AND series_id IN arrayMap(id -> toUInt64(id), {seriesIds:Array(String)})
-AND (metric_name,series_id,time_unix_milli) IN {series:Array(Tuple(String,UInt64,UInt64))}
-AND ${POINT_KEY} IN {samples:Array(String)}
-AND (raw_partition,raw_offset) IN {receipts:Array(Tuple(UInt32,UInt64))}`,
-	);
-	const source = evidence
-		? streamEvidenceSource(
-				points,
-				" AND stream_id IN arrayMap(id -> toFixedString(unhex(id), 16), {streams:Array(String)})",
-			)
-		: `(${points})`;
-	return `SELECT ${projected}${POINT_KEY} AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_milli) AS timeMs,raw_partition AS partition,toString(raw_offset) AS offset,
-host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
-toUInt8(resource_kind) AS resourceKind,toUInt8(metric_kind) AS kind,toString(int_value) AS integer,double_value AS double,toString(if(bitTest(statistics_present,0),count,NULL)) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
-FROM ${source}
-ORDER BY time_unix_milli DESC,sampleId DESC`;
-}
+AND (metric_name,series_id,time_unix_milli,stream_id) IN arrayMap(
+	k -> (k.1,k.2,k.3,toFixedString(unhex(k.4),16)),
+	{samples:Array(Tuple(String,UInt64,UInt64,String))}
+)
+ORDER BY raw_offset DESC
+LIMIT 1 BY metric_name,series_id,time_unix_milli,stream_id`;
+
+const seriesListQuery = `SELECT toString(series_id) AS seriesId,metric_name AS metricName,_part AS part,
+source_id AS sourceId,resource_id AS resourceId,nullIf(host_id,'') AS hostId,
+toUInt8(resource_kind) AS resourceKind,toUInt8(metric_kind) AS kind,unit,scope_name AS scopeName,scope_version AS scopeVersion
+FROM metric_series
+PREWHERE project_id={project:String} AND metric_name IN {metrics:Array(String)}
+AND (metric_name,series_id) IN {ids:Array(Tuple(String,UInt64))}
+LIMIT 1 BY metric_name,series_id`;
 
 const PAGE_SIZE = 100;
 const RECEIPTS_PER_SEARCH = 8;
@@ -188,14 +194,24 @@ const MAX_SEARCHES = 16;
 const SEARCH_BUDGET_MS = 4000;
 const MS_PER_DAY = 86_400_000n;
 
-function summary(projectId: string, row: Row, fields: string[]): PointSummary {
+function summary(
+	projectId: string,
+	row: PointRow & SeriesRow,
+	fields: PointSummary["fields"],
+): PointSummary {
 	return {
 		sampleId: row.sampleId,
 		sourceId: row.sourceId,
 		resourceId: row.resourceId,
 		metricName: row.metricName,
 		timeMs: row.timeMs,
-		node: row.hostId ? activityNode(projectId, row.hostId, row.hostname) : null,
+		node: row.hostId
+			? activityNode(
+					projectId,
+					row.hostId,
+					fields['resource.attributes["host.name"]'] ?? "",
+				)
+			: null,
 		resourceKind: row.resourceKind,
 		kind: row.kind,
 		value: (row.flags & 1) === 0 ? (row.integer ?? row.double) : null,
@@ -205,9 +221,7 @@ function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 		flags: row.flags,
 		scopeName: row.scopeName,
 		scopeVersion: row.scopeVersion,
-		fields: Object.fromEntries(
-			fields.map((field, index) => [field, row.fields?.[index] ?? null]),
-		),
+		fields,
 	};
 }
 
@@ -421,7 +435,6 @@ export async function readPoints(
 	if (input.metric !== undefined)
 		conditions.push("metric_name={metric:String}");
 	const fields = input.fields ?? [];
-	const projections = compileFields(fields);
 	const params = {
 		...filters.params,
 		...(input.metric === undefined ? {} : { metric: input.metric }),
@@ -447,56 +460,13 @@ export async function readPoints(
 		(sql, params) => query<Delivery>(sql, params, signal, connection),
 		(sql, params) => query<Key>(sql, params, signal, connection),
 	);
-	const rows: Row[] = [];
-	const hydrate = pointListQuery(
-		projections.expressions,
-		fields.some(isContinuityField),
+	const points = await hydratePage(
+		input.projectId,
+		keys,
+		fields,
+		signal,
+		connection,
 	);
-	// The ClickHouse client sends query parameters in the URL.
-	for (let index = 0; index < keys.length; index += 20) {
-		const chunk = keys.slice(index, index + 20);
-		const times = chunk.map((key) => BigInt(key.timeMs));
-		rows.push(
-			...(await query<Row>(
-				hydrate,
-				{
-					...projections.params,
-					project: input.projectId,
-					firstPoint: times.reduce(min).toString(),
-					lastPoint: times.reduce(max).toString(),
-					days: [...new Set(chunk.map((key) => key.day))],
-					metrics: [...new Set(chunk.map((key) => key.metricName))],
-					seriesIds: [...new Set(chunk.map((key) => key.seriesId))],
-					ids: chunk.map(
-						(key) => new TupleParam([key.metricName, BigInt(key.seriesId)]),
-					),
-					series: chunk.map(
-						(key) =>
-							new TupleParam([
-								key.metricName,
-								BigInt(key.seriesId),
-								BigInt(key.timeMs),
-							]),
-					),
-					samples: chunk.map((key) => key.sampleId),
-					receipts: chunk.map(
-						(key) => new TupleParam([key.partition, BigInt(key.offset)]),
-					),
-					streams: [...new Set(chunk.map((key) => key.sampleId.slice(16)))],
-				},
-				signal,
-				connection,
-			)),
-		);
-	}
-	const identity = (
-		key: Pick<Row, "timeMs" | "sampleId" | "partition" | "offset">,
-	) => `${key.timeMs}/${key.sampleId}/${key.partition}/${key.offset}`;
-	const byKey = new Map(rows.map((row) => [identity(row), row]));
-	const points = keys.flatMap((key) => {
-		const row = byKey.get(identity(key));
-		return row ? [summary(input.projectId, row, fields)] : [];
-	});
 	return {
 		points,
 		from,
@@ -508,90 +478,257 @@ export async function readPoints(
 	};
 }
 
+async function hydratePage(
+	project: string,
+	keys: ReceiptPointKey[],
+	fields: string[],
+	signal?: AbortSignal,
+	connection?: ClickHouseClient,
+) {
+	const seriesFields = fields.filter((field) => !isContinuityField(field));
+	const streamFields = fields.filter(isContinuityField);
+	const seriesProjection = compileFields(seriesFields);
+	const streamProjection = compileFields(streamFields);
+	const points: PointSummary[] = [];
+	// The ClickHouse client sends query parameters in the URL.
+	for (let index = 0; index < keys.length; index += 20) {
+		const chunk = keys.slice(index, index + 20);
+		const times = chunk.map((key) => BigInt(key.timeMs));
+		const metrics = [...new Set(chunk.map((key) => key.metricName))];
+		const rows = await query<PointRow>(
+			pointListQuery,
+			{
+				project,
+				metrics,
+				firstPoint: times.reduce(min).toString(),
+				lastPoint: times.reduce(max).toString(),
+				days: [...new Set(chunk.map((key) => key.day))],
+				samples: chunk.map(
+					(key) =>
+						new TupleParam([
+							key.metricName,
+							BigInt(key.seriesId),
+							BigInt(key.timeMs),
+							key.sampleId.slice(16),
+						]),
+				),
+			},
+			signal,
+			connection,
+		);
+		if (!rows.length) continue;
+		const dimensions = await query<SeriesRow>(
+			seriesListQuery,
+			{
+				project,
+				metrics,
+				ids: rows.map(
+					(row) => new TupleParam([row.metricName, BigInt(row.seriesId)]),
+				),
+			},
+			signal,
+			connection,
+		);
+		await readSeriesFields(
+			project,
+			dimensions,
+			seriesProjection,
+			signal,
+			connection,
+		);
+		const evidence = await readStreamFields(
+			project,
+			rows,
+			streamProjection,
+			signal,
+			connection,
+		);
+		points.push(
+			...assemblePage(
+				project,
+				chunk,
+				rows,
+				dimensions,
+				evidence,
+				seriesFields,
+				streamFields,
+			),
+		);
+	}
+	return points;
+}
+
+async function readSeriesFields(
+	project: string,
+	dimensions: SeriesRow[],
+	projection: ReturnType<typeof compileFields>,
+	signal?: AbortSignal,
+	connection?: ClickHouseClient,
+	retry = true,
+) {
+	if (!dimensions.length || !projection.expressions.length) return;
+	const rows = await query<
+		Pick<SeriesRow, "metricName" | "seriesId" | "fields">
+	>(
+		`SELECT metric_name AS metricName,toString(series_id) AS seriesId,[${projection.expressions.join(",")}] AS fields
+FROM metric_series
+PREWHERE project_id={project:String}
+AND metric_name IN {metrics:Array(String)} AND resource_id IN {resources:Array(String)}
+AND _part IN {parts:Array(String)}
+AND (metric_name,resource_id,series_id,_part) IN {ids:Array(Tuple(String,String,UInt64,String))}
+LIMIT 1 BY metric_name,series_id`,
+		{
+			...projection.params,
+			project,
+			metrics: [...new Set(dimensions.map((row) => row.metricName))],
+			resources: [...new Set(dimensions.map((row) => row.resourceId))],
+			parts: [...new Set(dimensions.map((row) => row.part))],
+			ids: dimensions.map(
+				(row) =>
+					new TupleParam([
+						row.metricName,
+						row.resourceId,
+						BigInt(row.seriesId),
+						row.part,
+					]),
+			),
+		},
+		signal,
+		connection,
+	);
+	const fields = new Map(rows.map((row) => [seriesKey(row), row.fields]));
+	for (const row of dimensions) row.fields = fields.get(seriesKey(row));
+	const missing = dimensions.filter((row) => !row.fields);
+	if (!missing.length) return;
+	if (!retry)
+		throw new OperationError(
+			"UNAVAILABLE",
+			"Measurement dimensions changed during the query",
+		);
+	// A background merge can replace the selected part between the two reads.
+	const refreshed = await query<SeriesRow>(
+		seriesListQuery,
+		{
+			project,
+			metrics: [...new Set(missing.map((row) => row.metricName))],
+			ids: missing.map(
+				(row) => new TupleParam([row.metricName, BigInt(row.seriesId)]),
+			),
+		},
+		signal,
+		connection,
+	);
+	await readSeriesFields(
+		project,
+		refreshed,
+		projection,
+		signal,
+		connection,
+		false,
+	);
+	const replacements = new Map(
+		refreshed.map((row) => [seriesKey(row), row.fields]),
+	);
+	for (const row of missing) row.fields = replacements.get(seriesKey(row));
+}
+
+function seriesKey(key: Pick<Key, "metricName" | "seriesId">) {
+	return JSON.stringify([key.metricName, key.seriesId]);
+}
+
+async function readStreamFields(
+	project: string,
+	rows: PointRow[],
+	projection: ReturnType<typeof compileFields>,
+	signal?: AbortSignal,
+	connection?: ClickHouseClient,
+) {
+	if (!projection.expressions.length) return [];
+	return query<StreamRow>(
+		`SELECT hex(stream_id) AS streamId,[${projection.expressions.join(",")}] AS fields
+FROM (SELECT *, toUInt8(1) AS evidence_present FROM metric_streams
+PREWHERE project_id={project:String} AND stream_id IN arrayMap(id -> toFixedString(unhex(id),16), {streams:Array(String)}))
+LIMIT 1 BY streamId`,
+		{
+			...projection.params,
+			project,
+			streams: [...new Set(rows.map((row) => row.sampleId.slice(16)))],
+		},
+		signal,
+		connection,
+	);
+}
+
+function assemblePage(
+	project: string,
+	keys: ReceiptPointKey[],
+	rows: PointRow[],
+	dimensions: SeriesRow[],
+	evidence: StreamRow[],
+	seriesFields: string[],
+	streamFields: string[],
+) {
+	const pointId = (key: Pick<Key, "metricName" | "timeMs" | "sampleId">) =>
+		JSON.stringify([key.metricName, key.timeMs, key.sampleId]);
+	const rowByKey = new Map(rows.map((row) => [pointId(row), row]));
+	const seriesByKey = new Map(dimensions.map((row) => [seriesKey(row), row]));
+	const streamByKey = new Map(
+		evidence.map((row) => [row.streamId, row.fields]),
+	);
+	return keys.flatMap((key) => {
+		const row = rowByKey.get(pointId(key));
+		const series = seriesByKey.get(seriesKey(key));
+		// A newer copy may have arrived between key search and hydration.
+		if (
+			!row ||
+			!series ||
+			row.offset !== key.offset ||
+			row.partition !== key.partition
+		)
+			return [];
+		const stream = streamByKey.get(row.sampleId.slice(16));
+		if (streamFields.length && !stream)
+			throw new OperationError(
+				"UNAVAILABLE",
+				"Measurement continuity is not yet available",
+			);
+		return [
+			summary(
+				project,
+				{ ...row, ...series },
+				Object.fromEntries([
+					...seriesFields.map((field, i) => [
+						field,
+						series.fields?.[i] ?? null,
+					]),
+					...streamFields.map((field, i) => [field, stream?.[i] ?? null]),
+				]),
+			),
+		];
+	});
+}
+
 export async function readPoint(
 	input: PointInput,
 	signal?: AbortSignal,
 	connection?: ClickHouseClient,
 ): Promise<PointDetail> {
-	const day = Number(BigInt(input.timeMs) / 86_400_000n);
-	const attributes = [
-		"resource_attributes",
-		"scope_attributes",
-		"point_attributes",
-		"metric_metadata",
-	];
-	const projected = attributes
-		.map(
-			(name) =>
-				`arrayMap(a -> CAST(tuple(a.path,a.kind,a.string_value,a.int_value,a.double_value,a.bool_value,base64Encode(a.bytes_value)), 'Tuple(path String,kind UInt8,string_value Nullable(String),int_value Nullable(Int64),double_value Nullable(Float64),bool_value Nullable(UInt8),bytes_value Nullable(String))'),${inspectorAttributes(name)}) AS ${name}_json`,
-		)
-		.join(",");
-	const rows = await query<JsonObject>(
-		`SELECT * EXCEPT(stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_milli,last_seen_unix_milli,logical_series_id,resource_kind,metric_kind,temporality,monotonic,value_kind,statistics_present)
-REPLACE (${["count", "sum", "min", "max", "scale", "zero_count", "zero_threshold", "positive_offset", "negative_offset"].map((name, i) => `if(bitTest(statistics_present,${i}),${name},NULL) AS ${name}`).join(",")}),
-toUInt8(resource_kind) AS resource_kind,toUInt8(metric_kind) AS metric_kind,toUInt8(temporality) AS temporality,
-nullIf(toUInt8(monotonic),2) AS monotonic,
-hex(stream_id) AS stream_id_hex,
-arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
-FROM ${streamEvidenceSource(
-			seriesPointSource(
-				` AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_milli <= {time:UInt64} AND ${seriesLastSeen("{time:UInt64}")}`,
-				`AND event_day={day:UInt32} AND time_unix_milli={time:UInt64} AND series_id={series:UInt64} AND stream_id=unhex({stream:String})`,
-				undefined,
-				"AND metric_name={metric:String}",
-			),
-			" AND stream_id=unhex({stream:String})",
-		)} LIMIT 1`,
-		{
-			project: input.projectId,
-			source: input.sourceId,
-			resource: input.resourceId,
-			metric: input.metricName,
-			day,
-			time: input.timeMs,
-			series: BigInt(`0x${input.sampleId.slice(0, 16)}`).toString(),
-			stream: input.sampleId.slice(16),
-		},
-		signal,
-		connection,
-	);
-	const row = rows[0];
-	if (!row) throw new OperationError("NOT_FOUND", "Measurement not found");
-	if (Number(row.evidence_present) !== 1)
-		throw new OperationError(
-			"UNAVAILABLE",
-			"Measurement continuity is not yet available",
-		);
-	delete row.evidence_present;
-	for (const name of attributes) {
-		row[name] = row[`${name}_json`];
-		delete row[`${name}_json`];
-	}
-	for (const name of ["stream_id"]) {
-		row[name] = row[`${name}_hex`];
-		delete row[`${name}_hex`];
-	}
-	for (const name of ["exemplars", "resource_entity_refs"]) {
-		row[name] = row[`${name}_base64`];
-		delete row[`${name}_base64`];
-	}
+	const row = await readDetailRows(input, signal, connection);
 	const select = (names: string[]) =>
 		Object.fromEntries(
 			names.map((key) => [key, row[key] ?? null]),
 		) as JsonObject;
 	const [delivery] = await query<{
 		request: string;
-		context: string;
+		contextId: string;
 		received: string;
 		oldest: string;
 		newest: string;
 	}>(
-		`SELECT hex(d.delivery_request) AS request, hex(c.delivery_context) AS context, toString(received_unix_nano) AS received,
+		`SELECT hex(delivery_request) AS request, hex(delivery_context_id) AS contextId, toString(received_unix_nano) AS received,
 		  toString(min_event_unix_milli) AS oldest, toString(max_event_unix_milli) AS newest
-		FROM (SELECT * FROM deliveries FINAL WHERE project_id={project:String} AND source_id={source:String}
-		  AND raw_partition={partition:UInt32} AND raw_offset={offset:UInt64}) d
-		INNER JOIN (SELECT delivery_context_id, delivery_context FROM delivery_contexts FINAL
-		  WHERE project_id={project:String} AND source_id={source:String}) c USING (delivery_context_id)
+		FROM deliveries FINAL WHERE project_id={project:String} AND source_id={source:String}
+		  AND raw_partition={partition:UInt32} AND raw_offset={offset:UInt64}
 		LIMIT 1`,
 		{
 			project: input.projectId,
@@ -607,6 +744,23 @@ FROM ${streamEvidenceSource(
 			"UNAVAILABLE",
 			"Measurement provenance is not yet available",
 		);
+	const [context] = await query<{ payload: string }>(
+		`SELECT hex(delivery_context) AS payload FROM delivery_contexts
+WHERE project_id={project:String} AND source_id={source:String} AND delivery_context_id=unhex({id:String})
+LIMIT 1`,
+		{
+			project: input.projectId,
+			source: input.sourceId,
+			id: delivery.contextId,
+		},
+		signal,
+		connection,
+	);
+	if (!context)
+		throw new OperationError(
+			"UNAVAILABLE",
+			"Measurement provenance is not yet available",
+		);
 	const received = BigInt(delivery.received);
 	const {
 		original_resource,
@@ -616,7 +770,7 @@ FROM ${streamEvidenceSource(
 		...point
 	} = row;
 	const provenance = {
-		...decodeDelivery(delivery.request, delivery.context, {
+		...decodeDelivery(delivery.request, context.payload, {
 			resource: Number(original_resource),
 			scope: Number(original_scope),
 			metric: Number(original_metric),
@@ -687,10 +841,90 @@ FROM ${streamEvidenceSource(
 	};
 }
 
-function inspectorAttributes(name: string) {
-	if (name !== "resource_attributes" && name !== "point_attributes")
-		return name;
-	const markers =
-		name === "resource_attributes" ? "resource_continuity" : "point_continuity";
-	return `arraySort(a -> a.path, arrayConcat(${name}, arrayMap(c -> c.node, ${markers})))`;
+function inspectorAttributes(expression: string, alias: string) {
+	return `arrayMap(a -> CAST(tuple(a.path,a.kind,a.string_value,a.int_value,a.double_value,a.bool_value,base64Encode(a.bytes_value)), 'Tuple(path String,kind UInt8,string_value Nullable(String),int_value Nullable(Int64),double_value Nullable(Float64),bool_value Nullable(UInt8),bytes_value Nullable(String))'),${expression}) AS ${alias}`;
+}
+
+function restoreAttributes(
+	dimensions: JsonValue | undefined,
+	markers: JsonValue | undefined,
+) {
+	const nodes = [...(dimensions as JsonObject[]), ...(markers as JsonObject[])];
+	return nodes.sort((a, b) =>
+		Buffer.compare(Buffer.from(String(a.path)), Buffer.from(String(b.path))),
+	);
+}
+
+async function readDetailRows(
+	input: PointInput,
+	signal?: AbortSignal,
+	connection?: ClickHouseClient,
+): Promise<JsonObject> {
+	const params = {
+		project: input.projectId,
+		source: input.sourceId,
+		resource: input.resourceId,
+		metric: input.metricName,
+		day: Number(BigInt(input.timeMs) / MS_PER_DAY),
+		time: input.timeMs,
+		series: BigInt(`0x${input.sampleId.slice(0, 16)}`).toString(),
+		stream: input.sampleId.slice(16),
+	};
+	const [series] = await query<JsonObject>(
+		`SELECT source_id,resource_id,toUInt8(resource_kind) AS resource_kind,nullIf(host_id,'') AS host_id,
+resource_schema_url,scope_schema_url,scope_name,scope_version,resource_present,scope_present,
+resource_dropped_attributes_count,scope_dropped_attributes_count,description,unit,
+toUInt8(metric_kind) AS metric_kind,toUInt8(temporality) AS temporality,nullIf(toUInt8(monotonic),2) AS monotonic,
+arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs,
+${["resource_attributes", "scope_attributes", "point_attributes", "metric_metadata"].map((name) => inspectorAttributes(`metric_series.${name}`, name)).join(",")}
+FROM metric_series
+PREWHERE project_id={project:String} AND source_id={source:String} AND resource_id={resource:String}
+AND metric_name={metric:String} AND series_id={series:UInt64}
+GROUP BY ALL HAVING min(first_seen_unix_milli) <= {time:UInt64}
+AND ${seriesLastSeen("{time:UInt64}").replace("last_seen_unix_milli", "max(last_seen_unix_milli)")}
+LIMIT 1`,
+		params,
+		signal,
+		connection,
+	);
+	if (!series) throw new OperationError("NOT_FOUND", "Measurement not found");
+	const [point] = await query<JsonObject>(
+		`SELECT * EXCEPT(stream_id,exemplars,value_kind,statistics_present)
+REPLACE (if(value_kind=1,int_value,NULL) AS int_value, if(value_kind=2,double_value,NULL) AS double_value,
+${["count", "sum", "min", "max", "scale", "zero_count", "zero_threshold", "positive_offset", "negative_offset"].map((name, i) => `if(bitTest(statistics_present,${i}),${name},NULL) AS ${name}`).join(",")}),
+hex(stream_id) AS stream_id,arrayMap(value -> base64Encode(value),metric_points.exemplars) AS exemplars
+FROM metric_points
+PREWHERE project_id={project:String} AND metric_name={metric:String} AND series_id={series:UInt64}
+AND event_day={day:UInt32} AND time_unix_milli={time:UInt64} AND metric_points.stream_id=unhex({stream:String})
+ORDER BY raw_offset DESC LIMIT 1`,
+		params,
+		signal,
+		connection,
+	);
+	if (!point) throw new OperationError("NOT_FOUND", "Measurement not found");
+	const [stream] = await query<JsonObject>(
+		`SELECT ${inspectorAttributes("arrayMap(c -> c.node, resource_continuity)", "resource_markers")},
+${inspectorAttributes("arrayMap(c -> c.node, point_continuity)", "point_markers")}
+FROM metric_streams PREWHERE project_id={project:String} AND stream_id=unhex({stream:String}) LIMIT 1`,
+		params,
+		signal,
+		connection,
+	);
+	if (!stream)
+		throw new OperationError(
+			"UNAVAILABLE",
+			"Measurement continuity is not yet available",
+		);
+	return {
+		...point,
+		...series,
+		resource_attributes: restoreAttributes(
+			series.resource_attributes,
+			stream.resource_markers,
+		),
+		point_attributes: restoreAttributes(
+			series.point_attributes,
+			stream.point_markers,
+		),
+	};
 }
