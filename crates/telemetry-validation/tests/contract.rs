@@ -11,6 +11,7 @@ use recount_telemetry_schema::{
     metrics::{self, metric::Data, number_data_point::Value},
     point, projection,
     resource::Resource,
+    series::singleton_size_bound,
     wire::*,
 };
 use recount_telemetry_validation::{
@@ -180,7 +181,7 @@ fn compact_delivery_reassembles_every_original_lineage() {
 }
 
 #[test]
-fn admission_preflight_and_retained_replay_share_exact_rows_and_bounds() {
+fn admission_preflight_and_retained_replay_share_bounds() {
     let mut request = cases::reader_request();
     cases::gauge_mut(&mut request, "integer.extremes").data_points[0].value =
         Some(Value::AsDouble(-0.0));
@@ -205,14 +206,7 @@ fn admission_preflight_and_retained_replay_share_exact_rows_and_bounds() {
     validate::request(&request, Limits::default()).unwrap();
     let admission = validate::preflight(&raw, &request, Limits::default()).unwrap();
     let replay = validate::retained_delivery(&raw, Limits::default()).unwrap();
-    assert_eq!(
-        admission
-            .iter()
-            .map(projection::serialize)
-            .collect::<Vec<_>>(),
-        replay.iter().map(projection::serialize).collect::<Vec<_>>()
-    );
-    let histogram = admission
+    let histogram = replay
         .iter()
         .filter(|r| r.metric_name == "distribution")
         .nth(1)
@@ -220,15 +214,18 @@ fn admission_preflight_and_retained_replay_share_exact_rows_and_bounds() {
     for value in [histogram.sum, histogram.min, histogram.max] {
         assert_eq!(value.map(f64::to_bits), Some((-0.0f64).to_bits()));
     }
-    let summary = admission
-        .iter()
-        .find(|r| r.metric_name == "summary")
-        .unwrap();
+    let summary = replay.iter().find(|r| r.metric_name == "summary").unwrap();
     assert_eq!(summary.sum.map(f64::to_bits), Some(0.0f64.to_bits()));
     assert_eq!(summary.quantiles[0].to_bits(), 0.0f64.to_bits());
     assert_eq!(summary.quantile_values[0].to_bits(), 0.0f64.to_bits());
-    let max_record = admission.iter().map(Message::encoded_len).max().unwrap();
-    let total = admission.iter().map(Message::encoded_len).sum::<usize>();
+    let max_record = replay.iter().map(singleton_size_bound).max().unwrap();
+    let total = replay.iter().map(singleton_size_bound).sum::<usize>();
+    let evidence = replay[0].delivery_evidence.len();
+    assert_eq!(admission.record_bytes, max_record);
+    assert_eq!(
+        admission.batch_bytes,
+        total + evidence + 8 - (2 + prost::length_delimiter_len(evidence) + evidence)
+    );
     for limits in [
         Limits {
             normalized_record_bytes: max_record - 1,
@@ -274,6 +271,201 @@ fn admission_preflight_and_retained_replay_share_exact_rows_and_bounds() {
             .category,
         Category::Poison
     );
+}
+
+#[test]
+fn exact_delivery_size_matches_materialized_projection_at_both_limits() {
+    let mut state = 0x243f_6a88_85a3_08d3u64;
+    let mut next = || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    for trial in 0..128 {
+        let mut request = cases::reader_request();
+        let mut raw = cases::raw();
+        raw.bindings
+            .rotate_left(trial % request.resource_metrics.len());
+        if trial % 3 == 0 {
+            raw.batch = None;
+        }
+        let repeated = [0, 1, 15, 16, 63, 64, 127, 128, 129][(next() % 9) as usize];
+        let width = [0, 1, 63, 64, 125, 126, 127, 128, 255][(next() % 9) as usize];
+        let mut sample = cases::number(
+            Some(Value::AsInt(next() as i64)),
+            (next() % 20_000) * 86_400_000_000_000 + 1,
+        );
+        sample.start_time_unix_nano = sample.time_unix_nano - 1;
+        sample.attributes = cases::attributes();
+        sample.attributes.push(cases::attr(
+            "recount.counter.segment_id",
+            Attribute::ArrayValue(ArrayValue {
+                values: (0..(next() % 20))
+                    .map(|i| AnyValue {
+                        value: Some(Attribute::IntValue(i as i64 - 8)),
+                    })
+                    .collect(),
+            }),
+        ));
+        sample.attributes.push(cases::attr(
+            "recount.counter.segment_id/extra",
+            Attribute::StringValue("x".repeat(width)),
+        ));
+        sample.attributes.rotate_left((next() % 4) as usize);
+        let mut populated = cases::single_gauge_resource(vec![sample; repeated]);
+        populated.schema_url = "r".repeat(width);
+        populated.resource = Some(Resource {
+            dropped_attributes_count: next() as u32,
+            attributes: vec![cases::attr(
+                "recount.host.boot_id",
+                Attribute::KvlistValue(KeyValueList {
+                    values: vec![cases::attr(
+                        &format!("key{}", "~/".repeat(width / 5)),
+                        Attribute::BytesValue(vec![0; width]),
+                    )],
+                }),
+            )],
+            ..Default::default()
+        });
+        // Position is the original OTLP position, including empty containers.
+        request.resource_metrics[0]
+            .scope_metrics
+            .extend(std::iter::repeat_n(
+                metrics::ScopeMetrics::default(),
+                repeated,
+            ));
+        request.resource_metrics[0]
+            .scope_metrics
+            .extend(populated.scope_metrics);
+        request.resource_metrics[0].resource = populated.resource;
+        request.resource_metrics[0].schema_url = populated.schema_url;
+        if trial % 17 == 0 {
+            for resource in &mut request.resource_metrics {
+                resource.scope_metrics.clear();
+            }
+        }
+        raw.delivery = (trial % 2 == 0).then(|| DeliveryObservation {
+            ingestion_peer_address: Some("127.0.0.1:4444".into()),
+            collector: Some(CollectorConnection {
+                connection_id: "example".into(),
+                local_address: "192.0.2.1:5555".into(),
+                peer_address: "192.0.2.2:4317".into(),
+                hostname: Some(String::new()),
+                local_interface_names: vec!["eth0".into()],
+                interfaces: vec![
+                    NetworkInterface {
+                        name: "eth0".into(),
+                        mac_address: Some("00:11:22:33:44:55".into()),
+                        addresses: vec!["192.0.2.1".into(), "192.0.2.3".into()],
+                        up: true,
+                        ..Default::default()
+                    },
+                    NetworkInterface {
+                        name: "other".into(),
+                        addresses: vec!["192.0.2.1".into()],
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }),
+        });
+        let check = |points, record, batch| {
+            let projected =
+                point::normalize_delivery(&raw, &request, points, record, batch).map(|rows| {
+                    let mut sizes = point::DeliverySize::default();
+                    for row in &rows {
+                        let size = singleton_size_bound(row);
+                        sizes.record_bytes = sizes.record_bytes.max(size);
+                        sizes.batch_bytes += size;
+                    }
+                    if let Some(first) = rows.first() {
+                        let evidence = first.delivery_evidence.len();
+                        sizes.batch_bytes = sizes.batch_bytes + evidence + 8
+                            - (2 + prost::length_delimiter_len(evidence) + evidence);
+                    }
+                    sizes
+                });
+            let counted = point::delivery_size(&raw, &request, points, record, batch);
+            assert_eq!(
+                counted, projected,
+                "trial {trial}, limits {points}/{record}/{batch}"
+            );
+            counted
+        };
+        let size = check(usize::MAX, usize::MAX, usize::MAX).unwrap();
+        if size.batch_bytes == 0 {
+            assert_eq!(size.record_bytes, 0);
+            continue;
+        }
+        let unlimited = usize::MAX;
+        for limit in [
+            size.record_bytes - 1,
+            size.record_bytes,
+            size.record_bytes + 1,
+        ] {
+            assert_eq!(
+                check(unlimited, limit, unlimited).is_ok(),
+                limit >= size.record_bytes
+            );
+        }
+        for limit in [size.batch_bytes - 1, size.batch_bytes, size.batch_bytes + 1] {
+            assert_eq!(
+                check(unlimited, size.record_bytes, limit).is_ok(),
+                limit >= size.batch_bytes
+            );
+        }
+        let points = validate::request(&request, Limits::default()).unwrap();
+        assert_eq!(
+            check(points - 1, unlimited, unlimited),
+            Err("normalized point limit")
+        );
+    }
+}
+
+#[test]
+fn exact_delivery_size_preserves_projection_errors() {
+    let mut request = cases::reader_request();
+    let raw = cases::raw();
+    let match_error = |raw: &RawRecord, request: &ExportMetricsServiceRequest, reason| {
+        assert_eq!(
+            point::delivery_size(raw, request, 4096, 1 << 20, 1 << 24),
+            Err(reason)
+        );
+        assert_eq!(
+            point::normalize_delivery(raw, request, 4096, 1 << 20, 1 << 24).unwrap_err(),
+            reason
+        );
+    };
+    let cases = [
+        (
+            cases::attr("bad", Attribute::DoubleValue(f64::NAN)),
+            "nonfinite attribute",
+        ),
+        (
+            cases::attr("", Attribute::BoolValue(false)),
+            "empty attribute key",
+        ),
+        (
+            cases::attr("dict", Attribute::StringValueStrindex(1)),
+            "dictionary strings are not admitted for metrics",
+        ),
+    ];
+    for (bad, reason) in cases {
+        cases::gauge_mut(&mut request, "integer.extremes").data_points[0].attributes = vec![bad];
+        match_error(&raw, &request, reason);
+    }
+    let duplicate = cases::attr("duplicate", Attribute::BoolValue(false));
+    cases::gauge_mut(&mut request, "integer.extremes").data_points[0].attributes =
+        vec![duplicate; 2];
+    match_error(&raw, &request, "duplicate attribute key");
+    let p = &mut cases::gauge_mut(&mut request, "integer.extremes").data_points[0];
+    p.attributes.clear();
+    p.value = Some(Value::AsDouble(f64::NAN));
+    match_error(&raw, &request, "nonfinite value");
+    let mut broken = raw;
+    broken.bindings[1].original_resource = broken.bindings[0].original_resource;
+    match_error(&broken, &request, "duplicate resource binding position");
 }
 
 #[test]

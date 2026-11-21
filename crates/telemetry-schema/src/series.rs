@@ -5,10 +5,14 @@ use crate::{
 use prost::Message;
 use std::sync::Arc;
 
-const RESOURCE_MARKERS: &[&str] = &["/recount.host.boot_id", "/recount.collection.epoch_id"];
-const POINT_MARKERS: &[&str] = &["/recount.counter.segment_id"];
+pub(crate) const RESOURCE_MARKERS: &[&str] =
+    &["recount.host.boot_id", "recount.collection.epoch_id"];
+pub(crate) const POINT_MARKERS: &[&str] = &["recount.counter.segment_id"];
 
 fn is_marker(path: &str, markers: &[&str]) -> bool {
+    let Some(path) = path.strip_prefix('/') else {
+        return false;
+    };
     markers.iter().any(|marker| {
         path == *marker
             || path
@@ -24,19 +28,22 @@ pub fn singleton_size_bound(point: &AnalyticalPoint) -> usize {
 }
 
 pub(crate) fn singleton_overhead(point: &AnalyticalPoint) -> usize {
-    // A storage key, a logical key and two timestamp bounds are fixed64s.
-    let mut overhead = 4 * 10 + 48;
+    let mut count = 0;
     for (nodes, markers) in [
         (&point.resource_attributes, RESOURCE_MARKERS),
         (&point.point_attributes, POINT_MARKERS),
     ] {
-        overhead += nodes
+        count += nodes
             .iter()
             .filter(|node| is_marker(&node.path, markers))
-            .count()
-            * 20;
+            .count();
     }
-    overhead
+    singleton_overhead_for_markers(count)
+}
+
+pub(crate) fn singleton_overhead_for_markers(count: usize) -> usize {
+    // A storage key, a logical key and two timestamp bounds are fixed64s.
+    4 * 10 + 48 + count * 20
 }
 
 /// A split point with optional shared series metadata. Uncached preparation

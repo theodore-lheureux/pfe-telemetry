@@ -88,19 +88,34 @@ pub enum AttributeError {
 }
 
 pub fn canonical_attributes(attrs: &[KeyValue]) -> Result<Vec<u8>, &'static str> {
-    encode_attributes(attrs, None).map_err(|error| match error {
-        AttributeError::Invalid(reason) | AttributeError::Limit(reason) => reason,
-    })
+    let mut bytes = Vec::new();
+    visit_attributes::<true>(attrs, None, &mut bytes, &mut Vec::new()).map_err(attribute_reason)?;
+    Ok(bytes)
 }
 
 pub fn bounded_attributes(attrs: &[KeyValue], max_nodes: usize) -> Result<(), AttributeError> {
-    encode_attributes(attrs, Some(max_nodes)).map(|_| ())
+    visit_attributes::<true>(attrs, Some(max_nodes), &mut Vec::new(), &mut Vec::new())
 }
 
-fn encode_attributes(
-    attrs: &[KeyValue],
+pub(crate) fn check_projected_attributes<'a>(
+    attrs: &'a [KeyValue],
+    order: &mut Vec<&'a KeyValue>,
+) -> Result<(), &'static str> {
+    visit_attributes::<false>(attrs, None, &mut Vec::new(), order).map_err(attribute_reason)
+}
+
+fn attribute_reason(error: AttributeError) -> &'static str {
+    match error {
+        AttributeError::Invalid(reason) | AttributeError::Limit(reason) => reason,
+    }
+}
+
+fn visit_attributes<'a, const ENCODE: bool>(
+    attrs: &'a [KeyValue],
     max_nodes: Option<usize>,
-) -> Result<Vec<u8>, AttributeError> {
+    out: &mut Vec<u8>,
+    order: &mut Vec<&'a KeyValue>,
+) -> Result<(), AttributeError> {
     struct Budget {
         max_nodes: Option<usize>,
         nodes: usize,
@@ -137,48 +152,67 @@ fn encode_attributes(
         out.extend_from_slice(&(b.len() as u64).to_be_bytes());
         out.extend_from_slice(b);
     }
-    fn value(
+    fn value<'a, const ENCODE: bool>(
         out: &mut Vec<u8>,
-        v: &AnyValue,
+        order: &mut Vec<&'a KeyValue>,
+        v: &'a AnyValue,
         depth: usize,
         budget: &mut Budget,
     ) -> Result<(), AttributeError> {
         budget.node(depth)?;
         match &v.value {
-            None => out.push(0),
+            None => {
+                if ENCODE {
+                    out.push(0);
+                }
+            }
             Some(Value::StringValue(v)) => {
                 budget.bytes(v.len(), 65536, "attribute string byte limit")?;
-                out.push(1);
-                block(out, v.as_bytes());
+                if ENCODE {
+                    out.push(1);
+                    block(out, v.as_bytes());
+                }
             }
             Some(Value::BoolValue(v)) => {
-                out.push(2);
-                out.push(u8::from(*v));
+                if ENCODE {
+                    out.push(2);
+                    out.push(u8::from(*v));
+                }
             }
             Some(Value::IntValue(v)) => {
-                out.push(3);
-                out.extend_from_slice(&v.to_be_bytes());
+                if ENCODE {
+                    out.push(3);
+                    out.extend_from_slice(&v.to_be_bytes());
+                }
             }
             Some(Value::DoubleValue(v)) if v.is_finite() => {
-                out.push(4);
-                out.extend_from_slice(&v.to_bits().to_be_bytes());
+                if ENCODE {
+                    out.push(4);
+                    out.extend_from_slice(&v.to_bits().to_be_bytes());
+                }
             }
             Some(Value::DoubleValue(_)) => return Err(Invalid("nonfinite attribute")),
             Some(Value::ArrayValue(v)) => {
-                out.push(5);
-                out.extend_from_slice(&(v.values.len() as u64).to_be_bytes());
+                if ENCODE {
+                    out.push(5);
+                    out.extend_from_slice(&(v.values.len() as u64).to_be_bytes());
+                }
                 for v in &v.values {
-                    value(out, v, depth + 1, budget)?;
+                    value::<ENCODE>(out, order, v, depth + 1, budget)?;
                 }
             }
             Some(Value::KvlistValue(v)) => {
-                out.push(6);
-                attributes(out, &v.values, depth + 1, budget)?;
+                if ENCODE {
+                    out.push(6);
+                }
+                attributes::<ENCODE>(out, order, &v.values, depth + 1, budget)?;
             }
             Some(Value::BytesValue(v)) => {
                 budget.bytes(v.len(), 65536, "attribute bytes limit")?;
-                out.push(7);
-                block(out, v);
+                if ENCODE {
+                    out.push(7);
+                    block(out, v);
+                }
             }
             Some(Value::StringValueStrindex(_)) => {
                 return Err(Invalid("dictionary strings are not admitted for metrics"));
@@ -186,9 +220,10 @@ fn encode_attributes(
         }
         Ok(())
     }
-    fn attributes(
+    fn attributes<'a, const ENCODE: bool>(
         out: &mut Vec<u8>,
-        attrs: &[KeyValue],
+        order: &mut Vec<&'a KeyValue>,
+        attrs: &'a [KeyValue],
         depth: usize,
         budget: &mut Budget,
     ) -> Result<(), AttributeError> {
@@ -198,13 +233,18 @@ fn encode_attributes(
         {
             return Err(Limit("recursive attribute node limit"));
         }
-        let mut ordered: Vec<_> = attrs.iter().collect();
+        let start = order.len();
+        order.extend(attrs);
+        let ordered = &mut order[start..];
         ordered.sort_unstable_by(|a, b| a.key.cmp(&b.key));
         if ordered.windows(2).any(|v| v[0].key == v[1].key) {
             return Err(Invalid("duplicate attribute key"));
         }
-        out.extend_from_slice(&(ordered.len() as u64).to_be_bytes());
-        for kv in ordered {
+        if ENCODE {
+            out.extend_from_slice(&(attrs.len() as u64).to_be_bytes());
+        }
+        for i in start..start + attrs.len() {
+            let kv = order[i];
             budget.bytes(kv.key.len(), 128, "attribute key byte limit")?;
             if kv.key_strindex != 0 {
                 return Err(Invalid("dictionary keys are not admitted for metrics"));
@@ -212,31 +252,37 @@ fn encode_attributes(
             if kv.key.is_empty() {
                 return Err(Invalid("empty attribute key"));
             }
-            block(out, kv.key.as_bytes());
+            if ENCODE {
+                block(out, kv.key.as_bytes());
+            }
             match &kv.value {
                 Some(v) => {
-                    out.push(1);
-                    value(out, v, depth, budget)?;
+                    if ENCODE {
+                        out.push(1);
+                    }
+                    value::<ENCODE>(out, order, v, depth, budget)?;
                 }
                 None => {
                     budget.node(depth)?;
-                    out.push(0);
+                    if ENCODE {
+                        out.push(0);
+                    }
                 }
             }
         }
+        order.truncate(start);
         Ok(())
     }
-    let mut out = Vec::new();
-    attributes(
-        &mut out,
+    attributes::<ENCODE>(
+        out,
+        order,
         attrs,
         0,
         &mut Budget {
             max_nodes,
             nodes: 0,
         },
-    )?;
-    Ok(out)
+    )
 }
 
 pub fn hex(bytes: &[u8]) -> String {

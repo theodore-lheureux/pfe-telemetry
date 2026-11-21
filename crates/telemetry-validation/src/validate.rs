@@ -315,10 +315,18 @@ pub fn preflight(
     raw: &RawRecord,
     request: &ExportMetricsServiceRequest,
     limits: Limits,
-) -> Result<Vec<AnalyticalPoint>, Issue> {
+) -> Result<point::DeliverySize, Issue> {
     let limits = limits.validate()?;
     envelope(raw, limits)?;
-    lower(raw, request, limits, true)
+    validate_bindings(raw, request, limits)?;
+    point::delivery_size(
+        raw,
+        request,
+        limits.points,
+        limits.normalized_record_bytes,
+        limits.normalized_batch_bytes,
+    )
+    .map_err(|e| Issue::new(Category::Limit, "normalized", e))
 }
 
 fn envelope(raw: &RawRecord, limits: Limits) -> Result<(), Issue> {
