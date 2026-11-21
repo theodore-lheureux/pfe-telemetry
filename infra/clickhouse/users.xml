@@ -29,6 +29,7 @@
         <query>GRANT SELECT ON telemetry.deliveries</query>
         <query>GRANT SELECT ON telemetry.delivery_contexts</query>
         <query>GRANT SELECT ON telemetry.execution_participants</query>
+        <query>GRANT SELECT ON telemetry.project_rejected_deliveries</query>
       </grants>
     </telemetry_reader>
   </users>

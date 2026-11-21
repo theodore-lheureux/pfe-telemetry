@@ -119,7 +119,8 @@ pub(crate) fn pack(
         packed_recent,
         None,
         None,
-    )?
+    )
+    .map_err(|error| error.reason())?
     .0)
 }
 
@@ -127,6 +128,21 @@ pub(crate) fn pack(
 pub(super) struct Emissions {
     pub series: Vec<Emission>,
     pub streams: Vec<Emission<[u8; 32]>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum PackError {
+    RecordTooLarge,
+    Invariant(&'static str),
+}
+
+impl PackError {
+    fn reason(&self) -> &'static str {
+        match self {
+            Self::RecordTooLarge => "normalized record exceeds broker budget",
+            Self::Invariant(reason) => reason,
+        }
+    }
 }
 
 pub(super) fn pack_prepared(
@@ -137,7 +153,7 @@ pub(super) fn pack_prepared(
     packed_recent: bool,
     cache: Option<&SeriesCache>,
     stream_cache: Option<&SeriesCache<[u8; 32]>>,
-) -> Result<(Vec<RoutedRecord>, Emissions), &'static str> {
+) -> Result<(Vec<RoutedRecord>, Emissions), PackError> {
     let batch_bytes = PACKED_BYTES.min(broker_bytes.saturating_sub(FRAMING_RESERVE));
     let mut pending = BTreeMap::<u32, Packet>::new();
     let mut output = Vec::new();
@@ -148,9 +164,9 @@ pub(super) fn pack_prepared(
         resource,
     } in points
     {
-        let stream = normalized_routing_key(&point)?;
-        let partition =
-            identity::partition(&stream, partitions).ok_or("positive partition count required")?;
+        let stream = normalized_routing_key(&point).map_err(PackError::Invariant)?;
+        let partition = identity::partition(&stream, partitions)
+            .ok_or(PackError::Invariant("positive partition count required"))?;
         let metadata = metadata.unwrap_or_else(|| Arc::new(SeriesMetadata::new(&mut point)));
         let late = !recent(point.time_unix_nano, now);
         let emission = Emission {
@@ -187,7 +203,7 @@ pub(super) fn pack_prepared(
             } else {
                 point.encode_to_vec()
             };
-            body_fits(payload.len(), broker_bytes)?;
+            body_fits(payload.len(), broker_bytes).map_err(|_| PackError::RecordTooLarge)?;
             output.push(RoutedRecord {
                 partition,
                 time_unix_nano,
@@ -212,7 +228,7 @@ pub(super) fn pack_prepared(
             }
             bytes = frame_size(&point, emit.then_some(metadata.as_ref()));
         }
-        body_fits(packet.bytes + bytes, broker_bytes)?;
+        body_fits(packet.bytes + bytes, broker_bytes).map_err(|_| PackError::RecordTooLarge)?;
         if point.stream_evidence {
             packet.streams.insert(stream);
             emissions.streams.push(stream_emission);
@@ -317,7 +333,15 @@ mod tests {
         assert_eq!(packets.len(), 2);
         assert!(packets.iter().all(|p| p.payload.len() <= PACKED_BYTES));
         assert!(pack(vec![wide(PACKED_BYTES)], 1, now, 2 * PACKED_BYTES, true).is_ok());
-        assert!(pack(vec![wide(PACKED_BYTES)], 1, now, PACKED_BYTES, true).is_err());
+        let rows = [PreparedPoint {
+            frame: wide(PACKED_BYTES),
+            metadata: None,
+            resource: None,
+        }];
+        assert!(matches!(
+            pack_prepared(rows, 1, now, PACKED_BYTES, true, None, None),
+            Err(PackError::RecordTooLarge)
+        ));
     }
 
     #[test]

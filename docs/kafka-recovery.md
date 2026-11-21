@@ -195,8 +195,9 @@ New groups start at retained earliest without an offset-seeding command.
 Unavailable offsets are discarded, with a native warning, and consumption
 continues from retained earliest. This is the active-development policy: the
 remaining suffix is usable, but must not be described as complete recovery.
-Invalid retained payloads and failed storage/publication still use their existing
-error handling; retention expiry does not authorize skipping poison.
+Retention expiry does not authorize skipping poison. Invalid retained payloads
+settle only after a confirmed dead-letter write. Storage and publication outages
+retry without being classified as poison.
 
 The normalizer turns the pinned librdkafka's error-driven `OFFSET` warning into
 an explicit `event=retention_gap action=resume_earliest` warning with group,

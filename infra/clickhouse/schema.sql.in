@@ -1,5 +1,51 @@
 CREATE DATABASE IF NOT EXISTS __DATABASE__;
 
+CREATE TABLE __CREATE_GUARD____DATABASE__.dead_letter_deliveries
+(
+    project_id String,
+    source_id String,
+    raw_topic String,
+    raw_partition UInt32,
+    raw_offset UInt64,
+    received_unix_nano UInt64,
+    received_from_broker Bool,
+    rejected_unix_nano UInt64,
+    reason LowCardinality(String),
+    stage LowCardinality(String),
+    normalizer_build String,
+    raw_max_bytes UInt64,
+    normalized_record_max_bytes UInt64,
+    normalized_batch_max_bytes UInt64,
+    normalized_broker_max_bytes UInt64
+)
+ENGINE = ReplacingMergeTree(rejected_unix_nano)
+ORDER BY (project_id, received_unix_nano, raw_topic, raw_partition, raw_offset)
+TTL toDateTime(intDiv(rejected_unix_nano, 1000000000)) + INTERVAL 7 DAY
+SETTINGS fsync_after_insert = 0, fsync_part_directory = 1;
+
+CREATE VIEW __CREATE_GUARD____DATABASE__.project_rejected_deliveries
+DEFINER = CURRENT_USER SQL SECURITY DEFINER AS
+SELECT project_id, source_id, raw_topic, raw_partition, raw_offset,
+       received_unix_nano, rejected_unix_nano, reason
+FROM __DATABASE__.dead_letter_deliveries
+WHERE notEmpty(project_id)
+    AND rejected_unix_nano >= toUInt64(toUnixTimestamp(now() - INTERVAL 7 DAY)) * 1000000000;
+
+CREATE TABLE __CREATE_GUARD____DATABASE__.dead_letter_kafka
+AS __DATABASE__.dead_letter_deliveries
+ENGINE = Kafka
+SETTINGS
+    kafka_broker_list = '__KAFKA_BOOTSTRAP__',
+    kafka_topic_list = '__DEAD_LETTER_TOPIC__',
+    kafka_group_name = '__DEAD_LETTER_GROUP__',
+    kafka_format = 'JSONEachRow',
+    kafka_num_consumers = 1,
+    kafka_max_block_size = 64;
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_dead_letter_deliveries
+TO __DATABASE__.dead_letter_deliveries AS SELECT *
+FROM __DATABASE__.dead_letter_kafka;
+
 CREATE TABLE __CREATE_GUARD____DATABASE__.metric_points
 (
 __POINT_COLUMNS__

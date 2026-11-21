@@ -10,6 +10,25 @@
   },
   "panels": [
     {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Dead-letter deliveries per minute",
+      "description": "Confirmed dead-letter writes, including duplicates after a retry or restart.",
+      "gridPos": { "x": 0, "y": 60, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [{ "refId": "A", "expr": "recount:dead_letters_per_minute" }]
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Dead letters relative to settled deliveries",
+      "description": "Dead-letter writes divided by raw offset progress. Retries may count more than once.",
+      "gridPos": { "x": 12, "y": 60, "w": 12, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [{ "refId": "A", "expr": "recount:dead_letter_fraction" }]
+    },
+    {
       "id": 1,
       "type": "stat",
       "title": "Kafka scrape",

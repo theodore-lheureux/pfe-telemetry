@@ -32,8 +32,8 @@ services:
     image: danielqsj/kafka-exporter:v1.9.0@sha256:4150e46b2e9697ac30e4be8de03ec1704b4bdc7037577b83b8d35a32be298c16
     command:
       - --kafka.server=kafka:9092
-      - --topic.filter=^recount\.(metrics\.(raw|normalized-packed|late)|participants)$$
-      - --group.filter=^(recount-normalizer|recount-clickhouse(-late|-participants)?)$$
+      - --topic.filter=^recount\.(metrics\.(raw|normalized-packed|late|dead-letter)|participants)$$
+      - --group.filter=^(recount-normalizer|recount-clickhouse(-late|-participants|-dead-letter)?)$$
       - --offset.show-all
     cpus: 0.2
     mem_limit: 96m
@@ -49,6 +49,7 @@ services:
       - --storage.tsdb.retention.size=128MB
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./dead-letter.rules.yml:/etc/prometheus/dead-letter.rules.yml:ro
       - prometheus-data:/prometheus
     cpus: 0.25
     mem_limit: 192m

@@ -31,6 +31,7 @@ pub use opentelemetry_proto::tonic::{
     metrics::v1 as metrics, resource::v1 as resource,
 };
 pub const RAW_TOPIC: &str = "recount.metrics.raw";
+pub const DEAD_LETTER_TOPIC: &str = "recount.metrics.dead-letter";
 pub const NORMALIZED_TOPIC: &str = "recount.metrics.normalized-packed";
 pub const RAW_RECEIVED_MS_HEADER: &str = "recount-raw-received-ms";
 pub const PACKED_POINTS: usize = 128;

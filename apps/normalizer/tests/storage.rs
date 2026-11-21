@@ -555,6 +555,93 @@ async fn poison_is_visible_without_rows_or_checkpoint_advance() {
 
 #[tokio::test]
 #[ignore = "requires explicit reused Kafka/ClickHouse endpoints and fresh logical fixture permission"]
+async fn dead_letter_sink_catches_up_and_project_reads_deduplicate() {
+    let storage = Storage::new(false, false).await;
+    let topic = format!("{}.dead-letter", storage.topic);
+    let admin: AdminClient<_> = ClientConfig::new()
+        .set("bootstrap.servers", &storage.broker)
+        .create()
+        .unwrap();
+    let created = admin
+        .create_topics(
+            &[NewTopic::new(&topic, 1, TopicReplication::Fixed(1))],
+            &AdminOptions::new(),
+        )
+        .await
+        .unwrap();
+    assert!(created.iter().all(Result::is_ok), "{created:?}");
+    // Kafka accepts rejections while the ClickHouse consumer is down.
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64;
+    for (project, offset) in [
+        ("project-a", 12),
+        ("project-b", 13),
+        ("", 14),
+        ("project-a", 12),
+    ] {
+        let body = serde_json::json!({
+            "project_id": project, "raw_topic": "raw", "raw_offset": offset,
+            "received_unix_nano": now, "rejected_unix_nano": now, "reason": "invalid_otlp"
+        })
+        .to_string();
+        let key = format!("raw/0/{offset}");
+        storage
+            .producer
+            .send(
+                FutureRecord::to(&topic).key(&key).payload(&body),
+                Timeout::After(Duration::from_secs(2)),
+            )
+            .await
+            .unwrap();
+    }
+    storage.start();
+    let scalar = |sql: String| {
+        String::from_utf8(storage.sql(&sql))
+            .unwrap()
+            .trim()
+            .parse::<usize>()
+            .unwrap()
+    };
+    let db = &storage.database;
+    storage
+        .wait("dead-letter consumer did not recover", 30, || {
+            scalar(format!(
+                "SELECT uniqExact(raw_offset) FROM {db}.dead_letter_deliveries"
+            )) == 3
+        })
+        .await;
+    assert_eq!(
+        scalar(format!(
+            "SELECT count() FROM {db}.project_rejected_deliveries WHERE project_id = ''"
+        )),
+        0
+    );
+    assert_eq!(
+        scalar(format!(
+            "SELECT count() FROM (SELECT raw_topic,raw_partition,raw_offset FROM {db}.project_rejected_deliveries WHERE project_id = 'project-a' GROUP BY raw_topic,raw_partition,raw_offset)"
+        )),
+        1
+    );
+    assert_eq!(
+        scalar(format!(
+            "SELECT min(raw_offset) FROM {db}.project_rejected_deliveries WHERE project_id = 'project-b'"
+        )),
+        13
+    );
+    storage.close().await;
+    assert!(
+        admin
+            .delete_topics(&[&topic], &AdminOptions::new())
+            .await
+            .unwrap()[0]
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires explicit reused Kafka/ClickHouse endpoints and fresh logical fixture permission"]
 async fn new_group_starts_at_retained_earliest() {
     let storage = Storage::new(false, false).await;
     storage.publish(&fixture(&[])).await;

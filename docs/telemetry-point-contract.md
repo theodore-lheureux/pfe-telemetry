@@ -161,13 +161,13 @@ Collector, ingestion API, broker, normalizer and ClickHouse settings must be coh
 
 The normalizer does not buffer points for a row-fill target: after whole-input validation it publishes each point directly. Native ClickHouse sparse-flush timing remains a separate integration assertion.
 
-| Category                                  | Boundary behavior                                                                                                                                              |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Invalid / Unsupported / Forbidden / Limit | Reject the whole submission before raw publication. Service adapters choose safe gRPC statuses; no submitted values/secrets appear in shared error text.       |
-| Expired                                   | Terminal submission rejection or explicit local pending-buffer expiry, never silent deletion of accepted replay.                                               |
-| Poison                                    | Deterministic retained-record failure takes explicit global handler fail-stop; unfinished input remains unsettled. No skip, quarantine or delayed-copy policy. |
-| Backend outage                            | Native producer retries are bounded by delivery timeout, then handler failure stops the app. Native consumption errors can remain logged while running.        |
-| Retention gap                             | Deliberately reset to retained earliest, warn and expose gap visibility. The normalizer counts reset events. The retained suffix is not complete recovery.     |
+| Category                                  | Boundary behavior                                                                                                                                          |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Invalid / Unsupported / Forbidden / Limit | Reject the whole submission before raw publication. Service adapters choose safe gRPC statuses; no submitted values/secrets appear in shared error text.   |
+| Expired                                   | Terminal submission rejection or explicit local pending-buffer expiry, never silent deletion of accepted replay.                                           |
+| Poison                                    | The normalizer settles deterministic validation, projection and indivisible output-size failures only after a confirmed dead-letter write.                 |
+| Backend outage                            | The normalizer retries publication without settling the input. ClickHouse resumes independently from its last committed checkpoint.                        |
+| Retention gap                             | Deliberately reset to retained earliest, warn and expose gap visibility. The normalizer counts reset events. The retained suffix is not complete recovery. |
 
 `validate::request` applies shared structural checks and current Recount application policy to standard OTLP without a name allowlist. After `policy::authorize` checks the trusted request snapshot, `validate::preflight` checks the raw envelope and bounds the unchanged decoded body using ingestion’s position-ordered bindings. `validate::raw` independently decodes, validates and lowers retained input; it does **not** authenticate credentials or retrieve grants. `validate::retained_raw` checks deterministic accepted shape without current grant/age refresh and categorizes failures as poison. Generated shape safety never substitutes for actual-boundary semantic and authority checks.
 

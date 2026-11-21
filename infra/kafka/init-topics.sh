@@ -1,8 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
-mode=${1:?usage: init-topics.sh create|create-live|create-metric-output|verify}
-[[ $# == 1 && ( "$mode" == create || "$mode" == create-live || "$mode" == create-metric-output || "$mode" == verify ) ]] || { echo 'Expected create, create-live, create-metric-output or verify' >&2; exit 1; }
+mode=${1:?usage: init-topics.sh create|create-live|create-dead-letter|create-metric-output|verify}
+[[ $# == 1 && ( "$mode" == create || "$mode" == create-live || "$mode" == create-dead-letter || "$mode" == create-metric-output || "$mode" == verify ) ]] || { echo 'Expected create, create-live, create-dead-letter, create-metric-output or verify' >&2; exit 1; }
+dead_letter_only=false
+if [[ "$mode" == create-dead-letter ]]; then dead_letter_only=true; mode=create; fi
 [[ "$mode" != create-metric-output ]] || metric_output_only=true
 live_only=false
 if [[ "$mode" == create-live ]]; then live_only=true; mode=create; fi
@@ -13,6 +15,12 @@ normalized=${RECOUNT_NORMALIZED_TOPIC:?}
 late=${RECOUNT_LATE_TOPIC:?}
 live=${RECOUNT_LIVE_TOPIC:-recount.metrics.live}
 participants=${RECOUNT_PARTICIPANT_TOPIC:-recount.participants}
+dead_letter=${RECOUNT_DEAD_LETTER_TOPIC:-recount.metrics.dead-letter}
+RECOUNT_DEAD_LETTER_RETENTION_MS=604800000
+RECOUNT_DEAD_LETTER_RETENTION_BYTES=134217728
+RECOUNT_DEAD_LETTER_SEGMENT_BYTES=1048576
+RECOUNT_DEAD_LETTER_SEGMENT_MS=3600000
+RECOUNT_DEAD_LETTER_BROKER_MAX_BYTES=131072
 export RECOUNT_LIVE_PARTITIONS=${RECOUNT_LIVE_PARTITIONS:-8}
 export RECOUNT_LIVE_RETENTION_MS=${RECOUNT_LIVE_RETENTION_MS:-300000}
 export RECOUNT_LIVE_RETENTION_BYTES=${RECOUNT_LIVE_RETENTION_BYTES:-16777216}
@@ -22,12 +30,13 @@ export RECOUNT_LIVE_BROKER_MAX_BYTES=${RECOUNT_LIVE_BROKER_MAX_BYTES:-65536}
 export RECOUNT_PARTICIPANT_PARTITIONS=${RECOUNT_PARTICIPANT_PARTITIONS:-3}
 tool=/opt/kafka/bin
 
-for value in "$raw" "$normalized" "$late" "$live" "$participants"; do
+for value in "$raw" "$normalized" "$late" "$live" "$participants" "$dead_letter"; do
     [[ "$value" =~ ^[a-zA-Z0-9._-]+$ ]] || { echo 'Invalid topic name' >&2; exit 1; }
 done
 [[ "$raw" != "$normalized" && "$late" != "$raw" && "$late" != "$normalized" ]] || { echo 'Topics must differ' >&2; exit 1; }
 [[ "$live" != "$raw" && "$live" != "$normalized" && "$live" != "$late" ]] || { echo 'Live topic must be separate' >&2; exit 1; }
 [[ "$participants" != "$raw" && "$participants" != "$normalized" && "$participants" != "$late" && "$participants" != "$live" ]] || { echo 'Participant topic must be separate' >&2; exit 1; }
+[[ "$dead_letter" != "$raw" && "$dead_letter" != "$normalized" && "$dead_letter" != "$late" && "$dead_letter" != "$live" && "$dead_letter" != "$participants" ]] || { echo 'Dead-letter topic must be separate' >&2; exit 1; }
 for prefix in RAW NORMALIZED LATE PARTICIPANT LIVE; do
     for suffix in RETENTION_MS RETENTION_BYTES SEGMENT_BYTES SEGMENT_MS BROKER_MAX_BYTES; do
         name="RECOUNT_${prefix}_${suffix}"
@@ -79,6 +88,10 @@ ensure_topic() {
     if [[ "$mismatch" == false ]]; then echo "Verified $topic ($actual partitions)"; fi
 }
 
+if [[ "$dead_letter_only" == true ]]; then
+    ensure_topic "$dead_letter" 1 RECOUNT_DEAD_LETTER zstd
+    exit "$status"
+fi
 if [[ "${metric_output_only:-false}" == true ]]; then
     mode=create
     ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED zstd
@@ -92,6 +105,7 @@ if [[ "$live_only" == false ]]; then
     # The normalizer routes a point to the same partition index on either topic.
     ensure_topic "$late" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_LATE zstd
     ensure_topic "$participants" "$RECOUNT_PARTICIPANT_PARTITIONS" RECOUNT_PARTICIPANT zstd
+    ensure_topic "$dead_letter" 1 RECOUNT_DEAD_LETTER zstd
 fi
 ensure_topic "$live" "$RECOUNT_LIVE_PARTITIONS" RECOUNT_LIVE
 exit "$status"

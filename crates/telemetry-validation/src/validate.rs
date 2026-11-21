@@ -333,7 +333,8 @@ pub fn preflight(
     .map_err(|e| Issue::new(Category::Limit, "normalized", e))
 }
 
-fn envelope(raw: &RawRecord, limits: Limits) -> Result<(), Issue> {
+/// Check the retained envelope without interpreting its telemetry.
+pub fn envelope(raw: &RawRecord, limits: Limits) -> Result<(), Issue> {
     if raw.encoded_len() > limits.decoded_bytes {
         return Err(Issue::new(Category::Limit, "raw", "raw record byte limit"));
     }

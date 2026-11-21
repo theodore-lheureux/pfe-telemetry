@@ -128,6 +128,13 @@ pub struct Schema<'a> {
 
 impl Schema<'_> {
     pub fn render(&self) -> io::Result<String> {
+        self.render_with_dead_letter(
+            &format!("{}.dead-letter", self.topic),
+            &format!("{}-dead-letter", self.group),
+        )
+    }
+
+    pub fn render_with_dead_letter(&self, topic: &str, group: &str) -> io::Result<String> {
         let batching = Batching::for_partition_limit(self.partition_limit)?;
         let identifier = |value: &str| {
             !value.is_empty()
@@ -150,6 +157,10 @@ impl Schema<'_> {
             || !kafka_name(self.group)
             || !kafka_name(self.late_topic)
             || !kafka_name(self.late_group)
+            || !kafka_name(topic)
+            || !kafka_name(group)
+            || [self.topic, self.late_topic].contains(&topic)
+            || [self.group, self.late_group].contains(&group)
             || self.late_topic == self.topic
             || self.late_group == self.group
             || self.bootstrap.is_empty()
@@ -196,6 +207,8 @@ impl Schema<'_> {
             ("__CONSUMER_GROUP__", self.group.to_owned()),
             ("__LATE_TOPIC__", self.late_topic.to_owned()),
             ("__LATE_CONSUMER_GROUP__", self.late_group.to_owned()),
+            ("__DEAD_LETTER_TOPIC__", topic.to_owned()),
+            ("__DEAD_LETTER_GROUP__", group.to_owned()),
             ("__RECENT_BLOCK_ROWS__", RECENT_BLOCK_ROWS.to_string()),
             ("__RECENT_POLL_MESSAGES__", RECENT_POLL_MESSAGES.to_string()),
             ("__RECENT_CONSUMERS__", RECENT_CONSUMERS.to_string()),
@@ -275,7 +288,8 @@ mod tests {
         assert!(sql.contains("kafka_max_block_size = 98304"));
         assert_eq!(sql.matches("kafka_flush_interval_ms = 4000;").count(), 1);
         assert_eq!(sql.matches("kafka_num_consumers = 3,").count(), 1);
-        assert_eq!(sql.matches("kafka_num_consumers = 1,").count(), 1);
+        assert_eq!(sql.matches("kafka_num_consumers = 1,").count(), 2);
+        assert!(sql.contains("kafka_topic_list = 'test.normalized.dead-letter'"));
         assert!(sql.contains("kafka_max_block_size = 64,"));
         assert_eq!(sql.matches("kafka_format = 'ProtobufSingle'").count(), 1);
         assert_eq!(sql.matches("kafka_format = 'Protobuf'").count(), 1);

@@ -5,12 +5,11 @@ pub mod runtime;
 
 use prost::Message;
 use recount_telemetry_schema::{
-    identity,
-    identity_cache::IdentityCache,
-    point,
-    series::PreparedPoint,
+    identity, point,
     wire::{AnalyticalPoint, RawRecord},
 };
+#[cfg(test)]
+use recount_telemetry_schema::{identity_cache::IdentityCache, series::PreparedPoint};
 use recount_telemetry_validation::{
     Category, Issue,
     validate::{self, Limits},
@@ -43,6 +42,7 @@ fn prepare_rows(
     validate::retained_delivery(&raw, limits)
 }
 
+#[cfg(test)]
 fn prepare_cached_rows(
     payload: &[u8],
     key: Option<&[u8]>,

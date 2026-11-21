@@ -1,0 +1,30 @@
+groups:
+  - name: recount-dead-letters
+    rules:
+      - record: recount:dead_letters_per_minute
+        expr: sum(clamp_min(deriv(kafka_topic_partition_current_offset{topic="recount.metrics.dead-letter"}[5m]), 0)) * 60
+      - record: recount:dead_letter_fraction
+        expr: |
+          (recount:dead_letters_per_minute / 60)
+            / (sum(clamp_min(deriv((kafka_consumergroup_current_offset{topic="recount.metrics.raw",consumergroup="recount-normalizer"} >= 0)[5m:15s]), 0)) > 0)
+      - alert: RecountDeadLettersDetected
+        expr: sum(delta(kafka_topic_partition_current_offset{topic="recount.metrics.dead-letter"}[5m])) > 0
+        annotations:
+          summary: Recount dead-lettered a retained delivery
+          description: Check rejection reasons and the normalizer build before replaying affected raw coordinates.
+      - alert: RecountDeadLetterSinkLag
+        expr: |
+          sum(kafka_topic_partition_current_offset{topic="recount.metrics.dead-letter"})
+            - (sum(clamp_min(kafka_consumergroup_current_offset{topic="recount.metrics.dead-letter",consumergroup="recount-clickhouse-dead-letter"}, 0)) or vector(0))
+            > 0
+        for: 5m
+        annotations:
+          summary: ClickHouse has not caught up with the dead-letter topic
+      - alert: RecountNormalizerSettlementStalled
+        expr: |
+          sum(kafka_consumergroup_lag{topic="recount.metrics.raw",consumergroup="recount-normalizer"} >= 0) > 0
+            and sum(changes(kafka_consumergroup_current_offset{topic="recount.metrics.raw",consumergroup="recount-normalizer"}[5m])) == 0
+        for: 5m
+        annotations:
+          summary: The normalizer is not settling raw deliveries with a backlog
+          description: Check Kafka publication errors, including dead-letter writes that must confirm before settlement.

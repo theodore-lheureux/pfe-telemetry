@@ -4,6 +4,7 @@ import { privateOperation } from "../auth/private-operation";
 import { parseProjectReference } from "../organizations/validation";
 import * as activity from "./activity.server";
 import { readColumns, saveColumns } from "./columns.server";
+import { readRejectedDeliveries } from "./rejected-deliveries.server";
 import {
 	parseExplorer,
 	parsePacket,
@@ -40,6 +41,20 @@ export const getExplorerColumns = createServerFn({ method: "GET" })
 	.validator(parseProjectReference)
 	.handler(({ data, context: { identity, database } }) =>
 		withActor(identity, (actor) => readColumns(database, actor, data)),
+	);
+export const listRejectedDeliveries = createServerFn({ method: "GET" })
+	.middleware([privateOperation])
+	.validator(parseProjectReference)
+	.handler(({ data, context: { identity, database, request } }) =>
+		withActor(identity, (actor) =>
+			activity.listPointsForProject(
+				database,
+				actor,
+				data,
+				request.signal,
+				readRejectedDeliveries,
+			),
+		),
 	);
 export const saveExplorerColumns = createServerFn({ method: "POST" })
 	.middleware([privateOperation])

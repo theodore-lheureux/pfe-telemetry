@@ -49,6 +49,8 @@ struct Options {
     late_topic: String,
     #[arg(long = "late-consumer-group", default_value = recount_telemetry_schema::CLICKHOUSE_LATE_GROUP)]
     late_group: String,
+    #[arg(long, env = "RECOUNT_DEAD_LETTER_TOPIC", default_value = recount_telemetry_schema::DEAD_LETTER_TOPIC)]
+    dead_letter_topic: String,
     /// Native insert partition ceiling; Kafka records always carry exactly one point.
     #[arg(long = "output-rows", env = "RECOUNT_NORMALIZER_OUTPUT_ROWS", default_value_t = OUTPUT_ROWS, value_parser = clap::value_parser!(u32).range(1..=MAX_OUTPUT_ROWS as i64))]
     rows: u32,
@@ -117,6 +119,7 @@ fn expected_columns(columns: &str) -> String {
 fn prepare(options: &Options) -> Result<()> {
     if options.participant_topic == options.topic
         || options.participant_topic == options.late_topic
+        || options.participant_topic == options.dead_letter_topic
         || options.participant_group == options.group
         || options.participant_group == options.late_group
     {
@@ -141,7 +144,7 @@ fn prepare(options: &Options) -> Result<()> {
         flush_ms: options.flush,
         if_not_exists: true,
     }
-    .render()?;
+    .render_with_dead_letter(&options.dead_letter_topic, "recount-clickhouse-dead-letter")?;
     let metric_sql = sql.clone();
     sql.push_str(
         &ParticipantSchema {
@@ -333,6 +336,7 @@ mod tests {
         write_source(&parent);
         let mut options = Options {
             participant_topic: recount_telemetry_schema::execution::TOPIC.into(),
+            dead_letter_topic: recount_telemetry_schema::DEAD_LETTER_TOPIC.into(),
             participant_group: recount_telemetry_schema::execution::CLICKHOUSE_GROUP.into(),
             output: parent.join("custom-receive"),
             source: parent.clone(),
@@ -366,6 +370,7 @@ mod tests {
         write_source(&source);
         let make = |name: &str| Options {
             participant_topic: recount_telemetry_schema::execution::TOPIC.into(),
+            dead_letter_topic: recount_telemetry_schema::DEAD_LETTER_TOPIC.into(),
             participant_group: recount_telemetry_schema::execution::CLICKHOUSE_GROUP.into(),
             output: parent.join(name),
             source: source.clone(),
@@ -466,6 +471,7 @@ mod tests {
         verify_source(&parent).unwrap();
         let options = Options {
             participant_topic: recount_telemetry_schema::execution::TOPIC.into(),
+            dead_letter_topic: recount_telemetry_schema::DEAD_LETTER_TOPIC.into(),
             participant_group: recount_telemetry_schema::execution::CLICKHOUSE_GROUP.into(),
             output: parent.join("not-created"),
             source: parent.clone(),
@@ -529,6 +535,7 @@ mod tests {
         ] {
             let options = Options {
                 participant_topic: recount_telemetry_schema::execution::TOPIC.into(),
+                dead_letter_topic: recount_telemetry_schema::DEAD_LETTER_TOPIC.into(),
                 participant_group: recount_telemetry_schema::execution::CLICKHOUSE_GROUP.into(),
                 output: parent.join(name),
                 source: parent.clone(),

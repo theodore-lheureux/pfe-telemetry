@@ -1,8 +1,9 @@
-use crate::{config::Config, kafka, prepare_cached_rows};
+use crate::{config::Config, kafka};
 use futures_util::future::join_all;
 use recount_telemetry_schema::{RAW_RECEIVED_MS_HEADER, identity_cache::IdentityCache, recent};
 use recount_telemetry_validation::transport::ConsumerBudget;
 use ruststream_rdkafka::{
+    PARTITION_KEY_HEADER,
     context::keys::{Key, Offset, Partition, TimestampMillis},
     prelude::*,
 };
@@ -19,6 +20,7 @@ use tokio::sync::Semaphore;
 #[allow(dead_code)]
 #[path = "../../../tests/fixtures/telemetry/cases.rs"]
 mod cases;
+mod dead_letter;
 #[cfg(test)]
 mod delivery_tests;
 #[cfg(test)]
@@ -56,6 +58,11 @@ struct Point(Vec<u8>);
 #[derive(OutSlot)]
 #[publishes(Point)]
 struct Normalized;
+#[derive(Serialized, Outgoing)]
+struct DeadLetterDelivery(Vec<u8>);
+#[derive(OutSlot)]
+#[publishes(DeadLetterDelivery)]
+struct Rejected;
 
 // Fallible decoding stays inside the handler: panic FailFast leaves the input
 // unsettled, unlike the released typed-decode/default Result error paths.
@@ -68,22 +75,17 @@ async fn normalize(
     Ctx(raw_offset): Ctx<Offset>,
     State(state): State<RunState>,
     Out(out): Out<impl Publisher<Options = KafkaOptions>, Normalized>,
+    Out(rejected): Out<impl Publisher<Options = KafkaOptions>, Rejected>,
 ) -> HandlerOutcome {
-    assert!(
-        frame.0.len() <= state.config.limits.decoded_bytes,
-        "raw byte limit"
-    );
-    assert!(
-        key.as_ref().is_some_and(|key| key.len() == 32),
-        "raw routing key required"
-    );
+    let partition = u32::try_from(raw_partition).expect("nonnegative raw partition");
+    let offset = u64::try_from(raw_offset).expect("nonnegative raw offset");
     let permit = state
         .preparation
         .clone()
         .acquire_owned()
         .await
         .expect("preparation lane");
-    let payload = frame.0.to_vec();
+    let payload = (frame.0.len() <= state.config.limits.decoded_bytes).then(|| frame.0.to_vec());
     let partitions = state.config.normalized_partitions;
     let limits = state.config.limits;
     let now = unix_nanos();
@@ -93,12 +95,12 @@ async fn normalize(
     let stream_cache = state.stream_cache.clone();
     let delivery_cache = state.delivery_cache.clone();
     let identity_cache = state.identity_cache.clone();
-    let (records, emissions, delivery) = tokio::task::spawn_blocking(move || {
+    let preparation = tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        let mut rows = prepare_cached_rows(&payload, key.as_deref(), limits, &identity_cache)
-            .unwrap_or_else(|_| panic!("retained validation failed"));
-        let partition = u32::try_from(raw_partition).expect("nonnegative raw partition");
-        let offset = u64::try_from(raw_offset).expect("nonnegative raw offset");
+        let payload = payload
+            .ok_or_else(|| dead_letter::Rejection::new(dead_letter::Reason::RawTooLarge, None))?;
+        let (mut rows, raw) =
+            dead_letter::prepare(&payload, key.as_deref(), limits, &identity_cache)?;
         for row in &mut rows {
             row.frame.raw_partition = partition;
             row.frame.raw_offset = offset;
@@ -132,11 +134,48 @@ async fn normalize(
             Some(&cache),
             Some(&stream_cache),
         )
-        .expect("normalized record exceeds broker budget");
-        (records, emissions, delivery)
+        .map_err(|error| match error {
+            packing::PackError::RecordTooLarge => dead_letter::Rejection::new(
+                dead_letter::Reason::NormalizedRecordTooLarge,
+                dead_letter::verified_scope(&raw),
+            ),
+            packing::PackError::Invariant(reason) => {
+                panic!("normalized packing invariant failed: {reason}")
+            }
+        })?;
+        Ok::<_, dead_letter::Rejection>((records, emissions, delivery))
     })
     .await
     .expect("preparation failed");
+    let (records, emissions, delivery) = match preparation {
+        Ok(result) => result,
+        Err(rejection) => {
+            let topic = &state.config.raw_topic;
+            let body = DeadLetterDelivery(rejection.body(
+                &state.config,
+                partition,
+                offset,
+                timestamp,
+                now,
+            ));
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                PARTITION_KEY_HEADER,
+                format!("{topic}/{partition}/{offset}").into_bytes(),
+            );
+            return dead_letter::settle(
+                || {
+                    rejected
+                        .message(&body)
+                        .to(&state.config.dead_letter_topic)
+                        .with_headers(headers.clone())
+                        .publish()
+                },
+                state.config.retry,
+            )
+            .await;
+        }
+    };
     // Packing is per raw delivery. Keep its receive time separate from the
     // output timestamp so a delayed replay does not shorten normalized retention.
     let mut headers = HeaderMap::new();
@@ -164,7 +203,7 @@ async fn normalize(
         .collect();
     // Let the producer fill and drain its byte-bounded queue without waiting for
     // a delivery barrier between chunks. A partial failure leaves the input unsettled.
-    await_deliveries(points.iter().map(|(point, partition, topic)| {
+    while let Err(error) = await_deliveries(points.iter().map(|(point, partition, topic)| {
         out.message(point)
             .to(*topic)
             .partition(*partition)
@@ -172,9 +211,10 @@ async fn normalize(
             .publish()
     }))
     .await
-    .unwrap_or_else(|error| {
-        panic!("normalized publication failed; input remains unsettled: {error}")
-    });
+    {
+        tracing::warn!(%error, "normalized publication failed; input remains unsettled");
+        tokio::time::sleep(state.config.retry).await;
+    }
     state.series_cache.acknowledge(&emissions.series);
     state.stream_cache.acknowledge(&emissions.streams);
     if let Some(delivery) = delivery {
@@ -315,6 +355,7 @@ fn app(config: Config, packed_recent: bool) -> impl App {
         // frees a record's slot just after reporting its delivery, so the next group can
         // briefly find the queue full.
         .out(Normalized, Publish::default().queue_timeout(delivery))
+        .out(Rejected, Publish::default().queue_timeout(delivery))
         .build();
     })
 }

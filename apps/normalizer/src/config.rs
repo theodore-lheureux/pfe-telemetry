@@ -1,7 +1,8 @@
 use crate::runtime::series_cache::{DEFAULT_ENTRIES, MAX_ENTRIES};
 use clap::{CommandFactory, Parser, Subcommand, error::ErrorKind};
 use recount_telemetry_schema::{
-    LATE_TOPIC, MAX_SERIES_RESEND_SECONDS, NORMALIZED_TOPIC, NORMALIZER_GROUP, RAW_TOPIC,
+    DEAD_LETTER_TOPIC, LATE_TOPIC, MAX_SERIES_RESEND_SECONDS, NORMALIZED_TOPIC, NORMALIZER_GROUP,
+    RAW_TOPIC,
 };
 use recount_telemetry_validation::{
     cli::{LimitArgs, nonblank},
@@ -30,6 +31,8 @@ pub struct Cli {
     /// Receives points outside the recent window, with the normalized topic's partition count.
     #[arg(long, env = "RECOUNT_LATE_TOPIC", default_value = LATE_TOPIC, value_parser = nonblank)]
     late_topic: String,
+    #[arg(long, env = "RECOUNT_DEAD_LETTER_TOPIC", default_value = DEAD_LETTER_TOPIC, value_parser = nonblank)]
+    dead_letter_topic: String,
     #[arg(long, env = "RECOUNT_NORMALIZER_GROUP", default_value = NORMALIZER_GROUP, value_parser = nonblank)]
     group: String,
     /// Optional Prometheus text-file output; the parent directory must exist and be writable.
@@ -90,6 +93,7 @@ impl Cli {
             raw_topic: self.raw_topic,
             normalized_topic: self.normalized_topic,
             late_topic: self.late_topic,
+            dead_letter_topic: self.dead_letter_topic,
             group: self.group,
             metrics_file: self.metrics_file,
             raw_partitions: self.raw_partitions,
@@ -105,8 +109,16 @@ impl Cli {
         if config.raw_topic == config.normalized_topic
             || config.late_topic == config.raw_topic
             || config.late_topic == config.normalized_topic
+            || [
+                &config.raw_topic,
+                &config.normalized_topic,
+                &config.late_topic,
+            ]
+            .contains(&&config.dead_letter_topic)
         {
-            return Err(invalid("raw, normalized and late topics must differ"));
+            return Err(invalid(
+                "raw, normalized, late and dead-letter topics must differ",
+            ));
         }
         if config.normalized_topic == "recount.metrics.normalized" {
             return Err(invalid(
@@ -132,6 +144,7 @@ pub struct Config {
     pub raw_topic: String,
     pub normalized_topic: String,
     pub late_topic: String,
+    pub dead_letter_topic: String,
     pub group: String,
     pub metrics_file: Option<PathBuf>,
     pub raw_partitions: u32,

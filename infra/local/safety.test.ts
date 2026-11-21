@@ -431,8 +431,16 @@ test("topic verification never creates or repairs topics; creation is explicit",
 		`#!/bin/bash
 printf '%s\\n' "$*" >> "$MOCK_LOG"
 case "$*" in
-*--describe*--topic*) [ "\${MOCK_MISSING:-}" != 1 ] || exit 1; echo 'PartitionCount: 3 ReplicationFactor: 1' ;;
+*--describe*--topic*)
+    [ "\${MOCK_MISSING:-}" != 1 ] || exit 1
+    if [[ "$*" == *'--topic recount.metrics.dead-letter' ]]; then echo 'PartitionCount: 1 ReplicationFactor: 1'
+    else echo 'PartitionCount: 3 ReplicationFactor: 1'; fi
+    ;;
 *--entity-type*)
+    if [[ "$*" == *'--entity-name recount.metrics.dead-letter '* ]]; then
+        echo 'retention.ms=604800000 retention.bytes=134217728 segment.bytes=1048576 segment.ms=3600000 max.message.bytes=131072 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false compression.type=zstd'
+        exit 0
+    fi
     codec=zstd
     [[ "$*" != *'--entity-name live '* ]] || codec=producer
     bytes=65536
@@ -464,8 +472,8 @@ esac
 		RECOUNT_LIVE_PARTITIONS: "3",
 		RECOUNT_RAW_PARTITIONS: "3",
 		RECOUNT_NORMALIZED_PARTITIONS: "3",
-		RECOUNT_BROKER_MESSAGE_BYTES: "65536",
-		RECOUNT_BROKER_FETCH_BYTES: "65536",
+		RECOUNT_BROKER_MESSAGE_BYTES: "131072",
+		RECOUNT_BROKER_FETCH_BYTES: "131072",
 	};
 	for (const prefix of ["RAW", "NORMALIZED", "LATE", "PARTICIPANT", "LIVE"])
 		for (const suffix of [
@@ -482,6 +490,7 @@ esac
 		["verify", "1"],
 		["create", ""],
 		["create-live", ""],
+		["create-dead-letter", ""],
 	]) {
 		writeFileSync(log, "");
 		const child = Bun.spawn(["bash", script, mode], {
@@ -494,8 +503,14 @@ esac
 		expect(calls.includes("--create")).toBe(mode.startsWith("create"));
 		// Metric and participant topics retain the zstd batches their producers send.
 		if (mode === "create") {
-			expect(calls.match(/compression\.type=zstd/g)).toHaveLength(4);
+			expect(calls.match(/compression\.type=zstd/g)).toHaveLength(5);
 			expect(calls).toContain("--create --topic late --partitions 3");
+		}
+		if (mode === "create-dead-letter") {
+			expect(calls.match(/--create/g)).toHaveLength(1);
+			expect(calls).toContain(
+				"--create --topic recount.metrics.dead-letter --partitions 1",
+			);
 		}
 		if (mode === "create-live") {
 			expect(calls).not.toContain("--topic raw");

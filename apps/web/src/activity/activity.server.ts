@@ -15,6 +15,15 @@ export async function listPoints(
 	signal?: AbortSignal,
 	read = readPoints,
 ) {
+	return listPointsForProject(database, actor, input, signal, read);
+}
+export async function listPointsForProject<I extends ProjectReference, T>(
+	database: Database,
+	actor: Actor,
+	input: I,
+	signal: AbortSignal | undefined,
+	read: (input: I, signal?: AbortSignal) => Promise<T>,
+) {
 	await requireProject(database, actor, input);
 	return withAnalyticsSlot(database, input.organizationId, signal, () =>
 		read(input, signal),

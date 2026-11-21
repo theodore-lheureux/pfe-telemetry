@@ -22,3 +22,4 @@ expected=$(cat /etc/recount-schema/expected-participant-columns.tsv)
 [ "$actual" = "$expected" ]
 clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query 'SELECT count() FROM telemetry.metric_points WHERE 0' >/dev/null
 clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query 'SELECT count() FROM telemetry.execution_participants WHERE 0' >/dev/null
+clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query 'SELECT count() FROM telemetry.project_rejected_deliveries WHERE 0' >/dev/null

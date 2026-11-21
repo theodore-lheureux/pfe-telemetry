@@ -133,7 +133,14 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
         .unwrap()
         {
             let row = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
-            expected.insert(row.sample_id.clone(), row);
+            expected.insert(
+                (
+                    (index % 3) as u32,
+                    (index / 3) as u64,
+                    row.original_position.clone(),
+                ),
+                observation(row),
+            );
         }
         producer
             .send(
@@ -441,7 +448,10 @@ async fn natural_time_and_byte_expiry_warn_count_and_resume_the_suffix() {
         .into_iter()
         .map(|record| {
             let row = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
-            (row.sample_id.clone(), row)
+            (
+                (0, (high - 1) as u64, row.original_position.clone()),
+                observation(row),
+            )
         })
         .collect();
         assert_eq!(
@@ -523,6 +533,7 @@ impl Environment {
             .env("RECOUNT_RAW_TOPIC", &self.raw)
             .env("RECOUNT_NORMALIZED_TOPIC", &self.normalized)
             .env("RECOUNT_LATE_TOPIC", &self.late)
+            .env("RECOUNT_DEAD_LETTER_TOPIC", self.dead_letter())
             .env("RECOUNT_NORMALIZER_GROUP", &self.group)
             .env("RECOUNT_RAW_PARTITIONS", "3")
             .env("RECOUNT_NORMALIZED_PARTITIONS", "3")
@@ -531,6 +542,9 @@ impl Environment {
             .stdin(Stdio::null())
             .stdout(Stdio::null());
         command
+    }
+    fn dead_letter(&self) -> String {
+        format!("{}.dead-letter", self.raw)
     }
     fn start(&self) -> Process {
         Process(self.command().stderr(Stdio::inherit()).spawn().unwrap())
@@ -549,11 +563,39 @@ fn consumer(broker: &str, group: &str) -> BaseConsumer {
         .unwrap()
 }
 
+fn observation(row: AnalyticalPoint) -> AnalyticalPoint {
+    AnalyticalPoint {
+        stream_id: row.stream_id,
+        time_unix_nano: row.time_unix_nano,
+        start_time_unix_nano: row.start_time_unix_nano,
+        flags: row.flags,
+        int_value: row.int_value,
+        double_value: row.double_value,
+        count: row.count,
+        sum: row.sum,
+        min: row.min,
+        max: row.max,
+        explicit_bounds: row.explicit_bounds,
+        bucket_counts: row.bucket_counts,
+        scale: row.scale,
+        zero_count: row.zero_count,
+        zero_threshold: row.zero_threshold,
+        positive_offset: row.positive_offset,
+        positive_counts: row.positive_counts,
+        negative_offset: row.negative_offset,
+        negative_counts: row.negative_counts,
+        quantiles: row.quantiles,
+        quantile_values: row.quantile_values,
+        exemplars: row.exemplars,
+        ..Default::default()
+    }
+}
+
 async fn collect(
     consumer: &BaseConsumer,
     expected: usize,
     phase: &str,
-) -> BTreeMap<Vec<u8>, AnalyticalPoint> {
+) -> BTreeMap<(u32, u64, Vec<u8>), AnalyticalPoint> {
     let deadline = Instant::now() + Duration::from_secs(30);
     let mut rows = BTreeMap::new();
     while rows.len() < expected && Instant::now() < deadline {
@@ -566,7 +608,14 @@ async fn collect(
                 identity::partition(point.stream_id.as_slice().try_into().unwrap(), 3),
                 Some(message.partition() as u32)
             );
-            rows.insert(point.sample_id.clone(), point);
+            rows.insert(
+                (
+                    point.raw_partition,
+                    point.raw_offset,
+                    point.original_position.clone(),
+                ),
+                observation(point),
+            );
         } else {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
@@ -600,10 +649,10 @@ async fn committed(observer: &BaseConsumer, topic: &str, partition: i32, next: i
 }
 
 /// Requires a coordinator-allocated, disposable Kafka slot and precreated empty
-/// topics. Does not create/delete topics, groups, tables, or broker containers.
+/// topics. Creates and deletes only its matching dead-letter topic.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires explicit reused Kafka endpoint and fresh isolated topics/group"]
-async fn real_kafka_first_start_replay_rebalance_and_global_handler_poison() {
+async fn real_kafka_first_start_replay_rebalance_and_dead_letter() {
     assert_eq!(setting("RECOUNT_NORMALIZER_TEST_ALLOW_PUBLISH"), "1");
     let env = Environment {
         binary: env!("CARGO_BIN_EXE_recount-normalizer").into(),
@@ -702,8 +751,9 @@ async fn real_kafka_first_start_replay_rebalance_and_global_handler_poison() {
     .into_iter()
     .map(|record| {
         let point = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
-        assert!(!original.contains_key(&point.sample_id));
-        (point.sample_id.clone(), point)
+        let coordinates = (0, delivery.offset as u64, point.original_position.clone());
+        assert!(!original.contains_key(&coordinates));
+        (coordinates, observation(point))
     })
     .collect();
     let mut process = env.start();
@@ -725,7 +775,12 @@ async fn real_kafka_first_start_replay_rebalance_and_global_handler_poison() {
         )
         .await
         .unwrap();
-    assert_eq!(collect(&reader, expected, "process replay").await, original);
+    assert!(
+        collect(&reader, expected, "process replay")
+            .await
+            .values()
+            .eq(original.values())
+    );
     committed(&observer, &env.raw, 0, delivery.offset + 1).await;
 
     // Rebalance with two actual consumers, then poison one input partition.
@@ -761,9 +816,11 @@ async fn real_kafka_first_start_replay_rebalance_and_global_handler_poison() {
         )
         .await
         .unwrap();
-    assert_eq!(
-        collect(&reader, expected, "stable rebalance before poison").await,
-        original
+    assert!(
+        collect(&reader, expected, "stable rebalance before poison")
+            .await
+            .values()
+            .eq(original.values())
     );
     committed(&observer, &env.raw, 1, probe.offset + 1).await;
     let output_before: i64 = (0..3)
@@ -784,20 +841,8 @@ async fn real_kafka_first_start_replay_rebalance_and_global_handler_poison() {
         )
         .await
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(20);
-    loop {
-        let a = process.0.try_wait().unwrap();
-        let b = second.0.try_wait().unwrap();
-        if let (Some(a), Some(b)) = (a, b) {
-            assert!(!a.success() && !b.success());
-            break;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "poison did not stop group members"
-        );
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    // A missing dead-letter destination must not settle the original offset.
+    tokio::time::sleep(Duration::from_secs(2)).await;
     let output_after: i64 = (0..3)
         .map(|p| {
             observer
@@ -818,6 +863,51 @@ async fn real_kafka_first_start_replay_rebalance_and_global_handler_poison() {
             .offset(),
         Offset::Offset(bad.offset)
     );
+    let dead = env.dead_letter();
+    let admin: AdminClient<_> = ClientConfig::new()
+        .set("bootstrap.servers", &env.broker)
+        .create()
+        .unwrap();
+    let created = admin
+        .create_topics(
+            &[NewTopic::new(&dead, 1, TopicReplication::Fixed(1))],
+            &AdminOptions::new(),
+        )
+        .await
+        .unwrap();
+    assert!(created.iter().all(Result::is_ok), "{created:?}");
+    let good = producer
+        .send(
+            FutureRecord::to(&env.raw)
+                .partition(0)
+                .key(&key)
+                .payload(&body),
+            Timeout::After(Duration::from_secs(1)),
+        )
+        .await
+        .unwrap();
+    committed(&observer, &env.raw, 0, good.offset + 1).await;
+    assert!(process.0.try_wait().unwrap().is_none());
+    assert!(second.0.try_wait().unwrap().is_none());
+    let dead_reader = consumer(&env.broker, &format!("{}.dead-reader", env.group));
+    let mut assignment = TopicPartitionList::new();
+    assignment
+        .add_partition_offset(&dead, 0, Offset::Beginning)
+        .unwrap();
+    dead_reader.assign(&assignment).unwrap();
+    let record = dead_reader.poll(Duration::from_secs(10)).unwrap().unwrap();
+    let key = format!("{}/0/{}", env.raw, bad.offset);
+    assert_eq!(record.key(), Some(key.as_bytes()));
+    let message: serde_json::Value = serde_json::from_slice(record.payload().unwrap()).unwrap();
+    assert_eq!(message["reason"], "routing_key_mismatch");
+    assert_eq!(message["project_id"], "");
     drop(second);
     drop(process);
+    assert!(
+        admin
+            .delete_topics(&[&dead], &AdminOptions::new())
+            .await
+            .unwrap()[0]
+            .is_ok()
+    );
 }
