@@ -1,7 +1,9 @@
 use super::*;
 use auth::{Authority, Source};
 use opentelemetry_proto::tonic::collector::metrics::v1::metrics_service_client::MetricsServiceClient;
+use prost::Message;
 use recount_telemetry_schema::{
+    ExportMetricsServiceRequest,
     common::{AnyValue, KeyValue, any_value},
     metrics::{
         Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, metric, number_data_point,
@@ -19,7 +21,7 @@ use tokio::{
     net::TcpListener,
     sync::{Notify, oneshot},
 };
-use tonic::{Code, metadata::MetadataMap};
+use tonic::{Code, codec::CompressionEncoding, metadata::MetadataMap};
 mod live;
 mod participants;
 
@@ -606,6 +608,93 @@ impl tonic::codec::Decoder for ResponseDecoder {
         ExportMetricsServiceResponse::decode(source)
             .map(Some)
             .map_err(|_| Status::internal("Invalid test response"))
+    }
+}
+
+#[tokio::test]
+async fn retained_wire_survives_gzip_and_replays_like_reencoded_otlp() {
+    use prost::encoding::{WireType, encode_key, encode_varint};
+    let sink = Arc::new(TestSink::default());
+    let body = body();
+    let canonical = body.encode_to_vec();
+    let mut wire = Vec::new();
+    encode_key(99, WireType::LengthDelimited, &mut wire);
+    encode_varint(512, &mut wire);
+    wire.resize(wire.len() + 512, 0x41);
+    // Put scope data before the lower-numbered resource field.
+    let mut resource = body.resource_metrics[0].encode_to_vec();
+    resource.extend([0x0a, 0]);
+    encode_key(1, WireType::LengthDelimited, &mut wire);
+    encode_varint(resource.len() as u64, &mut wire);
+    wire.extend(resource);
+    let reencoded = ExportMetricsServiceRequest::decode(wire.as_slice())
+        .unwrap()
+        .encode_to_vec();
+    assert_ne!(canonical, reencoded);
+    assert!(wire.len() > reencoded.len() + 512);
+    for (limit, accepted) in [(4096, true), (wire.len(), false)] {
+        let limits = Limits {
+            decoded_bytes: limit,
+            ..Limits::default()
+        };
+        let (_, endpoint, stop, task) =
+            server(Arc::new(TestAuthority::default()), sink.clone(), limits).await;
+        let channel = tonic::transport::Endpoint::from_shared(endpoint)
+            .unwrap()
+            .connect()
+            .await
+            .unwrap();
+        let mut client =
+            tonic::client::Grpc::new(channel).send_compressed(CompressionEncoding::Gzip);
+        client.ready().await.unwrap();
+        let mut request = Request::new(wire.clone());
+        request
+            .metadata_mut()
+            .insert("authorization", "Bearer test".parse().unwrap());
+        let result = client
+            .unary(
+                request,
+                tonic::codegen::http::uri::PathAndQuery::from_static(metrics_rpc::EXPORT),
+                RawCodec,
+            )
+            .await;
+        if accepted {
+            result.unwrap();
+            let retained = sink.records.lock().unwrap().pop().unwrap();
+            assert_eq!(retained.otlp_request, wire);
+            let mut control = retained.clone();
+            control.otlp_request = reencoded.clone();
+            assert!(retained.encoded_len() > control.encoded_len());
+            let project = |raw: &RawRecord| {
+                validate::retained_delivery(raw, limits)
+                    .unwrap()
+                    .into_iter()
+                    .map(|row| row.encode_to_vec())
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(project(&retained), project(&control));
+            let cap = Limits {
+                decoded_bytes: retained.encoded_len(),
+                ..limits
+            };
+            validate::retained_delivery(&retained, cap).unwrap();
+            let below = Limits {
+                decoded_bytes: cap.decoded_bytes - 1,
+                ..cap
+            };
+            assert_eq!(
+                validate::retained_delivery(&retained, below)
+                    .unwrap_err()
+                    .category,
+                Category::Poison
+            );
+            validate::retained_delivery(&control, below).unwrap();
+        } else {
+            assert_eq!(result.unwrap_err().code(), Code::ResourceExhausted);
+            assert!(sink.records.lock().unwrap().is_empty());
+        }
+        stop.send(()).unwrap();
+        task.await.unwrap();
     }
 }
 

@@ -37,11 +37,9 @@ Both binary transports use the same message definitions. gRPC does not establish
 
 ## Retention and replay
 
-Raw Kafka retains the supported decoded OTLP request with trusted source/project, resolved resource access, unchanged original ordering and stable submission/record identity before analytical projection. Normalization preserves observation identity through retries, regrouping and partition fanout. It does not implement aggregate/minute-chunk storage, a first-writer registry or a whole-batch visibility gate. [Serialization](serialization.md#retention-and-replay)
+Raw Kafka retains the original decompressed OTLP bytes with trusted source/project, resolved resource access and stable submission/record identity before analytical projection. Normalization preserves observation identity through retries, regrouping and partition fanout. It does not implement aggregate/minute-chunk storage, a first-writer registry or a whole-batch visibility gate. [Serialization](serialization.md#retention-and-replay)
 
-Re-encoding does not promise identical bytes or preservation of fields absent from the bindings. Prost's generated decoder skips unknown fields. Application-defined metric names and attributes use existing OTLP fields and remain part of the decoded request. [Prost decoding](https://docs.rs/prost-derive/latest/src/prost_derive/lib.rs.html#191)
-
-Original-byte preservation is a separate capability. A custom Tonic codec could retain original Protobuf bytes alongside decoded input, but no such capture/alternate runtime format is implemented. The current global Tower admission layer precedes body reading/decompression/decoding, and Tonic enforces decoded bytes before Prost. [Tonic decoder](https://docs.rs/tonic/latest/tonic/codec/trait.Decoder.html), [custom codecs](https://docs.rs/tonic/latest/tonic/server/struct.Grpc.html)
+The metrics Tonic codec retains the decompressed Protobuf message alongside the typed request. The global Tower admission layer still runs before body reading, and Tonic checks message size before Prost decodes it. Admission also checks the size of the full raw record before publication. [Tonic decoder](https://docs.rs/tonic/latest/tonic/codec/trait.Decoder.html)
 
 ## Runtime and health
 

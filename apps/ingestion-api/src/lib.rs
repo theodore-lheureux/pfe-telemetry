@@ -5,16 +5,14 @@ pub mod config;
 mod delivery;
 mod last_seen;
 pub mod live;
+mod metrics_rpc;
 mod participants;
 pub mod resources;
 #[cfg(test)]
 mod tests;
 
-use opentelemetry_proto::tonic::collector::metrics::v1::{
-    ExportMetricsServiceRequest, ExportMetricsServiceResponse,
-    metrics_service_server::{MetricsService, MetricsServiceServer},
-};
-use prost::Message;
+use metrics_rpc::{MetricsExport, MetricsService};
+use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceResponse;
 use recount_telemetry_schema::{
     execution::MAX_CLAIM_BYTES,
     wire::{PayloadKind, RawRecord, execution_participants_server::ExecutionParticipantsServer},
@@ -27,7 +25,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tonic::{Request, Response, Status, codec::CompressionEncoding, transport::Server};
+use tonic::{Request, Response, Status, transport::Server};
 use tonic_health::{ServingStatus, server::health_reporter};
 use uuid::Uuid;
 
@@ -82,7 +80,7 @@ struct Ingestion {
 impl Ingestion {
     async fn accept(
         &self,
-        request: Request<ExportMetricsServiceRequest>,
+        request: Request<MetricsExport>,
     ) -> std::result::Result<Response<ExportMetricsServiceResponse>, Status> {
         let permit = request
             .extensions()
@@ -108,7 +106,7 @@ impl Ingestion {
                 .map_err(status)?;
         }
         let delivery = delivery::observe(&request)?;
-        let body = request.into_inner();
+        let MetricsExport { body, wire } = request.into_inner();
         let limits = self.limits;
         // Blocking validation retains admission until completion even if the RPC is cancelled.
         let (raw, body, count, permit, source, requested) =
@@ -123,7 +121,7 @@ impl Ingestion {
                     received_unix_nano: received,
                     batch,
                     payload_kind: PayloadKind::OtlpMetrics as i32,
-                    otlp_request: body.encode_to_vec(),
+                    otlp_request: wire.into(),
                     bindings,
                     delivery: Some(delivery),
                 };
@@ -166,16 +164,6 @@ impl Ingestion {
     }
 }
 
-#[tonic::async_trait]
-impl MetricsService for Ingestion {
-    async fn export(
-        &self,
-        request: Request<ExportMetricsServiceRequest>,
-    ) -> std::result::Result<Response<ExportMetricsServiceResponse>, Status> {
-        self.accept(request).await
-    }
-}
-
 pub async fn configured_router(
     authority: Arc<dyn auth::Authority>,
     sink: Arc<dyn broker::Sink>,
@@ -190,7 +178,7 @@ pub async fn configured_router(
     reporter
         .set_service_status(HEALTH_SERVICE, ServingStatus::Serving)
         .await;
-    let name = "opentelemetry.proto.collector.metrics.v1.MetricsService";
+    let name = metrics_rpc::NAME;
     let participant_name = "recount.telemetry.ExecutionParticipants";
     reporter
         .set_service_status(participant_name, ServingStatus::NotServing)
@@ -234,10 +222,7 @@ pub async fn configured_router(
     };
     let participants = ExecutionParticipantsServer::new(ingestion.clone())
         .max_decoding_message_size(MAX_CLAIM_BYTES);
-    let metrics = MetricsServiceServer::new(ingestion)
-        .accept_compressed(CompressionEncoding::Gzip)
-        .send_compressed(CompressionEncoding::Gzip)
-        .max_decoding_message_size(limits.decoded_bytes);
+    let metrics = MetricsService::new(ingestion, limits.decoded_bytes);
     Ok(Server::builder()
         .layer(admission::AdmissionLayer::new(max_in_flight))
         .concurrency_limit_per_connection(max_in_flight)

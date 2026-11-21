@@ -1,4 +1,7 @@
-use prost::Message;
+use prost::{
+    Message,
+    encoding::{WireType, encode_key, encode_varint},
+};
 use recount_normalizer::prepare;
 use recount_telemetry_schema::{identity, wire::AnalyticalPoint};
 use recount_telemetry_validation::{Category, validate::Limits};
@@ -77,4 +80,40 @@ fn retained_boundary_rejects_wire_key_authority_kind_and_size_before_publication
     raw.payload_kind = 0;
     let key = identity::raw_routing_key(&raw).unwrap();
     assert!(prepare(&raw.encode_to_vec(), Some(&key), 3, Limits::default()).is_err());
+}
+
+#[test]
+fn forwarded_otlp_normalizes_like_reencoded_otlp_and_counts_retained_bytes() {
+    let mut raw = cases::raw();
+    let key = identity::raw_routing_key(&raw).unwrap();
+    let canonical = raw.encode_to_vec();
+    let mut forwarded = Vec::new();
+    encode_key(99, WireType::Varint, &mut forwarded);
+    encode_varint(1, &mut forwarded);
+    forwarded.extend_from_slice(&raw.otlp_request);
+    raw.otlp_request = forwarded;
+    let retained = raw.encode_to_vec();
+    let limits = Limits {
+        decoded_bytes: retained.len(),
+        ..Limits::default()
+    };
+    let normalize = |bytes| {
+        prepare(bytes, Some(&key), 3, limits)
+            .unwrap()
+            .into_iter()
+            .map(|record| (record.partition, record.payload))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(normalize(&canonical), normalize(&retained));
+    let smaller = Limits {
+        decoded_bytes: retained.len() - 1,
+        ..limits
+    };
+    assert!(prepare(&canonical, Some(&key), 3, smaller).is_ok());
+    assert_eq!(
+        prepare(&retained, Some(&key), 3, smaller)
+            .unwrap_err()
+            .category,
+        Category::Poison
+    );
 }
