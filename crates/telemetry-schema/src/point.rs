@@ -419,11 +419,12 @@ fn lower(
                         }
                         .encode_to_vec()
                     });
-                    row.original_position = if compact {
-                        original.encode_to_vec()
-                    } else {
-                        Vec::new()
-                    };
+                    if compact {
+                        row.original_resource = original.resource;
+                        row.original_scope = original.scope;
+                        row.original_metric = original.metric;
+                        row.original_point = original.point;
+                    }
                     min_event = min_event.min(row.time_unix_milli);
                     max_event = max_event.max(row.time_unix_milli);
                     lower_observation(&mut row, observation)?;
@@ -658,7 +659,7 @@ fn project_point(
 fn stream_id(prefix: &TypedHash, start: u64) -> Vec<u8> {
     let mut hash = prefix.clone();
     hash.u64(start);
-    hash.finish().to_vec()
+    hash.finish()[..16].to_vec()
 }
 
 fn lower_observation(
@@ -728,7 +729,7 @@ fn otlp_scalar_default(value: f64) -> f64 {
     if value == 0.0 { 0.0 } else { value }
 }
 
-pub fn normalized_routing_key(point: &AnalyticalPoint) -> Result<[u8; 32], &'static str> {
+pub fn normalized_routing_key(point: &AnalyticalPoint) -> Result<[u8; 16], &'static str> {
     point
         .stream_id
         .as_slice()

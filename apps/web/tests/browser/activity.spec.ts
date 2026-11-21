@@ -220,7 +220,10 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 						raw_offset: "1",
 						min_event_unix_milli: (timeMs - 104n).toString(),
 						max_event_unix_milli: timeMs.toString(),
-						stream_id: createHash("sha256").update(project.id).digest(),
+						stream_id: createHash("sha256")
+							.update(project.id)
+							.digest()
+							.subarray(0, 16),
 						time_unix_milli: (timeMs - BigInt(index)).toString(),
 						event_day: Number(timeMs / 86400000n),
 						int_value: "9223372036854775807",
@@ -254,7 +257,7 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 					? `INSERT INTO telemetry.metric_points
 					(project_id, metric_name, series_id, stream_id, raw_partition, raw_offset, event_day, time_unix_milli, int_value, value_kind)
 					SELECT *, 'INTEGER' FROM input('project_id String, metric_name String, series_id UInt64,
-						stream_id FixedString(32), raw_partition UInt32, raw_offset UInt64, event_day UInt32,
+						stream_id FixedString(16), raw_partition UInt32, raw_offset UInt64, event_day UInt32,
 						time_unix_milli UInt64, int_value Int64') FORMAT Protobuf`
 					: `INSERT INTO telemetry.${table} FORMAT Protobuf`;
 			const result = await clickhouse.exec({

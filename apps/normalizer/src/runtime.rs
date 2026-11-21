@@ -41,7 +41,7 @@ struct RunState {
     preparation: Arc<Semaphore>,
     packed_recent: bool,
     series_cache: Arc<SeriesCache>,
-    stream_cache: Arc<SeriesCache<[u8; 32]>>,
+    stream_cache: Arc<SeriesCache<[u8; 16]>>,
     delivery_cache: Arc<SeriesCache<[u8; 32]>>,
     identity_cache: Arc<IdentityCache>,
 }

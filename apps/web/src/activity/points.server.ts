@@ -156,8 +156,8 @@ const MIN_WINDOW_MS = 1_000n;
 const MAX_SEARCHES = 12;
 const SEARCH_BUDGET_MS = 4000;
 const MS_PER_DAY = 86_400_000n;
-const AFTER_ALL = "FF".repeat(40),
-	BEFORE_ALL = "00".repeat(40);
+const AFTER_ALL = "FF".repeat(24),
+	BEFORE_ALL = "00".repeat(24);
 
 function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 	return {
@@ -353,11 +353,11 @@ export async function readPoint(
 		)
 		.join(",");
 	const rows = await query<JsonObject>(
-		`SELECT * EXCEPT(original_position,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_milli,last_seen_unix_milli,logical_series_id,resource_kind,metric_kind,temporality,monotonic,value_kind,statistics_present)
+		`SELECT * EXCEPT(stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_milli,last_seen_unix_milli,logical_series_id,resource_kind,metric_kind,temporality,monotonic,value_kind,statistics_present)
 REPLACE (${["count", "sum", "min", "max", "scale", "zero_count", "zero_threshold", "positive_offset", "negative_offset"].map((name, i) => `if(bitTest(statistics_present,${i}),${name},NULL) AS ${name}`).join(",")}),
 toUInt8(resource_kind) AS resource_kind,toUInt8(metric_kind) AS metric_kind,toUInt8(temporality) AS temporality,
 nullIf(toUInt8(monotonic),2) AS monotonic,
-hex(stream_id) AS stream_id_hex,hex(original_position) AS original_hex,
+hex(stream_id) AS stream_id_hex,
 arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
 FROM ${streamEvidenceSource(
 			seriesPointSource(
@@ -434,12 +434,20 @@ FROM ${streamEvidenceSource(
 			"Measurement provenance is not yet available",
 		);
 	const received = BigInt(delivery.received);
+	const {
+		original_resource,
+		original_scope,
+		original_metric,
+		original_point,
+		...point
+	} = row;
 	const provenance = {
-		...decodeDelivery(
-			delivery.request,
-			delivery.context,
-			String(row.original_hex),
-		),
+		...decodeDelivery(delivery.request, delivery.context, {
+			resource: Number(original_resource),
+			scope: Number(original_scope),
+			metric: Number(original_metric),
+			point: Number(original_point),
+		}),
 		raw_partition: row.raw_partition,
 		raw_offset: String(row.raw_offset),
 		received_unix_nano: delivery.received,
@@ -452,9 +460,8 @@ FROM ${streamEvidenceSource(
 			received - BigInt(delivery.newest) * 1_000_000n,
 		),
 	};
-	delete row.original_hex;
 	// Binary values from ClickHouse use base64 at this JSON integration boundary.
-	const raw = { ...row, lineage: provenance };
+	const raw = { ...point, lineage: provenance };
 	return {
 		measurement: select([
 			"metric_name",

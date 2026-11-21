@@ -251,9 +251,9 @@ pub fn hex(bytes: &[u8]) -> String {
 
 // The initial fixed-count operational policy supplies affinity, not global
 // event order. Resizing requires an explicit routing/ordering policy.
-pub fn partition(key: &[u8; 32], partitions: u32) -> Option<u32> {
-    (partitions > 0)
-        .then(|| (u64::from_be_bytes(key[..8].try_into().unwrap()) % u64::from(partitions)) as u32)
+pub fn partition(key: &[u8], partitions: u32) -> Option<u32> {
+    let prefix = u64::from_be_bytes(key.get(..8)?.try_into().ok()?);
+    (partitions > 0).then(|| (prefix % u64::from(partitions)) as u32)
 }
 
 pub fn raw_routing_key(raw: &RawRecord) -> Result<[u8; 32], &'static str> {

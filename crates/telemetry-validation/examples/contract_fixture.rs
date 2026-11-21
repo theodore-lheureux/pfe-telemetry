@@ -69,7 +69,10 @@ fn main() {
             row.delivery_request = request.clone();
             row.delivery_context = context.clone();
             row.delivery_context_id = context_id.clone();
-            row.original_position = compact.original_position;
+            row.original_resource = compact.original_resource;
+            row.original_scope = compact.original_scope;
+            row.original_metric = compact.original_metric;
+            row.original_point = compact.original_point;
             row.received_unix_nano = received;
             row.min_event_unix_milli = oldest;
             row.max_event_unix_milli = newest;

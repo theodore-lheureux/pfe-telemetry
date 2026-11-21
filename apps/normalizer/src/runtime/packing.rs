@@ -18,7 +18,7 @@ struct Packet {
     points: Vec<AnalyticalPoint>,
     // The index of the first frame and its metadata, including the packet bounds.
     series: HashMap<u64, PacketSeries>,
-    streams: HashSet<[u8; 32]>,
+    streams: HashSet<[u8; 16]>,
     bytes: usize,
 }
 
@@ -127,7 +127,7 @@ pub(crate) fn pack(
 #[derive(Default)]
 pub(super) struct Emissions {
     pub series: Vec<Emission>,
-    pub streams: Vec<Emission<[u8; 32]>>,
+    pub streams: Vec<Emission<[u8; 16]>>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -152,7 +152,7 @@ pub(super) fn pack_prepared(
     broker_bytes: usize,
     packed_recent: bool,
     cache: Option<&SeriesCache>,
-    stream_cache: Option<&SeriesCache<[u8; 32]>>,
+    stream_cache: Option<&SeriesCache<[u8; 16]>>,
 ) -> Result<(Vec<RoutedRecord>, Emissions), PackError> {
     let batch_bytes = PACKED_BYTES.min(broker_bytes.saturating_sub(FRAMING_RESERVE));
     let mut pending = BTreeMap::<u32, Packet>::new();
@@ -257,7 +257,7 @@ mod tests {
             project_id: "project".into(),
             source_id: "source".into(),
             metric_name: "metric".into(),
-            stream_id: [vec![0; 7], vec![stream], vec![0; 24]].concat(),
+            stream_id: [vec![0; 7], vec![stream], vec![0; 8]].concat(),
             int_value: Some(sample.into()),
             time_unix_milli: t,
             ..Default::default()

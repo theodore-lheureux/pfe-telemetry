@@ -223,7 +223,12 @@ fn compact_delivery_reassembles_every_original_lineage() {
         common.delivery = Some(connection);
     }
     for (old, point) in before.iter().zip(after) {
-        let original = Position::decode(point.original_position.as_slice()).unwrap();
+        let original = Position {
+            resource: point.original_resource,
+            scope: point.original_scope,
+            metric: point.original_metric,
+            point: point.original_point,
+        };
         let resource = bundle
             .resources
             .iter()

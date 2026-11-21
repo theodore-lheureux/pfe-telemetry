@@ -156,7 +156,7 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 	expect(
 		parseExplorer({
 			...reference,
-			cursor: { to, from, timeMs, sampleId: "aa".repeat(40) },
+			cursor: { to, from, timeMs, sampleId: "aa".repeat(24) },
 		}).cursor?.to,
 	).toBe(to);
 	expect(() =>
@@ -166,14 +166,14 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 				to,
 				from: new Date(to.getTime() + 1),
 				timeMs,
-				sampleId: "aa".repeat(40),
+				sampleId: "aa".repeat(24),
 			},
 		}),
 	).toThrow();
 	expect(() =>
 		parseExplorer({
 			...reference,
-			cursor: { to, from, timeMs: "1", sampleId: "aa".repeat(40) },
+			cursor: { to, from, timeMs: "1", sampleId: "aa".repeat(24) },
 		}),
 	).toThrow();
 	expect(() =>
@@ -183,7 +183,7 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 			resourceId: "node",
 			metricName: "metric",
 			timeMs: "18446744073709551616",
-			sampleId: "aa".repeat(40),
+			sampleId: "aa".repeat(24),
 		}),
 	).toThrow();
 	expect(() => parsePacket({ ...reference, packetId: "\nsecret" })).toThrow();
@@ -239,7 +239,7 @@ test("Explorer filters are validated and intervals must be ordered and in the pa
 			to,
 			from,
 			timeMs: BigInt(to.getTime()).toString(),
-			sampleId: "aa".repeat(40),
+			sampleId: "aa".repeat(24),
 		};
 	expect(parseExplorer({ ...reference, from, to, cursor }).cursor?.from).toBe(
 		from,

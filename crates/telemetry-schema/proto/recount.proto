@@ -212,7 +212,10 @@ message AnalyticalPoint {
   repeated ContinuityNode resource_continuity = 56;
   repeated ContinuityNode point_continuity = 57;
   reserved 58;
-  bytes original_position = 59;
+  uint32 original_resource = 59;
+  uint32 original_scope = 70;
+  uint32 original_metric = 71;
+  uint32 original_point = 72;
   fixed64 received_unix_nano = 60;
   reserved 61;
   bytes delivery_request = 62;

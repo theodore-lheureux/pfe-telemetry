@@ -381,7 +381,7 @@ test("continuity segment and physical point limits fail rather than truncate", a
 		query: insertPoints(
 			{
 				sample_id: "SHA256(toString(number))",
-				stream_id: "SHA256(toString(number))",
+				stream_id: "substring(SHA256(toString(number)),1,16)",
 			},
 			"CROSS JOIN numbers(257) AS ticks",
 		),

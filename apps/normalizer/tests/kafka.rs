@@ -134,11 +134,7 @@ async fn continuous_backlog_advances_confirmed_prefix_beyond_active_slots() {
         {
             let row = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
             expected.insert(
-                (
-                    (index % 3) as u32,
-                    (index / 3) as u64,
-                    row.original_position.clone(),
-                ),
+                ((index % 3) as u32, (index / 3) as u64, position(&row)),
                 observation(row),
             );
         }
@@ -448,10 +444,7 @@ async fn natural_time_and_byte_expiry_warn_count_and_resume_the_suffix() {
         .into_iter()
         .map(|record| {
             let row = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
-            (
-                (0, (high - 1) as u64, row.original_position.clone()),
-                observation(row),
-            )
+            ((0, (high - 1) as u64, position(&row)), observation(row))
         })
         .collect();
         assert_eq!(
@@ -591,11 +584,20 @@ fn observation(row: AnalyticalPoint) -> AnalyticalPoint {
     }
 }
 
+fn position(point: &AnalyticalPoint) -> [u32; 4] {
+    [
+        point.original_resource,
+        point.original_scope,
+        point.original_metric,
+        point.original_point,
+    ]
+}
+
 async fn collect(
     consumer: &BaseConsumer,
     expected: usize,
     phase: &str,
-) -> BTreeMap<(u32, u64, Vec<u8>), AnalyticalPoint> {
+) -> BTreeMap<(u32, u64, [u32; 4]), AnalyticalPoint> {
     let deadline = Instant::now() + Duration::from_secs(30);
     let mut rows = BTreeMap::new();
     while rows.len() < expected && Instant::now() < deadline {
@@ -609,11 +611,7 @@ async fn collect(
                 Some(message.partition() as u32)
             );
             rows.insert(
-                (
-                    point.raw_partition,
-                    point.raw_offset,
-                    point.original_position.clone(),
-                ),
+                (point.raw_partition, point.raw_offset, position(&point)),
                 observation(point),
             );
         } else {
@@ -751,7 +749,7 @@ async fn real_kafka_first_start_replay_rebalance_and_dead_letter() {
     .into_iter()
     .map(|record| {
         let point = AnalyticalPoint::decode(record.payload.as_slice()).unwrap();
-        let coordinates = (0, delivery.offset as u64, point.original_position.clone());
+        let coordinates = (0, delivery.offset as u64, position(&point));
         assert!(!original.contains_key(&coordinates));
         (coordinates, observation(point))
     })

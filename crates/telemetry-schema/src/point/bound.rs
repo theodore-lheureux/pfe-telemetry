@@ -30,11 +30,11 @@ pub fn delivery_bound(
     if raw.bindings.len() != request.resource_metrics.len() {
         return Err("one binding per original resource required");
     }
-    // AnalyticalPoint: security strings, 32-byte stream ID, raw coordinates
+    // AnalyticalPoint: security strings, 16-byte stream ID, raw coordinates
     // and the fixed part of the singleton packing allowance.
     let common = text(security.project_id.len(), 1)
         + text(security.source_id.len(), 1)
-        + 34
+        + 18
         + 17
         + singleton_overhead_for_markers(0);
     let mut count = 0;
@@ -109,7 +109,10 @@ pub fn delivery_bound(
                     let leaf = 18
                         + 6
                         + 7 * usize::from(observation.flags() != 0)
-                        + text(pos.encoded_len(), 2)
+                        + [pos.resource, pos.scope, pos.metric, pos.point]
+                            .into_iter()
+                            .map(|value| 7 * usize::from(value != 0))
+                            .sum::<usize>()
                         + observation_bound(observation)?
                         + attributes(observation.attributes(), POINT_MARKERS)?;
                     let path = common + shared + scope_bytes + metric_bytes + leaf;

@@ -18,7 +18,6 @@ const requestEvidenceType = root.lookupType("recount.telemetry.PointLineage");
 const contextEvidenceType = root.lookupType(
 	"recount.telemetry.DeliveryContextEvidence",
 );
-const positionType = root.lookupType("recount.telemetry.Position");
 const notificationType = root.lookupType("recount.telemetry.LiveNotification");
 const options = {
 	longs: String,
@@ -71,12 +70,8 @@ export function nanosecondsDate(value: string): Date {
 export function decodeDelivery(
 	requestHex: string,
 	contextHex: string,
-	position: string,
+	original: JsonObject,
 ): JsonObject {
-	const original = positionType.toObject(
-		positionType.decode(Buffer.from(position, "hex")),
-		options,
-	) as JsonObject;
 	const request = requestEvidenceType.toObject(
 		requestEvidenceType.decode(Buffer.from(requestHex, "hex")),
 		options,

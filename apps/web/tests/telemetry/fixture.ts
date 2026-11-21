@@ -287,7 +287,7 @@ export function insertPoints(
 		resource_id: "{host:String}",
 		host_id: "{host:String}",
 		sample_id: "SHA256({sample:String})",
-		stream_id: "SHA256({stream:String})",
+		stream_id: "substring(SHA256({stream:String}),1,16)",
 		time_unix_milli: "{time:UInt64}",
 		event_day: "toUInt32(intDiv({time:UInt64},86400000))",
 		start_time_unix_nano: "toUInt64(0)",

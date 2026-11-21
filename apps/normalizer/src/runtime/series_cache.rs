@@ -32,7 +32,10 @@ impl CacheKey for u64 {
     }
 }
 
-impl CacheKey for [u8; 32] {
+impl<const N: usize> CacheKey for [u8; N]
+where
+    [u8; N]: Default,
+{
     fn prefix(self) -> u64 {
         u64::from_be_bytes(self[..8].try_into().unwrap())
     }

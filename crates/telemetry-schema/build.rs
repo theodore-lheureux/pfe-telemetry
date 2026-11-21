@@ -80,7 +80,6 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
             | "delivery_request"
             | "delivery_context_id"
             | "delivery_context"
-            | "original_position"
             | "lineage"
             | "exemplars"
             | "resource_entity_refs",
@@ -96,6 +95,10 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
         (
             "AnalyticalPoint",
             "event_day"
+            | "original_resource"
+            | "original_scope"
+            | "original_metric"
+            | "original_point"
             | "raw_partition"
             | "flags"
             | "resource_dropped_attributes_count"
@@ -223,7 +226,12 @@ fn sql_type(
             !field.proto3_optional.unwrap_or(false),
             "analytical identity is required"
         );
-        return "FixedString(32)".into();
+        return if field.name() == "stream_id" {
+            "FixedString(16)"
+        } else {
+            "FixedString(32)"
+        }
+        .into();
     }
     let base = match field.r#type() {
         Type::String => "String".into(),
@@ -404,6 +412,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             || STATISTICS.contains(name)
                         {
                             plain(ty)
+                        } else if matches!(*name, "project_id" | "metric_name") {
+                            "LowCardinality(String)".into()
                         } else {
                             ty.clone()
                         },

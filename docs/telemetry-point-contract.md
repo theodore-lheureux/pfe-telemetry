@@ -64,6 +64,8 @@ An analytical sample is identified by `(series_id, stream_id, time_unix_milli)` 
 
 `recount-batch-id` identifies the immutable client batch for routing and provenance, not sample replacement. Without it, raw routing uses the trusted server record ID. UUIDs are acceptable client tokens, but the contract accepts 1–128 ASCII alphanumeric/`-`/`_` bytes. Tokens are project/source/payload-kind scoped, not secret credentials.
 
+`stream_id` stores the first 16 bytes of the typed SHA-256 digest. The first eight bytes still select the output partition. The full 16-byte prefix identifies continuity evidence and participates in point replacement: a collision can attach the wrong evidence, not just route two streams to the same partition. At one billion distinct streams in a project, the approximate accidental collision probability is 1.5 × 10⁻²¹ for 128 bits, versus 2.7% for 64 bits. The point table dictionary-encodes project IDs and metric names, and stores the original OTLP position as four UInt32 coordinates.
+
 `recount-batch-created-unix-nano` is a positive decimal UInt64 and is required together with the batch ID. Metadata keys must not repeat. `recount-collection-profile` is absent/`standard` for ordinary authorized OTLP or `linux` for the Recount collector adapter; `linux` requires durable batch identity. Recount credentials use prefix `recount_`. These are current owned names, with no old aliases.
 
 The producer assigns batch identity **after** splitting a new batch and durably retains body order, values, times and metadata across retries. Reusing a batch ID with changed content is a protocol violation; there is no permanent conflict registry. The inspector shows the original position and delivery evidence for the winning write.
