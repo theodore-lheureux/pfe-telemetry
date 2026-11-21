@@ -150,7 +150,7 @@ export function ActivityTable({
 								{expanded.has(row.id) && (
 									<TableRow
 										id={`activity-${row.id}`}
-										className="hover:bg-transparent"
+										className="[scroll-margin-top:var(--sticky-header-height,0px)] hover:bg-transparent"
 									>
 										<TableCell
 											colSpan={columnCount}

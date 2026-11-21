@@ -20,7 +20,7 @@ import type {
 	PacketSummary,
 	PointSummary,
 } from "./contracts";
-import { HistogramDetail } from "./histogram-detail";
+import { HistogramDetail, hasHistogramBuckets } from "./histogram-detail";
 import { JsonValueView } from "./json-value";
 
 function isObject(value: JsonValue): value is JsonObject {
@@ -342,9 +342,15 @@ export function ActivityInspector({
 				note: incoming.truncated ? m.activity_truncated() : undefined,
 			},
 		];
+	const histogram = stored && hasHistogramBuckets(stored.measurement);
+	if (histogram)
+		tabs.unshift({ id: "buckets", title: m.histogram_buckets(), value: null });
 	return (
 		// The row above already names the point, node and time; the bar holds only tabs and copy.
-		<Tabs defaultValue={tabs[0]?.id} className="gap-0">
+		<Tabs
+			defaultValue={tabs[0]?.id}
+			className="gap-0 [scroll-margin-top:var(--sticky-header-height,0px)]"
+		>
 			<div className="flex items-center justify-between gap-3 border-b pr-3">
 				<TabsList
 					aria-label={m.activity_details()}
@@ -364,15 +370,16 @@ export function ActivityInspector({
 			</div>
 			{tabs.map((tab) => (
 				<TabsContent key={tab.id} value={tab.id}>
-					{stored && tab.id === "measurement" && (
-						<HistogramDetail measurement={stored.measurement} />
-					)}
 					{tab.note && (
 						<p className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
 							{tab.note}
 						</p>
 					)}
-					<PropertyViewer value={tab.value} attributes={tab.attributes} />
+					{stored && tab.id === "buckets" ? (
+						<HistogramDetail measurement={stored.measurement} />
+					) : (
+						<PropertyViewer value={tab.value} attributes={tab.attributes} />
+					)}
 				</TabsContent>
 			))}
 		</Tabs>

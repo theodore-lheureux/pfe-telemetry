@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@clickhouse/client";
+import { DEFAULT_DRAFT, encodeDraft } from "../../src/analytics/insight/draft";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
@@ -11,8 +12,42 @@ test.skip(
 );
 
 const metric = "recount.node.process.cpu.utilization.distribution";
-const stream = "histogram-test01";
 const context = "histogram-context-evidence-test1";
+const seconds = 1800;
+const nodes = 4;
+const bounds = [0, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
+
+function histogramPoint(second: number, node: number, from: number) {
+	const time = from + second * 1000;
+	const counts = new Array<number>(bounds.length + 1).fill(0);
+	const center = 2 + Math.floor(second / 360);
+	const values = Array.from({ length: 120 }, (_, process) => {
+		if (process < 35) return 0;
+		const skew = ((process * 17 + second * 7 + node * 13) % 11) - 5;
+		const bucket = Math.min(11, Math.max(1, center + Math.round(skew / 2)));
+		return bounds[bucket];
+	});
+	for (const value of values) counts[bounds.indexOf(value)]++;
+	return {
+		metric_name: metric,
+		series_id: String(77 + node),
+		stream_id: streamFor(node),
+		time_unix_milli: String(time),
+		event_day: Math.floor(time / 86_400_000),
+		raw_offset: second + 1,
+		statistics_present: 15,
+		count: values.length,
+		sum: values.reduce((total, value) => total + value, 0),
+		min: Math.min(...values),
+		max: Math.max(...values),
+		explicit_bounds: bounds,
+		bucket_counts: counts,
+	};
+}
+
+function streamFor(node: number) {
+	return `histogram-test0${node}`;
+}
 
 test("Explore pools matching buckets and Explorer exposes the stored buckets", async ({
 	page,
@@ -44,7 +79,9 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 		username: process.env.RECOUNT_CLICKHOUSE_TEST_USER,
 		password: process.env.RECOUNT_CLICKHOUSE_TEST_PASSWORD,
 	});
-	const time = Date.now() - 45_000;
+	const to = Math.floor((Date.now() - 5000) / 1000) * 1000;
+	const from = to - seconds * 1000;
+	const time = to - 1000;
 	const insert = (table: string, row: Record<string, unknown>) =>
 		client.insert({
 			table: `telemetry.${table}`,
@@ -52,26 +89,28 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			format: "JSONEachRow",
 		});
 	try {
-		await insert("metric_series", {
-			source_id: project.id,
-			resource_id: "node-test",
-			host_id: "node-test",
-			resource_kind: 1,
-			metric_name: metric,
-			metric_kind: 3,
-			unit: "1",
-			temporality: 1,
-			series_id: "77",
-			logical_series_id: "77",
-			first_seen_unix_milli: String(time - 1),
-			last_seen_unix_milli: String(time),
-		});
-		await insert("metric_streams", { stream_id: stream });
+		for (let node = 0; node < nodes; node++) {
+			await insert("metric_series", {
+				source_id: project.id,
+				resource_id: `node-${node + 1}`,
+				host_id: `node-${node + 1}`,
+				resource_kind: 1,
+				metric_name: metric,
+				metric_kind: 3,
+				unit: "1",
+				temporality: 1,
+				series_id: String(77 + node),
+				logical_series_id: String(77 + node),
+				first_seen_unix_milli: String(from),
+				last_seen_unix_milli: String(time),
+			});
+			await insert("metric_streams", { stream_id: streamFor(node) });
+		}
 		await insert("deliveries", {
 			source_id: project.id,
-			raw_offset: 1,
+			raw_offset: seconds,
 			received_unix_nano: String(BigInt(time + 1) * 1_000_000n),
-			min_event_unix_milli: String(time - 1),
+			min_event_unix_milli: String(time),
 			max_event_unix_milli: String(time),
 			delivery_context_id: context,
 			delivery_request: Buffer.from("1a0178", "hex").toString(),
@@ -81,69 +120,84 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			delivery_context_id: context,
 			delivery_context: Buffer.from("1200", "hex").toString(),
 		});
-		for (const t of [time, time - 1, time - 20_000]) {
-			await insert("metric_points", {
-				metric_name: metric,
-				series_id: "77",
-				stream_id: stream,
-				time_unix_milli: String(t),
-				event_day: Math.floor(t / 86_400_000),
-				raw_offset: 1,
-				statistics_present: 15,
-				count: 3,
-				sum: 3.5,
-				min: 0,
-				max: 2,
-				explicit_bounds: [0, 0.5, 1],
-				bucket_counts: [1, 0, 1, 1],
+		await client.insert({
+			table: "telemetry.metric_points",
+			format: "JSONEachRow",
+			values: Array.from({ length: seconds * nodes }, (_, index) => ({
+				project_id: project.id,
+				...histogramPoint(Math.floor(index / nodes), index % nodes, from),
+			})),
+		});
+		const path = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}`;
+		const q = encodeDraft({
+			...DEFAULT_DRAFT,
+			range: { kind: "between", from: new Date(from), to: new Date(to) },
+		});
+		await page.setViewportSize({ width: 1440, height: 1050 });
+		for (const theme of ["light", "dark"] as const) {
+			const preference = theme === "dark" ? "tide-dark" : "tide";
+			await page.context().addCookies([
+				{ name: "recount_locale", value: "en", url: workspace.origin },
+				{
+					name: "recount_theme",
+					value: preference,
+					url: workspace.origin,
+				},
+			]);
+			await page.goto(
+				`${path}/explore?q=${encodeURIComponent(JSON.stringify(q))}`,
+			);
+			await expect(page.locator("html")).toHaveAttribute("lang", "en");
+			await expect(page.locator("html")).toHaveAttribute(
+				"data-theme",
+				preference,
+			);
+			const later = page.getByRole("dialog", { name: /passkey/i });
+			if (await later.isVisible())
+				await later.getByRole("button", { name: /later/i }).click();
+			const picker = page.getByLabel("Distribution over time");
+			await expect(picker).toBeEnabled();
+			await picker.selectOption(JSON.stringify([metric, "1"]));
+			await expect(page.locator("svg [data-time-window]")).toHaveCount(48);
+			await expect(page.locator("[data-time-axis] text")).toHaveCount(5);
+			await expect(
+				page.getByLabel("Time slice").getByRole("option"),
+			).toHaveCount(48);
+			const chart = page
+				.getByRole("figure")
+				.filter({ has: page.getByLabel("Time slice") });
+			await expect(chart).toContainText("17,760");
+			await page.screenshot({
+				path: info.outputPath(`histogram-heatmap-${theme}.png`),
+			});
+
+			await page.goto(`${path}/activity`);
+			await page
+				.getByRole("button", { name: `Inspect ${metric}` })
+				.first()
+				.click();
+			await expect(page.getByRole("tab", { name: "Buckets" })).toHaveAttribute(
+				"aria-selected",
+				"true",
+			);
+			const panel = page.getByRole("tabpanel");
+			await expect(panel).toContainText("120");
+			await panel
+				.locator("..")
+				.evaluate((element) => element.scrollIntoView({ block: "start" }));
+			const header = await page
+				.getByRole("heading", { name: "Activity", exact: true })
+				.boundingBox();
+			const tabs = await page
+				.getByRole("tablist", { name: "Telemetry details" })
+				.boundingBox();
+			expect(tabs?.y ?? 0).toBeGreaterThan(
+				(header?.y ?? 0) + (header?.height ?? 0),
+			);
+			await page.screenshot({
+				path: info.outputPath(`histogram-explorer-${theme}.png`),
 			});
 		}
-		const path = `${workspace.origin}/organizations/${organization.id}/projects/${project.id}`;
-		await page.goto(`${path}/explore`);
-		const later = page.getByRole("dialog", { name: /passkey/i });
-		if (await later.isVisible())
-			await later.getByRole("button", { name: /later/i }).click();
-		const picker = page.getByLabel("Distribution over time");
-		await expect(picker).toBeEnabled();
-		await picker.selectOption(JSON.stringify([metric, "1"]));
-		const count = page.getByRole("row", { name: /^Count/ });
-		await expect(count).toBeVisible();
-		expect(
-			(await count.getByRole("cell").allTextContents()).reduce(
-				(total, value) => total + Number(value),
-				0,
-			),
-		).toBe(9);
-		await expect(page.getByRole("row", { name: /^Mean/ })).toContainText(
-			"1.1666667",
-		);
-		await page
-			.getByRole("table")
-			.filter({ hasText: "Bucket" })
-			.screenshot({ path: info.outputPath("histogram-heatmap.png") });
-		await page.goto(`${path}/activity`);
-		await page
-			.getByRole("button", { name: `Inspect ${metric}` })
-			.first()
-			.click();
-		await expect(page.getByRole("row", { name: /^Count/ })).toContainText("3");
-		await page
-			.getByRole("tabpanel")
-			.screenshot({ path: info.outputPath("histogram-explorer.png") });
-		await page
-			.context()
-			.addCookies([
-				{ name: "recount_locale", value: "fr", url: workspace.origin },
-			]);
-		await page.goto(`${path}/explore`);
-		const frenchPicker = page.getByLabel("Distribution dans le temps");
-		await expect(frenchPicker).toBeEnabled();
-		await frenchPicker.selectOption(JSON.stringify([metric, "1"]));
-		await expect(page.getByRole("row", { name: /^Moyenne/ })).toBeVisible();
-		await page
-			.getByRole("table")
-			.filter({ hasText: "Classe" })
-			.screenshot({ path: info.outputPath("histogram-heatmap-fr.png") });
 	} finally {
 		await clearTelemetry(client, project.id);
 		for (const table of ["metric_streams", "delivery_contexts"])

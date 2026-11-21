@@ -85,12 +85,17 @@ export function HistogramPanel({
 			)}
 			{metric && result.isLoading && <Skeleton className="h-32 w-full" />}
 			{result.isError && <p role="alert">{m.insight_unavailable()}</p>}
-			{result.data && (
+			{result.data && input && (
 				<HistogramHeatmap
 					rows={result.data.rows}
 					unit={metric?.unit ?? ""}
 					limited={result.data.limited}
 					zone={zone}
+					timeline={{
+						from: input.from.getTime(),
+						to: input.to.getTime(),
+						step: result.data.step,
+					}}
 				/>
 			)}
 		</section>
