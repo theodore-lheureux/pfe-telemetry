@@ -36,7 +36,7 @@ fn partial_output_replay_keeps_one_faithful_point_per_record_and_identical_ids()
         let row = AnalyticalPoint::decode(a.payload.as_slice()).unwrap();
         assert_eq!(
             a.partition,
-            identity::partition(row.stream_id.as_slice().try_into().unwrap(), 3).unwrap()
+            identity::partition(row.stream_id.as_slice(), 3).unwrap()
         );
         assert_eq!(a.partition, b.partition);
         assert_eq!(a.payload, b.payload);

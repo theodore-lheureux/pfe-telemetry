@@ -607,7 +607,7 @@ async fn collect(
             assert!(body.len() <= 1048576);
             let point = AnalyticalPoint::decode(body).unwrap();
             assert_eq!(
-                identity::partition(point.stream_id.as_slice().try_into().unwrap(), 3),
+                identity::partition(point.stream_id.as_slice(), 3),
                 Some(message.partition() as u32)
             );
             rows.insert(
