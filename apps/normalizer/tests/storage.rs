@@ -211,6 +211,10 @@ impl Storage {
 
     /// With `late`, the late table reads this test's topic and group instead of the recent one.
     fn start_as(&self, late: bool) {
+        self.start_with(late, false);
+    }
+
+    fn start_with(&self, late: bool, sparse: bool) {
         let internal = setting("RECOUNT_STORAGE_TEST_INTERNAL_BROKER");
         let other_group = format!("{}.other", self.group);
         let (topic, group, late_topic, late_group) = if late {
@@ -232,6 +236,21 @@ impl Storage {
         }
         .render()
         .unwrap();
+        let ddl = if sparse {
+            use recount_telemetry_schema::ddl::{FLUSH_MS, RECENT_CONSUMERS, RECENT_FLUSH_MS};
+            // The sparse fixture uses one partition and checks a two-second
+            // flush within five seconds, independently of production batching.
+            ddl.replace(
+                &format!("kafka_num_consumers = {RECENT_CONSUMERS},"),
+                "kafka_num_consumers = 1,",
+            )
+            .replace(
+                &format!("kafka_flush_interval_ms = {RECENT_FLUSH_MS};"),
+                &format!("kafka_flush_interval_ms = {FLUSH_MS};"),
+            )
+        } else {
+            ddl
+        };
         for statement in ddl.split(';').filter(|s| !s.trim().is_empty()) {
             self.sql(statement);
         }
@@ -363,7 +382,7 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
         ANALYTICAL_COLUMNS.as_bytes(),
         "stale fixture executable"
     );
-    storage.start();
+    storage.start_with(false, true);
     assert_eq!(
         storage.sql(&format!(
             "SELECT sorting_key FROM system.tables WHERE database = '{}' AND name = 'metric_series'",
@@ -417,10 +436,11 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
     };
     for (view, final_clause) in [("verified_points", "FINAL"), ("verified_physical", "")] {
         storage.sql(&format!("CREATE VIEW {db}.{view} AS
-        SELECT p.* EXCEPT (project_id,metric_name,series_id,value_kind,statistics_present)
+        SELECT p.* EXCEPT (project_id,metric_name,series_id,stream_id,value_kind,statistics_present)
             REPLACE (if(value_kind=1,int_value,NULL) AS int_value, if(value_kind=2,double_value,NULL) AS double_value, {}),
             s.* EXCEPT (project_id,source_id,metric_name,series_id,logical_series_id,first_seen_unix_milli,last_seen_unix_milli,resource_attributes,point_attributes,host_id,monotonic),
-            p.project_id AS project_id, p.metric_name AS metric_name, s.source_id AS source_id,
+            p.project_id AS project_id, p.metric_name AS metric_name, p.stream_id AS stream_id,
+            s.source_id AS source_id,
             d.received_unix_nano AS received_unix_nano,
             d.min_event_unix_milli AS min_event_unix_milli, d.max_event_unix_milli AS max_event_unix_milli,
             nullIf(host_id,'') AS host_id, nullIf(toUInt8(monotonic),2) AS monotonic,
