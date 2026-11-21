@@ -4,7 +4,7 @@
 
 ## Responsibilities
 
-The API checks live PostgreSQL authority, resolves enrolled root/resource grants, validates the whole request and exact normalized expansion, then publishes one bounded raw record when its point count is nonzero. The separate [normalizer](../apps/normalizer/README.md) uses RustStream to publish one bare analytical point per Kafka record, with all required outputs acknowledged before input settlement. Native ClickHouse uses `ProtobufSingle` and a non-aggregating view. The API writes neither ClickHouse nor PostgreSQL telemetry acceptance state; browser operations authorize independently.
+The API checks live PostgreSQL authority, resolves enrolled root/resource grants, validates the whole request and checks a conservative normalized-size bound, then publishes one bounded raw record when its point count is nonzero. The separate [normalizer](../apps/normalizer/README.md) uses RustStream to publish one bare analytical point per Kafka record, with all required outputs acknowledged before input settlement. Native ClickHouse uses `ProtobufSingle` and a non-aggregating view. The API writes neither ClickHouse nor PostgreSQL telemetry acceptance state; browser operations authorize independently.
 
 A successful export containing validated observations confirms raw Kafka publication, not processing completion or whole-batch analytical visibility. Authenticated zero-point requests succeed after authority and validation checks without publishing; empty-export success proves neither Kafka publication nor downstream health. Temporary publication failure/timeout can be ambiguous; retry immutable input. Exact sample identity, authority and acknowledgement boundaries are in the [point contract](telemetry-point-contract.md).
 

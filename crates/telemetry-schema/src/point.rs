@@ -15,6 +15,9 @@ use crate::{
 use prost::Message;
 use std::sync::Arc;
 
+mod bound;
+pub use bound::{DeliveryBound, delivery_bound};
+
 #[derive(Clone, Copy)]
 pub enum Observation<'a> {
     Number(&'a metrics::NumberDataPoint),
@@ -22,8 +25,8 @@ pub enum Observation<'a> {
     Exponential(&'a metrics::ExponentialHistogramDataPoint),
     Summary(&'a metrics::SummaryDataPoint),
 }
-impl Observation<'_> {
-    pub fn attributes(&self) -> &[KeyValue] {
+impl<'a> Observation<'a> {
+    pub fn attributes(&self) -> &'a [KeyValue] {
         match self {
             Self::Number(p) => &p.attributes,
             Self::Histogram(p) => &p.attributes,
@@ -57,16 +60,27 @@ impl Observation<'_> {
     }
 }
 pub fn observations(metric: &Metric) -> Vec<Observation<'_>> {
+    observation_iter(metric).collect()
+}
+
+fn observation_iter(metric: &Metric) -> impl Iterator<Item = Observation<'_>> {
+    let mut number = [].iter();
+    let mut histogram = [].iter();
+    let mut exponential = [].iter();
+    let mut summary = [].iter();
     match &metric.data {
-        Some(Data::Gauge(v)) => v.data_points.iter().map(Observation::Number).collect(),
-        Some(Data::Sum(v)) => v.data_points.iter().map(Observation::Number).collect(),
-        Some(Data::Histogram(v)) => v.data_points.iter().map(Observation::Histogram).collect(),
-        Some(Data::ExponentialHistogram(v)) => {
-            v.data_points.iter().map(Observation::Exponential).collect()
-        }
-        Some(Data::Summary(v)) => v.data_points.iter().map(Observation::Summary).collect(),
-        None => Vec::new(),
+        Some(Data::Gauge(v)) => number = v.data_points.iter(),
+        Some(Data::Sum(v)) => number = v.data_points.iter(),
+        Some(Data::Histogram(v)) => histogram = v.data_points.iter(),
+        Some(Data::ExponentialHistogram(v)) => exponential = v.data_points.iter(),
+        Some(Data::Summary(v)) => summary = v.data_points.iter(),
+        None => {}
     }
+    number
+        .map(Observation::Number)
+        .chain(histogram.map(Observation::Histogram))
+        .chain(exponential.map(Observation::Exponential))
+        .chain(summary.map(Observation::Summary))
 }
 fn empty_metric(metric: &Metric) -> bool {
     match &metric.data {
@@ -77,6 +91,26 @@ fn empty_metric(metric: &Metric) -> bool {
         Some(Data::Summary(v)) => v.data_points.is_empty(),
         None => false,
     }
+}
+
+fn metric_shape(metric: &Metric) -> Result<(i32, i32, bool), &'static str> {
+    Ok(match &metric.data {
+        Some(Data::Gauge(_)) => (1, 0, false),
+        Some(Data::Sum(v)) => (2, v.aggregation_temporality, v.is_monotonic),
+        Some(Data::Histogram(v)) => (3, v.aggregation_temporality, false),
+        Some(Data::ExponentialHistogram(v)) => (4, v.aggregation_temporality, false),
+        Some(Data::Summary(_)) => (5, 0, false),
+        None => return Err("missing metric data"),
+    })
+}
+
+fn position(r: usize, s: usize, m: usize, p: usize) -> Result<Position, &'static str> {
+    Ok(Position {
+        resource: r.try_into().map_err(|_| "position overflow")?,
+        scope: s.try_into().map_err(|_| "position overflow")?,
+        metric: m.try_into().map_err(|_| "position overflow")?,
+        point: p.try_into().map_err(|_| "position overflow")?,
+    })
 }
 
 pub fn string_attribute<'a>(attrs: &'a [KeyValue], key: &str) -> Option<&'a str> {
@@ -102,25 +136,37 @@ fn delivery_context(value: &DeliveryObservation) -> DeliveryContext {
         context.collector_peer_address = Some(collector.peer_address.clone());
         context.inventory_observed_unix_nano = Some(collector.inventory_observed_unix_nano);
         context.collector_hostname = collector.hostname.clone();
-        let local = collector
-            .local_address
-            .parse::<std::net::SocketAddr>()
-            .ok()
-            .map(|a| a.ip());
-        context.local_interfaces = collector
-            .interfaces
-            .iter()
-            .filter(|i| collector.local_interface_names.contains(&i.name))
-            .map(|i| {
+        context.local_interfaces = delivery_interfaces(collector)
+            .map(|(i, local)| {
                 let mut interface = i.clone();
                 interface
                     .addresses
-                    .retain(|a| a.parse::<std::net::IpAddr>().ok() == local);
+                    .retain(|a| delivery_address_matches(a, local));
                 interface
             })
             .collect();
     }
     context
+}
+
+fn delivery_interfaces(
+    collector: &crate::wire::CollectorConnection,
+) -> impl Iterator<Item = (&crate::wire::NetworkInterface, Option<std::net::IpAddr>)> {
+    let local = collector
+        .local_address
+        .parse::<std::net::SocketAddr>()
+        .ok()
+        .map(|a| a.ip());
+    collector.interfaces.iter().filter_map(move |interface| {
+        collector
+            .local_interface_names
+            .contains(&interface.name)
+            .then_some((interface, local))
+    })
+}
+
+fn delivery_address_matches(address: &str, local: Option<std::net::IpAddr>) -> bool {
+    address.parse::<std::net::IpAddr>().ok() == local
 }
 
 // Call only after whole-request semantic validation and resource authorization;
@@ -201,21 +247,7 @@ fn lower(
         resources: Vec::new(),
     };
     let (mut min_event, mut max_event) = (u64::MAX, 0);
-    if raw.bindings.len() != request.resource_metrics.len() {
-        return Err("one binding per original resource required");
-    }
-    // The validated request's container budget bounds this index. Array order
-    // is not authority: bindings are keyed by their original resource position.
-    let mut contexts = vec![None; raw.bindings.len()];
-    for binding in &raw.bindings {
-        let slot = contexts
-            .get_mut(binding.original_resource as usize)
-            .ok_or("resource binding position out of range")?;
-        let context = binding.context.as_ref().ok_or("missing resource context")?;
-        if slot.replace(context).is_some() {
-            return Err("duplicate resource binding position");
-        }
-    }
+    let contexts = binding_contexts(raw, request)?;
     let mut out = Vec::new();
     let mut bytes = 0usize;
     let mut first_size = 0usize;
@@ -290,14 +322,7 @@ fn lower(
                 if empty_metric(metric) {
                     continue;
                 }
-                let (kind, temporality, monotonic) = match &metric.data {
-                    Some(Data::Gauge(_)) => (1, 0, false),
-                    Some(Data::Sum(v)) => (2, v.aggregation_temporality, v.is_monotonic),
-                    Some(Data::Histogram(v)) => (3, v.aggregation_temporality, false),
-                    Some(Data::ExponentialHistogram(v)) => (4, v.aggregation_temporality, false),
-                    Some(Data::Summary(_)) => (5, 0, false),
-                    None => return Err("missing metric data"),
-                };
+                let (kind, temporality, monotonic) = metric_shape(metric)?;
                 let mut projected_metric = None;
                 let mut metric_projection = || {
                     if projected_scope.is_none() {
@@ -329,12 +354,7 @@ fn lower(
                     if out.len() >= max_points {
                         return Err("normalized point limit");
                     }
-                    let original = Position {
-                        resource: r.try_into().map_err(|_| "position overflow")?,
-                        scope: s.try_into().map_err(|_| "position overflow")?,
-                        metric: m.try_into().map_err(|_| "position overflow")?,
-                        point: p.try_into().map_err(|_| "position overflow")?,
-                    };
+                    let original = position(r, s, m, p)?;
                     let (mut row, metadata, overhead, removed_len) = if let Some(cache) = cache {
                         series_key.truncate(metric_key_len);
                         key_attributes(&mut series_key, observation.attributes());
@@ -469,6 +489,28 @@ fn lower(
         }
     }
     Ok(out)
+}
+
+fn binding_contexts<'a>(
+    raw: &'a RawRecord,
+    request: &ExportMetricsServiceRequest,
+) -> Result<Vec<Option<&'a ResourceContext>>, &'static str> {
+    if raw.bindings.len() != request.resource_metrics.len() {
+        return Err("one binding per original resource required");
+    }
+    // The validated request's container budget bounds this index. Array order
+    // is not authority: bindings are keyed by their original resource position.
+    let mut contexts = vec![None; raw.bindings.len()];
+    for binding in &raw.bindings {
+        let slot = contexts
+            .get_mut(binding.original_resource as usize)
+            .ok_or("resource binding position out of range")?;
+        let context = binding.context.as_ref().ok_or("missing resource context")?;
+        if slot.replace(context).is_some() {
+            return Err("duplicate resource binding position");
+        }
+    }
+    Ok(contexts)
 }
 
 // Order matters for projected nodes and the storage ID, even when it does

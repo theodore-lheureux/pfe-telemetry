@@ -100,16 +100,44 @@ pub fn profile(value: Option<&str>) -> Result<Profile, Issue> {
         )),
     }
 }
+fn valid_batch_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
+}
+
+fn invalid_batch_id() -> Issue {
+    Issue::new(
+        Category::Invalid,
+        BATCH_ID,
+        "batch identity and time required together; ID is a bounded ASCII token",
+    )
+}
+
+fn invalid_batch_time() -> Issue {
+    Issue::new(
+        Category::Invalid,
+        BATCH_CREATED,
+        "expected positive UInt64 nanoseconds",
+    )
+}
+
+pub(crate) fn validate_batch_identity(batch: &BatchIdentity) -> Result<(), Issue> {
+    if !valid_batch_id(&batch.client_id) {
+        return Err(invalid_batch_id());
+    }
+    if batch.created_unix_nano == 0 {
+        return Err(invalid_batch_time());
+    }
+    Ok(())
+}
+
 pub fn batch(id: Option<&str>, created: Option<&str>) -> Result<Option<BatchIdentity>, Issue> {
     match (id, created) {
         (None, None) => Ok(None),
-        (Some(id), Some(created))
-            if !id.is_empty()
-                && id.len() <= 128
-                && id
-                    .bytes()
-                    .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b)) =>
-        {
+        (Some(id), Some(created)) if valid_batch_id(id) => {
             let time = if created.len() <= 20 && created.bytes().all(|b| b.is_ascii_digit()) {
                 created.parse::<u64>().ok().filter(|v| *v > 0)
             } else {
@@ -117,20 +145,10 @@ pub fn batch(id: Option<&str>, created: Option<&str>) -> Result<Option<BatchIden
             };
             Ok(Some(BatchIdentity {
                 client_id: id.into(),
-                created_unix_nano: time.ok_or_else(|| {
-                    Issue::new(
-                        Category::Invalid,
-                        BATCH_CREATED,
-                        "expected positive UInt64 nanoseconds",
-                    )
-                })?,
+                created_unix_nano: time.ok_or_else(invalid_batch_time)?,
             }))
         }
-        _ => Err(Issue::new(
-            Category::Invalid,
-            BATCH_ID,
-            "batch identity and time required together; ID is a bounded ASCII token",
-        )),
+        _ => Err(invalid_batch_id()),
     }
 }
 pub fn age(

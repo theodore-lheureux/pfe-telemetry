@@ -315,10 +315,22 @@ pub fn preflight(
     raw: &RawRecord,
     request: &ExportMetricsServiceRequest,
     limits: Limits,
-) -> Result<Vec<AnalyticalPoint>, Issue> {
+) -> Result<point::DeliveryBound, Issue> {
     let limits = limits.validate()?;
     envelope(raw, limits)?;
-    lower(raw, request, limits, true)
+    // Authority checks already validated the resolved scopes. Admission owns
+    // the bindings and emits them in order, so no index is needed here.
+    for binding in &raw.bindings {
+        validate_binding_context(binding)?;
+    }
+    point::delivery_bound(
+        raw,
+        request,
+        limits.points,
+        limits.normalized_record_bytes,
+        limits.normalized_batch_bytes,
+    )
+    .map_err(|e| Issue::new(Category::Limit, "normalized", e))
 }
 
 fn envelope(raw: &RawRecord, limits: Limits) -> Result<(), Issue> {
@@ -338,7 +350,7 @@ fn envelope(raw: &RawRecord, limits: Limits) -> Result<(), Issue> {
         return Err(invalid("raw", "unsupported payload or missing receipt"));
     }
     if let Some(b) = &raw.batch {
-        crate::metadata::batch(Some(&b.client_id), Some(&b.created_unix_nano.to_string()))?;
+        crate::metadata::validate_batch_identity(b)?;
     }
     if let Some(delivery) = &raw.delivery {
         crate::delivery::validate_observation(delivery)?;
@@ -383,56 +395,7 @@ fn validate_bindings(
                 "duplicate or out-of-range resource position",
             ));
         }
-        let context = b
-            .context
-            .as_ref()
-            .ok_or_else(|| invalid("bindings", "missing context"))?;
-        let reference = context
-            .resource
-            .as_ref()
-            .ok_or_else(|| invalid("bindings", "missing resource reference"))?;
-        if reference.id.is_empty()
-            || reference.id.len() > 128
-            || ResourceKind::try_from(reference.kind).is_err()
-        {
-            return Err(invalid("bindings", "invalid resource reference"));
-        }
-        for id in [&context.host_id, &context.device_id].into_iter().flatten() {
-            if id.is_empty() || id.len() > 128 {
-                return Err(invalid("bindings", "invalid promoted reference"));
-            }
-        }
-        if context.relationships.len() > 64 {
-            return Err(Issue::new(
-                Category::Limit,
-                "relationships",
-                "relationship count limit",
-            ));
-        }
-        for relation in &context.relationships {
-            if RelationKind::try_from(relation.kind).is_err()
-                || relation.evidence.is_empty()
-                || relation.provenance.is_empty()
-                || relation.evidence.len() > 1024
-                || relation.provenance.len() > 128
-                || relation
-                    .effective_from_unix_nano
-                    .zip(relation.effective_until_unix_nano)
-                    .is_some_and(|(a, b)| a > b)
-            {
-                return Err(invalid(
-                    "relationships",
-                    "invalid relationship evidence or interval",
-                ));
-            }
-            for r in [&relation.from, &relation.to] {
-                if r.as_ref().is_none_or(|r| {
-                    r.id.is_empty() || r.id.len() > 128 || ResourceKind::try_from(r.kind).is_err()
-                }) {
-                    return Err(invalid("relationships", "missing typed endpoint"));
-                }
-            }
-        }
+        validate_binding_context(b)?;
     }
     if positions.len() != request.resource_metrics.len() {
         return Err(invalid(
@@ -441,6 +404,62 @@ fn validate_bindings(
         ));
     }
     crate::policy::requested_authorities(raw, limits.distinct_authorities)?;
+    Ok(())
+}
+
+fn validate_binding_context(
+    b: &recount_telemetry_schema::wire::ResourceBinding,
+) -> Result<(), Issue> {
+    let context = b
+        .context
+        .as_ref()
+        .ok_or_else(|| invalid("bindings", "missing context"))?;
+    let reference = context
+        .resource
+        .as_ref()
+        .ok_or_else(|| invalid("bindings", "missing resource reference"))?;
+    if reference.id.is_empty()
+        || reference.id.len() > 128
+        || ResourceKind::try_from(reference.kind).is_err()
+    {
+        return Err(invalid("bindings", "invalid resource reference"));
+    }
+    for id in [&context.host_id, &context.device_id].into_iter().flatten() {
+        if id.is_empty() || id.len() > 128 {
+            return Err(invalid("bindings", "invalid promoted reference"));
+        }
+    }
+    if context.relationships.len() > 64 {
+        return Err(Issue::new(
+            Category::Limit,
+            "relationships",
+            "relationship count limit",
+        ));
+    }
+    for relation in &context.relationships {
+        if RelationKind::try_from(relation.kind).is_err()
+            || relation.evidence.is_empty()
+            || relation.provenance.is_empty()
+            || relation.evidence.len() > 1024
+            || relation.provenance.len() > 128
+            || relation
+                .effective_from_unix_nano
+                .zip(relation.effective_until_unix_nano)
+                .is_some_and(|(a, b)| a > b)
+        {
+            return Err(invalid(
+                "relationships",
+                "invalid relationship evidence or interval",
+            ));
+        }
+        for r in [&relation.from, &relation.to] {
+            if r.as_ref().is_none_or(|r| {
+                r.id.is_empty() || r.id.len() > 128 || ResourceKind::try_from(r.kind).is_err()
+            }) {
+                return Err(invalid("relationships", "missing typed endpoint"));
+            }
+        }
+    }
     Ok(())
 }
 

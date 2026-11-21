@@ -51,10 +51,11 @@ pub fn validate_connection(value: &CollectorConnection) -> Result<(), Issue> {
     {
         return Err(invalid());
     }
-    let mut names = std::collections::BTreeSet::new();
-    for interface in &value.interfaces {
+    for (i, interface) in value.interfaces.iter().enumerate() {
         if !label(&interface.name)
-            || !names.insert(&interface.name)
+            || value.interfaces[..i]
+                .iter()
+                .any(|other| other.name == interface.name)
             || interface.addresses.len() > MAX_ADDRESSES
             || interface
                 .addresses
@@ -79,9 +80,8 @@ pub fn validate_connection(value: &CollectorConnection) -> Result<(), Issue> {
         .parse::<SocketAddr>()
         .map_err(|_| invalid())?
         .ip();
-    let mut selected = std::collections::BTreeSet::new();
-    for name in &value.local_interface_names {
-        if !selected.insert(name)
+    for (i, name) in value.local_interface_names.iter().enumerate() {
+        if value.local_interface_names[..i].contains(name)
             || !value.interfaces.iter().any(|i| {
                 i.name == *name && i.addresses.iter().any(|a| a.parse::<IpAddr>() == Ok(local))
             })
