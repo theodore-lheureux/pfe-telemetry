@@ -156,8 +156,8 @@ export function builtInCalculations(): CalculatedMetric[] {
 			inputs: [
 				{
 					name: "A",
-					metric: "process.cpu.time",
-					calculation: "rate",
+					metric: "recount.node.process.cpu.utilization.distribution",
+					calculation: "avg",
 					combine: "sum",
 					filters: [],
 				},

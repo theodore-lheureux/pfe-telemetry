@@ -135,7 +135,12 @@ export type MetricAttributesInput = ProjectReference & { metric?: string };
 export type AttributeValuesInput = MetricAttributesInput & { field: string };
 
 /** How a stored metric behaves, which decides the calculations it allows. */
-export type MetricBehavior = "gauge" | "counter" | "delta" | "unsupported";
+export type MetricBehavior =
+	| "gauge"
+	| "counter"
+	| "delta"
+	| "population"
+	| "unsupported";
 
 export interface MetricDefinition {
 	name: string;

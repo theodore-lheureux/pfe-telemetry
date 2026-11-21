@@ -1,4 +1,4 @@
-use super::{Collector, process::ProcessSample};
+use super::{Collector, ProcessDetail, process::ProcessSample};
 use crate::metrics::{Distribution, gauge, histogram, string};
 use opentelemetry_proto::tonic::metrics::v1::{Metric, ResourceMetrics, number_data_point::Value};
 use recount_telemetry_validation::catalogue;
@@ -10,7 +10,6 @@ use std::{
 
 type Identity = (i32, u64);
 type GpuIdentities = BTreeMap<i32, u64>;
-const DETAIL_CAP: usize = 64;
 const TOP: usize = 16;
 const MAX_BASELINES: usize = 65_536;
 
@@ -43,7 +42,14 @@ struct Candidate {
     io: f64,
 }
 
-fn select(candidates: &[Candidate], cursor: &mut Option<Identity>) -> (BTreeSet<usize>, usize) {
+fn select(
+    candidates: &[Candidate],
+    cursor: &mut Option<Identity>,
+    detail: ProcessDetail,
+) -> (BTreeSet<usize>, usize) {
+    if detail.cap == 0 {
+        return ((0..candidates.len()).collect(), candidates.len());
+    }
     let mut tracked: Vec<_> = (0..candidates.len())
         .filter(|&i| candidates[i].tracked)
         .collect();
@@ -55,7 +61,7 @@ fn select(candidates: &[Candidate], cursor: &mut Option<Identity>) -> (BTreeSet<
     for &i in tracked[start..]
         .iter()
         .chain(&tracked[..start])
-        .take(DETAIL_CAP)
+        .take(detail.cap)
     {
         selected.insert(i);
         *cursor = Some(candidates[i].identity);
@@ -89,13 +95,14 @@ fn select(candidates: &[Candidate], cursor: &mut Option<Identity>) -> (BTreeSet<
         .chain(rss)
         .chain(ranked.iter().copied().filter(|&i| {
             let c = candidates[i];
-            c.cpu.is_some_and(|v| v >= 0.5)
-                || c.rss.is_some_and(|v| v >= 1 << 30)
-                || c.io >= (10 << 20) as f64
+            c.cpu
+                .is_some_and(|v| v >= f64::from(detail.cpu_percent) / 100.0)
+                || c.rss.is_some_and(|v| v as u64 >= detail.rss_bytes)
+                || c.io >= detail.io_bytes_per_second as f64
         }))
     {
         eligible.insert(i);
-        if selected.len() < DETAIL_CAP {
+        if selected.len() < detail.cap {
             selected.insert(i);
         }
     }
@@ -129,6 +136,7 @@ impl Collector {
         let mut candidates = Vec::with_capacity(samples.len());
         let mut gpu_identities = BTreeMap::new();
         let mut capped = 0;
+        let mut detail = self.process_detail;
         {
             let tracked = self.tracked_processes.as_ref().map(|rx| rx.borrow());
             let tracked = tracked.as_ref().filter(|snapshot| {
@@ -138,6 +146,9 @@ impl Collector {
             });
             for s in &samples {
                 let identity = s.identity();
+                if tracked.is_some_and(|snapshot| snapshot.profiling.contains(&identity)) {
+                    detail.cap = 0;
+                }
                 gpu_identities.insert(identity.0, identity.1);
                 let old = previous.remove(&identity);
                 let now = Baseline {
@@ -187,7 +198,7 @@ impl Collector {
                 }
             }
         }
-        let (selected, eligible) = select(&candidates, &mut self.population.tracked_cursor);
+        let (selected, eligible) = select(&candidates, &mut self.population.tracked_cursor, detail);
         let coverage = [
             ("verified", samples.len() as u64),
             ("cpu", cpu.count()),
@@ -202,6 +213,7 @@ impl Collector {
             ("detail_eligible", eligible as u64),
             ("detail_emitted", selected.len() as u64),
             ("detail_deferred", (eligible - selected.len()) as u64),
+            ("detail_omitted", (samples.len() - selected.len()) as u64),
         ]
         .into_iter()
         .map(|(kind, n)| {
@@ -273,11 +285,15 @@ mod tests {
             })
             .collect();
         let mut cursor = None;
-        let (first, eligible) = select(&candidates, &mut cursor);
-        let (next, _) = select(&candidates, &mut cursor);
+        let detail = ProcessDetail::default();
+        let (first, eligible) = select(&candidates, &mut cursor, detail);
+        let (next, _) = select(&candidates, &mut cursor, detail);
         assert_eq!(eligible, 70);
-        assert_eq!(first.len(), DETAIL_CAP);
-        assert_eq!(next.len(), DETAIL_CAP);
+        assert_eq!(first.len(), detail.cap);
+        assert_eq!(next.len(), detail.cap);
+        let (profiled, eligible) =
+            select(&candidates, &mut cursor, ProcessDetail { cap: 0, ..detail });
+        assert_eq!((profiled.len(), eligible), (80, 80));
         assert_eq!(first.union(&next).count(), 70);
     }
 

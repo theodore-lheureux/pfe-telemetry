@@ -75,6 +75,9 @@ function Execution() {
 			<p>
 				{m.execution_last_seen()}: <TimeDisplay value={entry.lastSeen} />
 			</p>
+			<p className="text-sm text-muted-foreground">
+				{m.process_detail_partial()}
+			</p>
 			<ExecutionParticipants facts={entry.facts} />
 		</>
 	);

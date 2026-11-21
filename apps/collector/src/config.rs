@@ -4,7 +4,7 @@ use clap::{Parser, ValueEnum};
 use tonic::transport::Endpoint;
 use uuid::Uuid;
 
-use crate::{CollectorConfig, enrollment::EnrollmentConfig, spool::Result};
+use crate::{CollectorConfig, ProcessDetail, enrollment::EnrollmentConfig, spool::Result};
 
 /// Largest whole-second duration representable as UInt64 nanoseconds.
 const MAX_U64_NANOSECONDS_DURATION_SECONDS: u64 = u64::MAX / 1_000_000_000;
@@ -26,6 +26,18 @@ pub struct Config {
     /// Collect established TCP socket RTT in the collector's network namespace.
     #[arg(long, env = "RECOUNT_COLLECTOR_TCP_RTT")]
     pub tcp_rtt: bool,
+    /// Maximum process details per scan; zero profiles the whole node.
+    #[arg(long, env = "RECOUNT_COLLECTOR_PROCESS_DETAIL_CAP", default_value_t = ProcessDetail::default().cap as u32, value_parser = clap::value_parser!(u32).range(0..=65536))]
+    pub process_detail_cap: u32,
+    /// Detail threshold, as a percentage of one logical CPU.
+    #[arg(long, env = "RECOUNT_COLLECTOR_PROCESS_DETAIL_CPU_PERCENT", default_value_t = ProcessDetail::default().cpu_percent)]
+    pub process_detail_cpu_percent: u32,
+    /// Detail threshold in resident bytes.
+    #[arg(long, env = "RECOUNT_COLLECTOR_PROCESS_DETAIL_RSS_BYTES", default_value_t = ProcessDetail::default().rss_bytes)]
+    pub process_detail_rss_bytes: u64,
+    /// Detail threshold in read plus write bytes per second.
+    #[arg(long, env = "RECOUNT_COLLECTOR_PROCESS_DETAIL_IO_BYTES_PER_SECOND", default_value_t = ProcessDetail::default().io_bytes_per_second)]
+    pub process_detail_io_bytes_per_second: u64,
     /// Maximum bytes of queued Protobuf payloads.
     #[arg(long, env = "RECOUNT_COLLECTOR_QUEUE_MAX_BYTES", default_value_t = 64 * 1024 * 1024, value_parser = clap::value_parser!(u64).range(1024 * 1024..=1024 * 1024 * 1024))]
     pub queue_max_bytes: u64,
@@ -120,6 +132,12 @@ impl Config {
             namespace_id: self.process_namespace_id.clone(),
             host_visibility: matches!(self.visibility, Visibility::Host),
             tcp_rtt: self.tcp_rtt,
+            process_detail: ProcessDetail {
+                cap: self.process_detail_cap as usize,
+                cpu_percent: self.process_detail_cpu_percent,
+                rss_bytes: self.process_detail_rss_bytes,
+                io_bytes_per_second: self.process_detail_io_bytes_per_second,
+            },
         }
     }
 

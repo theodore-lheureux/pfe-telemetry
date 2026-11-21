@@ -45,6 +45,7 @@ const OTHER_SQL: Record<Combine, string> = {
 // Missing or no-recorded values stay NULL and are skipped, never counted as zero.
 const VALUE = `if(bitAnd(flags, 1) = 0,
     if(isNull(int_value), double_value, toFloat64(int_value)), NULL)`;
+const POPULATION_SUM = `if(bitAnd(flags, 1) = 0 AND bitTest(statistics_present, 1), sum, NULL)`;
 
 class Params {
 	readonly values: Record<string, string | number | string[]> = {};
@@ -168,7 +169,7 @@ function perSeries(
 	const keys = ["series", ...groups.split(", ").filter(Boolean), "bucket"].join(
 		", ",
 	);
-	if (behavior === "gauge") {
+	if (behavior === "gauge" || behavior === "population") {
 		const aggregate = {
 			last: "argMax(v, tuple(t, stream, storage_series))",
 			avg: "avg(v)",
@@ -317,7 +318,7 @@ FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
 	return `WITH base AS (
   SELECT logical_series_id AS series, stream_id AS stream, series_id AS storage_series,
     ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_milli AS t,
-    ${bucket} AS bucket, ${VALUE} AS v
+    ${bucket} AS bucket, ${scope.behavior === "population" ? POPULATION_SUM : VALUE} AS v
   FROM ${usesExecution ? executionPointSource(points) : `(${points})`}
   ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
 ),

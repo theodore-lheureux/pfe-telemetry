@@ -12,6 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             namespace_id: Some("host".into()),
             host_visibility: true,
             tcp_rtt: false,
+            process_detail: Default::default(),
         },
         LossTracker::default(),
     )?;

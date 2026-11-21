@@ -28,6 +28,7 @@ pub(crate) use wiring::Setup;
 pub(crate) struct TrackedProcesses {
     pub observed: Option<Instant>,
     pub identities: BTreeSet<(i32, u64)>,
+    pub profiling: BTreeSet<(i32, u64)>,
 }
 
 #[derive(Clone)]
@@ -101,6 +102,7 @@ async fn collect(
     tracked: watch::Sender<TrackedProcesses>,
 ) -> Result<()> {
     let facts = store.lock().await.facts().await?;
+    let profile_executions = settings.profile_executions.clone();
     let mut discovery = discovery::Discovery::new(&scope, settings.clone(), &facts)?;
     let mut engine = engine::Engine::new(scope, settings.max_facts);
     let mut interval = tokio::time::interval(period);
@@ -119,9 +121,23 @@ async fn collect(
         discovery = returned;
         let started = std::time::Instant::now();
         let identities = engine.scan(&mut *store.lock().await, &scan).await?;
+        let profiling = scan
+            .processes
+            .iter()
+            .filter_map(|(id, observation)| {
+                let identity = (id.pid, id.ticks);
+                (identities.contains(&identity)
+                    && observation
+                        .label
+                        .as_ref()
+                        .is_some_and(|label| profile_executions.contains(&label.key)))
+                .then_some(identity)
+            })
+            .collect();
         tracked.send_replace(TrackedProcesses {
             observed: Some(started),
             identities,
+            profiling,
         });
         tracing::debug!(
             reconcile_micros = started.elapsed().as_micros(),

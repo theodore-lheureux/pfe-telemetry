@@ -31,6 +31,7 @@ import type { ProjectReference } from "../../organizations/contracts";
 import type { QueryResult } from "../contracts";
 import type { DashboardFilters, TileOverrides } from "../dashboard-filters";
 import type { DashboardTile, TileHeight, TileWidth } from "../dashboards";
+import { isProcessDetailMetric } from "../histograms";
 import { encodeDraft, formulaNames, type InsightDraft } from "../insight/draft";
 import { ChartBody } from "../insight/insight-chart";
 import { InsightTable } from "../insight/insight-table";
@@ -276,6 +277,13 @@ export const DashboardTileCard = memo(function DashboardTileCard({
 					!flush && "px-3 pb-3",
 				)}
 			>
+				{draft.series.some((series) =>
+					isProcessDetailMetric(series.metric),
+				) && (
+					<p className="text-xs text-muted-foreground">
+						{m.process_detail_partial()}
+					</p>
+				)}
 				<TileBody
 					draft={draft}
 					ready={query !== null}

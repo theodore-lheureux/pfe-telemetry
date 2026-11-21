@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::{self, File, OpenOptions},
     io::{self, Read},
     os::unix::fs::{MetadataExt, OpenOptionsExt},
@@ -19,6 +19,7 @@ pub(super) struct Settings {
     pub max_queue_bytes: usize,
     pub max_exports: usize,
     pub heartbeat_interval_seconds: u64,
+    pub profile_executions: BTreeSet<String>,
 }
 
 impl Default for Settings {
@@ -30,6 +31,7 @@ impl Default for Settings {
             max_queue_bytes: 64 * 1024 * 1024,
             max_exports: 16,
             heartbeat_interval_seconds: 60,
+            profile_executions: BTreeSet::new(),
         }
     }
 }
@@ -63,6 +65,11 @@ impl Settings {
 
     pub fn validate(&self) -> Result<()> {
         if self.scheduler_variables.len() > 32
+            || self.profile_executions.len() > 64
+            || self
+                .profile_executions
+                .iter()
+                .any(|key| recount_telemetry_validation::execution::execution_key(key).is_err())
             || !(1..=1_000_000).contains(&self.max_processes)
             || !(2..=1_000_000).contains(&self.max_facts)
             || !(65_536..=1_073_741_824).contains(&self.max_queue_bytes)

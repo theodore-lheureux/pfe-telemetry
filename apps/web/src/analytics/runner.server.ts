@@ -292,6 +292,16 @@ export async function runQuery(
 					"INVALID_CALCULATION",
 					"Calculation does not apply to this metric",
 				);
+			if (
+				definition.behavior === "population" &&
+				(query.groupBy?.includes("execution") ||
+					query.filters?.some(({ field }) => field === "execution") ||
+					measure.filters?.some(({ field }) => field === "execution"))
+			)
+				throw new InputError(
+					"INVALID_CALCULATION",
+					"Node population snapshots cannot be attributed to executions",
+				);
 			return definition;
 		});
 		const series: SeriesResult[] = [];

@@ -42,6 +42,27 @@ pub struct CollectorConfig {
     pub host_visibility: bool,
     /// Collect TCP RTT in the collector's network namespace.
     pub tcp_rtt: bool,
+    pub process_detail: ProcessDetail,
+}
+
+#[derive(Clone, Copy)]
+pub struct ProcessDetail {
+    /// Zero exports all verified visible processes.
+    pub cap: usize,
+    pub cpu_percent: u32,
+    pub rss_bytes: u64,
+    pub io_bytes_per_second: u64,
+}
+
+impl Default for ProcessDetail {
+    fn default() -> Self {
+        Self {
+            cap: 64,
+            cpu_percent: 50,
+            rss_bytes: 1 << 30,
+            io_bytes_per_second: 10 << 20,
+        }
+    }
 }
 
 /// Blocking Linux baseline sampling with verified process identity.
@@ -66,6 +87,7 @@ pub struct Collector {
     gpu_authorization: Option<crate::enrollment::Authorization>,
     tcp_rtt: Option<tcp_rtt::Worker>,
     population: process_population::Population,
+    process_detail: ProcessDetail,
     pub(crate) tracked_processes:
         Option<tokio::sync::watch::Receiver<crate::participants::TrackedProcesses>>,
 }

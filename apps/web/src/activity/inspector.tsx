@@ -20,6 +20,7 @@ import type {
 	PacketSummary,
 	PointSummary,
 } from "./contracts";
+import { HistogramDetail } from "./histogram-detail";
 import { JsonValueView } from "./json-value";
 
 function isObject(value: JsonValue): value is JsonObject {
@@ -363,6 +364,9 @@ export function ActivityInspector({
 			</div>
 			{tabs.map((tab) => (
 				<TabsContent key={tab.id} value={tab.id}>
+					{stored && tab.id === "measurement" && (
+						<HistogramDetail measurement={stored.measurement} />
+					)}
 					{tab.note && (
 						<p className="px-4 pb-4 text-xs leading-5 text-muted-foreground">
 							{tab.note}

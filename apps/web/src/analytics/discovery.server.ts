@@ -45,7 +45,7 @@ function definition(row: MetricRow): MetricDefinition {
 		monotonic,
 		unit: row.unit,
 		description: row.description,
-		behavior: metricBehavior(row.kind, row.temporality, monotonic),
+		behavior: metricBehavior(row.kind, row.temporality, monotonic, row.name),
 		firstSeen: millisecondsDate(row.firstSeenMs),
 		lastSeen: millisecondsDate(row.lastSeenMs),
 	};

@@ -31,6 +31,7 @@ impl Collector {
             namespace_id,
             host_visibility,
             tcp_rtt,
+            process_detail,
         } = config;
         let host_id = host_id_or_machine_id(host_id)?;
         let boot_id = adapter::parse_identifier(
@@ -123,6 +124,7 @@ impl Collector {
             gpu_authorization: None,
             tcp_rtt: tcp_rtt.then(super::tcp_rtt::Worker::start).transpose()?,
             population: Default::default(),
+            process_detail,
             tracked_processes: None,
         })
     }

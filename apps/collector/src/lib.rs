@@ -38,4 +38,4 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + S
 #[cfg(target_os = "linux")]
 pub use delivery::{LossReason, LossTracker, Scan, ScanContents, point_count};
 #[cfg(target_os = "linux")]
-pub use linux::{Collector, CollectorConfig};
+pub use linux::{Collector, CollectorConfig, ProcessDetail};

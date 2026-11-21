@@ -3,6 +3,7 @@ import { getLocale } from "@recount/i18n/runtime";
 import { useHydrated } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnalyticsCatalog } from "../analytics/catalog";
+import { isProcessDetailMetric } from "../analytics/histograms";
 import {
 	DEFAULT_RANGE,
 	isDefaultRange,
@@ -226,6 +227,11 @@ export function ActivityPage({
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
 			{!embedded && <ActivityHeader mode={mode} reference={reference} />}
+			{mode === "explorer" && isProcessDetailMetric(selection.metric) && (
+				<p className="text-sm text-muted-foreground">
+					{m.process_detail_partial()}
+				</p>
+			)}
 			<div className="flex flex-wrap items-center justify-between gap-3">
 				{mode === "explorer" ? (
 					<ExplorerToolbar

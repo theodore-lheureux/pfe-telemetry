@@ -960,6 +960,7 @@ mod tests {
                     namespace_id: Some("test-namespace".into()),
                     host_visibility: false,
                     tcp_rtt: false,
+                    process_detail: Default::default(),
                 },
                 fixture.loss.clone(),
             )

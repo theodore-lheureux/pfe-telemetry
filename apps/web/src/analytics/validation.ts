@@ -70,6 +70,7 @@ export const ALLOWED_CALCULATIONS: Record<
 	gauge: ["last", "avg", "min", "max"],
 	counter: ["rate", "increase"],
 	delta: ["increase", "rate"],
+	population: ["last", "avg", "min", "max"],
 	unsupported: [],
 };
 
@@ -78,7 +79,10 @@ export function metricBehavior(
 	kind: number,
 	temporality: number,
 	monotonic: boolean | null,
+	name?: string,
 ): MetricBehavior {
+	if (kind === 3 && temporality === 1 && name && PROCESS_POPULATIONS.has(name))
+		return "population";
 	if (kind === 1) return "gauge";
 	if (kind === 2) {
 		if (monotonic !== true) return "gauge";
@@ -87,6 +91,12 @@ export function metricBehavior(
 	}
 	return "unsupported";
 }
+
+const PROCESS_POPULATIONS = new Set([
+	"recount.node.process.cpu.utilization.distribution",
+	"recount.node.process.memory.rss.distribution",
+	"recount.node.process.disk.io.rate.distribution",
+]);
 
 export type ParsedField =
 	| { type: "core"; name: CoreField }

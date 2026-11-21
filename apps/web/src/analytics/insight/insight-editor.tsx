@@ -16,7 +16,9 @@ import { runAnalyticsQuery } from "../analytics.functions";
 import { AnalyticsHeader } from "../analytics-header";
 import type { CalculatedMetric } from "../calculated-metrics";
 import type { MetricDefinition, QueryResult } from "../contracts";
+import { isProcessDetailMetric } from "../histograms";
 import { formulaNames, type InsightDraft, toQuery } from "./draft";
+import { HistogramPanel } from "./histogram-panel";
 import { InsightChart } from "./insight-chart";
 import { InsightTable } from "./insight-table";
 import { InsightToolbar } from "./insight-toolbar";
@@ -107,6 +109,22 @@ export function InsightEditor({
 				heading={heading}
 				description={description}
 			/>
+			{!editingCalculation && (
+				<HistogramPanel
+					reference={reference}
+					userId={userId}
+					metrics={metrics}
+					range={applied.range}
+					now={now}
+				/>
+			)}
+			{applied.series.some((series) =>
+				isProcessDetailMetric(series.metric),
+			) && (
+				<p className="text-sm text-muted-foreground">
+					{m.process_detail_partial()}
+				</p>
+			)}
 			{usable.length === 0 ? (
 				<IconEmptyState
 					icon={<LineChartIcon aria-hidden="true" />}

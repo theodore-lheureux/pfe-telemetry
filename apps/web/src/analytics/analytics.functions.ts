@@ -3,6 +3,7 @@ import { withActor } from "../auth/actor.server";
 import { privateOperation } from "../auth/private-operation";
 import { parseProjectReference } from "../organizations/validation";
 import * as analytics from "./analytics.server";
+import { parseHistogramInput, readHistogram } from "./histograms.server";
 import * as saved from "./saved-insights.server";
 import {
 	parseDeleteInsights,
@@ -22,6 +23,15 @@ export const runAnalyticsQuery = createServerFn({ method: "POST" })
 	.handler(({ data, context: { identity, database, request } }) =>
 		withActor(identity, (actor) =>
 			analytics.runAnalyticsQuery(database, actor, data, request.signal),
+		),
+	);
+
+export const getHistogram = createServerFn({ method: "POST" })
+	.middleware([privateOperation])
+	.validator(parseHistogramInput)
+	.handler(({ data, context: { identity, database, request } }) =>
+		withActor(identity, (actor) =>
+			readHistogram(database, actor, data, request.signal),
 		),
 	);
 

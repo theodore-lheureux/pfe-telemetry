@@ -20,6 +20,7 @@ fn configured_host_and_namespace_reject_control_characters() {
                     }),
                     host_visibility: false,
                     tcp_rtt: false,
+                    process_detail: Default::default(),
                 },
                 LossTracker::default(),
             )
@@ -39,6 +40,7 @@ fn sampled_resources_obey_shared_identity_catalogue_and_window_contracts() {
             namespace_id: Some("test-namespace".into()),
             host_visibility: false,
             tcp_rtt: false,
+            process_detail: Default::default(),
         },
         LossTracker::default(),
     )
@@ -46,6 +48,7 @@ fn sampled_resources_obey_shared_identity_catalogue_and_window_contracts() {
     let stat = procfs::process::Process::myself().unwrap().stat().unwrap();
     let (_tx, rx) = tokio::sync::watch::channel(crate::participants::TrackedProcesses {
         observed: Some(Instant::now()),
+        profiling: Default::default(),
         identities: [(stat.pid, stat.starttime)].into_iter().collect(),
     });
     collector.tracked_processes = Some(rx);
