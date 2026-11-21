@@ -164,7 +164,7 @@ impl Drop for Scan {
     }
 }
 
-/// Counts the scalar points emitted by the collector.
+/// Counts the points emitted by the collector.
 pub fn point_count(resources: &[ResourceMetrics]) -> u64 {
     resources
         .iter()
@@ -173,6 +173,7 @@ pub fn point_count(resources: &[ResourceMetrics]) -> u64 {
         .map(|metric| match &metric.data {
             Some(metric::Data::Gauge(data)) => data.data_points.len() as u64,
             Some(metric::Data::Sum(data)) => data.data_points.len() as u64,
+            Some(metric::Data::Histogram(data)) => data.data_points.len() as u64,
             _ => 0,
         })
         .sum()

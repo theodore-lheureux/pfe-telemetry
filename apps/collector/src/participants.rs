@@ -9,7 +9,12 @@ mod store;
 mod test_support;
 mod wiring;
 
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    path::Path,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use tokio::sync::{Mutex, Notify, watch};
 use tonic::transport::Endpoint;
@@ -18,6 +23,12 @@ use crate::{enrollment::Authorization, spool::Result};
 use settings::Settings;
 
 pub(crate) use wiring::Setup;
+
+#[derive(Default)]
+pub(crate) struct TrackedProcesses {
+    pub observed: Option<Instant>,
+    pub identities: BTreeSet<(i32, u64)>,
+}
 
 #[derive(Clone)]
 pub(super) struct Scope {
@@ -35,6 +46,7 @@ struct Runtime {
     authorization: Authorization,
     period: Duration,
     drain: bool,
+    tracked: watch::Sender<TrackedProcesses>,
 }
 
 type SharedStore = Arc<Mutex<store::Store>>;
@@ -63,7 +75,8 @@ async fn run(config: Runtime, directory: &Path, stopped: watch::Receiver<bool>) 
                 config.period,
                 store.clone(),
                 notify,
-                stopped
+                stopped,
+                config.tracked,
             ),
             exporter
         )
@@ -85,6 +98,7 @@ async fn collect(
     store: SharedStore,
     notify: Arc<Notify>,
     mut stopped: watch::Receiver<bool>,
+    tracked: watch::Sender<TrackedProcesses>,
 ) -> Result<()> {
     let facts = store.lock().await.facts().await?;
     let mut discovery = discovery::Discovery::new(&scope, settings.clone(), &facts)?;
@@ -104,7 +118,11 @@ async fn collect(
         .await??;
         discovery = returned;
         let started = std::time::Instant::now();
-        engine.scan(&mut *store.lock().await, &scan).await?;
+        let identities = engine.scan(&mut *store.lock().await, &scan).await?;
+        tracked.send_replace(TrackedProcesses {
+            observed: Some(started),
+            identities,
+        });
         tracing::debug!(
             reconcile_micros = started.elapsed().as_micros(),
             "Execution facts reconciled"

@@ -1,4 +1,4 @@
-use super::{Context, Reading};
+use super::Reading;
 use crate::{
     diagnostics::ReadStatus,
     metrics::{gauge, integer, point, resource as measured_resource, string},
@@ -11,26 +11,6 @@ use opentelemetry_proto::tonic::{
 };
 use recount_telemetry_validation::{catalogue, linux_adapter as adapter};
 use std::{collections::BTreeMap, time::Duration};
-
-pub(crate) fn context(resources: &[ResourceMetrics], enabled: bool) -> Context {
-    let identities = if enabled {
-        resources
-            .iter()
-            .filter_map(|resource| {
-                let identity =
-                    adapter::resource_identity(&resource.resource.as_ref()?.attributes).ok()?;
-                let process = identity.process?;
-                Some((i32::try_from(process.pid).ok()?, process.start_ticks))
-            })
-            .collect()
-    } else {
-        BTreeMap::new()
-    };
-    Context {
-        identities,
-        enabled,
-    }
-}
 
 pub(in crate::gpu) fn attach(
     resources: &[ResourceMetrics],

@@ -32,14 +32,14 @@ impl Engine {
         }
     }
 
-    pub async fn scan(&mut self, store: &mut Store, scan: &Scan) -> Result<()> {
+    pub async fn scan(&mut self, store: &mut Store, scan: &Scan) -> Result<BTreeSet<(i32, u64)>> {
         let retained = store.facts().await?;
         let mut facts: BTreeMap<_, _> = retained
             .iter()
             .cloned()
             .map(|f| (f.fact_id.clone(), f))
             .collect();
-        let mut members = BTreeMap::new();
+        let mut members = BTreeSet::new();
         let mut lifecycles = BTreeMap::new();
         self.skipped.retain(|id| scan.processes.contains_key(id));
         for fact in facts
@@ -57,7 +57,7 @@ impl Engine {
                     if observation.verified {
                         touch(fact, scan.time);
                     }
-                    members.insert(id, fact.fact_id.clone());
+                    members.insert(id);
                 } else {
                     end(fact, scan.time)?;
                 }
@@ -72,7 +72,7 @@ impl Engine {
             let Some(label) = &observation.label else {
                 continue;
             };
-            if members.contains_key(id) || self.skipped.contains(id) || !observation.verified {
+            if members.contains(id) || self.skipped.contains(id) || !observation.verified {
                 continue;
             }
             let needed = if lifecycles.contains_key(&label.key) {
@@ -116,6 +116,7 @@ impl Engine {
                 }),
             });
             facts.insert(fact_id, fact);
+            members.insert(*id);
         }
         // Even cap-skipped labels keep an existing lifecycle alive.
         let mut alive_keys = BTreeMap::new();
@@ -156,7 +157,11 @@ impl Engine {
                 "Global fact cap reached; new associations skipped, retained facts continue updating"
             );
         }
-        Ok(())
+        Ok(members
+            .into_iter()
+            .filter(|id| scan.processes[id].verified)
+            .map(|id| (id.pid, id.ticks))
+            .collect())
     }
 
     fn fact(

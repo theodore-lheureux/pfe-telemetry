@@ -2,14 +2,19 @@ use super::Collector;
 use crate::{delivery::point_count, enrollment::Authorization, gpu::Gpu, metrics::resource};
 use opentelemetry_proto::tonic::metrics::v1::ResourceMetrics;
 use recount_telemetry_validation::{catalogue, linux_adapter::Scope};
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 impl Collector {
     pub(crate) fn gpu_authorization(&mut self, authorization: Option<Authorization>) {
         self.gpu_authorization = authorization;
     }
 
-    pub(super) fn gpu_metrics(&mut self, time: u64, resources: &mut Vec<ResourceMetrics>) {
+    pub(super) fn gpu_metrics(
+        &mut self,
+        time: u64,
+        resources: &mut Vec<ResourceMetrics>,
+        identities: BTreeMap<i32, u64>,
+    ) {
         if self
             .gpu_authorization
             .as_ref()
@@ -26,8 +31,13 @@ impl Collector {
                 .is_none_or(|auth| auth.allows_process_gpu());
         let interval = Duration::from_nanos(self.interval_ns as u64);
         let gpu = self.gpu.get_or_insert_with(|| Gpu::new(interval));
-        let mut added = gpu.sample(attrs, time, || {
-            crate::gpu::process_context(resources, processes_enabled)
+        let mut added = gpu.sample(attrs, time, || crate::gpu::ProcessContext {
+            enabled: processes_enabled,
+            identities: if processes_enabled {
+                identities
+            } else {
+                BTreeMap::new()
+            },
         });
         added.extend(gpu.attach_processes(resources, time));
         let status = gpu.discovery.map(crate::gpu::read_status).or_else(|| {

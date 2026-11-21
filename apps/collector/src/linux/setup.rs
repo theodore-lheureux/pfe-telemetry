@@ -120,6 +120,8 @@ impl Collector {
             cycle_points: 0,
             gpu: None,
             gpu_authorization: None,
+            population: Default::default(),
+            tracked_processes: None,
         })
     }
 }

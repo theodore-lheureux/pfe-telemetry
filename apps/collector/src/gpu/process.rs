@@ -11,7 +11,6 @@ use recount_telemetry_validation::catalogue::Definition;
 use std::{collections::BTreeMap, ffi::OsStr, time::Duration};
 
 pub(super) use attach::attach;
-pub(crate) use attach::context;
 pub(super) type Identities = BTreeMap<i32, u64>;
 
 #[derive(Default)]

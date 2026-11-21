@@ -1,6 +1,7 @@
 mod gpu;
 mod node;
 mod process;
+mod process_population;
 mod setup;
 #[cfg(test)]
 mod tests;
@@ -60,12 +61,16 @@ pub struct Collector {
     cycle_points: u64,
     gpu: Option<crate::gpu::Gpu>,
     gpu_authorization: Option<crate::enrollment::Authorization>,
+    population: process_population::Population,
+    pub(crate) tracked_processes:
+        Option<tokio::sync::watch::Receiver<crate::participants::TrackedProcesses>>,
 }
 
 impl Collector {
     /// Invalidates all baseline counter streams after a skipped scheduled cycle.
     pub fn missed_cycle(&mut self) {
         self.continuity.invalidate();
+        self.population.invalidate();
     }
 
     /// Samples all baseline categories. A detected clock discontinuity discards
@@ -106,6 +111,7 @@ impl Collector {
                 self.loss
                     .record(&self.epoch, LossReason::BufferExpired, self.cycle_points);
                 self.continuity.invalidate();
+                self.population.invalidate();
                 self.epoch = uuid::Uuid::new_v4().to_string();
                 if let Some(gpu) = &mut self.gpu {
                     gpu.invalidate();
@@ -133,8 +139,8 @@ impl Collector {
         // Establish the scan window before the first source read.
         self.clock.timestamp()?;
         let started = Instant::now();
-        let node = self.node_metrics()?;
-        let mut resources = vec![resource(self.attributes(Scope::Node), node)];
+        let mut node = self.node_metrics()?;
+        let mut samples = Vec::new();
         let mut discovered = 0u64;
         let mut discarded = [0u64; 2];
         let mut discovery = ReadStatus::Read;
@@ -144,8 +150,8 @@ impl Collector {
                     match entry {
                         Ok(process) => {
                             discovered += 1;
-                            match self.process_metrics(&process)? {
-                                Ok(metrics) => resources.push(metrics),
+                            match self.read_process(&process)? {
+                                Ok(sample) => samples.push(sample),
                                 Err(ReadStatus::Disappeared) => discarded[1] += 1,
                                 Err(_) => discarded[0] += 1,
                             }
@@ -166,7 +172,11 @@ impl Collector {
             Err(error) => discovery = ReadStatus::from_error(&error),
         }
         let time = self.clock.timestamp()?;
-        self.gpu_metrics(time, &mut resources);
+        let (details, distribution, identities) = self.process_population(samples, time)?;
+        node.extend(distribution);
+        let mut resources = vec![resource(self.attributes(Scope::Node), node)];
+        resources.extend(details);
+        self.gpu_metrics(time, &mut resources, identities);
         let duration = started.elapsed().as_secs_f64();
         let (_, losses) = self.loss.snapshot();
         let dropped = [

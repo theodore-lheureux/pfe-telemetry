@@ -88,6 +88,7 @@ pub async fn run(config: Config) -> Result<()> {
         tokio::task::spawn_blocking(move || crate::Collector::new(sampler_config, feedback))
             .await??;
     collector.gpu_authorization(authorization.clone());
+    collector.tracked_processes = participants.tracked();
     let shutdown = shutdown_signal()?;
     let (stop, stopped) = watch::channel(false);
     let notify = Arc::new(Notify::new());

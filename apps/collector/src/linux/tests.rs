@@ -41,6 +41,12 @@ fn sampled_resources_obey_shared_identity_catalogue_and_window_contracts() {
         LossTracker::default(),
     )
     .unwrap();
+    let stat = procfs::process::Process::myself().unwrap().stat().unwrap();
+    let (_tx, rx) = tokio::sync::watch::channel(crate::participants::TrackedProcesses {
+        observed: Some(Instant::now()),
+        identities: [(stat.pid, stat.starttime)].into_iter().collect(),
+    });
+    collector.tracked_processes = Some(rx);
     let contents = collector
         .sample()
         .unwrap()
@@ -59,6 +65,7 @@ fn sampled_resources_obey_shared_identity_catalogue_and_window_contracts() {
     );
     let mut saw_self = false;
     let mut saw_cpu = false;
+    let mut saw_rss_distribution = false;
     for resource in contents
         .measurements
         .iter()
@@ -75,7 +82,8 @@ fn sampled_resources_obey_shared_identity_catalogue_and_window_contracts() {
             catalogue::validate_adapter_metric(metric, catalogue::Adapter::Linux).unwrap();
             assert_ne!(metric.name, catalogue::CLOCK_UNCERTAINTY.name);
             saw_cpu |= metric.name == catalogue::NODE_CPU_TIME.name;
+            saw_rss_distribution |= metric.name == catalogue::NODE_PROCESS_RSS_DISTRIBUTION.name;
         }
     }
-    assert!(saw_self && saw_cpu);
+    assert!(saw_self && saw_cpu && saw_rss_distribution);
 }

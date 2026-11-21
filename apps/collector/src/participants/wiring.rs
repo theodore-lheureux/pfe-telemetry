@@ -4,7 +4,7 @@ use tokio::{sync::watch, task::JoinSet};
 use tonic::transport::Endpoint;
 use uuid::Uuid;
 
-use super::{Runtime, Scope, Settings};
+use super::{Runtime, Scope, Settings, TrackedProcesses};
 use crate::{
     config::{Config, Visibility},
     enrollment::Authorization,
@@ -73,11 +73,16 @@ impl Setup {
             authorization: authorization.clone(),
             period: Duration::from_millis(config.interval_ms),
             drain: config.drain,
+            tracked: watch::channel(TrackedProcesses::default()).0,
         })))
     }
 }
 
 impl Service {
+    pub(crate) fn tracked(&self) -> Option<watch::Receiver<TrackedProcesses>> {
+        self.0.as_ref().map(|runtime| runtime.tracked.subscribe())
+    }
+
     pub(crate) async fn run(self, directory: &Path, stopped: watch::Receiver<bool>) -> Result<()> {
         if let Some(runtime) = self.0 {
             super::run(runtime, &directory.join("participants"), stopped).await?;

@@ -14,7 +14,7 @@ use std::{
 };
 
 use opentelemetry_proto::tonic::metrics::v1::ResourceMetrics;
-pub(crate) use process::{Context as ProcessContext, context as process_context};
+pub(crate) use process::Context as ProcessContext;
 use recount_nvidia_dcgm::{Device, Error, Field, Snapshot};
 
 struct Request {

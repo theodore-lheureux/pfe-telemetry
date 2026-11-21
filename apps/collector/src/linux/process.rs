@@ -1,10 +1,14 @@
 use std::{
     collections::BTreeMap,
     io::{self, BufRead, BufReader},
+    time::Instant,
 };
 
 use opentelemetry_proto::tonic::metrics::v1::{ResourceMetrics, number_data_point::Value};
-use procfs::{ProcError, process::Process};
+use procfs::{
+    ProcError,
+    process::{Io, Process, Stat},
+};
 use recount_telemetry_validation::catalogue::{
     PROCESS_CPU_TIME as CPU_TIME, PROCESS_DISK_IO as DISK_IO,
     PROCESS_MEMORY_RSS as RESIDENT_MEMORY, READ_STATUS,
@@ -75,13 +79,32 @@ impl ProcessAttributions {
     }
 }
 
+pub(super) struct ProcessSample {
+    pub stat: Stat,
+    pub rss: Result<i64, ReadStatus>,
+    pub disk: Result<Io, ReadStatus>,
+    pub cpu_instant: Instant,
+    pub disk_instant: Instant,
+    cpu_time: u64,
+    memory_time: u64,
+    disk_time: u64,
+    incarnation: String,
+    attribution: Attribution,
+}
+
+impl ProcessSample {
+    pub fn identity(&self) -> (i32, u64) {
+        (self.stat.pid, self.stat.starttime)
+    }
+}
+
 impl Collector {
-    pub(super) fn process_metrics(
+    pub(super) fn read_process(
         &mut self,
         process: &Process,
-    ) -> io::Result<Result<ResourceMetrics, ReadStatus>> {
+    ) -> io::Result<Result<ProcessSample, ReadStatus>> {
         let stat_result = process.stat();
-        let cpu_time = self.clock.timestamp()?;
+        let (cpu_time, cpu_instant) = self.clock.timestamp_with_instant()?;
         let stat = match stat_result {
             Ok(stat) if stat.pid > 0 && stat.ppid >= 0 => stat,
             Ok(_) => return Ok(Err(ReadStatus::Failed)),
@@ -90,7 +113,7 @@ impl Collector {
         let memory = process.statm();
         let memory_time = self.clock.timestamp()?;
         let disk = process.io();
-        let disk_time = self.clock.timestamp()?;
+        let (disk_time, disk_instant) = self.clock.timestamp_with_instant()?;
         let incarnation = ProcessIdentity {
             boot: &self.boot,
             namespace: &self.namespace,
@@ -110,9 +133,44 @@ impl Collector {
             Ok(_) => return Ok(Err(ReadStatus::Failed)),
             Err(error) => return Ok(Err(ReadStatus::from_error(&error))),
         }
-        let prefix = format!("process/{incarnation}");
+        let rss = memory
+            .map_err(|error| ReadStatus::from_error(&error))
+            .and_then(|memory| {
+                memory
+                    .resident
+                    .checked_mul(self.page_size)
+                    .and_then(|bytes| i64::try_from(bytes).ok())
+                    .ok_or(ReadStatus::OutOfRange)
+            });
         self.process_attributions
-            .remember_verified(incarnation, attribution);
+            .remember_verified(incarnation.clone(), attribution);
+        Ok(Ok(ProcessSample {
+            stat,
+            rss,
+            disk: disk.map_err(|error| ReadStatus::from_error(&error)),
+            cpu_instant,
+            disk_instant,
+            cpu_time,
+            memory_time,
+            disk_time,
+            incarnation,
+            attribution,
+        }))
+    }
+
+    pub(super) fn process_metrics(&mut self, sample: ProcessSample) -> io::Result<ResourceMetrics> {
+        let ProcessSample {
+            stat,
+            rss,
+            disk,
+            cpu_time,
+            memory_time,
+            disk_time,
+            incarnation,
+            attribution,
+            ..
+        } = sample;
+        let prefix = format!("process/{incarnation}");
         let mut cpu_points = Vec::new();
         for (mode, ticks) in [("user", stat.utime), ("system", stat.stime)] {
             cpu_points.push(self.counter_point(
@@ -126,19 +184,12 @@ impl Collector {
         }
         let mut metrics = vec![counter(&CPU_TIME, cpu_points)];
         let mut statuses = vec![self.read_status(&CPU_TIME, ReadStatus::Read, cpu_time)];
-        let memory_status = match memory {
-            Ok(memory) => match memory
-                .resident
-                .checked_mul(self.page_size)
-                .and_then(|bytes| i64::try_from(bytes).ok())
-            {
-                Some(bytes) => {
-                    metrics.push(self.int_gauge(&RESIDENT_MEMORY, bytes, memory_time));
-                    ReadStatus::Read
-                }
-                None => ReadStatus::OutOfRange,
-            },
-            Err(error) => ReadStatus::from_error(&error),
+        let memory_status = match rss {
+            Ok(bytes) => {
+                metrics.push(self.int_gauge(&RESIDENT_MEMORY, bytes, memory_time));
+                ReadStatus::Read
+            }
+            Err(status) => status,
         };
         statuses.push(self.read_status(&RESIDENT_MEMORY, memory_status, memory_time));
         let mut disk_points = Vec::new();
@@ -160,7 +211,7 @@ impl Collector {
                 }
                 status
             }
-            Err(error) => ReadStatus::from_error(&error),
+            Err(status) => status,
         };
         if !disk_points.is_empty() {
             metrics.push(counter(&DISK_IO, disk_points));
@@ -190,7 +241,7 @@ impl Collector {
         }
         // Derived wall-clock start times are omitted: btime/tick precision alone
         // does not establish a truthful wall-clock resolution across steps.
-        Ok(Ok(resource(attributes, metrics)))
+        Ok(resource(attributes, metrics))
     }
 }
 

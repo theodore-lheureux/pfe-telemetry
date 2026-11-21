@@ -7,6 +7,7 @@ use recount_telemetry_schema::{
 pub enum Kind {
     Gauge,
     CumulativeMonotonic,
+    DeltaHistogram,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Value {
@@ -50,6 +51,10 @@ catalogue! {
     PROCESS_CPU_TIME => ("process.cpu.time","s",CumulativeMonotonic,Float64,Linux,NonNegative),
     PROCESS_MEMORY_RSS => ("recount.process.memory.rss","By",Gauge,Int64,Linux,NonNegative),
     PROCESS_DISK_IO => ("process.disk.io","By",CumulativeMonotonic,Int64,Linux,NonNegative),
+    NODE_PROCESS_CPU_DISTRIBUTION => ("recount.node.process.cpu.utilization.distribution","1",DeltaHistogram,Float64,Linux,NonNegative),
+    NODE_PROCESS_RSS_DISTRIBUTION => ("recount.node.process.memory.rss.distribution","By",DeltaHistogram,Float64,Linux,NonNegative),
+    NODE_PROCESS_IO_DISTRIBUTION => ("recount.node.process.disk.io.rate.distribution","By/s",DeltaHistogram,Float64,Linux,NonNegative),
+    PROCESS_COVERAGE => ("recount.collection.process.coverage","{process}",Gauge,Int64,Linux,NonNegative),
     SCAN_DURATION => ("recount.collection.scan.duration","s",Gauge,Float64,Linux,NonNegative),
     CLOCK_STATUS => ("recount.clock.status","1",Gauge,Int64,Linux,NonNegative),
     CLOCK_UNCERTAINTY => ("recount.clock.uncertainty","ns",Gauge,Int64,Linux,NonNegative),
@@ -120,6 +125,21 @@ pub fn validate_adapter_metric(metric: &Metric, adapter: Adapter) -> Result<(), 
         (Kind::Gauge, Some(Data::Gauge(_))) => {}
         (Kind::CumulativeMonotonic, Some(Data::Sum(v)))
             if v.aggregation_temporality == 2 && v.is_monotonic => {}
+        (Kind::DeltaHistogram, Some(Data::Histogram(v))) if v.aggregation_temporality == 1 => {
+            return v
+                .data_points
+                .iter()
+                .all(|p| {
+                    p.explicit_bounds
+                        .iter()
+                        .chain(p.min.iter())
+                        .chain(p.max.iter())
+                        .chain(p.sum.iter())
+                        .all(|value| value.is_finite() && *value >= 0.0)
+                })
+                .then_some(())
+                .ok_or_else(invalid);
+        }
         _ => return Err(invalid()),
     }
     for p in observations(metric) {

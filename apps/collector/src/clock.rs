@@ -40,6 +40,10 @@ impl SamplingClock {
     }
 
     pub(crate) fn timestamp(&mut self) -> io::Result<u64> {
+        self.timestamp_with_instant().map(|(time, _)| time)
+    }
+
+    pub(crate) fn timestamp_with_instant(&mut self) -> io::Result<(u64, Instant)> {
         let (unix_nanos, monotonic) = read_clock_pair()?;
         let expected_unix_nanos = i128::from(self.anchor_unix_nanos)
             + i128::try_from(monotonic.duration_since(self.anchor_monotonic).as_nanos())
@@ -48,7 +52,7 @@ impl SamplingClock {
             return Err(io::Error::new(io::ErrorKind::Interrupted, Discontinuity));
         }
         self.last_unix_nanos = unix_nanos;
-        Ok(unix_nanos)
+        Ok((unix_nanos, monotonic))
     }
 }
 

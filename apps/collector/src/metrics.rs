@@ -1,8 +1,8 @@
 use opentelemetry_proto::tonic::{
     common::v1::{AnyValue, InstrumentationScope, KeyValue, any_value},
     metrics::v1::{
-        AggregationTemporality, Gauge, Metric, NumberDataPoint, ResourceMetrics, ScopeMetrics, Sum,
-        metric, number_data_point,
+        AggregationTemporality, Gauge, Histogram, HistogramDataPoint, Metric, NumberDataPoint,
+        ResourceMetrics, ScopeMetrics, Sum, metric, number_data_point,
     },
     resource::v1::Resource,
 };
@@ -64,6 +64,60 @@ pub(crate) fn gauge(definition: &Definition, points: Vec<NumberDataPoint>) -> Me
             data_points: points,
         })),
         ..Default::default()
+    }
+}
+
+pub(crate) fn histogram(definition: &Definition, data_points: Vec<HistogramDataPoint>) -> Metric {
+    Metric {
+        name: definition.name.into(),
+        unit: definition.unit.into(),
+        data: Some(metric::Data::Histogram(Histogram {
+            data_points,
+            aggregation_temporality: AggregationTemporality::Delta as i32,
+        })),
+        ..Default::default()
+    }
+}
+
+pub(crate) struct Distribution {
+    point: HistogramDataPoint,
+}
+
+impl Distribution {
+    pub(crate) fn new(bounds: Vec<f64>) -> Self {
+        Self {
+            point: HistogramDataPoint {
+                bucket_counts: vec![0; bounds.len() + 1],
+                explicit_bounds: bounds,
+                ..Default::default()
+            },
+        }
+    }
+
+    pub(crate) fn observe(&mut self, value: f64) {
+        let p = &mut self.point;
+        p.bucket_counts[p.explicit_bounds.partition_point(|bound| *bound < value)] += 1;
+        p.count += 1;
+        p.sum = Some(p.sum.unwrap_or(0.0) + value);
+        p.min = Some(p.min.map_or(value, |min| min.min(value)));
+        p.max = Some(p.max.map_or(value, |max| max.max(value)));
+    }
+
+    pub(crate) fn count(&self) -> u64 {
+        self.point.count
+    }
+
+    pub(crate) fn finish(
+        mut self,
+        time: u64,
+        attributes: Vec<KeyValue>,
+    ) -> Option<HistogramDataPoint> {
+        if self.point.count == 0 {
+            return None;
+        }
+        self.point.time_unix_nano = time;
+        self.point.attributes = attributes;
+        Some(self.point)
     }
 }
 
