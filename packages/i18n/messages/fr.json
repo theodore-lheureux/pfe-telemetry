@@ -209,6 +209,7 @@
   "activity_packet_counts": "Points : {points} · Métriques : {metrics}",
   "activity_more_nodes": "+{count} nœuds",
   "activity_rejected_deliveries": "Livraisons rejetées",
+  "activity_rejected_description": "Livraisons rejetées par le normaliseur au cours des sept derniers jours.",
   "activity_rejected_unavailable": "Les livraisons rejetées sont indisponibles.",
   "activity_rejected_empty": "Aucune livraison rejetée au cours des sept derniers jours.",
   "activity_rejected_received": "Réception",

@@ -2,13 +2,9 @@ import { m } from "@recount/i18n/messages";
 import { type ColumnDef, tableFeatures, useTable } from "@tanstack/react-table";
 import { DataTable } from "../components/data-table";
 import { TimeDisplay } from "../components/time-display";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "../components/ui/card";
 import type { OperationResult } from "../lib/operation-result";
+import { ActivityEmpty } from "./activity-empty";
+import { ActivityUnavailable } from "./activity-unavailable";
 
 const reasons = new Map([
 	["raw_too_large", m.activity_reject_raw_size],
@@ -51,8 +47,10 @@ const empty: RejectedDelivery[] = [];
 
 export function RejectedDeliveries({
 	result,
+	onRetry,
 }: {
 	result: OperationResult<RejectedDelivery[]>;
+	onRetry: () => void;
 }) {
 	const table = useTable({
 		features,
@@ -60,24 +58,19 @@ export function RejectedDeliveries({
 		columns,
 		getRowId: (row) => row.id,
 	});
+	if (result.error)
+		return (
+			<ActivityUnavailable
+				message={m.activity_rejected_unavailable()}
+				onRetry={onRetry}
+			/>
+		);
 	return (
-		<Card>
-			<CardHeader>
-				<CardTitle>
-					<h2>{m.activity_rejected_deliveries()}</h2>
-				</CardTitle>
-			</CardHeader>
-			<CardContent>
-				{result.error ? (
-					<p role="status">{m.activity_rejected_unavailable()}</p>
-				) : (
-					<DataTable
-						table={table}
-						label={m.activity_rejected_deliveries()}
-						empty={m.activity_rejected_empty()}
-					/>
-				)}
-			</CardContent>
-		</Card>
+		<DataTable
+			table={table}
+			label={m.activity_rejected_deliveries()}
+			className="[--control-height:28px] [--unit-padding:8px] [&_table]:text-[13px] [&_table]:leading-5"
+			empty={<ActivityEmpty mode="rejected" />}
+		/>
 	);
 }

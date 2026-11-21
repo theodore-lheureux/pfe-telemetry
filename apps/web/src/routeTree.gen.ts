@@ -35,6 +35,7 @@ import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdInsigh
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/nodes'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/index'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/live'
+import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/rejected'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/dashboards/index'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsDashboardIdRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId'
 import { Route as AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDefinitionsIndexRouteImport } from './routes/_app/_workspace/organizations/$organizationId/projects/$projectId/definitions/index'
@@ -212,6 +213,15 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute 
         AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute,
     } as any,
   )
+const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRoute =
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRouteImport.update(
+    {
+      id: '/rejected',
+      path: '/rejected',
+      getParentRoute: () =>
+        AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute,
+    } as any,
+  )
 const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsIndexRoute =
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsIndexRouteImport.update(
     {
@@ -309,6 +319,7 @@ export interface FileRoutesByFullPath {
   '/organizations/$organizationId/projects/$projectId/nodes': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRoute
   '/organizations/$organizationId/projects/$projectId/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
   '/organizations/$organizationId/projects/$projectId/activity/live': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute
+  '/organizations/$organizationId/projects/$projectId/activity/rejected': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRoute
   '/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsDashboardIdRoute
   '/organizations/$organizationId/projects/$projectId/executions/$executionKey': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyRoute
   '/organizations/$organizationId/projects/$projectId/activity/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
@@ -339,6 +350,7 @@ export interface FileRoutesByTo {
   '/organizations/$organizationId/projects/$projectId/nodes': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRoute
   '/organizations/$organizationId/projects/$projectId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
   '/organizations/$organizationId/projects/$projectId/activity/live': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute
+  '/organizations/$organizationId/projects/$projectId/activity/rejected': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRoute
   '/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsDashboardIdRoute
   '/organizations/$organizationId/projects/$projectId/executions/$executionKey': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyRoute
   '/organizations/$organizationId/projects/$projectId/activity': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
@@ -376,6 +388,7 @@ export interface FileRoutesById {
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/nodes': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdNodesRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdIndexRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/live': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute
+  '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/rejected': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdDashboardsDashboardIdRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionKey': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdExecutionsExecutionKeyRoute
   '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/': typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
@@ -412,6 +425,7 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/projects/$projectId/nodes'
     | '/organizations/$organizationId/projects/$projectId/'
     | '/organizations/$organizationId/projects/$projectId/activity/live'
+    | '/organizations/$organizationId/projects/$projectId/activity/rejected'
     | '/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId'
     | '/organizations/$organizationId/projects/$projectId/executions/$executionKey'
     | '/organizations/$organizationId/projects/$projectId/activity/'
@@ -442,6 +456,7 @@ export interface FileRouteTypes {
     | '/organizations/$organizationId/projects/$projectId/nodes'
     | '/organizations/$organizationId/projects/$projectId'
     | '/organizations/$organizationId/projects/$projectId/activity/live'
+    | '/organizations/$organizationId/projects/$projectId/activity/rejected'
     | '/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId'
     | '/organizations/$organizationId/projects/$projectId/executions/$executionKey'
     | '/organizations/$organizationId/projects/$projectId/activity'
@@ -478,6 +493,7 @@ export interface FileRouteTypes {
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/nodes'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/live'
+    | '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/rejected'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/dashboards/$dashboardId'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/executions/$executionKey'
     | '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/'
@@ -685,6 +701,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRouteImport
       parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute
     }
+    '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/rejected': {
+      id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/activity/rejected'
+      path: '/rejected'
+      fullPath: '/organizations/$organizationId/projects/$projectId/activity/rejected'
+      preLoaderRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRouteImport
+      parentRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute
+    }
     '/_app/_workspace/organizations/$organizationId/projects/$projectId/dashboards/': {
       id: '/_app/_workspace/organizations/$organizationId/projects/$projectId/dashboards/'
       path: '/dashboards'
@@ -746,6 +769,7 @@ declare module '@tanstack/react-router' {
 
 interface AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRouteChildren {
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute
+  AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRoute
   AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute: typeof AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute
 }
 
@@ -753,6 +777,8 @@ const AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRouteRoute
   {
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute:
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityLiveRoute,
+    AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRoute:
+      AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityRejectedRoute,
     AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute:
       AppWorkspaceOrganizationsOrganizationIdProjectsProjectIdActivityIndexRoute,
   }

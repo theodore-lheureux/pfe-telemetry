@@ -121,6 +121,78 @@ test("Explorer filters by metric and attributes and searches past empty windows"
 	).toBeNull();
 });
 
+test("Explorer pages within one millisecond and inspects the winning receipt", async () => {
+	const projectId = randomUUID();
+	const timestamp = ms + MINUTE;
+	await cpu(projectId, 60n, "user");
+	await fixture.client.command({
+		query: insertPoints(
+			{
+				metric_name: "'recount.node.cpu.time'",
+				stream_id: "substring(SHA256(toString(intDiv(number,2))),1,16)",
+				raw_offset: "number % 2",
+				int_value: "toInt64(number % 2)",
+				received_unix_nano: "received_unix_nano + (number % 2)",
+			},
+			"CROSS JOIN numbers(210) AS samples",
+		),
+		query_params: {
+			project: projectId,
+			source: "node-a",
+			host: "node-a",
+			time: timestamp.toString(),
+			sample: "paging",
+			epoch: "epoch",
+		},
+	});
+	const filters = [
+		{
+			field: 'resource.attributes["recount.collection.epoch_id"]',
+			op: "eq" as const,
+			values: ["epoch"],
+		},
+	];
+	const fields = ['resource.attributes["recount.collection.epoch_id"]'];
+	const first = await page(projectId, { filters, fields });
+	expect(first.points).toHaveLength(100);
+	expect(first.nextCursor).not.toBeNull();
+	const second = await page(projectId, {
+		cursor: first.nextCursor ?? undefined,
+		filters,
+		fields,
+	});
+	expect(second.points).toHaveLength(5);
+	expect(second.nextCursor).toBeNull();
+	const points = [...first.points, ...second.points];
+	expect(new Set(points.map((point) => point.sampleId)).size).toBe(105);
+	expect(
+		points.every(
+			(point) =>
+				point.timeMs === timestamp.toString() &&
+				point.sampleId.length === 48 &&
+				point.value === "1" &&
+				point.fields[fields[0]] === "epoch",
+		),
+	).toBe(true);
+	const [point] = second.points;
+	const detail = await readPoint(
+		{
+			organizationId: "organization",
+			projectId,
+			sourceId: point.sourceId,
+			resourceId: point.resourceId,
+			metricName: point.metricName,
+			timeMs: point.timeMs,
+			sampleId: point.sampleId,
+		},
+		undefined,
+		fixture.reader,
+	);
+	expect(detail.provenance.raw_offset).toBe("1");
+	expect(detail.measurement.time_unix_milli).toBe(timestamp.toString());
+	expect(detail.raw.stream_id).toBe(point.sampleId.slice(16));
+});
+
 test("inspector restores request provenance from a compact delivery", async () => {
 	const projectId = randomUUID();
 	await cpu(projectId, 1n, "user");

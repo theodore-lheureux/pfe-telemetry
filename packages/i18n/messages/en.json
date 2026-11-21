@@ -209,6 +209,7 @@
   "activity_packet_counts": "Points: {points} · Metrics: {metrics}",
   "activity_more_nodes": "+{count} nodes",
   "activity_rejected_deliveries": "Rejected deliveries",
+  "activity_rejected_description": "Deliveries the normalizer rejected in the last seven days.",
   "activity_rejected_unavailable": "Rejected deliveries are unavailable.",
   "activity_rejected_empty": "No rejected deliveries in the last seven days.",
   "activity_rejected_received": "Received",

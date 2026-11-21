@@ -1,8 +1,10 @@
 import { m } from "@recount/i18n/messages";
-import { HistoryIcon, Loader2Icon } from "lucide-react";
+import { CircleAlertIcon, HistoryIcon, Loader2Icon } from "lucide-react";
 import { Button } from "../components/ui/button";
 
-function emptyText(mode: "explorer" | "live", filtered: boolean) {
+function emptyText(mode: "explorer" | "live" | "rejected", filtered: boolean) {
+	if (mode === "rejected")
+		return { title: m.activity_rejected_empty(), note: null };
 	if (mode === "live")
 		return {
 			title: `${m.activity_empty_live()}…`,
@@ -26,14 +28,18 @@ export function ActivityEmpty({
 	onSearchFurther,
 	disabled,
 }: {
-	mode: "explorer" | "live";
-	filtered: boolean;
+	mode: "explorer" | "live" | "rejected";
+	filtered?: boolean;
 	/** Present when older points remain beyond the searched part of the range. */
 	onSearchFurther?: () => void;
-	disabled: boolean;
+	disabled?: boolean;
 }) {
-	const Icon = mode === "live" ? Loader2Icon : HistoryIcon;
-	const text = emptyText(mode, filtered);
+	const Icon = {
+		live: Loader2Icon,
+		explorer: HistoryIcon,
+		rejected: CircleAlertIcon,
+	}[mode];
+	const text = emptyText(mode, filtered ?? false);
 	return (
 		// Tide sets cell block padding, so spacing lives on this wrapper.
 		<div className="px-6 py-12 text-center">
@@ -46,9 +52,11 @@ export function ActivityEmpty({
 				}
 			/>
 			<p className="text-base font-semibold">{text.title}</p>
-			<p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-				{text.note}
-			</p>
+			{text.note && (
+				<p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+					{text.note}
+				</p>
+			)}
 			{onSearchFurther && (
 				<Button
 					variant="outline"

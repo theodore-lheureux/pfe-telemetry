@@ -16,6 +16,7 @@ import { ActivityEmpty } from "./activity-empty";
 import { ActivityHeader } from "./activity-header";
 import { activityAccessDenied, displayedActivity } from "./activity-state";
 import { ActivityTable } from "./activity-table";
+import { ActivityUnavailable } from "./activity-unavailable";
 import {
 	attributeFields,
 	DEFAULT_COLUMNS,
@@ -270,15 +271,10 @@ export function ActivityPage({
 				)}
 			</div>
 			{result.isError && (!paused || activityAccessDenied(result.error)) && (
-				<div
-					role="alert"
-					className="rounded-md border border-destructive/40 p-4"
-				>
-					<p className="mb-3 text-sm">{m.activity_unavailable()}</p>
-					<Button variant="outline" onClick={reload}>
-						{m.activity_retry()}
-					</Button>
-				</div>
+				<ActivityUnavailable
+					message={m.activity_unavailable()}
+					onRetry={reload}
+				/>
 			)}
 			<ActivityTable
 				label={mode === "live" ? m.activity_live() : m.activity_explorer()}

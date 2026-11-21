@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { Link } from "@tanstack/react-router";
-import { HistoryIcon, RadioIcon } from "lucide-react";
+import { CircleAlertIcon, HistoryIcon, RadioIcon } from "lucide-react";
 import { PageHeader, pageTabClass } from "../components/page-header";
 import type { ProjectReference } from "../organizations/contracts";
 
@@ -8,18 +8,18 @@ export function ActivityHeader({
 	mode,
 	reference,
 }: {
-	mode: "explorer" | "live";
+	mode: "explorer" | "live" | "rejected";
 	reference: ProjectReference;
 }) {
 	return (
 		<PageHeader
 			icon={RadioIcon}
 			title={m.activity_title()}
-			description={
-				mode === "live"
-					? m.activity_live_description()
-					: m.activity_explorer_description()
-			}
+			description={{
+				explorer: m.activity_explorer_description,
+				live: m.activity_live_description,
+				rejected: m.activity_rejected_description,
+			}[mode]()}
 			tabs={
 				<>
 					<Link
@@ -40,6 +40,16 @@ export function ActivityHeader({
 					>
 						<RadioIcon aria-hidden="true" className="size-4" />
 						{m.activity_live()}
+					</Link>
+					<Link
+						to="/organizations/$organizationId/projects/$projectId/activity/rejected"
+						params={reference}
+						preload={false}
+						className={pageTabClass(mode === "rejected")}
+						aria-current={mode === "rejected" ? "page" : undefined}
+					>
+						<CircleAlertIcon aria-hidden="true" className="size-4" />
+						{m.activity_rejected_deliveries()}
 					</Link>
 				</>
 			}

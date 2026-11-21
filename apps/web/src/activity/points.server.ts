@@ -120,7 +120,8 @@ function keyQuery(
 	const source = seriesPointSource(
 		` AND ${seriesLastSeen("{lower:UInt64}")} AND first_seen_unix_milli <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
 		`AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
-AND time_unix_milli>={lower:UInt64} AND tuple(time_unix_milli,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String})`,
+AND time_unix_milli>={lower:UInt64} AND time_unix_milli<{to:UInt64}
+AND tuple(time_unix_milli,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String})`,
 		execution ? "s.source_id, s.resource_id, s.resource_kind" : "",
 	);
 	const points = evidence
