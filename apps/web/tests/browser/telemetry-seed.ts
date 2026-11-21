@@ -52,7 +52,12 @@ export async function clearTelemetry(
 	client: ClickHouseClient,
 	project: string,
 ) {
-	for (const table of ["metric_points", "metric_series", "deliveries"])
+	for (const table of [
+		"metric_points",
+		"metric_series",
+		"activity_series",
+		"deliveries",
+	])
 		await client.command({
 			query: `ALTER TABLE telemetry.${table} DELETE WHERE project_id = {project:String} SETTINGS mutations_sync = 1`,
 			query_params: { project },

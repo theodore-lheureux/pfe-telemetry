@@ -70,6 +70,34 @@ ENGINE = AggregatingMergeTree
 ORDER BY (project_id, metric_name, resource_id, series_id)
 SETTINGS allow_dimensions_outside_sorting_key = 1, fsync_after_insert = 0, fsync_part_directory = 1;
 
+CREATE TABLE __CREATE_GUARD____DATABASE__.activity_series
+(
+    project_id String,
+    source_id String,
+    series_id UInt64,
+    metric_name LowCardinality(String),
+    resource_id String,
+    host_id String,
+    resource_kind UInt8,
+    metric_kind UInt8,
+    unit LowCardinality(String),
+    scope_name LowCardinality(String),
+    scope_version LowCardinality(String),
+    first_seen_unix_milli SimpleAggregateFunction(min, UInt64),
+    last_seen_unix_milli SimpleAggregateFunction(max, UInt64),
+    INDEX activity_source source_id TYPE set(0) GRANULARITY 1
+)
+ENGINE = AggregatingMergeTree
+ORDER BY (project_id, source_id, series_id, metric_name)
+SETTINGS allow_dimensions_outside_sorting_key = 1, index_granularity = 256, fsync_after_insert = 0, fsync_part_directory = 1;
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.activity_series_by_source
+TO __DATABASE__.activity_series AS
+SELECT project_id, source_id, series_id, metric_name, resource_id, host_id,
+    toUInt8(resource_kind) AS resource_kind, toUInt8(metric_kind) AS metric_kind,
+    unit, scope_name, scope_version, first_seen_unix_milli, last_seen_unix_milli
+FROM __DATABASE__.metric_series;
+
 CREATE TABLE __CREATE_GUARD____DATABASE__.deliveries
 (
 __DELIVERY_COLUMNS__

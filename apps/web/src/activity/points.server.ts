@@ -114,13 +114,9 @@ interface SeriesRow {
 	unit: string;
 	scopeName: string;
 	scopeVersion: string;
-	part: string;
+	part?: string;
 	fields?: (string | null)[];
 }
-type SeriesCandidate = Pick<
-	SeriesRow,
-	"metricName" | "seriesId" | "resourceId"
->;
 interface StreamRow {
 	streamId: string;
 	fields: (string | null)[];
@@ -135,13 +131,14 @@ const POINT_KEY = "concat(leftPad(hex(series_id), 16, '0'), hex(stream_id))";
 
 function candidateQuery(metric: boolean) {
 	return `SELECT toString(series_id) AS seriesId,metric_name AS metricName,
-resource_id AS resourceId
-FROM metric_series
+resource_id AS resourceId,source_id AS sourceId,nullIf(host_id,'') AS hostId,
+resource_kind AS resourceKind,metric_kind AS kind,unit,scope_name AS scopeName,scope_version AS scopeVersion
+FROM activity_series
 WHERE project_id={project:String} AND source_id={source:String}
 ${metric ? "AND metric_name={metric:String}" : ""}
 AND ({hasSeries:UInt8}=0 OR (series_id,metric_name)<({series:UInt64},{seriesMetric:String})
  OR ({insideSeries:UInt8}=1 AND (series_id,metric_name)=({series:UInt64},{seriesMetric:String})))
-GROUP BY metric_name,series_id,resource_id
+GROUP BY series_id,metric_name,resource_id,source_id,host_id,resource_kind,metric_kind,unit,scope_name,scope_version
 HAVING min(first_seen_unix_milli)<{upper:UInt64} AND ${seriesLastSeen("{lower:UInt64}").replace("last_seen_unix_milli", "max(last_seen_unix_milli)")}
 ORDER BY series_id DESC,metric_name DESC LIMIT ${SERIES_BATCH + 1}`;
 }
@@ -222,17 +219,13 @@ function summary(
 	};
 }
 
-function deliveryQuery(metric: boolean) {
-	const sourceFilter = metric
-		? `AND source_id IN (SELECT DISTINCT source_id FROM metric_series WHERE project_id={project:String} AND metric_name={metric:String})`
-		: "";
+function deliveryQuery() {
 	return `SELECT toString(received_unix_nano) AS receivedNs, source_id AS sourceId,
 raw_partition AS partition, toString(raw_offset) AS offset,
 toString(min_event_unix_milli) AS firstMs, toString(max_event_unix_milli) AS lastMs
 FROM deliveries FINAL WHERE project_id={project:String}
 AND max_event_unix_milli >= {from:UInt64} AND min_event_unix_milli < {to:UInt64}
 AND received_unix_nano < {receivedThrough:UInt64}
-${sourceFilter}
 AND ({hasCursor:UInt8}=0 OR
     (received_unix_nano,source_id,raw_partition,raw_offset) <
     ({receivedNs:UInt64},{source:String},{partition:UInt32},{offset:UInt64})
@@ -276,7 +269,7 @@ interface SearchBudget {
 	deadline: number;
 }
 type Read<T> = (sql: string, params: Params) => Promise<T[]>;
-type ResolveCandidates = (keys: SeriesCandidate[]) => Promise<SeriesRow[]>;
+type ResolveCandidates = (keys: SeriesRow[]) => Promise<SeriesRow[]>;
 
 function hasBudget(budget: SearchBudget) {
 	return budget.remaining > 0 && Date.now() < budget.deadline;
@@ -290,7 +283,7 @@ async function readDelivery(
 	cursor: PointCursor,
 	budget: SearchBudget,
 	limit: number,
-	readCandidates: Read<SeriesCandidate>,
+	readCandidates: Read<SeriesRow>,
 	resolveCandidates: ResolveCandidates,
 	read: Read<PointRow>,
 	execution: boolean,
@@ -381,7 +374,7 @@ async function searchDeliveries(
 	window: Pick<PointCursor, "from" | "to" | "receivedThrough">,
 	cursor: PointCursor | undefined,
 	readReceipts: Read<Delivery>,
-	readCandidates: Read<SeriesCandidate>,
+	readCandidates: Read<SeriesRow>,
 	resolveCandidates: ResolveCandidates,
 	readRows: Read<PointRow>,
 	execution: boolean,
@@ -471,7 +464,7 @@ export async function readPoints(
 		).toString(),
 	};
 	const { rows, dimensions, nextCursor } = await searchDeliveries(
-		deliveryQuery(metric),
+		deliveryQuery(),
 		candidateQuery(metric),
 		batchQuery(
 			pointConditions,
@@ -482,16 +475,18 @@ export async function readPoints(
 		{ from, to, receivedThrough },
 		input.cursor,
 		(sql, params) => query<Delivery>(sql, params, signal, connection),
-		(sql, params) => query<SeriesCandidate>(sql, params, signal, connection),
+		(sql, params) => query<SeriesRow>(sql, params, signal, connection),
 		(keys) =>
-			resolveSeriesCandidates(
-				input.projectId,
-				keys,
-				conditions,
-				filters.params,
-				signal,
-				connection,
-			),
+			conditions.length
+				? resolveSeriesRows(
+						input.projectId,
+						keys,
+						conditions,
+						filters.params,
+						signal,
+						connection,
+					)
+				: Promise.resolve(keys),
 		(sql, params) => query<PointRow>(sql, params, signal, connection),
 		execution,
 	);
@@ -499,14 +494,27 @@ export async function readPoints(
 	const displayedDimensions = dimensions.filter((row) =>
 		displayed.delete(seriesKey(row)),
 	);
-	for (let i = 0; i < displayedDimensions.length; i += 20)
-		await readSeriesFields(
+	if (projection.expressions.length && displayedDimensions.length) {
+		const located = await resolveSeriesRows(
 			input.projectId,
-			displayedDimensions.slice(i, i + 20),
-			projection,
+			displayedDimensions,
+			[],
+			{},
 			signal,
 			connection,
 		);
+		for (let i = 0; i < located.length; i += 20)
+			await readSeriesFields(
+				input.projectId,
+				located.slice(i, i + 20),
+				projection,
+				signal,
+				connection,
+			);
+		const fields = new Map(located.map((row) => [seriesKey(row), row.fields]));
+		for (const row of displayedDimensions)
+			row.fields = fields.get(seriesKey(row));
+	}
 	const evidence = rows.length
 		? await readStreamFields(
 				input.projectId,
@@ -535,9 +543,9 @@ export async function readPoints(
 	};
 }
 
-async function resolveSeriesCandidates(
+async function resolveSeriesRows(
 	project: string,
-	keys: SeriesCandidate[],
+	keys: SeriesRow[],
 	conditions: string[],
 	filterParams: Params,
 	signal?: AbortSignal,
@@ -599,14 +607,14 @@ LIMIT 1 BY metric_name,series_id`,
 			project,
 			metrics: [...new Set(dimensions.map((row) => row.metricName))],
 			resources: [...new Set(dimensions.map((row) => row.resourceId))],
-			parts: [...new Set(dimensions.map((row) => row.part))],
+			parts: [...new Set(dimensions.map((row) => row.part ?? ""))],
 			ids: dimensions.map(
 				(row) =>
 					new TupleParam([
 						row.metricName,
 						row.resourceId,
 						BigInt(row.seriesId),
-						row.part,
+						row.part ?? "",
 					]),
 			),
 		},
