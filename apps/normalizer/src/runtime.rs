@@ -324,7 +324,7 @@ fn app(state: RunState) -> impl App {
         .producer_config("enable.idempotence", "true")
         .producer_config("acks", "all")
         // The topic declares the same codec, so the broker stores batches unchanged.
-        .producer_config("compression.type", "zstd")
+        .producer_config("compression.type", "lz4")
         .producer_config("linger.ms", config.linger_ms.to_string())
         .producer_config(
             "message.max.bytes",

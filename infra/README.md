@@ -124,22 +124,22 @@ These commands check declarations without credentials, backend clients or socket
 
 Live notifications use the separate `RECOUNT_LIVE_TOPIC` with `RECOUNT_LIVE_PARTITIONS=8`, five-minute retention and a 16 MiB per-partition byte target. They contain summaries and raw-record references, not duplicate telemetry bodies. Set a private `RECOUNT_LIVE_GATEWAY_SECRET` shared by `web` and `live`; only the gateway joins the broker network. Project creation does not provision topics. For an existing initialized stack, `just local live-topic-create` creates only the new notification topic; it does not alter raw/normalized topics or seed pipeline groups. Normal topic creation/verification includes all five topics. The late topic shares normalized partition count and record size, but has independent retention and segments; participant settings are independent. See [Activity](../apps/web/README.md#activity) for connection-scoped SSE and best-effort publication semantics.
 
-| Control                                     | Development default                                                                                   |
-| ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Raw / normalized / late topics              | `recount.metrics.raw` / `recount.metrics.normalized-packed` / `recount.metrics.late`                  |
-| Raw / normalized partition counts           | `RECOUNT_RAW_PARTITIONS=3` / `RECOUNT_NORMALIZED_PARTITIONS=3`                                        |
-| Per-topic retention time                    | `RECOUNT_RAW_RETENTION_MS` / `RECOUNT_NORMALIZED_RETENTION_MS`: `21600000` (6 h)                      |
-| Per-topic retention bytes per partition     | `RECOUNT_RAW_RETENTION_BYTES` / `RECOUNT_NORMALIZED_RETENTION_BYTES`: `134217728`                     |
-| Topic segment bytes / roll interval         | `RECOUNT_{RAW,NORMALIZED}_SEGMENT_BYTES=16777216` / `RECOUNT_{RAW,NORMALIZED}_SEGMENT_MS=60000`       |
-| Topic record ceilings                       | `RECOUNT_RAW_BROKER_MAX_BYTES=6291456`, `RECOUNT_NORMALIZED_BROKER_MAX_BYTES=2097152`                 |
-| Topic compression                           | Raw and normalized: `zstd`, sent compressed by their producers and declared on the topics; Live: none |
-| Broker message / replication fetch ceilings | `RECOUNT_BROKER_MESSAGE_BYTES=6291456`, `RECOUNT_BROKER_FETCH_BYTES=6291456`                          |
-| Broker request ceiling                      | `RECOUNT_BROKER_REQUEST_BYTES=8388608`                                                                |
-| Native normalized fetch / receive targets   | normalized topic budget / max(6 MiB, topic budget + 512); independent receive override supported      |
-| Native queued bytes target                  | ceil(2 × normalized topic budget / 1024) KiB; one-message minimum                                     |
-| Native source target / poll batch           | 64 rows / 32 Kafka records; reduced when required by the prepared partition ceiling                   |
-| Native poll / flush intervals               | 100 ms / 2000 ms                                                                                      |
-| Normalizer / ClickHouse groups              | `recount-normalizer` / `recount-clickhouse`                                                           |
+| Control                                     | Development default                                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Raw / normalized / late topics              | `recount.metrics.raw` / `recount.metrics.normalized-packed` / `recount.metrics.late`             |
+| Raw / normalized partition counts           | `RECOUNT_RAW_PARTITIONS=3` / `RECOUNT_NORMALIZED_PARTITIONS=3`                                   |
+| Per-topic retention time                    | `RECOUNT_RAW_RETENTION_MS` / `RECOUNT_NORMALIZED_RETENTION_MS`: `21600000` (6 h)                 |
+| Per-topic retention bytes per partition     | `RECOUNT_RAW_RETENTION_BYTES` / `RECOUNT_NORMALIZED_RETENTION_BYTES`: `134217728`                |
+| Topic segment bytes / roll interval         | `RECOUNT_{RAW,NORMALIZED}_SEGMENT_BYTES=16777216` / `RECOUNT_{RAW,NORMALIZED}_SEGMENT_MS=60000`  |
+| Topic record ceilings                       | `RECOUNT_RAW_BROKER_MAX_BYTES=6291456`, `RECOUNT_NORMALIZED_BROKER_MAX_BYTES=2097152`            |
+| Topic compression                           | Raw and participants: `zstd`; normalized, late and dead-letter: `lz4`; Live: none                |
+| Broker message / replication fetch ceilings | `RECOUNT_BROKER_MESSAGE_BYTES=6291456`, `RECOUNT_BROKER_FETCH_BYTES=6291456`                     |
+| Broker request ceiling                      | `RECOUNT_BROKER_REQUEST_BYTES=8388608`                                                           |
+| Native normalized fetch / receive targets   | normalized topic budget / max(6 MiB, topic budget + 512); independent receive override supported |
+| Native queued bytes target                  | ceil(2 × normalized topic budget / 1024) KiB; one-message minimum                                |
+| Native source target / poll batch           | 64 rows / 32 Kafka records; reduced when required by the prepared partition ceiling              |
+| Native poll / flush intervals               | 100 ms / 2000 ms                                                                                 |
+| Normalizer / ClickHouse groups              | `recount-normalizer` / `recount-clickhouse`                                                      |
 
 `RECOUNT_BROKER_RETENTION_MS`, `RECOUNT_BROKER_RETENTION_BYTES`, `RECOUNT_BROKER_SEGMENT_BYTES` and `RECOUNT_BROKER_SEGMENT_MS` explicitly set broker fallbacks to the same defaults. All five topics receive explicit settings at creation. Verification checks effective counts/configuration and fails on differences; it does not resize, drain, delete or reconfigure topics. Recreate explicitly selected incompatible disposable local topics. Partition affinity assumes fixed counts. Coordinate count or limit changes across ingestion, normalizer, broker and ClickHouse before admitting traffic.
 

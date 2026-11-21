@@ -438,10 +438,12 @@ case "$*" in
     ;;
 *--entity-type*)
     if [[ "$*" == *'--entity-name recount.metrics.dead-letter '* ]]; then
-        echo 'retention.ms=604800000 retention.bytes=134217728 segment.bytes=1048576 segment.ms=3600000 max.message.bytes=131072 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false compression.type=zstd'
+        echo 'retention.ms=604800000 retention.bytes=134217728 segment.bytes=1048576 segment.ms=3600000 max.message.bytes=131072 cleanup.policy=delete min.insync.replicas=1 unclean.leader.election.enable=false compression.type=lz4'
         exit 0
     fi
     codec=zstd
+    [[ "$*" != *'--entity-name normalized '* ]] || codec=\${MOCK_NORMALIZED_CODEC:-lz4}
+    [[ "$*" != *'--entity-name late '* ]] || codec=lz4
     [[ "$*" != *'--entity-name live '* ]] || codec=producer
     bytes=65536
     [[ "$*" != *'--entity-name late '* ]] || bytes=$RECOUNT_LATE_RETENTION_BYTES
@@ -491,6 +493,7 @@ esac
 		["create", ""],
 		["create-live", ""],
 		["create-dead-letter", ""],
+		["create-metric-output", ""],
 	]) {
 		writeFileSync(log, "");
 		const child = Bun.spawn(["bash", script, mode], {
@@ -501,11 +504,36 @@ esac
 		expect(await child.exited).toBe(missing ? 1 : 0);
 		const calls = readFileSync(log, "utf8");
 		expect(calls.includes("--create")).toBe(mode.startsWith("create"));
-		// Metric and participant topics retain the zstd batches their producers send.
-		if (mode === "create") {
-			expect(calls.match(/compression\.type=zstd/g)).toHaveLength(5);
-			expect(calls).toContain("--create --topic late --partitions 3");
-		}
+		const created = calls
+			.split("\n")
+			.filter((line) => line.includes("--create"));
+		const codecs = {
+			raw: "zstd",
+			normalized: "lz4",
+			late: "lz4",
+			"recount.participants": "zstd",
+			"recount.metrics.dead-letter": "lz4",
+			live: "producer",
+		};
+		const expected: Record<string, (keyof typeof codecs)[]> = {
+			create: [
+				"raw",
+				"normalized",
+				"late",
+				"recount.participants",
+				"recount.metrics.dead-letter",
+				"live",
+			],
+			"create-metric-output": ["normalized", "late"],
+			"create-dead-letter": ["recount.metrics.dead-letter"],
+			"create-live": ["live"],
+		};
+		const topics = expected[mode] ?? [];
+		expect(created).toHaveLength(topics.length);
+		for (const topic of topics)
+			expect(
+				created.find((line) => line.includes(`--topic ${topic} `)),
+			).toContain(`--config compression.type=${codecs[topic]}`);
 		if (mode === "create-dead-letter") {
 			expect(calls.match(/--create/g)).toHaveLength(1);
 			expect(calls).toContain(
@@ -531,6 +559,15 @@ esac
 	expect(await drift.exited).toBe(1);
 	expect(await new Response(drift.stderr).text()).toContain(
 		"expected retention.ms=65536",
+	);
+	const oldCodec = Bun.spawn(["bash", script, "verify"], {
+		env: { ...env, MOCK_NORMALIZED_CODEC: "zstd" },
+		stdout: "ignore",
+		stderr: "pipe",
+	});
+	expect(await oldCodec.exited).toBe(1);
+	expect(await new Response(oldCodec.stderr).text()).toContain(
+		"normalized: expected compression.type=lz4, effective compression.type=zstd",
 	);
 	writeFileSync(log, "");
 	const creation = Bun.spawn(["bash", script, "create"], {

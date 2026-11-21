@@ -89,23 +89,23 @@ ensure_topic() {
 }
 
 if [[ "$dead_letter_only" == true ]]; then
-    ensure_topic "$dead_letter" 1 RECOUNT_DEAD_LETTER zstd
+    ensure_topic "$dead_letter" 1 RECOUNT_DEAD_LETTER lz4
     exit "$status"
 fi
 if [[ "${metric_output_only:-false}" == true ]]; then
     mode=create
-    ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED zstd
-    ensure_topic "$late" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_LATE zstd
+    ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED lz4
+    ensure_topic "$late" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_LATE lz4
     exit "$status"
 fi
 
 if [[ "$live_only" == false ]]; then
     ensure_topic "$raw" "$RECOUNT_RAW_PARTITIONS" RECOUNT_RAW zstd
-    ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED zstd
+    ensure_topic "$normalized" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_NORMALIZED lz4
     # The normalizer routes a point to the same partition index on either topic.
-    ensure_topic "$late" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_LATE zstd
+    ensure_topic "$late" "$RECOUNT_NORMALIZED_PARTITIONS" RECOUNT_LATE lz4
     ensure_topic "$participants" "$RECOUNT_PARTICIPANT_PARTITIONS" RECOUNT_PARTICIPANT zstd
-    ensure_topic "$dead_letter" 1 RECOUNT_DEAD_LETTER zstd
+    ensure_topic "$dead_letter" 1 RECOUNT_DEAD_LETTER lz4
 fi
 ensure_topic "$live" "$RECOUNT_LIVE_PARTITIONS" RECOUNT_LIVE
 exit "$status"
