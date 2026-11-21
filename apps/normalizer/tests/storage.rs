@@ -364,6 +364,13 @@ async fn native_single_point_roundtrip_replay_sparse_flush_and_destination_recov
         "stale fixture executable"
     );
     storage.start();
+    assert_eq!(
+        storage.sql(&format!(
+            "SELECT sorting_key FROM system.tables WHERE database = '{}' AND name = 'metric_series'",
+            storage.database
+        )),
+        b"project_id, metric_name, resource_id, series_id\n"
+    );
     let body = fixture(&[]);
     assert_eq!(storage.publish(&body).await, 0);
     let reader = Storage::consumer(&storage.broker, &format!("{}.observer", storage.group));

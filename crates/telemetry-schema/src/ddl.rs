@@ -283,7 +283,14 @@ mod tests {
             "TO disposable.metric_points AS SELECT {} FROM disposable.late_kafka",
             crate::POINT_SELECT
         )));
-        assert!(sql.contains("CREATE TABLE disposable.metric_series"));
+        let series = sql
+            .split_once("CREATE TABLE disposable.metric_series\n")
+            .unwrap()
+            .1
+            .split(';')
+            .next()
+            .unwrap();
+        assert!(series.contains("\nORDER BY (project_id, metric_name, resource_id, series_id)\n"));
         assert!(sql.contains("index_granularity = 1024, merge_max_block_size = 8192, merge_max_block_size_bytes = 10485760"));
         assert!(sql.contains("kafka_max_block_size = 98304"));
         assert_eq!(sql.matches("kafka_flush_interval_ms = 4000;").count(), 1);

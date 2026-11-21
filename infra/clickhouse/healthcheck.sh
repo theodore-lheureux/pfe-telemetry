@@ -8,6 +8,8 @@ expected=$(cat /etc/recount-schema/expected-columns.tsv)
 actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT name, type FROM system.columns WHERE database = 'telemetry' AND table = 'metric_series' ORDER BY position FORMAT TSVRaw")
 expected=$(cat /etc/recount-schema/expected-series-columns.tsv)
 [ "$actual" = "$expected" ]
+actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT sorting_key FROM system.tables WHERE database = 'telemetry' AND name = 'metric_series' FORMAT TSVRaw")
+[ "$actual" = 'project_id, metric_name, resource_id, series_id' ]
 actual=$(clickhouse-client --user telemetry_reader --password "$CLICKHOUSE_READER_PASSWORD" --query "SELECT name, type FROM system.columns WHERE database = 'telemetry' AND table = 'metric_streams' ORDER BY position FORMAT TSVRaw")
 expected=$(cat /etc/recount-schema/expected-stream-columns.tsv)
 [ "$actual" = "$expected" ]

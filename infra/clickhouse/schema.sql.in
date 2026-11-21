@@ -57,7 +57,8 @@ ORDER BY (project_id, metric_name, series_id, time_unix_milli, stream_id)
 SETTINGS index_granularity = 1024, merge_max_block_size = 8192, merge_max_block_size_bytes = 10485760,
     fsync_after_insert = 0, fsync_part_directory = 1;
 
--- Non-key dimensions are immutable for a storage series_id. Only the bounds aggregate.
+-- Group a metric's series by resource for compression. The storage series_id
+-- already includes resource_id. Only the bounds aggregate.
 -- Side tables inherit the server merge block caps: their dimension/evidence rows
 -- are wider, and they do not have the point table's throughput target.
 CREATE TABLE __CREATE_GUARD____DATABASE__.metric_series
@@ -65,7 +66,7 @@ CREATE TABLE __CREATE_GUARD____DATABASE__.metric_series
 __SERIES_COLUMNS__
 )
 ENGINE = AggregatingMergeTree
-ORDER BY (project_id, metric_name, series_id)
+ORDER BY (project_id, metric_name, resource_id, series_id)
 SETTINGS allow_dimensions_outside_sorting_key = 1, fsync_after_insert = 0, fsync_part_directory = 1;
 
 CREATE TABLE __CREATE_GUARD____DATABASE__.deliveries
