@@ -50,6 +50,7 @@ pub(super) fn start(interval: Duration) -> (SyncSender<Request>, Receiver<Respon
                     Some(session) => session.sample(),
                     None => Err(error),
                 };
+                let completed_ns = crate::clock::read_clock_pair().ok().map(|(time, _)| time);
                 let mut processes = process::Frame::default();
                 if context.enabled {
                     if process_reader.is_none() && Instant::now() >= process_retry {
@@ -111,6 +112,7 @@ pub(super) fn start(interval: Duration) -> (SyncSender<Request>, Receiver<Respon
                         Frame {
                             devices: result,
                             processes,
+                            completed_ns,
                         },
                     ))
                     .is_err()

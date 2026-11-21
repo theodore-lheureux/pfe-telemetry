@@ -67,6 +67,7 @@ fn profiling_is_catalogued_ratios_with_pipe_dimensions_and_native_time() {
         attributes(),
         NOW,
         Duration::from_secs(1),
+        None,
     );
     assert_eq!(resources.len(), 1);
     let request = opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest {
@@ -123,6 +124,7 @@ fn repeated_or_stale_samples_have_only_unavailable_status_not_fresh_zero() {
         attributes(),
         NOW,
         Duration::from_secs(1),
+        None,
     );
     let repeated = export::resources(
         &devices,
@@ -130,6 +132,7 @@ fn repeated_or_stale_samples_have_only_unavailable_status_not_fresh_zero() {
         attributes(),
         NOW + 1,
         Duration::from_secs(1),
+        None,
     );
     assert!(
         repeated[0].scope_metrics[0]
@@ -143,6 +146,7 @@ fn repeated_or_stale_samples_have_only_unavailable_status_not_fresh_zero() {
         attributes(),
         NOW + 4_000_000_000,
         Duration::from_secs(1),
+        None,
     );
     assert!(
         stale[0].scope_metrics[0]
@@ -160,7 +164,8 @@ fn no_gpu_and_a_hung_optional_source_do_not_add_points_or_wait() {
             &mut BTreeMap::new(),
             attributes(),
             NOW,
-            Duration::from_secs(1)
+            Duration::from_secs(1),
+            None,
         )
         .is_empty()
     );
@@ -202,7 +207,8 @@ fn mig_never_receives_board_metrics_or_an_unverified_identity() {
             &mut BTreeMap::new(),
             attributes(),
             NOW,
-            Duration::from_secs(1)
+            Duration::from_secs(1),
+            None,
         )
         .is_empty()
     );
@@ -218,6 +224,7 @@ fn mig_never_receives_board_metrics_or_an_unverified_identity() {
         attributes(),
         NOW,
         Duration::from_secs(1),
+        None,
     );
     assert!(
         resources[0].scope_metrics[0]
@@ -263,6 +270,7 @@ fn a_clock_epoch_change_discards_inflight_gpu_results_and_old_diagnostics() {
                     discovery: Ok(()),
                 }),
                 processes: super::process::Frame::default(),
+                completed_ns: Some(NOW),
             },
         ))
         .unwrap();
@@ -271,4 +279,73 @@ fn a_clock_epoch_change_discards_inflight_gpu_results_and_old_diagnostics() {
             .is_empty()
     );
     assert!(gpu.known.is_empty());
+}
+
+#[test]
+fn distributions_use_only_fresh_physical_board_values_once_per_signal() {
+    let mut first = device();
+    first.readings.push(Reading {
+        field: Field::Utilization,
+        time_ns: NOW,
+        value: Ok(Value::Integer(50)),
+    });
+    first.readings.push(Reading {
+        field: Field::Power,
+        time_ns: NOW,
+        value: Ok(Value::Double(75.0)),
+    });
+    let mut second = first.clone();
+    second.uuid = "GPU-01234567-89ab-cdef-0123-456789abcdef".into();
+    second.readings.retain(|r| r.field == Field::MemoryUsed);
+    second.readings[0].value = Ok(Value::Integer(0));
+    let mut mig = first.clone();
+    mig.uuid = "MIG-01234567-89ab-cdef-0123-456789abcdef".into();
+    mig.parent_uuid = Some(first.uuid.clone());
+    let devices = [first.clone(), first, second, mig];
+    let mut seen = BTreeMap::new();
+    let frame = |seen: &mut _| {
+        export::resources(
+            &devices,
+            seen,
+            attributes(),
+            NOW + 10,
+            Duration::from_secs(1),
+            Some(NOW + 5),
+        )
+    };
+    let resources = frame(&mut seen);
+    let node = resources.last().unwrap();
+    let identity = adapter::resource_identity(&node.resource.as_ref().unwrap().attributes).unwrap();
+    assert_eq!(identity.scope, adapter::Scope::Node);
+    assert!(identity.gpu.is_none());
+    let mut histograms = BTreeMap::new();
+    for metric in &node.scope_metrics[0].metrics {
+        catalogue::validate_adapter_metric(metric, catalogue::Adapter::Linux).unwrap();
+        if let Some(Data::Histogram(h)) = &metric.data {
+            let p = &h.data_points[0];
+            assert_eq!(p.time_unix_nano, NOW + 5);
+            assert_eq!(p.start_time_unix_nano, 0);
+            assert_eq!(p.count, p.bucket_counts.iter().sum::<u64>());
+            histograms.insert(metric.name.as_str(), (p.count, p.sum, p.min, p.max));
+        }
+    }
+    assert_eq!(histograms.len(), 3);
+    assert_eq!(
+        histograms[catalogue::NODE_GPU_UTILIZATION_DISTRIBUTION.name],
+        (1, Some(0.5), Some(0.5), Some(0.5))
+    );
+    assert_eq!(
+        histograms[catalogue::NODE_GPU_MEMORY_DISTRIBUTION.name],
+        (2, Some(1_073_741_824.), Some(0.), Some(1_073_741_824.))
+    );
+    assert_eq!(
+        histograms[catalogue::NODE_GPU_POWER_DISTRIBUTION.name],
+        (1, Some(75.), Some(75.), Some(75.))
+    );
+    assert!(
+        frame(&mut seen).last().unwrap().scope_metrics[0]
+            .metrics
+            .iter()
+            .all(|m| m.name == catalogue::GPU_COVERAGE.name)
+    );
 }

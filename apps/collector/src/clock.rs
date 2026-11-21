@@ -62,7 +62,7 @@ fn discontinuity(last: u64, unix_nanos: u64, expected_unix_nanos: i128) -> bool 
 }
 
 #[cfg(target_os = "linux")]
-fn read_clock_pair() -> io::Result<(u64, Instant)> {
+pub(crate) fn read_clock_pair() -> io::Result<(u64, Instant)> {
     let before = Instant::now();
     let unix_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)

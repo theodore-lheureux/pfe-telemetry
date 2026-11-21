@@ -54,6 +54,10 @@ catalogue! {
     NODE_PROCESS_CPU_DISTRIBUTION => ("recount.node.process.cpu.utilization.distribution","1",DeltaHistogram,Float64,Linux,NonNegative),
     NODE_PROCESS_RSS_DISTRIBUTION => ("recount.node.process.memory.rss.distribution","By",DeltaHistogram,Float64,Linux,NonNegative),
     NODE_PROCESS_IO_DISTRIBUTION => ("recount.node.process.disk.io.rate.distribution","By/s",DeltaHistogram,Float64,Linux,NonNegative),
+    NODE_GPU_UTILIZATION_DISTRIBUTION => ("recount.node.gpu.utilization.distribution","1",DeltaHistogram,Float64,Linux,UnitInterval),
+    NODE_GPU_MEMORY_DISTRIBUTION => ("recount.node.gpu.memory.used.distribution","By",DeltaHistogram,Float64,Linux,NonNegative),
+    NODE_GPU_POWER_DISTRIBUTION => ("recount.node.gpu.power.distribution","W",DeltaHistogram,Float64,Linux,NonNegative),
+    GPU_COVERAGE => ("recount.collection.gpu.coverage","{device}",Gauge,Int64,Linux,NonNegative),
     PROCESS_COVERAGE => ("recount.collection.process.coverage","{process}",Gauge,Int64,Linux,NonNegative),
     SCAN_DURATION => ("recount.collection.scan.duration","s",Gauge,Float64,Linux,NonNegative),
     CLOCK_STATUS => ("recount.clock.status","1",Gauge,Int64,Linux,NonNegative),
@@ -191,7 +195,7 @@ mod tests {
     fn declared_ratios_are_bounded_but_rates_and_linux_durations_are_not_ratios() {
         for def in METRICS
             .iter()
-            .filter(|def| def.constraint == Constraint::UnitInterval)
+            .filter(|def| def.kind == Kind::Gauge && def.constraint == Constraint::UnitInterval)
         {
             for value in [0.0, 1.0] {
                 validate_adapter_metric(&gauge(def, Number::AsDouble(value)), def.adapter).unwrap();

@@ -80,6 +80,7 @@ fn a10_recorded_phases_keep_native_meanings_units_and_unavailable_fp64() {
             attributes(),
             now,
             Duration::from_secs(1),
+            None,
         );
         assert_eq!(resources.len(), 1);
         let resource = &resources[0];

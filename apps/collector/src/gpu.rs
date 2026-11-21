@@ -25,6 +25,7 @@ struct Request {
 struct Frame {
     devices: Result<Snapshot, Error>,
     processes: process::Frame,
+    completed_ns: Option<u64>,
 }
 
 pub(crate) fn read_status(error: Error) -> crate::diagnostics::ReadStatus {
@@ -119,19 +120,26 @@ impl Gpu {
         let result = result.map(|frame| {
             self.process_status = frame.processes.status;
             self.processes = frame.processes.readings;
-            frame.devices
+            (frame.devices, frame.completed_ns)
         });
         match result {
-            Some(Ok(snapshot)) => {
+            Some((Ok(snapshot), completed_ns)) => {
                 self.last_response = Instant::now();
                 self.discovery = snapshot.discovery.err();
                 self.known = snapshot.devices;
                 let uuids: Vec<_> = self.known.iter().map(|d| d.uuid.as_str()).collect();
                 self.seen
                     .retain(|(uuid, _), _| uuids.contains(&uuid.as_str()));
-                export::resources(&self.known, &mut self.seen, attrs, now, self.interval)
+                export::resources(
+                    &self.known,
+                    &mut self.seen,
+                    attrs,
+                    now,
+                    self.interval,
+                    completed_ns.filter(|&time| time <= now),
+                )
             }
-            Some(Err(error)) => {
+            Some((Err(error), _)) => {
                 self.last_response = Instant::now();
                 self.discovery = Some(error);
                 for device in &mut self.known {
@@ -139,7 +147,7 @@ impl Gpu {
                         reading.value = Err(error);
                     }
                 }
-                export::resources(&self.known, &mut self.seen, attrs, now, self.interval)
+                export::resources(&self.known, &mut self.seen, attrs, now, self.interval, None)
             }
             None if !self.known.is_empty()
                 && self.last_response.elapsed() > self.interval.max(Duration::from_secs(1)) * 3 =>
@@ -150,7 +158,14 @@ impl Gpu {
                         reading.value = Err(Error::Unavailable);
                     }
                 }
-                export::resources(&unavailable, &mut self.seen, attrs, now, self.interval)
+                export::resources(
+                    &unavailable,
+                    &mut self.seen,
+                    attrs,
+                    now,
+                    self.interval,
+                    None,
+                )
             }
             None => vec![],
         }
