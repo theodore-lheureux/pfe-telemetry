@@ -84,8 +84,12 @@ export interface PointCursor {
 	to: Date;
 	receivedThrough: Date;
 	delivery: DeliveryKey;
-	/** Absent after a finished delivery; no sample ID at an exclusive time boundary. */
-	point?: { timeMs: string; sampleId?: string };
+	/** Absent after a finished delivery. Omit point after examining the whole series. */
+	series?: {
+		seriesId: string;
+		metricName: string;
+		point?: { timeMs: string; sampleId: string };
+	};
 }
 export interface PointPage {
 	points: PointSummary[];

@@ -252,14 +252,19 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 			"metric_streams",
 			"metric_points",
 		]) {
-			const query =
-				table === "metric_points"
-					? `INSERT INTO telemetry.metric_points
+			let query = `INSERT INTO telemetry.${table} FORMAT Protobuf`;
+			if (table === "metric_points")
+				query = `INSERT INTO telemetry.metric_points
 					(project_id, metric_name, series_id, stream_id, raw_partition, raw_offset, event_day, time_unix_milli, int_value, value_kind)
 					SELECT *, 'INTEGER' FROM input('project_id String, metric_name String, series_id UInt64,
 						stream_id FixedString(16), raw_partition UInt32, raw_offset UInt64, event_day UInt32,
-						time_unix_milli UInt64, int_value Int64') FORMAT Protobuf`
-					: `INSERT INTO telemetry.${table} FORMAT Protobuf`;
+						time_unix_milli UInt64, int_value Int64') FORMAT Protobuf`;
+			if (table === "metric_series")
+				query = `INSERT INTO telemetry.metric_series
+						(project_id, source_id, resource_id, resource_kind, host_id, metric_name, unit, metric_kind,
+						series_id, logical_series_id, first_seen_unix_milli, last_seen_unix_milli,
+						resource_present, scope_present, scope_name, scope_version, resource_attributes, point_attributes)
+						FORMAT Protobuf`;
 			const result = await clickhouse.exec({
 				query,
 				values: Readable.from([Buffer.concat(rows)]),
@@ -395,12 +400,10 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 			})
 			.first()
 			.click();
-		await page
-			.getByRole("button", { name: "Older measurements", exact: true })
-			.click();
+		await page.getByRole("button", { name: "Next page", exact: true }).click();
 		await expect(table.locator("tbody > tr")).toHaveCount(5);
 		await page
-			.getByRole("button", { name: "Newest measurements", exact: true })
+			.getByRole("button", { name: "Newest received", exact: true })
 			.click();
 		await expect(table.locator("tbody > tr")).toHaveCount(100);
 		await page
@@ -534,7 +537,7 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 		await page
 			.getByRole("button", { name: "Attribute filters", exact: true })
 			.click();
-		await page.getByRole("option", { name: /host\.name/ }).click();
+		await page.getByRole("option", { name: /^Host name/ }).click();
 		// Recent values are suggested; any other value can still be typed.
 		await expect(
 			page.getByRole("option", { name: "activity-node-1", exact: true }),

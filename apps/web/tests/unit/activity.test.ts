@@ -163,7 +163,11 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 			partition: 0,
 			offset: "10",
 		},
-		point: { timeMs, sampleId: "aa".repeat(24) },
+		series: {
+			seriesId: BigInt(`0x${"aa".repeat(8)}`).toString(),
+			metricName: "metric",
+			point: { timeMs, sampleId: "aa".repeat(24) },
+		},
 	};
 	expect(
 		parseExplorer({
@@ -183,7 +187,13 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 	expect(() =>
 		parseExplorer({
 			...reference,
-			cursor: { ...cursor, point: { timeMs: "1", sampleId: "aa".repeat(24) } },
+			cursor: {
+				...cursor,
+				series: {
+					...cursor.series,
+					point: { ...cursor.series.point, timeMs: "1" },
+				},
+			},
 		}),
 	).toThrow();
 	expect(() =>

@@ -62,8 +62,17 @@ function cursorPoint(value: unknown, from: Date, to: Date) {
 		throw new Error("Cursor outside activity interval");
 	return {
 		timeMs,
-		sampleId: point.sampleId === undefined ? undefined : sample(point.sampleId),
+		sampleId: sample(point.sampleId),
 	};
+}
+function cursorSeries(value: unknown, from: Date, to: Date) {
+	if (value === undefined) return undefined;
+	const series = record(value);
+	const seriesId = uint64(series.seriesId);
+	const point = cursorPoint(series.point, from, to);
+	if (point && BigInt(`0x${point.sampleId.slice(0, 16)}`) !== BigInt(seriesId))
+		throw new Error("Point does not belong to activity cursor series");
+	return { seriesId, metricName: text(series.metricName, 255), point };
 }
 function optionalTime(value: unknown) {
 	if (value === undefined) return undefined;
@@ -151,7 +160,7 @@ export function parseExplorer(value: unknown): ExplorerInput {
 				partition: delivery.partition,
 				offset: uint64(delivery.offset),
 			},
-			point: cursorPoint(cursor.point, cursor.from, cursor.to),
+			series: cursorSeries(cursor.series, cursor.from, cursor.to),
 		},
 	};
 }

@@ -42,7 +42,7 @@ const settings = {
 	max_rows_to_read: "4000000",
 	max_bytes_to_read: "536870912",
 	read_overflow_mode: "throw",
-	max_result_rows: "101",
+	max_result_rows: "201",
 	max_result_bytes: "8388608",
 	result_overflow_mode: "throw",
 	output_format_json_quote_64bit_integers: 1,
@@ -117,18 +117,14 @@ interface SeriesRow {
 	part: string;
 	fields?: (string | null)[];
 }
+type SeriesCandidate = Pick<
+	SeriesRow,
+	"metricName" | "seriesId" | "resourceId"
+>;
 interface StreamRow {
 	streamId: string;
 	fields: (string | null)[];
 }
-interface Key {
-	timeMs: string;
-	sampleId: string;
-	seriesId: string;
-	metricName: string;
-	day: number;
-}
-type ReceiptPointKey = Key & Pick<DeliveryKey, "partition" | "offset">;
 interface Delivery extends DeliveryKey {
 	firstMs: string;
 	lastMs: string;
@@ -137,60 +133,59 @@ interface Delivery extends DeliveryKey {
 // Fixed-width hexadecimal preserves numeric series order and binary stream order.
 const POINT_KEY = "concat(leftPad(hex(series_id), 16, '0'), hex(stream_id))";
 
-function keyQuery(
-	seriesFilters: string[],
+function candidateQuery(metric: boolean) {
+	return `SELECT toString(series_id) AS seriesId,metric_name AS metricName,
+resource_id AS resourceId
+FROM metric_series
+WHERE project_id={project:String} AND source_id={source:String}
+${metric ? "AND metric_name={metric:String}" : ""}
+AND ({hasSeries:UInt8}=0 OR (series_id,metric_name)<({series:UInt64},{seriesMetric:String})
+ OR ({insideSeries:UInt8}=1 AND (series_id,metric_name)=({series:UInt64},{seriesMetric:String})))
+GROUP BY metric_name,series_id,resource_id
+HAVING min(first_seen_unix_milli)<{upper:UInt64} AND ${seriesLastSeen("{lower:UInt64}").replace("last_seen_unix_milli", "max(last_seen_unix_milli)")}
+ORDER BY series_id DESC,metric_name DESC LIMIT ${SERIES_BATCH + 1}`;
+}
+
+function batchQuery(
 	pointFilters: string[],
 	execution: boolean,
 	evidence: boolean,
-	metric: boolean,
 ) {
-	const selected = `SELECT metric_name, series_id${execution ? ", source_id, resource_id, resource_kind" : ""}
-FROM metric_series FINAL
-WHERE project_id={project:String} AND source_id={source:String}${seriesFilters.map((condition) => ` AND (${condition})`).join("")}`;
-	const timeKeys = `SELECT metric_name, series_id, stream_id, time_unix_milli, event_day
+	const matches = `SELECT metric_name,series_id,stream_id,time_unix_milli,raw_partition,raw_offset,
+value_kind,int_value,double_value,statistics_present,count,flags
 FROM metric_points FINAL
-WHERE project_id={project:String}${metric ? " AND metric_name={metric:String}" : ""}
+WHERE project_id={project:String} AND metric_name IN {metrics:Array(String)}
+AND (metric_name,series_id) IN {seriesKeys:Array(Tuple(String,UInt64))}
 AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
 AND time_unix_milli>={lower:UInt64} AND time_unix_milli<{upper:UInt64}
 AND raw_partition={partition:UInt32} AND raw_offset={offset:UInt64}
-AND ({cursorSample:String}='' OR tuple(time_unix_milli,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String}))`;
+AND ({insideSeries:UInt8}=0 OR (series_id,metric_name,time_unix_milli,hex(stream_id))<
+ ({series:UInt64},{seriesMetric:String},{cursorTime:UInt64},{cursorStream:String}))`;
 	const source = execution
-		? `SELECT p.*, s.source_id, s.resource_id, s.resource_kind FROM (${timeKeys}) p
-INNER JOIN (${selected}) s USING (metric_name,series_id)`
-		: `${timeKeys} AND (metric_name,series_id) IN (${selected})`;
+		? `SELECT p.*, {source:String} AS source_id, s.resource_id, s.resource_kind FROM (${matches}) p
+INNER JOIN (SELECT k.1 AS metric_name,k.2 AS series_id,k.3 AS resource_id,k.4 AS resource_kind
+FROM (SELECT arrayJoin({executionKeys:Array(Tuple(String,UInt64,String,UInt8))}) AS k)) s USING (metric_name,series_id)`
+		: matches;
 	const points = evidence
 		? `SELECT * FROM ${streamEvidenceSource(source)}`
 		: source;
-	return `SELECT toString(time_unix_milli) AS timeMs,${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,metric_name AS metricName,event_day AS day
-FROM ${execution ? executionPointSource(points) : `(${points})`}
-${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
-ORDER BY time_unix_milli DESC,series_id DESC,stream_id DESC LIMIT {limit:UInt32}`;
-}
-
-const pointListQuery = `SELECT ${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,metric_name AS metricName,
-toString(time_unix_milli) AS timeMs,raw_partition AS partition,toString(raw_offset) AS offset,
+	return `SELECT toString(time_unix_milli) AS timeMs,${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,metric_name AS metricName,
+raw_partition AS partition,toString(raw_offset) AS offset,
 if(value_kind=1,toString(int_value),NULL) AS integer,if(value_kind=2,double_value,NULL) AS double,
 toString(if(bitTest(statistics_present,0),count,NULL)) AS count,flags
-FROM metric_points
-PREWHERE project_id={project:String} AND event_day IN {days:Array(UInt32)}
-AND metric_name IN {metrics:Array(String)}
-AND time_unix_milli BETWEEN {firstPoint:UInt64} AND {lastPoint:UInt64}
-AND (metric_name,series_id,time_unix_milli,stream_id) IN arrayMap(
-	k -> (k.1,k.2,k.3,toFixedString(unhex(k.4),16)),
-	{samples:Array(Tuple(String,UInt64,UInt64,String))}
-)
-ORDER BY raw_offset DESC
-LIMIT 1 BY metric_name,series_id,time_unix_milli,stream_id`;
+FROM ${execution ? executionPointSource(points) : `(${points})`}
+${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
+ORDER BY series_id DESC,metric_name DESC,time_unix_milli DESC,stream_id DESC LIMIT {limit:UInt32}`;
+}
 
-const seriesListQuery = `SELECT toString(series_id) AS seriesId,metric_name AS metricName,_part AS part,
+const seriesListSelect = `SELECT toString(series_id) AS seriesId,metric_name AS metricName,_part AS part,
 source_id AS sourceId,resource_id AS resourceId,nullIf(host_id,'') AS hostId,
 toUInt8(resource_kind) AS resourceKind,toUInt8(metric_kind) AS kind,unit,scope_name AS scopeName,scope_version AS scopeVersion
 FROM metric_series
-PREWHERE project_id={project:String} AND metric_name IN {metrics:Array(String)}
-AND (metric_name,series_id) IN {ids:Array(Tuple(String,UInt64))}
-LIMIT 1 BY metric_name,series_id`;
+PREWHERE project_id={project:String} AND metric_name IN {metrics:Array(String)}`;
 
 const PAGE_SIZE = 100;
+const SERIES_BATCH = 200;
 const RECEIPTS_PER_SEARCH = 8;
 const MAX_SEARCHES = 16;
 const SEARCH_BUDGET_MS = 4000;
@@ -227,10 +222,9 @@ function summary(
 	};
 }
 
-function deliveryQuery(seriesFilters: string[]) {
-	const sourceFilter = seriesFilters.length
-		? `AND source_id IN (SELECT source_id FROM metric_series FINAL WHERE project_id={project:String}
-${seriesFilters.map((condition) => ` AND (${condition})`).join("")})`
+function deliveryQuery(metric: boolean) {
+	const sourceFilter = metric
+		? `AND source_id IN (SELECT DISTINCT source_id FROM metric_series WHERE project_id={project:String} AND metric_name={metric:String})`
 		: "";
 	return `SELECT toString(received_unix_nano) AS receivedNs, source_id AS sourceId,
 raw_partition AS partition, toString(raw_offset) AS offset,
@@ -252,7 +246,7 @@ LIMIT ${RECEIPTS_PER_SEARCH}`;
 function deliveryParams(cursor?: PointCursor) {
 	return {
 		hasCursor: Number(cursor !== undefined),
-		inDelivery: Number(cursor?.point !== undefined),
+		inDelivery: Number(cursor?.series !== undefined),
 		receivedNs: cursor?.delivery.receivedNs ?? "0",
 		source: cursor?.delivery.sourceId ?? "",
 		partition: cursor?.delivery.partition ?? 0,
@@ -282,92 +276,118 @@ interface SearchBudget {
 	deadline: number;
 }
 type Read<T> = (sql: string, params: Params) => Promise<T[]>;
+type ResolveCandidates = (keys: SeriesCandidate[]) => Promise<SeriesRow[]>;
 
 function hasBudget(budget: SearchBudget) {
 	return budget.remaining > 0 && Date.now() < budget.deadline;
 }
 
 async function readDelivery(
-	sql: string,
+	candidatesSql: string,
+	pointsSql: string,
 	params: Params,
 	delivery: Delivery,
 	cursor: PointCursor,
 	budget: SearchBudget,
 	limit: number,
-	read: Read<Key>,
+	readCandidates: Read<SeriesCandidate>,
+	resolveCandidates: ResolveCandidates,
+	read: Read<PointRow>,
+	execution: boolean,
 ) {
 	const start = max(BigInt(cursor.from.getTime()), BigInt(delivery.firstMs));
 	const end = min(BigInt(cursor.to.getTime()), BigInt(delivery.lastMs) + 1n);
-	let upper = end;
-	if (cursor.point) {
-		upper = min(
-			upper,
-			BigInt(cursor.point.timeMs) + (cursor.point.sampleId ? 1n : 0n),
-		);
-	}
-	let span = upper - start;
-	const initialUpper = upper;
-	let point = cursor.point;
-	const keys: Key[] = [];
-	while (upper > start && hasBudget(budget)) {
-		const lower = max(start, upper - span);
-		const wanted = limit - keys.length;
-		let batch: Key[];
+	const rows: PointRow[] = [];
+	const dimensions: SeriesRow[] = [];
+	let series = cursor.series;
+	if (end <= start) return { rows, dimensions };
+	while (hasBudget(budget)) {
 		budget.remaining--;
-		try {
-			batch = await read(sql, {
-				...params,
-				...deliveryParams(cursor),
-				firstDay: Number(lower / MS_PER_DAY),
-				lastDay: Number((upper - 1n) / MS_PER_DAY),
-				lower: lower.toString(),
-				upper: upper.toString(),
-				cursorTime: point?.timeMs ?? "0",
-				cursorSample: point?.sampleId ?? "",
-				limit: wanted,
-			});
-		} catch (error) {
-			if (!(error instanceof ReadLimitError)) throw error;
-			if (upper - lower === 1n)
-				throw new OperationError("CAPACITY", "Activity delivery is too dense");
-			span = (upper - lower) / 2n;
-			continue;
-		}
-		keys.push(...batch);
-		// Keep the lookahead row on the next page, including when it shares a timestamp.
-		if (keys.length === limit) {
-			const last = keys.at(-2);
+		const bounds = {
+			...params,
+			source: delivery.sourceId,
+			partition: delivery.partition,
+			offset: delivery.offset,
+			firstDay: Number(start / MS_PER_DAY),
+			lastDay: Number((end - 1n) / MS_PER_DAY),
+			lower: start.toString(),
+			upper: end.toString(),
+			hasSeries: Number(series !== undefined),
+			insideSeries: Number(series?.point !== undefined),
+			series: series?.seriesId ?? "0",
+			seriesMetric: series?.metricName ?? "",
+			cursorTime: series?.point?.timeMs ?? "0",
+			cursorStream: series?.point?.sampleId.slice(16) ?? "",
+		};
+		const candidates = await readCandidates(candidatesSql, bounds);
+		const selected = candidates.slice(0, SERIES_BATCH);
+		if (!selected.length) return { rows, dimensions };
+		const eligible = await resolveCandidates(selected);
+		const found = eligible.length
+			? await read(pointsSql, {
+					...bounds,
+					metrics: [...new Set(eligible.map((row) => row.metricName))],
+					seriesKeys: eligible.map(
+						(row) => new TupleParam([row.metricName, BigInt(row.seriesId)]),
+					),
+					...(execution
+						? {
+								executionKeys: eligible.map(
+									(row) =>
+										new TupleParam([
+											row.metricName,
+											BigInt(row.seriesId),
+											row.resourceId,
+											row.resourceKind,
+										]),
+								),
+							}
+						: {}),
+					limit: limit - rows.length,
+				})
+			: [];
+		rows.push(...found);
+		dimensions.push(...eligible);
+		if (rows.length === limit) {
+			const last = rows[limit - 2];
 			return {
-				keys,
-				point: last ? { timeMs: last.timeMs, sampleId: last.sampleId } : point,
+				rows,
+				dimensions,
+				series: {
+					seriesId: last.seriesId,
+					metricName: last.metricName,
+					point: { timeMs: last.timeMs, sampleId: last.sampleId },
+				},
 			};
 		}
-		upper = lower;
-		point = { timeMs: upper.toString() };
+		if (candidates.length <= SERIES_BATCH) return { rows, dimensions };
+		const last = selected[selected.length - 1];
+		series = { seriesId: last.seriesId, metricName: last.metricName };
 	}
-	if (upper > start && upper === initialUpper)
-		throw new OperationError("CAPACITY", "Activity delivery is too dense");
-	return {
-		keys,
-		point: upper > start ? (point ?? { timeMs: upper.toString() }) : undefined,
-	};
+	return { rows, dimensions, series };
 }
 
 interface PageSearch {
-	keys: ReceiptPointKey[];
+	rows: PointRow[];
+	dimensions: SeriesRow[];
 	nextCursor: PointCursor | null;
 }
 
 async function searchDeliveries(
 	picker: string,
+	candidates: string,
 	points: string,
 	params: Params,
 	window: Pick<PointCursor, "from" | "to" | "receivedThrough">,
 	cursor: PointCursor | undefined,
 	readReceipts: Read<Delivery>,
-	readKeys: Read<Key>,
+	readCandidates: Read<SeriesCandidate>,
+	resolveCandidates: ResolveCandidates,
+	readRows: Read<PointRow>,
+	execution: boolean,
 ): Promise<PageSearch> {
-	const keys: ReceiptPointKey[] = [];
+	const rows: PointRow[] = [];
+	const dimensions: SeriesRow[] = [];
 	const budget = {
 		remaining: MAX_SEARCHES,
 		deadline: Date.now() + SEARCH_BUDGET_MS,
@@ -381,37 +401,37 @@ async function searchDeliveries(
 		if (!hasBudget(budget)) {
 			if (nextCursor === cursor)
 				throw new OperationError("CAPACITY", "Activity search took too long");
-			return { keys, nextCursor: nextCursor ?? null };
+			return { rows, dimensions, nextCursor: nextCursor ?? null };
 		}
-		if (keys.length === PAGE_SIZE)
-			return { keys, nextCursor: nextCursor ?? null };
-		const point =
+		if (rows.length === PAGE_SIZE)
+			return { rows, dimensions, nextCursor: nextCursor ?? null };
+		const series =
 			cursor && sameDelivery(cursor.delivery, delivery)
-				? cursor.point
+				? cursor.series
 				: undefined;
-		const current = { ...window, delivery, point };
-		const limit = PAGE_SIZE + 1 - keys.length;
+		const current = { ...window, delivery, series };
+		const limit = PAGE_SIZE + 1 - rows.length;
 		const batch = await readDelivery(
+			candidates,
 			points,
 			params,
 			delivery,
 			current,
 			budget,
 			limit,
-			readKeys,
+			readCandidates,
+			resolveCandidates,
+			readRows,
+			execution,
 		);
-		keys.push(
-			...batch.keys.slice(0, limit - 1).map((key) => ({
-				...key,
-				partition: delivery.partition,
-				offset: delivery.offset,
-			})),
-		);
-		nextCursor = { ...window, delivery, point: batch.point };
-		if (batch.point) return { keys, nextCursor };
+		rows.push(...batch.rows.slice(0, limit - 1));
+		dimensions.push(...batch.dimensions);
+		nextCursor = { ...window, delivery, series: batch.series };
+		if (batch.series) return { rows, dimensions, nextCursor };
 	}
 	return {
-		keys,
+		rows,
+		dimensions,
 		nextCursor:
 			deliveries.length === RECEIPTS_PER_SEARCH ? (nextCursor ?? null) : null,
 	};
@@ -434,9 +454,12 @@ export async function readPoints(
 	const pointConditions = filters.conditions.filter((_, i) =>
 		isPointField(fieldsInFilters[i]),
 	);
-	if (input.metric !== undefined)
-		conditions.push("metric_name={metric:String}");
+	const metric = input.metric !== undefined;
 	const fields = input.fields ?? [];
+	const seriesFields = fields.filter((field) => !isContinuityField(field));
+	const streamFields = fields.filter(isContinuityField);
+	const projection = compileFields(seriesFields);
+	const execution = fieldsInFilters.includes("execution");
 	const params = {
 		...filters.params,
 		...(input.metric === undefined ? {} : { metric: input.metric }),
@@ -447,27 +470,59 @@ export async function readPoints(
 			BigInt(receivedThrough.getTime()) * 1_000_000n
 		).toString(),
 	};
-	const { keys, nextCursor } = await searchDeliveries(
-		deliveryQuery(conditions),
-		keyQuery(
-			conditions,
+	const { rows, dimensions, nextCursor } = await searchDeliveries(
+		deliveryQuery(metric),
+		candidateQuery(metric),
+		batchQuery(
 			pointConditions,
-			fieldsInFilters.includes("execution"),
+			execution,
 			fieldsInFilters.some(isContinuityField),
-			input.metric !== undefined,
 		),
 		params,
 		{ from, to, receivedThrough },
 		input.cursor,
 		(sql, params) => query<Delivery>(sql, params, signal, connection),
-		(sql, params) => query<Key>(sql, params, signal, connection),
+		(sql, params) => query<SeriesCandidate>(sql, params, signal, connection),
+		(keys) =>
+			resolveSeriesCandidates(
+				input.projectId,
+				keys,
+				conditions,
+				filters.params,
+				signal,
+				connection,
+			),
+		(sql, params) => query<PointRow>(sql, params, signal, connection),
+		execution,
 	);
-	const points = await hydratePage(
+	const displayed = new Set(rows.map(seriesKey));
+	const displayedDimensions = dimensions.filter((row) =>
+		displayed.delete(seriesKey(row)),
+	);
+	for (let i = 0; i < displayedDimensions.length; i += 20)
+		await readSeriesFields(
+			input.projectId,
+			displayedDimensions.slice(i, i + 20),
+			projection,
+			signal,
+			connection,
+		);
+	const evidence = rows.length
+		? await readStreamFields(
+				input.projectId,
+				rows,
+				compileFields(streamFields),
+				signal,
+				connection,
+			)
+		: [];
+	const points = assemblePage(
 		input.projectId,
-		keys,
-		fields,
-		signal,
-		connection,
+		rows,
+		displayedDimensions,
+		evidence,
+		seriesFields,
+		streamFields,
 	);
 	return {
 		points,
@@ -480,84 +535,44 @@ export async function readPoints(
 	};
 }
 
-async function hydratePage(
+async function resolveSeriesCandidates(
 	project: string,
-	keys: ReceiptPointKey[],
-	fields: string[],
+	keys: SeriesCandidate[],
+	conditions: string[],
+	filterParams: Params,
 	signal?: AbortSignal,
 	connection?: ClickHouseClient,
 ) {
-	const seriesFields = fields.filter((field) => !isContinuityField(field));
-	const streamFields = fields.filter(isContinuityField);
-	const seriesProjection = compileFields(seriesFields);
-	const streamProjection = compileFields(streamFields);
-	const points: PointSummary[] = [];
-	// The ClickHouse client sends query parameters in the URL.
-	for (let index = 0; index < keys.length; index += 20) {
-		const chunk = keys.slice(index, index + 20);
-		const times = chunk.map((key) => BigInt(key.timeMs));
-		const metrics = [...new Set(chunk.map((key) => key.metricName))];
-		const rows = await query<PointRow>(
-			pointListQuery,
-			{
-				project,
-				metrics,
-				firstPoint: times.reduce(min).toString(),
-				lastPoint: times.reduce(max).toString(),
-				days: [...new Set(chunk.map((key) => key.day))],
-				samples: chunk.map(
-					(key) =>
-						new TupleParam([
-							key.metricName,
-							BigInt(key.seriesId),
-							BigInt(key.timeMs),
-							key.sampleId.slice(16),
-						]),
-				),
-			},
-			signal,
-			connection,
-		);
-		if (!rows.length) continue;
-		const dimensions = await query<SeriesRow>(
-			seriesListQuery,
-			{
-				project,
-				metrics,
-				ids: rows.map(
-					(row) => new TupleParam([row.metricName, BigInt(row.seriesId)]),
-				),
-			},
-			signal,
-			connection,
-		);
-		await readSeriesFields(
-			project,
-			dimensions,
-			seriesProjection,
-			signal,
-			connection,
-		);
-		const evidence = await readStreamFields(
-			project,
-			rows,
-			streamProjection,
-			signal,
-			connection,
-		);
-		points.push(
-			...assemblePage(
-				project,
-				chunk,
-				rows,
-				dimensions,
-				evidence,
-				seriesFields,
-				streamFields,
-			),
+	const sql = `${seriesListSelect}
+AND (metric_name,resource_id,series_id) IN {candidateIds:Array(Tuple(String,String,UInt64))}
+${conditions.length ? `WHERE ${conditions.map((condition) => `(${condition})`).join(" AND ")}` : ""}
+LIMIT 1 BY metric_name,series_id`;
+	const size = conditions.length ? 20 : SERIES_BATCH;
+	const result: SeriesRow[] = [];
+	for (let index = 0; index < keys.length; index += size) {
+		const chunk = keys.slice(index, index + size);
+		result.push(
+			...(await query<SeriesRow>(
+				sql,
+				{
+					...filterParams,
+					project,
+					metrics: [...new Set(chunk.map((row) => row.metricName))],
+					candidateIds: chunk.map(
+						(row) =>
+							new TupleParam([
+								row.metricName,
+								row.resourceId,
+								BigInt(row.seriesId),
+							]),
+					),
+				},
+				signal,
+				connection,
+			)),
 		);
 	}
-	return points;
+	return result;
 }
 
 async function readSeriesFields(
@@ -609,12 +624,19 @@ LIMIT 1 BY metric_name,series_id`,
 		);
 	// A background merge can replace the selected part between the two reads.
 	const refreshed = await query<SeriesRow>(
-		seriesListQuery,
+		`${seriesListSelect}
+AND (metric_name,resource_id,series_id) IN {ids:Array(Tuple(String,String,UInt64))}
+LIMIT 1 BY metric_name,series_id`,
 		{
 			project,
 			metrics: [...new Set(missing.map((row) => row.metricName))],
 			ids: missing.map(
-				(row) => new TupleParam([row.metricName, BigInt(row.seriesId)]),
+				(row) =>
+					new TupleParam([
+						row.metricName,
+						row.resourceId,
+						BigInt(row.seriesId),
+					]),
 			),
 		},
 		signal,
@@ -634,7 +656,7 @@ LIMIT 1 BY metric_name,series_id`,
 	for (const row of missing) row.fields = replacements.get(seriesKey(row));
 }
 
-function seriesKey(key: Pick<Key, "metricName" | "seriesId">) {
+function seriesKey(key: Pick<SeriesRow, "metricName" | "seriesId">) {
 	return JSON.stringify([key.metricName, key.seriesId]);
 }
 
@@ -663,31 +685,19 @@ LIMIT 1 BY streamId`,
 
 function assemblePage(
 	project: string,
-	keys: ReceiptPointKey[],
 	rows: PointRow[],
 	dimensions: SeriesRow[],
 	evidence: StreamRow[],
 	seriesFields: string[],
 	streamFields: string[],
 ) {
-	const pointId = (key: Pick<Key, "metricName" | "timeMs" | "sampleId">) =>
-		JSON.stringify([key.metricName, key.timeMs, key.sampleId]);
-	const rowByKey = new Map(rows.map((row) => [pointId(row), row]));
 	const seriesByKey = new Map(dimensions.map((row) => [seriesKey(row), row]));
 	const streamByKey = new Map(
 		evidence.map((row) => [row.streamId, row.fields]),
 	);
-	return keys.flatMap((key) => {
-		const row = rowByKey.get(pointId(key));
-		const series = seriesByKey.get(seriesKey(key));
-		// A newer copy may have arrived between key search and hydration.
-		if (
-			!row ||
-			!series ||
-			row.offset !== key.offset ||
-			row.partition !== key.partition
-		)
-			return [];
+	return rows.flatMap((row) => {
+		const series = seriesByKey.get(seriesKey(row));
+		if (!series) return [];
 		const stream = streamByKey.get(row.sampleId.slice(16));
 		if (streamFields.length && !stream)
 			throw new OperationError(
