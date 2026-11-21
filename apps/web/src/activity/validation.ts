@@ -41,6 +41,30 @@ function millis(value: unknown) {
 		throw new Error("Invalid measurement timestamp");
 	return value;
 }
+function uint64(value: unknown) {
+	if (
+		typeof value !== "string" ||
+		!/^(0|[1-9][0-9]{0,19})$/.test(value) ||
+		BigInt(value) > 18446744073709551615n
+	)
+		throw new Error("Invalid delivery coordinate");
+	return value;
+}
+
+function cursorPoint(value: unknown, from: Date, to: Date) {
+	if (value === undefined) return undefined;
+	const point = record(value);
+	const timeMs = millis(point.timeMs);
+	if (
+		BigInt(timeMs) < BigInt(from.getTime()) ||
+		BigInt(timeMs) > BigInt(to.getTime())
+	)
+		throw new Error("Cursor outside activity interval");
+	return {
+		timeMs,
+		sampleId: point.sampleId === undefined ? undefined : sample(point.sampleId),
+	};
+}
 function optionalTime(value: unknown) {
 	if (value === undefined) return undefined;
 	if (
@@ -102,19 +126,32 @@ export function parseExplorer(value: unknown): ExplorerInput {
 		cursor.to.getTime() > Date.now() + 30000
 	)
 		throw new Error("Invalid activity cursor");
-	const timeMs = millis(cursor.timeMs);
+	const receivedThrough = optionalTime(cursor.receivedThrough);
+	const delivery = record(cursor.delivery);
+	const receivedNs = uint64(delivery.receivedNs);
 	if (
-		BigInt(timeMs) < BigInt(cursor.from.getTime()) ||
-		BigInt(timeMs) > BigInt(cursor.to.getTime())
+		!receivedThrough ||
+		receivedThrough.getTime() > Date.now() + 30000 ||
+		BigInt(receivedNs) >= BigInt(receivedThrough.getTime()) * 1000000n ||
+		typeof delivery.partition !== "number" ||
+		!Number.isInteger(delivery.partition) ||
+		delivery.partition < 0 ||
+		delivery.partition > 4294967295
 	)
-		throw new Error("Cursor outside activity interval");
+		throw new Error("Invalid activity delivery cursor");
 	return {
 		...parsed,
 		cursor: {
 			from: cursor.from,
 			to: cursor.to,
-			timeMs,
-			sampleId: sample(cursor.sampleId),
+			receivedThrough,
+			delivery: {
+				receivedNs,
+				sourceId: text(delivery.sourceId, 128),
+				partition: delivery.partition,
+				offset: uint64(delivery.offset),
+			},
+			point: cursorPoint(cursor.point, cursor.from, cursor.to),
 		},
 	};
 }

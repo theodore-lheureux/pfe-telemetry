@@ -483,6 +483,11 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    `schema.sql` here: it also contains the participant bootstrap statements,
    which fail when participant objects already exist.
 
+   Explorer reads receipts from `deliveries` and uses `activity_event_minmax`
+   to narrow reads of `metric_points`. Verify the index exists and covers the
+   readable point parts before switching the web application. Running
+   `CREATE TABLE IF NOT EXISTS` on an existing table does not add an index.
+
 5. Run `bash "$release/activate.sh" "$release"` with the existing raw normalizer
    group. Verify raw checkpoints advance from the saved positions, both new
    ClickHouse groups commit, `system.kafka_consumers` reports no decode errors,

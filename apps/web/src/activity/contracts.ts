@@ -73,18 +73,26 @@ export interface PointSummary extends PointReference {
 	/** Requested attribute values by field; null when a point lacks the attribute. */
 	fields: Record<string, string | null>;
 }
+export interface DeliveryKey {
+	receivedNs: string;
+	sourceId: string;
+	partition: number;
+	offset: string;
+}
 export interface PointCursor {
 	from: Date;
 	to: Date;
-	timeMs: string;
-	sampleId: string;
+	receivedThrough: Date;
+	delivery: DeliveryKey;
+	/** Absent after a finished delivery; no sample ID at an exclusive time boundary. */
+	point?: { timeMs: string; sampleId?: string };
 }
 export interface PointPage {
 	points: PointSummary[];
 	nextCursor: PointCursor | null;
 	from: Date;
 	to: Date;
-	/** Oldest time searched so far; below `from` only when the range is exhausted. */
+	/** Oldest receipt searched so far. */
 	searchedTo: Date;
 }
 export interface ExplorerFilters {

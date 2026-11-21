@@ -45,7 +45,8 @@ function storageStatements(layout: Layout) {
 		.map((statement) =>
 			withoutComments(
 				statement
-					.replace("__CREATE_GUARD____DATABASE__.", "")
+					.replace("__CREATE_GUARD__", "")
+					.replaceAll("__DATABASE__.", "")
 					.replace("__POINT_COLUMNS__", layout.pointColumns)
 					.replace("__SERIES_COLUMNS__", layout.seriesColumns)
 					.replace("__DELIVERY_COLUMNS__", layout.deliveryColumns)
@@ -289,6 +290,8 @@ export function insertPoints(
 		sample_id: "SHA256({sample:String})",
 		stream_id: "substring(SHA256({stream:String}),1,16)",
 		time_unix_milli: "{time:UInt64}",
+		min_event_unix_milli: "{time:UInt64}",
+		max_event_unix_milli: "{time:UInt64}",
 		event_day: "toUInt32(intDiv({time:UInt64},86400000))",
 		start_time_unix_nano: "toUInt64(0)",
 		metric_name: "'recount.node.memory.total'",

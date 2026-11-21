@@ -20,9 +20,11 @@ import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
 import { activityNode, decodeDelivery } from "./codec.server";
 import type {
+	DeliveryKey,
 	ExplorerInput,
 	JsonObject,
 	JsonValue,
+	PointCursor,
 	PointDetail,
 	PointInput,
 	PointPage,
@@ -33,7 +35,9 @@ const settings = {
 	...POINT_FINAL_SETTINGS,
 	max_execution_time: 6,
 	max_threads: 1,
-	max_memory_usage: "268435456",
+	max_block_size: "4096",
+	optimize_move_to_prewhere_if_final: 0,
+	max_memory_usage: "67108864",
 	max_rows_to_read: "4000000",
 	max_bytes_to_read: "536870912",
 	read_overflow_mode: "throw",
@@ -45,8 +49,12 @@ const settings = {
 } as const;
 // TOO_MANY_ROWS and TOO_MANY_BYTES: ClickHouse rejects a read whose granules exceed the
 // caps before reading them, so a search can retry a narrower window at little cost.
-const READ_LIMIT_CODES = new Set(["158", "307"]);
-class ReadLimitError extends Error {}
+const READ_LIMIT_CODES = new Set(["158", "307", "241"]);
+class ReadLimitError extends OperationError {
+	constructor() {
+		super("CAPACITY", "Activity query exceeded its read budget");
+	}
+}
 let active = 0;
 type Params = Record<string, string | number | string[] | unknown[]>;
 async function query<T>(
@@ -88,6 +96,8 @@ interface Row {
 	resourceId: string;
 	metricName: string;
 	timeMs: string;
+	partition: number;
+	offset: string;
 	hostId: string | null;
 	hostname: string;
 	resourceKind: number;
@@ -105,7 +115,13 @@ interface Key {
 	timeMs: string;
 	sampleId: string;
 	seriesId: string;
+	metricName: string;
 	day: number;
+}
+type ReceiptPointKey = Key & Pick<DeliveryKey, "partition" | "offset">;
+interface Delivery extends DeliveryKey {
+	firstMs: string;
+	lastMs: string;
 }
 
 // Fixed-width hexadecimal preserves numeric series order and binary stream order.
@@ -116,49 +132,61 @@ function keyQuery(
 	pointFilters: string[],
 	execution: boolean,
 	evidence: boolean,
+	metric: boolean,
 ) {
-	const source = seriesPointSource(
-		` AND ${seriesLastSeen("{lower:UInt64}")} AND first_seen_unix_milli <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
-		`AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
-AND time_unix_milli>={lower:UInt64} AND time_unix_milli<{to:UInt64}
-AND tuple(time_unix_milli,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String})`,
-		execution ? "s.source_id, s.resource_id, s.resource_kind" : "",
-	);
+	const selected = `SELECT metric_name, series_id${execution ? ", source_id, resource_id, resource_kind" : ""}
+FROM metric_series FINAL
+WHERE project_id={project:String} AND source_id={source:String}${seriesFilters.map((condition) => ` AND (${condition})`).join("")}`;
+	const timeKeys = `SELECT metric_name, series_id, stream_id, time_unix_milli, event_day
+FROM metric_points FINAL
+WHERE project_id={project:String}${metric ? " AND metric_name={metric:String}" : ""}
+AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
+AND time_unix_milli>={lower:UInt64} AND time_unix_milli<{upper:UInt64}
+AND raw_partition={partition:UInt32} AND raw_offset={offset:UInt64}
+AND ({cursorSample:String}='' OR tuple(time_unix_milli,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String}))`;
+	const source = execution
+		? `SELECT p.*, s.source_id, s.resource_id, s.resource_kind FROM (${timeKeys}) p
+INNER JOIN (${selected}) s USING (metric_name,series_id)`
+		: `${timeKeys} AND (metric_name,series_id) IN (${selected})`;
 	const points = evidence
 		? `SELECT * FROM ${streamEvidenceSource(source)}`
 		: source;
-	return `SELECT toString(time_unix_milli) AS timeMs,${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,event_day AS day
+	return `SELECT toString(time_unix_milli) AS timeMs,${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,metric_name AS metricName,event_day AS day
 FROM ${execution ? executionPointSource(points) : `(${points})`}
 ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
-ORDER BY time_unix_milli DESC,sampleId DESC LIMIT {limit:UInt32}`;
+ORDER BY time_unix_milli DESC,series_id DESC,stream_id DESC LIMIT {limit:UInt32}`;
 }
 
 function pointListQuery(fields: string[], evidence: boolean) {
 	const projected = fields.length ? `[${fields.join(",")}] AS fields,` : "";
 	const points = seriesPointSource(
-		" AND series_id IN arrayMap(id -> toUInt64(id), {ids:Array(String)})",
+		" AND (metric_name, series_id) IN {ids:Array(Tuple(String,UInt64))}",
 		`AND event_day IN {days:Array(UInt32)}
-AND (series_id,time_unix_milli) IN {series:Array(Tuple(UInt64,UInt64))}
-AND ${POINT_KEY} IN {samples:Array(String)}`,
+AND metric_name IN {metrics:Array(String)}
+AND time_unix_milli BETWEEN {firstPoint:UInt64} AND {lastPoint:UInt64}
+AND series_id IN arrayMap(id -> toUInt64(id), {seriesIds:Array(String)})
+AND (metric_name,series_id,time_unix_milli) IN {series:Array(Tuple(String,UInt64,UInt64))}
+AND ${POINT_KEY} IN {samples:Array(String)}
+AND (raw_partition,raw_offset) IN {receipts:Array(Tuple(UInt32,UInt64))}`,
 	);
-	return `SELECT ${projected}${POINT_KEY} AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_milli) AS timeMs,
+	const source = evidence
+		? streamEvidenceSource(
+				points,
+				" AND stream_id IN arrayMap(id -> toFixedString(unhex(id), 16), {streams:Array(String)})",
+			)
+		: `(${points})`;
+	return `SELECT ${projected}${POINT_KEY} AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_milli) AS timeMs,raw_partition AS partition,toString(raw_offset) AS offset,
 host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
 toUInt8(resource_kind) AS resourceKind,toUInt8(metric_kind) AS kind,toString(int_value) AS integer,double_value AS double,toString(if(bitTest(statistics_present,0),count,NULL)) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
-FROM ${evidence ? streamEvidenceSource(points) : `(${points})`}
+FROM ${source}
 ORDER BY time_unix_milli DESC,sampleId DESC`;
 }
 
-// A page searches backwards from its cursor. Windows grow while they come back short and
-// shrink when ClickHouse rejects them for the read caps, so their cost follows the
-// project's data rate rather than the length of the range.
 const PAGE_SIZE = 100;
-const FIRST_WINDOW_MS = 300_000n;
-const MIN_WINDOW_MS = 1_000n;
-const MAX_SEARCHES = 12;
+const RECEIPTS_PER_SEARCH = 8;
+const MAX_SEARCHES = 16;
 const SEARCH_BUDGET_MS = 4000;
 const MS_PER_DAY = 86_400_000n;
-const AFTER_ALL = "FF".repeat(24),
-	BEFORE_ALL = "00".repeat(24);
 
 function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 	return {
@@ -183,74 +211,194 @@ function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 	};
 }
 
-interface Search {
-	keys: Key[];
-	cursorMs: bigint;
-	cursorSample: string;
-	exhausted: boolean;
+function deliveryQuery(seriesFilters: string[]) {
+	const sourceFilter = seriesFilters.length
+		? `AND source_id IN (SELECT source_id FROM metric_series FINAL WHERE project_id={project:String}
+${seriesFilters.map((condition) => ` AND (${condition})`).join("")})`
+		: "";
+	return `SELECT toString(received_unix_nano) AS receivedNs, source_id AS sourceId,
+raw_partition AS partition, toString(raw_offset) AS offset,
+toString(min_event_unix_milli) AS firstMs, toString(max_event_unix_milli) AS lastMs
+FROM deliveries FINAL WHERE project_id={project:String}
+AND max_event_unix_milli >= {from:UInt64} AND min_event_unix_milli < {to:UInt64}
+AND received_unix_nano < {receivedThrough:UInt64}
+${sourceFilter}
+AND ({hasCursor:UInt8}=0 OR
+    (received_unix_nano,source_id,raw_partition,raw_offset) <
+    ({receivedNs:UInt64},{source:String},{partition:UInt32},{offset:UInt64})
+    OR ({inDelivery:UInt8}=1 AND
+    (received_unix_nano,source_id,raw_partition,raw_offset) =
+    ({receivedNs:UInt64},{source:String},{partition:UInt32},{offset:UInt64})))
+ORDER BY received_unix_nano DESC,source_id DESC,raw_partition DESC,raw_offset DESC
+LIMIT ${RECEIPTS_PER_SEARCH}`;
 }
 
-/** Finds the keys of the newest points before the cursor, one more than a page. */
-async function searchKeys(
+function deliveryParams(cursor?: PointCursor) {
+	return {
+		hasCursor: Number(cursor !== undefined),
+		inDelivery: Number(cursor?.point !== undefined),
+		receivedNs: cursor?.delivery.receivedNs ?? "0",
+		source: cursor?.delivery.sourceId ?? "",
+		partition: cursor?.delivery.partition ?? 0,
+		offset: cursor?.delivery.offset ?? "0",
+	};
+}
+
+function sameDelivery(a: DeliveryKey, b: DeliveryKey) {
+	return (
+		a.receivedNs === b.receivedNs &&
+		a.sourceId === b.sourceId &&
+		a.partition === b.partition &&
+		a.offset === b.offset
+	);
+}
+
+function min(a: bigint, b: bigint) {
+	return a < b ? a : b;
+}
+
+function max(a: bigint, b: bigint) {
+	return a > b ? a : b;
+}
+
+interface SearchBudget {
+	remaining: number;
+	deadline: number;
+}
+type Read<T> = (sql: string, params: Params) => Promise<T[]>;
+
+function hasBudget(budget: SearchBudget) {
+	return budget.remaining > 0 && Date.now() < budget.deadline;
+}
+
+async function readDelivery(
 	sql: string,
 	params: Params,
-	fromMs: bigint,
-	cursorMs: bigint,
-	cursorSample: string,
-	signal?: AbortSignal,
-	connection?: ClickHouseClient,
-): Promise<Search> {
-	const keys: Key[] = [],
-		started = Date.now();
-	let span = FIRST_WINDOW_MS;
-	for (let search = 0; search < MAX_SEARCHES; search++) {
-		const lower = cursorMs - span > fromMs ? cursorMs - span : fromMs;
-		const limit = PAGE_SIZE + 1 - keys.length;
+	delivery: Delivery,
+	cursor: PointCursor,
+	budget: SearchBudget,
+	limit: number,
+	read: Read<Key>,
+) {
+	const start = max(BigInt(cursor.from.getTime()), BigInt(delivery.firstMs));
+	const end = min(BigInt(cursor.to.getTime()), BigInt(delivery.lastMs) + 1n);
+	let upper = end;
+	if (cursor.point) {
+		upper = min(
+			upper,
+			BigInt(cursor.point.timeMs) + (cursor.point.sampleId ? 1n : 0n),
+		);
+	}
+	let span = upper - start;
+	const initialUpper = upper;
+	let point = cursor.point;
+	const keys: Key[] = [];
+	while (upper > start && hasBudget(budget)) {
+		const lower = max(start, upper - span);
+		const wanted = limit - keys.length;
 		let batch: Key[];
+		budget.remaining--;
 		try {
-			batch = await query<Key>(
-				sql,
-				{
-					...params,
-					firstDay: Number(lower / MS_PER_DAY),
-					lastDay: Number(cursorMs / MS_PER_DAY),
-					lower: lower.toString(),
-					cursorTime: cursorMs.toString(),
-					cursorSample,
-					limit,
-				},
-				signal,
-				connection,
-			);
+			batch = await read(sql, {
+				...params,
+				...deliveryParams(cursor),
+				firstDay: Number(lower / MS_PER_DAY),
+				lastDay: Number((upper - 1n) / MS_PER_DAY),
+				lower: lower.toString(),
+				upper: upper.toString(),
+				cursorTime: point?.timeMs ?? "0",
+				cursorSample: point?.sampleId ?? "",
+				limit: wanted,
+			});
 		} catch (error) {
 			if (!(error instanceof ReadLimitError)) throw error;
-			if (span <= MIN_WINDOW_MS)
-				throw new OperationError("CAPACITY", "Activity range is too dense");
-			span /= 4n;
+			if (upper - lower === 1n)
+				throw new OperationError("CAPACITY", "Activity delivery is too dense");
+			span = (upper - lower) / 2n;
 			continue;
 		}
-		for (const key of batch) {
-			const previous = keys.at(-1);
-			if (previous?.timeMs !== key.timeMs || previous.sampleId !== key.sampleId)
-				keys.push(key);
+		keys.push(...batch);
+		// Keep the lookahead row on the next page, including when it shares a timestamp.
+		if (keys.length === limit) {
+			const last = keys.at(-2);
+			return {
+				keys,
+				point: last ? { timeMs: last.timeMs, sampleId: last.sampleId } : point,
+			};
 		}
-		if (batch.length === limit) {
-			// The window holds more points: continue below the last key in it.
-			const last = batch.at(-1) as Key;
-			cursorMs = BigInt(last.timeMs);
-			cursorSample = last.sampleId;
-		} else {
-			// Points at the window's lower bound were included, so the next window excludes them.
-			cursorMs = lower;
-			cursorSample = BEFORE_ALL;
-			if (lower <= fromMs)
-				return { keys, cursorMs, cursorSample, exhausted: true };
-			span *= 4n;
-		}
-		if (keys.length > PAGE_SIZE || Date.now() - started > SEARCH_BUDGET_MS)
-			break;
+		upper = lower;
+		point = { timeMs: upper.toString() };
 	}
-	return { keys, cursorMs, cursorSample, exhausted: false };
+	if (upper > start && upper === initialUpper)
+		throw new OperationError("CAPACITY", "Activity delivery is too dense");
+	return {
+		keys,
+		point: upper > start ? (point ?? { timeMs: upper.toString() }) : undefined,
+	};
+}
+
+interface PageSearch {
+	keys: ReceiptPointKey[];
+	nextCursor: PointCursor | null;
+}
+
+async function searchDeliveries(
+	picker: string,
+	points: string,
+	params: Params,
+	window: Pick<PointCursor, "from" | "to" | "receivedThrough">,
+	cursor: PointCursor | undefined,
+	readReceipts: Read<Delivery>,
+	readKeys: Read<Key>,
+): Promise<PageSearch> {
+	const keys: ReceiptPointKey[] = [];
+	const budget = {
+		remaining: MAX_SEARCHES,
+		deadline: Date.now() + SEARCH_BUDGET_MS,
+	};
+	const deliveries = await readReceipts(picker, {
+		...params,
+		...deliveryParams(cursor),
+	});
+	let nextCursor = cursor;
+	for (const delivery of deliveries) {
+		if (!hasBudget(budget)) {
+			if (nextCursor === cursor)
+				throw new OperationError("CAPACITY", "Activity search took too long");
+			return { keys, nextCursor: nextCursor ?? null };
+		}
+		if (keys.length === PAGE_SIZE)
+			return { keys, nextCursor: nextCursor ?? null };
+		const point =
+			cursor && sameDelivery(cursor.delivery, delivery)
+				? cursor.point
+				: undefined;
+		const current = { ...window, delivery, point };
+		const limit = PAGE_SIZE + 1 - keys.length;
+		const batch = await readDelivery(
+			points,
+			params,
+			delivery,
+			current,
+			budget,
+			limit,
+			readKeys,
+		);
+		keys.push(
+			...batch.keys.slice(0, limit - 1).map((key) => ({
+				...key,
+				partition: delivery.partition,
+				offset: delivery.offset,
+			})),
+		);
+		nextCursor = { ...window, delivery, point: batch.point };
+		if (batch.point) return { keys, nextCursor };
+	}
+	return {
+		keys,
+		nextCursor:
+			deliveries.length === RECEIPTS_PER_SEARCH ? (nextCursor ?? null) : null,
+	};
 }
 
 export async function readPoints(
@@ -260,6 +408,8 @@ export async function readPoints(
 ): Promise<PointPage> {
 	const to = input.cursor?.to ?? input.to ?? new Date(),
 		from = input.cursor?.from ?? input.from ?? new Date(to.getTime() - 3600000);
+	const receivedThrough =
+		input.cursor?.receivedThrough ?? new Date(Date.now() + 1);
 	const filters = compileFilters(input.filters ?? []);
 	const fieldsInFilters = (input.filters ?? []).map((filter) => filter.field);
 	const conditions = filters.conditions.filter(
@@ -278,59 +428,82 @@ export async function readPoints(
 		project: input.projectId,
 		from: BigInt(from.getTime()).toString(),
 		to: BigInt(to.getTime()).toString(),
+		receivedThrough: (
+			BigInt(receivedThrough.getTime()) * 1_000_000n
+		).toString(),
 	};
-	const fromMs = BigInt(from.getTime());
-	const search = await searchKeys(
+	const { keys, nextCursor } = await searchDeliveries(
+		deliveryQuery(conditions),
 		keyQuery(
 			conditions,
 			pointConditions,
 			fieldsInFilters.includes("execution"),
 			fieldsInFilters.some(isContinuityField),
+			input.metric !== undefined,
 		),
 		params,
-		fromMs,
-		input.cursor ? BigInt(input.cursor.timeMs) : BigInt(to.getTime()),
-		input.cursor?.sampleId ?? AFTER_ALL,
-		signal,
-		connection,
+		{ from, to, receivedThrough },
+		input.cursor,
+		(sql, params) => query<Delivery>(sql, params, signal, connection),
+		(sql, params) => query<Key>(sql, params, signal, connection),
 	);
-	const keys = search.keys.slice(0, PAGE_SIZE);
-	const rows = keys.length
-		? await query<Row>(
-				pointListQuery(projections.expressions, fields.some(isContinuityField)),
+	const rows: Row[] = [];
+	const hydrate = pointListQuery(
+		projections.expressions,
+		fields.some(isContinuityField),
+	);
+	// The ClickHouse client sends query parameters in the URL.
+	for (let index = 0; index < keys.length; index += 20) {
+		const chunk = keys.slice(index, index + 20);
+		const times = chunk.map((key) => BigInt(key.timeMs));
+		rows.push(
+			...(await query<Row>(
+				hydrate,
 				{
 					...projections.params,
 					project: input.projectId,
-					days: [...new Set(keys.map((key) => key.day))],
-					ids: [...new Set(keys.map((key) => key.seriesId))],
-					series: keys.map(
-						(key) => new TupleParam([BigInt(key.seriesId), BigInt(key.timeMs)]),
+					firstPoint: times.reduce(min).toString(),
+					lastPoint: times.reduce(max).toString(),
+					days: [...new Set(chunk.map((key) => key.day))],
+					metrics: [...new Set(chunk.map((key) => key.metricName))],
+					seriesIds: [...new Set(chunk.map((key) => key.seriesId))],
+					ids: chunk.map(
+						(key) => new TupleParam([key.metricName, BigInt(key.seriesId)]),
 					),
-					samples: keys.map((key) => key.sampleId),
+					series: chunk.map(
+						(key) =>
+							new TupleParam([
+								key.metricName,
+								BigInt(key.seriesId),
+								BigInt(key.timeMs),
+							]),
+					),
+					samples: chunk.map((key) => key.sampleId),
+					receipts: chunk.map(
+						(key) => new TupleParam([key.partition, BigInt(key.offset)]),
+					),
+					streams: [...new Set(chunk.map((key) => key.sampleId.slice(16)))],
 				},
 				signal,
 				connection,
-			)
-		: [];
-	const points = rows.map((row) => summary(input.projectId, row, fields));
-	// A full page resumes after its last key; otherwise the search resumes where it
-	// stopped, until the range is exhausted.
-	let nextCursor: PointPage["nextCursor"] = search.exhausted
-		? null
-		: {
-				from,
-				to,
-				timeMs: search.cursorMs.toString(),
-				sampleId: search.cursorSample,
-			};
-	const last = keys.at(-1);
-	if (search.keys.length > PAGE_SIZE && last)
-		nextCursor = { from, to, timeMs: last.timeMs, sampleId: last.sampleId };
+			)),
+		);
+	}
+	const identity = (
+		key: Pick<Row, "timeMs" | "sampleId" | "partition" | "offset">,
+	) => `${key.timeMs}/${key.sampleId}/${key.partition}/${key.offset}`;
+	const byKey = new Map(rows.map((row) => [identity(row), row]));
+	const points = keys.flatMap((key) => {
+		const row = byKey.get(identity(key));
+		return row ? [summary(input.projectId, row, fields)] : [];
+	});
 	return {
 		points,
 		from,
 		to,
-		searchedTo: new Date(Number(nextCursor?.timeMs ?? fromMs)),
+		searchedTo: nextCursor
+			? new Date(Number(BigInt(nextCursor.delivery.receivedNs) / 1_000_000n))
+			: from,
 		nextCursor,
 	};
 }

@@ -153,27 +153,37 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 	const to = new Date(),
 		from = new Date(to.getTime() - 3600000),
 		timeMs = BigInt(to.getTime()).toString();
+	const cursor = {
+		to,
+		from,
+		receivedThrough: to,
+		delivery: {
+			receivedNs: "1",
+			sourceId: "source",
+			partition: 0,
+			offset: "10",
+		},
+		point: { timeMs, sampleId: "aa".repeat(24) },
+	};
 	expect(
 		parseExplorer({
 			...reference,
-			cursor: { to, from, timeMs, sampleId: "aa".repeat(24) },
+			cursor,
 		}).cursor?.to,
 	).toBe(to);
 	expect(() =>
 		parseExplorer({
 			...reference,
 			cursor: {
-				to,
+				...cursor,
 				from: new Date(to.getTime() + 1),
-				timeMs,
-				sampleId: "aa".repeat(24),
 			},
 		}),
 	).toThrow();
 	expect(() =>
 		parseExplorer({
 			...reference,
-			cursor: { to, from, timeMs: "1", sampleId: "aa".repeat(24) },
+			cursor: { ...cursor, point: { timeMs: "1", sampleId: "aa".repeat(24) } },
 		}),
 	).toThrow();
 	expect(() =>
@@ -238,8 +248,13 @@ test("Explorer filters are validated and intervals must be ordered and in the pa
 		cursor = {
 			to,
 			from,
-			timeMs: BigInt(to.getTime()).toString(),
-			sampleId: "aa".repeat(24),
+			receivedThrough: to,
+			delivery: {
+				receivedNs: "1",
+				sourceId: "source",
+				partition: 0,
+				offset: "10",
+			},
 		};
 	expect(parseExplorer({ ...reference, from, to, cursor }).cursor?.from).toBe(
 		from,

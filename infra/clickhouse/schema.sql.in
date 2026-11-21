@@ -48,7 +48,8 @@ FROM __DATABASE__.dead_letter_kafka;
 
 CREATE TABLE __CREATE_GUARD____DATABASE__.metric_points
 (
-__POINT_COLUMNS__
+__POINT_COLUMNS__,
+    INDEX activity_event_minmax time_unix_milli TYPE minmax GRANULARITY 1
 )
 ENGINE = ReplacingMergeTree(raw_offset)
 PARTITION BY event_day

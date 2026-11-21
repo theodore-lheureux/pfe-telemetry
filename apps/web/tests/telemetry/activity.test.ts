@@ -29,6 +29,8 @@ async function cpu(
 		query: insertPoints({
 			metric_name: "'recount.node.cpu.time'",
 			metric_kind: "toUInt8(2)",
+			raw_offset: "intDiv({time:UInt64}, 60000)%100 + 10",
+			received_unix_nano: "{time:UInt64} * 1000000",
 			int_value: "CAST(NULL, 'Nullable(Int64)')",
 			double_value: "CAST(1, 'Nullable(Float64)')",
 			point_attributes: `[${stringNode("/cpu.mode", "{mode:String}")}]`,
@@ -60,12 +62,8 @@ const page = (
 			organizationId: "organization",
 			projectId: project,
 			filters: [],
-			cursor: {
-				from,
-				to,
-				timeMs: BigInt(to.getTime()).toString(),
-				sampleId: "FF".repeat(24),
-			},
+			from,
+			to,
 			...options,
 		},
 		undefined,
@@ -193,6 +191,80 @@ test("Explorer pages within one millisecond and inspects the winning receipt", a
 	expect(detail.raw.stream_id).toBe(point.sampleId.slice(16));
 });
 
+test("Explorer follows receipt order across wide, late and resent deliveries", async () => {
+	const project = randomUUID();
+	const start = ms + MINUTE;
+	const newestReceipt = (ms + 120n * MINUTE) * 1_000_000n;
+	const hosts = {
+		project,
+		source: "node-a",
+		host: "node-a",
+		sample: "wide",
+		epoch: "epoch",
+	};
+	const write = (offset: number, count: number, shifted: boolean) => {
+		const time = `({time:UInt64} + number * 1500${shifted ? " + 2400000" : ""})`;
+		return fixture.client.command({
+			query: insertPoints(
+				{
+					stream_id: "substring(SHA256(toString(number)),1,16)",
+					resource_id: "concat('process-',toString(number))",
+					time_unix_milli: time,
+					event_day: `toUInt32(intDiv(${time},86400000))`,
+					min_event_unix_milli: `({time:UInt64} + ${shifted ? 2400000 : 0})`,
+					max_event_unix_milli: `({time:UInt64} + ${(count - 1) * 1500 + (shifted ? 2400000 : 0)})`,
+					raw_offset: "toUInt64({offset:UInt64})",
+					received_unix_nano: "{received:UInt64}",
+					int_value: "toInt64({offset:UInt64})",
+					point_attributes: `[${stringNode("/mode", "if(number<30,'match','other')")}]`,
+				},
+				`CROSS JOIN numbers(${count}) AS samples`,
+			),
+			query_params: {
+				...hosts,
+				time: start.toString(),
+				offset,
+				received: (newestReceipt + BigInt(offset)).toString(),
+			},
+		});
+	};
+	await write(1, 30, true);
+	await write(2, 1400, false);
+	await write(3, 30, false);
+	const first = await page(project);
+	expect(first.points).toHaveLength(100);
+	expect(first.points.slice(0, 30).every((point) => point.value === "3")).toBe(
+		true,
+	);
+	expect(first.points.slice(30).every((point) => point.value === "2")).toBe(
+		true,
+	);
+	expect(BigInt(first.points[29].timeMs)).toBeLessThan(
+		BigInt(first.points[30].timeMs),
+	);
+	const second = await page(project, { cursor: first.nextCursor ?? undefined });
+	expect(second.points).toHaveLength(100);
+	expect(
+		new Set(
+			[...first.points, ...second.points].map(
+				(point) => `${point.timeMs}/${point.sampleId}`,
+			),
+		).size,
+	).toBe(200);
+	const filtered = await page(project, {
+		metric: "recount.node.memory.total",
+		filters: [{ field: 'attributes["mode"]', op: "eq", values: ["match"] }],
+	});
+	expect(filtered.points.map((point) => point.value)).toEqual([
+		...Array(30).fill("3"),
+		...Array(30).fill("1"),
+	]);
+	expect(BigInt(filtered.points[0].timeMs)).toBeLessThan(
+		BigInt(filtered.points[30].timeMs),
+	);
+	expect(filtered.nextCursor).toBeNull();
+});
+
 test("inspector restores request provenance from a compact delivery", async () => {
 	const projectId = randomUUID();
 	await cpu(projectId, 1n, "user");
@@ -211,7 +283,9 @@ test("inspector restores request provenance from a compact delivery", async () =
 	expect(detail.provenance.payload_kind).toBe("OTLP_METRICS");
 	expect(detail.provenance.original).toBeDefined();
 	expect(detail.provenance.access).toBeDefined();
-	expect(detail.provenance.raw_offset).toBe("0");
+	expect(detail.provenance.raw_offset).toBe(
+		((((ms + MINUTE) / MINUTE) % 100n) + 10n).toString(),
+	);
 	expect(typeof detail.provenance.oldest_collection_delay_ns).toBe("string");
 	expect(detail.raw.lineage).toEqual(detail.provenance);
 	await fixture.client.command({
