@@ -11,6 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             host_id: Some("gpu-validation".into()),
             namespace_id: Some("host".into()),
             host_visibility: true,
+            tcp_rtt: false,
         },
         LossTracker::default(),
     )?;

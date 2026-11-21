@@ -19,6 +19,7 @@ fn configured_host_and_namespace_reject_control_characters() {
                         invalid
                     }),
                     host_visibility: false,
+                    tcp_rtt: false,
                 },
                 LossTracker::default(),
             )
@@ -37,6 +38,7 @@ fn sampled_resources_obey_shared_identity_catalogue_and_window_contracts() {
             host_id: Some("test-host".into()),
             namespace_id: Some("test-namespace".into()),
             host_visibility: false,
+            tcp_rtt: false,
         },
         LossTracker::default(),
     )

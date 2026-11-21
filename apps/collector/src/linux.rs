@@ -3,6 +3,7 @@ mod node;
 mod process;
 mod process_population;
 mod setup;
+mod tcp_rtt;
 #[cfg(test)]
 mod tests;
 
@@ -39,6 +40,8 @@ pub struct CollectorConfig {
     pub namespace_id: Option<String>,
     /// Deployment has verified visibility of initial host PIDs.
     pub host_visibility: bool,
+    /// Collect TCP RTT in the collector's network namespace.
+    pub tcp_rtt: bool,
 }
 
 /// Blocking Linux baseline sampling with verified process identity.
@@ -61,6 +64,7 @@ pub struct Collector {
     cycle_points: u64,
     gpu: Option<crate::gpu::Gpu>,
     gpu_authorization: Option<crate::enrollment::Authorization>,
+    tcp_rtt: Option<tcp_rtt::Worker>,
     population: process_population::Population,
     pub(crate) tracked_processes:
         Option<tokio::sync::watch::Receiver<crate::participants::TrackedProcesses>>,
@@ -115,6 +119,9 @@ impl Collector {
                 self.epoch = uuid::Uuid::new_v4().to_string();
                 if let Some(gpu) = &mut self.gpu {
                     gpu.invalidate();
+                }
+                if let Some(worker) = &mut self.tcp_rtt {
+                    worker.invalidate();
                 }
                 self.clock = SamplingClock::new()?;
                 self.epoch_start = self.clock.timestamp()?;
@@ -177,6 +184,18 @@ impl Collector {
         let mut resources = vec![resource(self.attributes(Scope::Node), node)];
         resources.extend(details);
         self.gpu_metrics(time, &mut resources, identities);
+        let rtt = self.tcp_rtt.as_mut().map(|worker| worker.sample(time));
+        if let Some(metrics) = rtt.filter(|metrics| !metrics.is_empty()) {
+            let mut attrs = self.attributes(Scope::Node);
+            attrs.retain(|a| a.key != adapter::INTERVAL_NS && a.key != "recount.collection.source");
+            attrs.extend([
+                integer(adapter::INTERVAL_NS, tcp_rtt::PERIOD.as_nanos() as i64),
+                string("recount.collection.source", "inet-diag"),
+                string("recount.network.visibility", "collector-namespace"),
+            ]);
+            self.cycle_points = self.cycle_points.saturating_add(metrics.len() as u64);
+            resources.push(resource(attrs, metrics));
+        }
         let duration = started.elapsed().as_secs_f64();
         let (_, losses) = self.loss.snapshot();
         let dropped = [

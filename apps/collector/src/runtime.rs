@@ -959,6 +959,7 @@ mod tests {
                     host_id: Some("test-host".into()),
                     namespace_id: Some("test-namespace".into()),
                     host_visibility: false,
+                    tcp_rtt: false,
                 },
                 fixture.loss.clone(),
             )

@@ -23,6 +23,9 @@ pub struct Config {
     /// Sampling interval in milliseconds.
     #[arg(long, env = "RECOUNT_COLLECTOR_INTERVAL_MS", default_value_t = 1000, value_parser = clap::value_parser!(u64).range(100..=60_000))]
     pub interval_ms: u64,
+    /// Collect established TCP socket RTT in the collector's network namespace.
+    #[arg(long, env = "RECOUNT_COLLECTOR_TCP_RTT")]
+    pub tcp_rtt: bool,
     /// Maximum bytes of queued Protobuf payloads.
     #[arg(long, env = "RECOUNT_COLLECTOR_QUEUE_MAX_BYTES", default_value_t = 64 * 1024 * 1024, value_parser = clap::value_parser!(u64).range(1024 * 1024..=1024 * 1024 * 1024))]
     pub queue_max_bytes: u64,
@@ -116,6 +119,7 @@ impl Config {
             host_id: self.host_id.clone(),
             namespace_id: self.process_namespace_id.clone(),
             host_visibility: matches!(self.visibility, Visibility::Host),
+            tcp_rtt: self.tcp_rtt,
         }
     }
 

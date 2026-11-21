@@ -12,6 +12,8 @@ DCGM profiling supplies FP16/FP32/FP64/Tensor-pipe activity, SM activity/occupan
 
 Acquisition uses a separate bounded worker at one second or the collector interval when slower. Only owned watches/groups are removed. Native cache timestamps are retained; repeated, stale, unsupported, denied and blank values produce read statuses rather than zero. The collector does not pause profilers, enable accounting or change MIG configuration. Monitoring can still contend with developer profilers.
 
+Each completed acquisition can also report node histograms of physical-GPU utilization, used memory and power. Each fresh board reading contributes once; MIG slices do not enter these histograms. `recount.collection.gpu.coverage` reports the contributing device count for each signal.
+
 New Linux enrollment keys allow local GPU resources. Explicit or existing policies that omit GPU kind suppress GPU acquisition/export without rejecting CPU/process batches. A successful empty startup inventory stays CPU-only until restart.
 
 Safe runtime-loaded NVML supplements DCGM with process allocation bytes and supported SM/memory activity on the existing process identities. With verified host PID visibility and GPU/process grants, existing environment-labelled executions receive those process points automatically. CPU identities bracket the actual GPU queries and are rechecked afterward. Unknown/reused PIDs, ambiguous windows and missing samples are omitted or unavailable; buffered utilization warms up for two acquisition intervals, while current allocation does not need that history.
@@ -30,6 +32,7 @@ DCGM's pipe/SM profiling remains on GPU/MIG resources: public PID/job reports ex
 | `RECOUNT_COLLECTOR_STATE_DIRECTORY`       | `.state/collector`                              | Private directory for the node identity, `node.json` and `node.key`.                                |
 | `RECOUNT_COLLECTOR_PARTICIPANTS_CONFIG`   | Unset                                           | Optional root-owned JSON execution-discovery settings; enrollment enables the defaults below.       |
 | `RECOUNT_COLLECTOR_INTERVAL_MS`           | `1000`                                          | Intended sampling period, between 100 and 60000 ms.                                                 |
+| `RECOUNT_COLLECTOR_TCP_RTT`               | `false`                                         | Sample smoothed RTT of established TCP sockets in the collector's network namespace.                |
 | `RECOUNT_COLLECTOR_HOST_ID`               | `/etc/machine-id`                               | Host resource and enrolled machine ID, 1–128 UTF-8 bytes. Cloned machines need distinct values.     |
 | `RECOUNT_COLLECTOR_VISIBILITY`            | `restricted`                                    | `host` only when deployment has verified enumeration of initial host PIDs; otherwise `restricted`.  |
 | `RECOUNT_COLLECTOR_PROCESS_NAMESPACE_ID`  | `host` with host visibility; required otherwise | Verified boot-local PID namespace identity, 1–128 UTF-8 bytes.                                      |
@@ -52,6 +55,12 @@ RECOUNT_COLLECTOR_VISIBILITY=host \
 Setting visibility to `host` is a deployment assertion, not a permission probe. It requires process namespace ID `host`. Restricted collection requires an explicit namespace ID whose lifetime deployment has verified within the boot; use `host` for a narrower view of initial-host PIDs, or a separately assigned namespace identity for a PID namespace. A namespace inode alone can be reused and is not inferred as an incarnation-safe ID. Procfs self-PID numbering must match the collector's namespace. Neither mode guarantees readable I/O for every process. Do not declare host visibility for a PID namespace, filtered proc mount or restricted process view.
 
 Changing configuration requires restarting the collector and starts a new epoch. The node enrolls with its host ID as the machine ID, and its access token grants that host as its only root, with the adapter and local process kinds of the enrollment key. One root grant covers its local processes without per-PID enrollment. Neither root permission nor reported placement attests physical ownership.
+
+## TCP round-trip time
+
+Enable `--tcp-rtt` only where policy permits local socket diagnostics. The worker takes a read-only IPv4 and IPv6 snapshot in the collector's current network namespace, at most once per 10 seconds. It does not send probes or require a host network namespace. Each initialized smoothed RTT contributes one observation in seconds to `recount.node.tcp.rtt.distribution`. This is a socket snapshot, not per-packet latency. No addresses, ports, socket IDs or owners are exported.
+
+The worker discards the snapshot if either dump fails, is interrupted or exceeds 4,096 socket records, 2 MiB received or 50 ms. On failure it reports `recount.collection.tcp.rtt.status` and waits at least 30 seconds to retry. A successful snapshot reports `recount.collection.tcp.rtt.coverage`, including zero if nothing contributed.
 
 ## Baseline measurements
 
