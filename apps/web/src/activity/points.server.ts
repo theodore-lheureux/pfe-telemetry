@@ -32,6 +32,8 @@ import type {
 
 const settings = {
 	...POINT_FINAL_SETTINGS,
+	use_skip_indexes_for_top_k: 1,
+	use_top_k_dynamic_filtering: 1,
 	max_execution_time: 6,
 	max_threads: 1,
 	max_block_size: "4096",
