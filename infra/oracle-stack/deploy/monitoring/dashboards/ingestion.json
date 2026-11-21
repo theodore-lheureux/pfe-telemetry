@@ -836,13 +836,75 @@
       }
     },
     {
+      "id": 33,
+      "type": "timeseries",
+      "title": "Normalizer identity cache hit rate",
+      "gridPos": { "x": 0, "y": 22, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(100 * rate(recount_normalizer_identity_cache_hits_total[2m]) / ((rate(recount_normalizer_identity_cache_hits_total[2m]) + rate(recount_normalizer_identity_cache_misses_total[2m])) > 0)) and recount_normalizer_identity_cache_hits_total and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{cache_kind}} / {{replica}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "noValue": "Unknown"
+        }
+      }
+    },
+    {
+      "id": 34,
+      "type": "timeseries",
+      "title": "Normalizer identity cache evictions",
+      "gridPos": { "x": 8, "y": 22, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(recount_normalizer_identity_cache_evictions_total[2m]) and recount_normalizer_identity_cache_evictions_total and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{cache_kind}} / {{replica}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "suffix: evictions/s", "noValue": "Unknown" }
+      }
+    },
+    {
+      "id": 35,
+      "type": "timeseries",
+      "title": "Normalizer metadata emits and suppressions",
+      "description": "Cache decisions per second before packet packing: due versus suppressed. Multiple due checks can share one emitted row.",
+      "gridPos": { "x": 16, "y": 22, "w": 8, "h": 6 },
+      "datasource": { "type": "prometheus", "uid": "ingestion-prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(recount_normalizer_metadata_cache_emits_total[2m]) and recount_normalizer_metadata_cache_emits_total and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{cache_kind}} emits / {{replica}}"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(recount_normalizer_metadata_cache_suppressed_total[2m]) and recount_normalizer_metadata_cache_suppressed_total and on() (time() - recount_ingestion_host_sample_timestamp_seconds < 45)",
+          "legendFormat": "{{cache_kind}} suppressed / {{replica}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "suffix: decisions/s", "noValue": "Unknown" }
+      }
+    },
+    {
       "id": 22,
       "type": "timeseries",
       "title": "Container CPU",
       "description": "Cgroup CPU rates summed by service, with individual normalizer replicas and the ingestion total. The dashed line is the ClickHouse limit; the VM has 4 cores.",
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 28,
         "w": 8,
         "h": 6
       },
@@ -914,7 +976,7 @@
       "description": "Share of CPU periods throttled by each container's CPU limit.",
       "gridPos": {
         "x": 8,
-        "y": 22,
+        "y": 28,
         "w": 8,
         "h": 6
       },
@@ -954,7 +1016,7 @@
       "description": "Anonymous memory per service, excluding page cache; normalizer replicas are summed.",
       "gridPos": {
         "x": 16,
-        "y": 22,
+        "y": 28,
         "w": 8,
         "h": 6
       },
@@ -994,7 +1056,7 @@
       "description": "CPU spent on completed merges over 2 minutes.",
       "gridPos": {
         "x": 0,
-        "y": 28,
+        "y": 34,
         "w": 8,
         "h": 6
       },
@@ -1034,7 +1096,7 @@
       "description": "Merge input rows divided by rows inserted over 2 minutes; blank when no rows were inserted.",
       "gridPos": {
         "x": 8,
-        "y": 28,
+        "y": 34,
         "w": 8,
         "h": 6
       },
@@ -1074,7 +1136,7 @@
       "description": "Parts created by inserts per telemetry table; fewer, larger parts mean less merge work.",
       "gridPos": {
         "x": 16,
-        "y": 28,
+        "y": 34,
         "w": 8,
         "h": 6
       },
@@ -1114,7 +1176,7 @@
       "description": "Active parts per telemetry table, when present.",
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 40,
         "w": 8,
         "h": 6
       },
@@ -1154,7 +1216,7 @@
       "description": "Mean seconds per device I/O over 2 minutes.",
       "gridPos": {
         "x": 8,
-        "y": 34,
+        "y": 40,
         "w": 8,
         "h": 6
       },
@@ -1199,7 +1261,7 @@
       "description": "Mean seconds per SELECT over 2 minutes.",
       "gridPos": {
         "x": 16,
-        "y": 34,
+        "y": 40,
         "w": 8,
         "h": 6
       },
@@ -1239,7 +1301,7 @@
       "description": "Failed SELECT queries per second over 2 minutes.",
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 46,
         "w": 8,
         "h": 6
       },
@@ -1279,7 +1341,7 @@
       "collapsed": true,
       "gridPos": {
         "x": 0,
-        "y": 46,
+        "y": 52,
         "w": 24,
         "h": 1
       },
@@ -1292,7 +1354,7 @@
           "description": "Uncommitted messages by partition; an empty partition has zero lag.",
           "gridPos": {
             "x": 0,
-            "y": 47,
+            "y": 53,
             "w": 8,
             "h": 6
           },

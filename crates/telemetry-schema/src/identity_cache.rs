@@ -30,6 +30,13 @@ impl Default for IdentityCache {
 }
 
 impl IdentityCache {
+    pub fn counters(&self) -> [(&'static str, CacheCounters); 2] {
+        [
+            ("resource", self.resources.counters()),
+            ("series", self.series.counters()),
+        ]
+    }
+
     /// Byte budgets per shard. Entries larger than a budget bypass the cache.
     pub fn new(shards: usize, resource_bytes: usize, series_bytes: usize) -> Self {
         assert!(shards.is_power_of_two());
@@ -75,6 +82,14 @@ struct Shard<V> {
     entries: HashMap<u128, Entry<V>>,
     fifo: VecDeque<u128>,
     bytes: usize,
+    counters: CacheCounters,
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct CacheCounters {
+    pub hits: u64,
+    pub misses: u64,
+    pub evictions: u64,
 }
 
 struct Entry<V> {
@@ -92,11 +107,23 @@ impl<V> Table<V> {
                         entries: HashMap::new(),
                         fifo: VecDeque::new(),
                         bytes: 0,
+                        counters: CacheCounters::default(),
                     })
                 })
                 .collect(),
             budget,
         }
+    }
+
+    fn counters(&self) -> CacheCounters {
+        let mut total = CacheCounters::default();
+        for shard in &self.shards {
+            let counters = shard.lock().unwrap().counters;
+            total.hits += counters.hits;
+            total.misses += counters.misses;
+            total.evictions += counters.evictions;
+        }
+        total
     }
 
     pub(crate) fn get_or_try_insert(
@@ -114,10 +141,16 @@ impl<V> Table<V> {
         build: impl FnOnce() -> Result<(V, usize), &'static str>,
     ) -> Result<Arc<V>, &'static str> {
         let shard = &self.shards[hash as usize & (self.shards.len() - 1)];
-        if let Some(entry) = shard.lock().unwrap().entries.get(&hash)
-            && entry.key.as_ref() == key
         {
-            return Ok(entry.value.clone());
+            let mut shard = shard.lock().unwrap();
+            if let Some(entry) = shard.entries.get(&hash)
+                && entry.key.as_ref() == key
+            {
+                let value = entry.value.clone();
+                shard.counters.hits += 1;
+                return Ok(value);
+            }
+            shard.counters.misses += 1;
         }
         // Don't hold a shard lock while projecting or hashing metadata.
         let (value, heap_bytes) = build()?;
@@ -137,6 +170,7 @@ impl<V> Table<V> {
             while shard.bytes + bytes > self.budget {
                 let oldest = shard.fifo.pop_front().unwrap();
                 shard.bytes -= shard.entries.remove(&oldest).unwrap().bytes;
+                shard.counters.evictions += 1;
             }
             shard.bytes += bytes;
             shard.fifo.push_back(hash);
@@ -182,5 +216,10 @@ mod tests {
         assert_eq!(insert(2, b"d", 6), 6);
         assert_eq!(insert(1, b"c", 7), 4);
         assert_eq!(insert(0, b"b", 5), 5);
+        let counters = cache.counters();
+        assert_eq!(
+            (counters.hits, counters.misses, counters.evictions),
+            (2, 5, 2)
+        );
     }
 }

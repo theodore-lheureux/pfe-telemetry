@@ -24,6 +24,10 @@ services:
     memswap_limit: 1024m
   normalizer:
     image: ${RECOUNT_NORMALIZER_IMAGE:?Select the release normalizer image}
+    environment:
+      RECOUNT_NORMALIZER_METRICS_FILE: /run/recount-metrics/normalizer.prom
+    tmpfs:
+      - /run/recount-metrics:rw,nosuid,nodev,noexec,size=64k,uid=10001,gid=10001,mode=0700
     deploy:
       replicas: ${RECOUNT_NORMALIZER_REPLICAS:-3}
     mem_limit: 1024m

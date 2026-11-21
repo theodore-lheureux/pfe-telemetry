@@ -60,6 +60,39 @@ def service_cpu_metrics(service, running):
         if container_service == service:
             yield from cpu_metrics(service, name, pid, container_id)
 
+def normalizer_metrics(running):
+    samples = {}
+    identity = r"recount_normalizer_identity_cache_(?:hits|misses|evictions)_total"
+    metadata = r"recount_normalizer_metadata_cache_(?:emits|suppressed)_total"
+    patterns = (
+        re.compile(r"(recount_normalizer_retention_gaps_total)() ([0-9]{1,20})"),
+        re.compile(rf'({identity})(\{{cache_kind="(?:resource|series)"\}}) ([0-9]{{1,20}})'),
+        re.compile(rf'({metadata})(\{{cache_kind="(?:series|stream)"\}}) ([0-9]{{1,20}})'),
+    )
+    for replica, (_, _, service, container_id) in running.items():
+        if service != "normalizer" or not re.fullmatch(r"[A-Za-z0-9_.-]+", replica):
+            continue
+        try:
+            text = command("docker", "exec", container_id, "head", "-c", "4096",
+                           "/run/recount-metrics/normalizer.prom")
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if len(text) >= 4096 or not text.endswith("\n"):
+            continue
+        for line in text.splitlines():
+            for pattern in patterns:
+                match = pattern.fullmatch(line)
+                if not match:
+                    continue
+                name, labels, value = match.groups()
+                labels = f'{labels[1:-1]},' if labels else ""
+                samples.setdefault(name, {})[f'{labels}replica="{replica}"'] = value
+                break
+    for name, series in samples.items():
+        yield f"# TYPE {name} counter"
+        for labels, value in series.items():
+            yield f"{name}{{{labels}}} {value}"
+
 
 def disk_metrics(data_path):
     device = Path(data_path).stat().st_dev
@@ -192,6 +225,7 @@ def snapshot():
         *(("cpu" if service == "clickhouse" else f"cpu_{service}",
            lambda service=service: service_cpu_metrics(service, running))
           for service in CPU_SERVICES),
+        ("normalizer_metrics", lambda: normalizer_metrics(running)),
         ("disk", lambda: disk_metrics(data_path) if data_path else ()),
         ("queries", query_metrics),
         ("part_log", part_metrics),

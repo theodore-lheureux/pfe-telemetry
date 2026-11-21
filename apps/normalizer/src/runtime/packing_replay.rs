@@ -1,4 +1,4 @@
-use super::{app, cases, unix_nanos};
+use super::{RunState, app, cases, unix_nanos};
 use crate::{config::Cli, prepare_rows};
 use clap::Parser;
 use prost::Message;
@@ -264,7 +264,7 @@ async fn scenario_with_linger(
     let mut first = Some((
         stop,
         tokio::spawn(async move {
-            app(config, packed)
+            app(RunState::new(config, packed))
                 .run_until(async {
                     let _ = stopped.await;
                 })
@@ -276,7 +276,7 @@ async fn scenario_with_linger(
         (
             stop,
             tokio::spawn(async move {
-                app(second_config, packed)
+                app(RunState::new(second_config, packed))
                     .run_until(async {
                         let _ = stopped.await;
                     })

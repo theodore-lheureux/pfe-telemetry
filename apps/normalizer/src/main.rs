@@ -25,7 +25,7 @@ fn main() {
             });
     tracing_subscriber::registry()
         .with(LevelFilter::INFO)
-        .with(metrics)
+        .with(metrics.clone())
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)
@@ -44,7 +44,7 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let result = runtime.block_on(normalizer::run(config));
+    let result = runtime.block_on(normalizer::run(config, metrics));
     runtime.shutdown_timeout(std::time::Duration::from_millis(100));
     if let Err(reason) = result {
         eprintln!("state=fatal reason={reason}");

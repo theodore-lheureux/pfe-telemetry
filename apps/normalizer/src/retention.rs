@@ -1,14 +1,25 @@
-use std::{fmt, fs, io, path::PathBuf, sync::Mutex};
+use std::{
+    fmt, fs, io,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 use tracing::{
     Event, Level, Subscriber,
     field::{Field, Visit},
 };
 use tracing_subscriber::{Layer, layer::Context};
 
+#[derive(Clone)]
 pub struct RetentionMetrics {
     group: String,
     metrics_file: Option<PathBuf>,
-    gaps: Mutex<u64>,
+    snapshot: Arc<Mutex<Snapshot>>,
+}
+
+#[derive(Default)]
+struct Snapshot {
+    gaps: u64,
+    cache: String,
 }
 
 impl RetentionMetrics {
@@ -16,19 +27,32 @@ impl RetentionMetrics {
         let metrics = Self {
             group,
             metrics_file,
-            gaps: Mutex::new(0),
+            snapshot: Arc::default(),
         };
-        metrics.export(0).map_err(|error| error.to_string())?;
+        metrics
+            .export(&Snapshot::default())
+            .map_err(|error| error.to_string())?;
         Ok(metrics)
     }
 
-    fn export(&self, total: u64) -> io::Result<()> {
+    pub(crate) fn enabled(&self) -> bool {
+        self.metrics_file.is_some()
+    }
+
+    pub(crate) fn update_cache(&self, cache: String) -> io::Result<()> {
+        let mut snapshot = self.snapshot.lock().expect("metrics snapshot");
+        snapshot.cache = cache;
+        self.export(&snapshot)
+    }
+
+    fn export(&self, snapshot: &Snapshot) -> io::Result<()> {
         if let Some(path) = &self.metrics_file {
             let temporary = path.with_extension(format!("{}.tmp", std::process::id()));
             fs::write(
                 &temporary,
                 format!(
-                    "# HELP recount_normalizer_retention_gaps_total Native offset resets after unavailable offsets.\n# TYPE recount_normalizer_retention_gaps_total counter\nrecount_normalizer_retention_gaps_total {total}\n"
+                    "# HELP recount_normalizer_retention_gaps_total Native offset resets after unavailable offsets.\n# TYPE recount_normalizer_retention_gaps_total counter\nrecount_normalizer_retention_gaps_total {}\n{}",
+                    snapshot.gaps, snapshot.cache,
                 ),
             )?;
             fs::rename(temporary, path)?;
@@ -60,13 +84,13 @@ impl<S: Subscriber> Layer<S> for RetentionMetrics {
         if !message.0.starts_with("librdkafka: OFFSET ") || !message.0.contains("offset reset") {
             return;
         }
-        let mut total = self.gaps.lock().expect("retention counter");
-        *total = total.saturating_add(1);
+        let mut snapshot = self.snapshot.lock().expect("metrics snapshot");
+        snapshot.gaps = snapshot.gaps.saturating_add(1);
         eprintln!(
-            "level=WARN event=retention_gap action=resume_earliest group={} metric=recount_normalizer_retention_gaps_total value={total} detail={}",
-            self.group, message.0
+            "level=WARN event=retention_gap action=resume_earliest group={} metric=recount_normalizer_retention_gaps_total value={} detail={}",
+            self.group, snapshot.gaps, message.0
         );
-        if let Err(error) = self.export(*total) {
+        if let Err(error) = self.export(&snapshot) {
             eprintln!("level=WARN event=retention_metrics_export_failed error={error}");
         }
     }
@@ -89,7 +113,9 @@ mod tests {
                 .as_nanos()
         ));
         let metrics = RetentionMetrics::new("recount.test".into(), Some(file.clone())).unwrap();
-        let subscriber = tracing_subscriber::registry().with(metrics);
+        let cache = "recount_normalizer_identity_cache_hits_total{cache_kind=\"series\"} 3\n";
+        metrics.update_cache(cache.into()).unwrap();
+        let subscriber = tracing_subscriber::registry().with(metrics.clone());
         tracing::subscriber::with_default(subscriber, || {
             tracing::debug!(target: "librdkafka", "librdkafka: OFFSET raw [0]: offset reset: no offset stored");
             tracing::warn!(target: "librdkafka", "librdkafka: CONNECT broker unavailable");
@@ -100,6 +126,11 @@ mod tests {
                 .unwrap()
                 .contains("recount_normalizer_retention_gaps_total 1\n")
         );
+        assert!(fs::read_to_string(&file).unwrap().contains(cache));
+        metrics.update_cache(cache.replace(" 3\n", " 4\n")).unwrap();
+        let contents = fs::read_to_string(&file).unwrap();
+        assert!(contents.contains("recount_normalizer_retention_gaps_total 1\n"));
+        assert!(contents.contains("cache_kind=\"series\"} 4\n"));
         fs::remove_file(file).unwrap();
     }
 }

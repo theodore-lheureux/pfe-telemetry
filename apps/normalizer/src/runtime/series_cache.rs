@@ -18,8 +18,14 @@ struct Entry<K> {
 }
 
 pub(super) struct SeriesCache<K = u64> {
-    slots: Mutex<Box<[Entry<K>]>>,
+    state: Mutex<CacheState<K>>,
     interval: u64,
+}
+
+struct CacheState<K> {
+    slots: Box<[Entry<K>]>,
+    emits: u64,
+    suppressed: u64,
 }
 
 pub(super) trait CacheKey: Copy + Default + Eq {
@@ -44,7 +50,11 @@ where
 impl<K: CacheKey> SeriesCache<K> {
     pub fn new(entries: usize, interval: u64) -> Self {
         Self {
-            slots: Mutex::new(vec![Entry::default(); entries].into_boxed_slice()),
+            state: Mutex::new(CacheState {
+                slots: vec![Entry::default(); entries].into_boxed_slice(),
+                emits: 0,
+                suppressed: 0,
+            }),
             interval,
         }
     }
@@ -56,23 +66,36 @@ impl<K: CacheKey> SeriesCache<K> {
     }
 
     pub fn should_emit(&self, e: Emission<K>) -> bool {
-        let slots = self.slots.lock().unwrap();
-        if slots.is_empty() || self.interval == 0 {
-            return true;
+        let mut state = self.state.lock().unwrap();
+        let slots = &state.slots;
+        let due = if slots.is_empty() || self.interval == 0 {
+            true
+        } else {
+            let old = slots[Self::index(e, slots.len())].emission;
+            old.time == 0
+                || old.series != e.series
+                || old.lane_partition != e.lane_partition
+                || e.emitted_at < old.emitted_at
+                || e.emitted_at - old.emitted_at >= self.interval
+                || e.first < old.first
+                || e.time.saturating_sub(old.time) >= self.interval
+        };
+        if due {
+            state.emits += 1;
+        } else {
+            state.suppressed += 1;
         }
-        let entry = slots[Self::index(e, slots.len())];
-        let old = entry.emission;
-        old.time == 0
-            || old.series != e.series
-            || old.lane_partition != e.lane_partition
-            || e.emitted_at < old.emitted_at
-            || e.emitted_at - old.emitted_at >= self.interval
-            || e.first < old.first
-            || e.time.saturating_sub(old.time) >= self.interval
+        due
+    }
+
+    pub fn counters(&self) -> (u64, u64) {
+        let state = self.state.lock().unwrap();
+        (state.emits, state.suppressed)
     }
 
     pub fn acknowledge(&self, emissions: &[Emission<K>]) {
-        let mut slots = self.slots.lock().unwrap();
+        let mut state = self.state.lock().unwrap();
+        let slots = &mut state.slots;
         if slots.is_empty() || self.interval == 0 {
             return;
         }
@@ -134,5 +157,6 @@ mod tests {
         assert!(cache.should_emit(Emission { series: 6, ..e }));
         cache.acknowledge(&[Emission { series: 6, ..e }]);
         assert!(cache.should_emit(e)); // eviction only causes a duplicate
+        assert_eq!(cache.counters(), (8, 1));
     }
 }

@@ -1,4 +1,4 @@
-use crate::{config::Config, kafka};
+use crate::{config::Config, kafka, retention::RetentionMetrics};
 use futures_util::future::join_all;
 use recount_telemetry_schema::{RAW_RECEIVED_MS_HEADER, identity_cache::IdentityCache, recent};
 use recount_telemetry_validation::transport::ConsumerBudget;
@@ -9,6 +9,7 @@ use ruststream_rdkafka::{
 };
 use std::{
     convert::Infallible,
+    fmt::Write,
     future::Future,
     num::NonZeroUsize,
     sync::Arc,
@@ -44,6 +45,73 @@ struct RunState {
     stream_cache: Arc<SeriesCache<[u8; 16]>>,
     delivery_cache: Arc<SeriesCache<[u8; 32]>>,
     identity_cache: Arc<IdentityCache>,
+}
+
+impl RunState {
+    fn new(config: Config, packed_recent: bool) -> Self {
+        let entries = config.series_cache_entries;
+        let resend_ms = config.series_resend_ms;
+        Self {
+            preparation: Arc::new(Semaphore::new(config.max_active)),
+            series_cache: Arc::new(SeriesCache::new(entries, resend_ms)),
+            identity_cache: Arc::new(IdentityCache::default()),
+            stream_cache: Arc::new(SeriesCache::new(entries, resend_ms)),
+            delivery_cache: Arc::new(SeriesCache::new(entries, resend_ms)),
+            config,
+            packed_recent,
+        }
+    }
+
+    fn export_cache_metrics(&self, metrics: &RetentionMetrics) {
+        let mut text = String::new();
+        let [(resource, resource_counters), (series, series_counters)] =
+            self.identity_cache.counters();
+        let (series_emits, series_suppressed) = self.series_cache.counters();
+        let (stream_emits, stream_suppressed) = self.stream_cache.counters();
+        for (name, values) in [
+            (
+                "identity_cache_hits",
+                [
+                    (resource, resource_counters.hits),
+                    (series, series_counters.hits),
+                ],
+            ),
+            (
+                "identity_cache_misses",
+                [
+                    (resource, resource_counters.misses),
+                    (series, series_counters.misses),
+                ],
+            ),
+            (
+                "identity_cache_evictions",
+                [
+                    (resource, resource_counters.evictions),
+                    (series, series_counters.evictions),
+                ],
+            ),
+            (
+                "metadata_cache_emits",
+                [("series", series_emits), ("stream", stream_emits)],
+            ),
+            (
+                "metadata_cache_suppressed",
+                [("series", series_suppressed), ("stream", stream_suppressed)],
+            ),
+        ] {
+            writeln!(text, "# TYPE recount_normalizer_{name}_total counter").unwrap();
+            for (kind, count) in values {
+                writeln!(
+                    text,
+                    "recount_normalizer_{name}_total{{cache_kind=\"{kind}\"}} {count}"
+                )
+                .unwrap();
+            }
+        }
+        if let Err(error) = metrics.update_cache(text) {
+            tracing::warn!(%error, "normalizer metrics export failed");
+        }
+    }
 }
 impl FromRef<RunState> for RunState {
     fn from_ref(state: &RunState) -> Self {
@@ -237,7 +305,8 @@ fn unix_nanos() -> u64 {
     u64::try_from(elapsed.as_nanos()).expect("system clock within u64 nanoseconds")
 }
 
-fn app(config: Config, packed_recent: bool) -> impl App {
+fn app(state: RunState) -> impl App {
+    let config = &state.config;
     let budget = ConsumerBudget::raw(config.raw_broker_max_bytes).expect("validated raw budget");
     // A killed Kafka group member sends no LeaveGroup, so replacement assignment
     // can wait a full session. Additional startup headroom covers rejoining and
@@ -311,27 +380,10 @@ fn app(config: Config, packed_recent: bool) -> impl App {
     ))
     .shutdown_timeout(shutdown)
     .on_startup(async move |()| {
-        kafka::preflight(config.clone())
+        kafka::preflight(state.config.clone())
             .await
             .map_err(std::io::Error::other)?;
-        Ok::<_, std::io::Error>(RunState {
-            preparation: Arc::new(Semaphore::new(config.max_active)),
-            series_cache: Arc::new(SeriesCache::new(
-                config.series_cache_entries,
-                config.series_resend_ms,
-            )),
-            identity_cache: Arc::new(IdentityCache::default()),
-            stream_cache: Arc::new(SeriesCache::new(
-                config.series_cache_entries,
-                config.series_resend_ms,
-            )),
-            delivery_cache: Arc::new(SeriesCache::new(
-                config.series_cache_entries,
-                config.series_resend_ms,
-            )),
-            config,
-            packed_recent,
-        })
+        Ok::<_, std::io::Error>(state)
     })
     .after_startup(async |_: Arc<RunState>| {
         eprintln!("state=ready checks=initial_snapshot offset_reset=earliest");
@@ -361,18 +413,33 @@ fn app(config: Config, packed_recent: bool) -> impl App {
     })
 }
 
-pub async fn run(config: Config) -> Result<(), String> {
+pub async fn run(config: Config, metrics: RetentionMetrics) -> Result<(), String> {
     eprintln!("state=starting");
     #[cfg(unix)]
     let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
         .map_err(|error| error.to_string())?;
-    app(config, true)
-        .run_until(async {
-            #[cfg(unix)]
-            tokio::select! { _ = term.recv() => {}, _ = tokio::signal::ctrl_c() => {} }
-            #[cfg(not(unix))]
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await
-        .map_err(|error| error.to_string())
+    let state = RunState::new(config, true);
+    let export = async {
+        if !metrics.enabled() {
+            std::future::pending::<()>().await;
+        }
+        let mut timer = tokio::time::interval(Duration::from_secs(5));
+        timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            timer.tick().await;
+            state.export_cache_metrics(&metrics);
+        }
+    };
+    let app = app(state.clone());
+    let run = app.run_until(async {
+        #[cfg(unix)]
+        tokio::select! { _ = term.recv() => {}, _ = tokio::signal::ctrl_c() => {} }
+        #[cfg(not(unix))]
+        let _ = tokio::signal::ctrl_c().await;
+    });
+    let result = tokio::select! { result = run => result, () = export => unreachable!() };
+    if metrics.enabled() {
+        state.export_cache_metrics(&metrics);
+    }
+    result.map_err(|error| error.to_string())
 }

@@ -106,3 +106,23 @@ class SamplerTest(unittest.TestCase):
                 expression = target["expr"]
                 if "recount_" in expression:
                     self.assertIn("time() - recount_ingestion_host_sample_timestamp_seconds < 45", expression)
+
+    def test_normalizer_metrics_keep_replica_counters_separate(self):
+        running = {
+            "normalizer-1": (41, [], "normalizer", "id1"),
+            "normalizer-2": (42, [], "normalizer", "id2"),
+            "normalizer-3": (43, [], "normalizer", "id3"),
+            "kafka-1": (44, [], "kafka", "id4"),
+        }
+        metric = "recount_normalizer_identity_cache_hits_total"
+        with patch.object(sample, "command", side_effect=[
+            f'{metric}{{cache_kind="series"}} 7\n{metric}{{cache_kind="unexpected"}} 4\n',
+            subprocess.TimeoutExpired("docker", 3),
+            f'{metric}{{cache_kind="series"}} 3\n',
+        ]) as command:
+            self.assertEqual(list(sample.normalizer_metrics(running)), [
+                f"# TYPE {metric} counter",
+                f'{metric}{{cache_kind="series",replica="normalizer-1"}} 7',
+                f'{metric}{{cache_kind="series",replica="normalizer-3"}} 3',
+            ])
+            self.assertEqual([entry.args[2] for entry in command.call_args_list], ["id1", "id2", "id3"])
