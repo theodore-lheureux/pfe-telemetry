@@ -1,6 +1,6 @@
 # Ingestion API
 
-`recount-ingestion-api` accepts authenticated OTLP metrics over gRPC, authorizes enrolled roots and explicitly bound resources, performs exact shared normalized-size preflight, and acknowledges only confirmed raw Kafka publication. It does not store telemetry in PostgreSQL or write ClickHouse. Traces return `UNIMPLEMENTED`; no partial OTLP success is returned.
+`recount-ingestion-api` accepts authenticated OTLP metrics over gRPC, authorizes enrolled roots and explicitly bound resources, checks a conservative normalized-size bound, and acknowledges only confirmed raw Kafka publication. It does not store telemetry in PostgreSQL or write ClickHouse. Traces return `UNIMPLEMENTED`; no partial OTLP success is returned.
 
 The [telemetry point contract](../../docs/telemetry-point-contract.md) defines current messages, identities, retry behavior and semantic limits. Standard OTLP can omit Linux metadata and optional batch headers. The Linux collector sends `recount-collection-profile: linux` and immutable batch identity; its root/local adapter does not grant from payload topology.
 

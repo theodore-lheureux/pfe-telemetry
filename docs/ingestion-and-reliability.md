@@ -6,7 +6,7 @@ Target guarantees depend on storage durability, available capacity, retention, a
 
 ## Acceptance and processing
 
-The ingestion API authenticates the source, resolves bounded root/resource grants and validates the whole submission, including exact normalized-output limits, before raw Kafka publication. It acknowledges acceptance only after Kafka confirms the write under the configured policy. There is no direct-storage acceptance path. Deterministic limit failures reject the whole submission before publication.
+The ingestion API authenticates the source, resolves bounded root/resource grants and validates the whole submission, including a conservative normalized-output bound, before raw Kafka publication. It acknowledges acceptance only after Kafka confirms the write under the configured policy. There is no direct-storage acceptance path. Deterministic limit failures reject the whole submission before publication.
 
 Acceptance means the submission entered the retained raw log; it does not mean the measurements are already queryable. Different parts of a submission can become visible at different times. An empty chart is not proof of completeness or ingestion health. A stable identity supplied by the collector identifies the batch through acceptance and retries. OTLP returns the standard export response; batch identity travels in [current gRPC metadata](telemetry-point-contract.md#sample-identity-and-retry-rules), not a custom response body. [OTLP responses](https://opentelemetry.io/docs/specs/otlp/)
 

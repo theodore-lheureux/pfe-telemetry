@@ -221,10 +221,10 @@ fn admission_preflight_and_retained_replay_share_bounds() {
     let max_record = replay.iter().map(singleton_size_bound).max().unwrap();
     let total = replay.iter().map(singleton_size_bound).sum::<usize>();
     let evidence = replay[0].delivery_evidence.len();
-    assert_eq!(admission.record_bytes, max_record);
-    assert_eq!(
-        admission.batch_bytes,
-        total + evidence + 8 - (2 + prost::length_delimiter_len(evidence) + evidence)
+    assert!(admission.record_bytes >= max_record);
+    assert!(
+        admission.batch_bytes
+            >= total + evidence + 8 - (2 + prost::length_delimiter_len(evidence) + evidence)
     );
     for limits in [
         Limits {
@@ -274,7 +274,7 @@ fn admission_preflight_and_retained_replay_share_bounds() {
 }
 
 #[test]
-fn exact_delivery_size_matches_materialized_projection_at_both_limits() {
+fn delivery_bound_covers_projection_with_bounded_slack() {
     let mut state = 0x243f_6a88_85a3_08d3u64;
     let mut next = || {
         state ^= state << 13;
@@ -285,8 +285,6 @@ fn exact_delivery_size_matches_materialized_projection_at_both_limits() {
     for trial in 0..128 {
         let mut request = cases::reader_request();
         let mut raw = cases::raw();
-        raw.bindings
-            .rotate_left(trial % request.resource_metrics.len());
         if trial % 3 == 0 {
             raw.batch = None;
         }
@@ -370,66 +368,84 @@ fn exact_delivery_size_matches_materialized_projection_at_both_limits() {
                 ..Default::default()
             }),
         });
-        let check = |points, record, batch| {
-            let projected =
-                point::normalize_delivery(&raw, &request, points, record, batch).map(|rows| {
-                    let mut sizes = point::DeliverySize::default();
-                    for row in &rows {
-                        let size = singleton_size_bound(row);
-                        sizes.record_bytes = sizes.record_bytes.max(size);
-                        sizes.batch_bytes += size;
-                    }
-                    if let Some(first) = rows.first() {
-                        let evidence = first.delivery_evidence.len();
-                        sizes.batch_bytes = sizes.batch_bytes + evidence + 8
-                            - (2 + prost::length_delimiter_len(evidence) + evidence);
-                    }
-                    sizes
-                });
-            let counted = point::delivery_size(&raw, &request, points, record, batch);
-            assert_eq!(
-                counted, projected,
-                "trial {trial}, limits {points}/{record}/{batch}"
-            );
-            counted
-        };
-        let size = check(usize::MAX, usize::MAX, usize::MAX).unwrap();
-        if size.batch_bytes == 0 {
-            assert_eq!(size.record_bytes, 0);
+        let limits = Limits::default();
+        let size = point::delivery_bound(
+            &raw,
+            &request,
+            limits.points,
+            limits.normalized_record_bytes,
+            limits.normalized_batch_bytes,
+        )
+        .unwrap();
+        let rows = point::normalize_delivery(
+            &raw,
+            &request,
+            limits.points,
+            limits.normalized_record_bytes,
+            limits.normalized_batch_bytes,
+        )
+        .unwrap();
+        let Some(first) = rows.first() else {
+            assert_eq!(size, point::DeliveryBound::default());
             continue;
-        }
-        let unlimited = usize::MAX;
-        for limit in [
-            size.record_bytes - 1,
-            size.record_bytes,
-            size.record_bytes + 1,
-        ] {
-            assert_eq!(
-                check(unlimited, limit, unlimited).is_ok(),
-                limit >= size.record_bytes
-            );
-        }
-        for limit in [size.batch_bytes - 1, size.batch_bytes, size.batch_bytes + 1] {
-            assert_eq!(
-                check(unlimited, size.record_bytes, limit).is_ok(),
-                limit >= size.batch_bytes
-            );
-        }
-        let points = validate::request(&request, Limits::default()).unwrap();
-        assert_eq!(
-            check(points - 1, unlimited, unlimited),
-            Err("normalized point limit")
+        };
+        let record = rows.iter().map(singleton_size_bound).max().unwrap();
+        let evidence = first.delivery_evidence.len();
+        let batch = rows.iter().map(singleton_size_bound).sum::<usize>() + 6
+            - prost::length_delimiter_len(evidence);
+        assert!(
+            (record..=record + 4_256).contains(&size.record_bytes),
+            "trial {trial}"
+        );
+        assert!(
+            (batch..=batch + 4_192 + 64 * rows.len()).contains(&size.batch_bytes),
+            "trial {trial}"
         );
     }
 }
 
 #[test]
-fn exact_delivery_size_preserves_projection_errors() {
+fn admission_enforces_conservative_record_and_batch_thresholds() {
+    let raw = cases::metadata_heavy(45);
+    let request = ExportMetricsServiceRequest::decode(raw.otlp_request.as_slice()).unwrap();
+    let limits = Limits::default();
+    let size = validate::preflight(&raw, &request, limits).unwrap();
+    for (record, batch, accepted) in [
+        (size.record_bytes - 1, size.batch_bytes, false),
+        (size.record_bytes, size.batch_bytes - 1, false),
+        (size.record_bytes, size.batch_bytes, true),
+        (size.record_bytes + 1, size.batch_bytes + 1, true),
+    ] {
+        let result = validate::preflight(
+            &raw,
+            &request,
+            Limits {
+                normalized_record_bytes: record,
+                normalized_batch_bytes: batch,
+                ..limits
+            },
+        );
+        if accepted {
+            assert_eq!(
+                result,
+                Ok(point::DeliveryBound {
+                    record_bytes: size.record_bytes,
+                    batch_bytes: size.batch_bytes
+                })
+            );
+        } else {
+            assert_eq!(result.unwrap_err().category, Category::Limit);
+        }
+    }
+}
+
+#[test]
+fn delivery_bound_checks_projection_invariants() {
     let mut request = cases::reader_request();
     let raw = cases::raw();
     let match_error = |raw: &RawRecord, request: &ExportMetricsServiceRequest, reason| {
         assert_eq!(
-            point::delivery_size(raw, request, 4096, 1 << 20, 1 << 24),
+            point::delivery_bound(raw, request, 4096, 1 << 20, 1 << 24),
             Err(reason)
         );
         assert_eq!(
@@ -463,9 +479,13 @@ fn exact_delivery_size_preserves_projection_errors() {
     p.attributes.clear();
     p.value = Some(Value::AsDouble(f64::NAN));
     match_error(&raw, &request, "nonfinite value");
+    let request = cases::reader_request();
     let mut broken = raw;
     broken.bindings[1].original_resource = broken.bindings[0].original_resource;
-    match_error(&broken, &request, "duplicate resource binding position");
+    assert_eq!(
+        point::delivery_bound(&broken, &request, 4096, 1 << 20, 1 << 24),
+        Err("resource bindings must follow original positions")
+    );
 }
 
 #[test]

@@ -15,8 +15,8 @@ use crate::{
 use prost::Message;
 use std::sync::Arc;
 
-mod size;
-pub use size::{DeliverySize, delivery_size};
+mod bound;
+pub use bound::{DeliveryBound, delivery_bound};
 
 #[derive(Clone, Copy)]
 pub enum Observation<'a> {
@@ -248,7 +248,8 @@ fn lower(
     let receipt_tag = crate::series::receipt_tag(&raw.record_id);
     let contexts = binding_contexts(raw, request)?;
     let mut out = Vec::new();
-    let mut budget = size::Budget::new(max_record_bytes, max_batch_bytes);
+    let mut bytes = 0usize;
+    let mut first_size = 0usize;
     let mut resource_key = Vec::new();
     let mut series_key = Vec::new();
     for (r, resource_metrics) in request.resource_metrics.iter().enumerate() {
@@ -433,7 +434,16 @@ fn lower(
                     }
                     let size =
                         row.encoded_len() - removed_len.1 - source_len + removed_len.0 + overhead;
-                    budget.point(size)?;
+                    if out.is_empty() {
+                        first_size = size;
+                    }
+                    if size > max_record_bytes {
+                        return Err("normalized record byte limit");
+                    }
+                    bytes = bytes.checked_add(size).ok_or("normalized byte overflow")?;
+                    if bytes > max_batch_bytes {
+                        return Err("normalized batch byte limit");
+                    }
                     out.push(PreparedPoint {
                         frame: row,
                         metadata,
@@ -445,7 +455,19 @@ fn lower(
     }
     if compact && let Some(first) = out.first_mut() {
         first.frame.delivery_evidence = evidence.encode_to_vec();
-        budget.delivery(first.frame.delivery_evidence.len())?;
+        let evidence_len = first.frame.delivery_evidence.len();
+        let size = first_size
+            + if evidence_len == 0 {
+                0
+            } else {
+                2 + prost::length_delimiter_len(evidence_len) + evidence_len
+            };
+        let total = bytes
+            .checked_add(evidence_len + 8)
+            .ok_or("normalized byte overflow")?;
+        if size > max_record_bytes || total > max_batch_bytes {
+            return Err("normalized delivery byte limit");
+        }
     }
     Ok(out)
 }

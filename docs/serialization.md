@@ -45,7 +45,7 @@ OTLP/gRPC is the selected ingestion transport. Tonic exposes the generated servi
 
 The generated `MetricsService.Export` method receives its standard request. Requests with validated observations return the standard empty success response only after confirmed raw Kafka publication. Authenticated zero-point requests return that response after authority and validation checks without publication; empty-export success is not a publication or downstream-health probe. Execution metadata or a custom receipt does not replace OTLP bodies. The API requires an authoritative credential database, supports uncompressed/gzip metrics, and returns `UNIMPLEMENTED` for traces. Startup configuration, health and admission limits are in the [ingestion API reference](../apps/ingestion-api/README.md).
 
-Admission validates the whole request, including exact normalized-size preflight, before any raw publication. There is no partial OTLP success. That request-wide acceptance boundary does not create an atomic analytical-visibility boundary: output rows can become queryable at different times. Exporters must not retry a response that reports partial success from another OTLP receiver.
+Admission validates the whole request, including a conservative normalized-size bound, before any raw publication. There is no partial OTLP success. That request-wide acceptance boundary does not create an atomic analytical-visibility boundary: output rows can become queryable at different times. Exporters must not retry a response that reports partial success from another OTLP receiver.
 
 ## Generated types and extensibility
 
