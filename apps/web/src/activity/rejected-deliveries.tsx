@@ -1,4 +1,6 @@
 import { m } from "@recount/i18n/messages";
+import { type ColumnDef, tableFeatures, useTable } from "@tanstack/react-table";
+import { DataTable } from "../components/data-table";
 import { TimeDisplay } from "../components/time-display";
 import {
 	Card,
@@ -6,14 +8,6 @@ import {
 	CardHeader,
 	CardTitle,
 } from "../components/ui/card";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "../components/ui/table";
 import type { OperationResult } from "../lib/operation-result";
 
 const reasons = new Map([
@@ -26,14 +20,46 @@ const reasons = new Map([
 	["normalized_record_too_large", m.activity_reject_normalized_size],
 ]);
 
+type RejectedDelivery = {
+	id: string;
+	source: string;
+	received: Date;
+	reason: string;
+};
+
+const features = tableFeatures({});
+const columns: ColumnDef<typeof features, RejectedDelivery>[] = [
+	{
+		id: "received",
+		header: () => m.activity_rejected_received(),
+		cell: ({ row }) => <TimeDisplay value={row.original.received} />,
+	},
+	{
+		id: "source",
+		header: () => m.activity_node(),
+		cell: ({ row }) => row.original.source,
+		meta: { className: "font-mono" },
+	},
+	{
+		id: "reason",
+		header: () => m.activity_rejected_reason(),
+		cell: ({ row }) =>
+			(reasons.get(row.original.reason) ?? m.activity_reject_unknown)(),
+	},
+];
+const empty: RejectedDelivery[] = [];
+
 export function RejectedDeliveries({
 	result,
 }: {
-	result: OperationResult<
-		{ id: string; source: string; received: Date; reason: string }[]
-	>;
+	result: OperationResult<RejectedDelivery[]>;
 }) {
-	const rows = result.data;
+	const table = useTable({
+		features,
+		data: result.data ?? empty,
+		columns,
+		getRowId: (row) => row.id,
+	});
 	return (
 		<Card>
 			<CardHeader>
@@ -42,31 +68,14 @@ export function RejectedDeliveries({
 				</CardTitle>
 			</CardHeader>
 			<CardContent>
-				{!rows && <p role="status">{m.activity_rejected_unavailable()}</p>}
-				{rows?.length === 0 && <p>{m.activity_rejected_empty()}</p>}
-				{rows && rows.length > 0 && (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{m.activity_rejected_received()}</TableHead>
-								<TableHead>{m.activity_node()}</TableHead>
-								<TableHead>{m.activity_rejected_reason()}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{rows.map((row) => (
-								<TableRow key={row.id}>
-									<TableCell>
-										<TimeDisplay value={row.received} />
-									</TableCell>
-									<TableCell className="font-mono">{row.source}</TableCell>
-									<TableCell>
-										{(reasons.get(row.reason) ?? m.activity_reject_unknown)()}
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
+				{result.error ? (
+					<p role="status">{m.activity_rejected_unavailable()}</p>
+				) : (
+					<DataTable
+						table={table}
+						label={m.activity_rejected_deliveries()}
+						empty={m.activity_rejected_empty()}
+					/>
 				)}
 			</CardContent>
 		</Card>

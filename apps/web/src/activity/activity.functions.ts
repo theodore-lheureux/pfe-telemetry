@@ -47,7 +47,7 @@ export const listRejectedDeliveries = createServerFn({ method: "GET" })
 	.validator(parseProjectReference)
 	.handler(({ data, context: { identity, database, request } }) =>
 		withActor(identity, (actor) =>
-			activity.listPointsForProject(
+			activity.readProjectAnalytics(
 				database,
 				actor,
 				data,

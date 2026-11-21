@@ -15,9 +15,9 @@ export async function listPoints(
 	signal?: AbortSignal,
 	read = readPoints,
 ) {
-	return listPointsForProject(database, actor, input, signal, read);
+	return readProjectAnalytics(database, actor, input, signal, read);
 }
-export async function listPointsForProject<I extends ProjectReference, T>(
+export async function readProjectAnalytics<I extends ProjectReference, T>(
 	database: Database,
 	actor: Actor,
 	input: I,
