@@ -33,7 +33,7 @@ export interface ExecutionDetail extends ExecutionSummary {
 }
 export interface TelemetryPoint {
 	bucketMs: number;
-	timeNs: string;
+	timeMs: string;
 	flags: number;
 	integer: string | null;
 	double: number | null;

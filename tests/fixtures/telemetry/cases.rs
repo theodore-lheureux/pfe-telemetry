@@ -144,7 +144,7 @@ pub fn request() -> ExportMetricsServiceRequest {
                         ..Default::default()
                     },
                     metrics::HistogramDataPoint {
-                        time_unix_nano: 1_780_000_000_000_000_021,
+                        time_unix_nano: 1_780_000_000_001_000_021,
                         count: u64::MAX,
                         sum: Some(0.0),
                         min: Some(0.0),
@@ -179,7 +179,7 @@ pub fn request() -> ExportMetricsServiceRequest {
                         ..Default::default()
                     },
                     metrics::ExponentialHistogramDataPoint {
-                        time_unix_nano: 1_780_000_000_000_000_031,
+                        time_unix_nano: 1_780_000_000_001_000_031,
                         positive: Some(
                             metrics::exponential_histogram_data_point::Buckets::default(),
                         ),

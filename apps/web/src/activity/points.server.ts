@@ -18,7 +18,7 @@ import {
 } from "../analytics/series-source.server";
 import { getTelemetryClient } from "../executions/telemetry.server";
 import { OperationError } from "../lib/operation-error";
-import { activityNode, decodeDelivery, nanosecondsDate } from "./codec.server";
+import { activityNode, decodeDelivery } from "./codec.server";
 import type {
 	ExplorerInput,
 	JsonObject,
@@ -87,7 +87,7 @@ interface Row {
 	sourceId: string;
 	resourceId: string;
 	metricName: string;
-	timeNs: string;
+	timeMs: string;
 	hostId: string | null;
 	hostname: string;
 	resourceKind: number;
@@ -102,7 +102,7 @@ interface Row {
 	fields?: (string | null)[];
 }
 interface Key {
-	timeNs: string;
+	timeMs: string;
 	sampleId: string;
 	seriesId: string;
 	day: number;
@@ -118,18 +118,18 @@ function keyQuery(
 	evidence: boolean,
 ) {
 	const source = seriesPointSource(
-		` AND ${seriesLastSeen("{lower:UInt64}")} AND first_seen_unix_nano <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
+		` AND ${seriesLastSeen("{lower:UInt64}")} AND first_seen_unix_milli <= {cursorTime:UInt64}${seriesFilters.map((condition) => ` AND ${condition}`).join("")}`,
 		`AND event_day>={firstDay:UInt32} AND event_day<={lastDay:UInt32}
-AND time_unix_nano>={lower:UInt64} AND tuple(time_unix_nano,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String})`,
+AND time_unix_milli>={lower:UInt64} AND tuple(time_unix_milli,${POINT_KEY})<tuple({cursorTime:UInt64},{cursorSample:String})`,
 		execution ? "s.source_id, s.resource_id, s.resource_kind" : "",
 	);
 	const points = evidence
 		? `SELECT * FROM ${streamEvidenceSource(source)}`
 		: source;
-	return `SELECT toString(time_unix_nano) AS timeNs,${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,event_day AS day
+	return `SELECT toString(time_unix_milli) AS timeMs,${POINT_KEY} AS sampleId,toString(series_id) AS seriesId,event_day AS day
 FROM ${execution ? executionPointSource(points) : `(${points})`}
 ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
-ORDER BY time_unix_nano DESC,sampleId DESC LIMIT {limit:UInt32}`;
+ORDER BY time_unix_milli DESC,sampleId DESC LIMIT {limit:UInt32}`;
 }
 
 function pointListQuery(fields: string[], evidence: boolean) {
@@ -137,26 +137,25 @@ function pointListQuery(fields: string[], evidence: boolean) {
 	const points = seriesPointSource(
 		" AND series_id IN arrayMap(id -> toUInt64(id), {ids:Array(String)})",
 		`AND event_day IN {days:Array(UInt32)}
-AND (series_id,time_unix_nano) IN {series:Array(Tuple(UInt64,UInt64))}
+AND (series_id,time_unix_milli) IN {series:Array(Tuple(UInt64,UInt64))}
 AND ${POINT_KEY} IN {samples:Array(String)}`,
 	);
-	return `SELECT ${projected}${POINT_KEY} AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_nano) AS timeNs,
+	return `SELECT ${projected}${POINT_KEY} AS sampleId,source_id AS sourceId,resource_id AS resourceId,metric_name AS metricName,toString(time_unix_milli) AS timeMs,
 host_id AS hostId,arrayFirst(a -> a.path='/host.name' AND a.kind=2,resource_attributes).string_value AS hostname,
 toUInt8(resource_kind) AS resourceKind,toUInt8(metric_kind) AS kind,toString(int_value) AS integer,double_value AS double,toString(if(bitTest(statistics_present,0),count,NULL)) AS count,unit,flags,scope_name AS scopeName,scope_version AS scopeVersion
 FROM ${evidence ? streamEvidenceSource(points) : `(${points})`}
-ORDER BY time_unix_nano DESC,sampleId DESC`;
+ORDER BY time_unix_milli DESC,sampleId DESC`;
 }
 
 // A page searches backwards from its cursor. Windows grow while they come back short and
 // shrink when ClickHouse rejects them for the read caps, so their cost follows the
 // project's data rate rather than the length of the range.
 const PAGE_SIZE = 100;
-const FIRST_WINDOW_NS = 300_000_000_000n;
-const MIN_WINDOW_NS = 1_000_000_000n;
+const FIRST_WINDOW_MS = 300_000n;
+const MIN_WINDOW_MS = 1_000n;
 const MAX_SEARCHES = 12;
 const SEARCH_BUDGET_MS = 4000;
-const NS_PER_MS = 1000000n;
-const NS_PER_DAY = 86400000000000n;
+const MS_PER_DAY = 86_400_000n;
 const AFTER_ALL = "FF".repeat(40),
 	BEFORE_ALL = "00".repeat(40);
 
@@ -166,14 +165,14 @@ function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 		sourceId: row.sourceId,
 		resourceId: row.resourceId,
 		metricName: row.metricName,
-		timeNs: row.timeNs,
+		timeMs: row.timeMs,
 		node: row.hostId ? activityNode(projectId, row.hostId, row.hostname) : null,
 		resourceKind: row.resourceKind,
 		kind: row.kind,
 		value: (row.flags & 1) === 0 ? (row.integer ?? row.double) : null,
 		count: row.count,
 		unit: row.unit,
-		measuredAt: nanosecondsDate(row.timeNs),
+		measuredAt: new Date(Number(row.timeMs)),
 		flags: row.flags,
 		scopeName: row.scopeName,
 		scopeVersion: row.scopeVersion,
@@ -185,7 +184,7 @@ function summary(projectId: string, row: Row, fields: string[]): PointSummary {
 
 interface Search {
 	keys: Key[];
-	cursorNs: bigint;
+	cursorMs: bigint;
 	cursorSample: string;
 	exhausted: boolean;
 }
@@ -194,17 +193,17 @@ interface Search {
 async function searchKeys(
 	sql: string,
 	params: Params,
-	fromNs: bigint,
-	cursorNs: bigint,
+	fromMs: bigint,
+	cursorMs: bigint,
 	cursorSample: string,
 	signal?: AbortSignal,
 	connection?: ClickHouseClient,
 ): Promise<Search> {
 	const keys: Key[] = [],
 		started = Date.now();
-	let span = FIRST_WINDOW_NS;
+	let span = FIRST_WINDOW_MS;
 	for (let search = 0; search < MAX_SEARCHES; search++) {
-		const lower = cursorNs - span > fromNs ? cursorNs - span : fromNs;
+		const lower = cursorMs - span > fromMs ? cursorMs - span : fromMs;
 		const limit = PAGE_SIZE + 1 - keys.length;
 		let batch: Key[];
 		try {
@@ -212,10 +211,10 @@ async function searchKeys(
 				sql,
 				{
 					...params,
-					firstDay: Number(lower / NS_PER_DAY),
-					lastDay: Number(cursorNs / NS_PER_DAY),
+					firstDay: Number(lower / MS_PER_DAY),
+					lastDay: Number(cursorMs / MS_PER_DAY),
 					lower: lower.toString(),
-					cursorTime: cursorNs.toString(),
+					cursorTime: cursorMs.toString(),
 					cursorSample,
 					limit,
 				},
@@ -224,33 +223,33 @@ async function searchKeys(
 			);
 		} catch (error) {
 			if (!(error instanceof ReadLimitError)) throw error;
-			if (span <= MIN_WINDOW_NS)
+			if (span <= MIN_WINDOW_MS)
 				throw new OperationError("CAPACITY", "Activity range is too dense");
 			span /= 4n;
 			continue;
 		}
 		for (const key of batch) {
 			const previous = keys.at(-1);
-			if (previous?.timeNs !== key.timeNs || previous.sampleId !== key.sampleId)
+			if (previous?.timeMs !== key.timeMs || previous.sampleId !== key.sampleId)
 				keys.push(key);
 		}
 		if (batch.length === limit) {
 			// The window holds more points: continue below the last key in it.
 			const last = batch.at(-1) as Key;
-			cursorNs = BigInt(last.timeNs);
+			cursorMs = BigInt(last.timeMs);
 			cursorSample = last.sampleId;
 		} else {
 			// Points at the window's lower bound were included, so the next window excludes them.
-			cursorNs = lower;
+			cursorMs = lower;
 			cursorSample = BEFORE_ALL;
-			if (lower <= fromNs)
-				return { keys, cursorNs, cursorSample, exhausted: true };
+			if (lower <= fromMs)
+				return { keys, cursorMs, cursorSample, exhausted: true };
 			span *= 4n;
 		}
 		if (keys.length > PAGE_SIZE || Date.now() - started > SEARCH_BUDGET_MS)
 			break;
 	}
-	return { keys, cursorNs, cursorSample, exhausted: false };
+	return { keys, cursorMs, cursorSample, exhausted: false };
 }
 
 export async function readPoints(
@@ -276,10 +275,10 @@ export async function readPoints(
 		...filters.params,
 		...(input.metric === undefined ? {} : { metric: input.metric }),
 		project: input.projectId,
-		from: (BigInt(from.getTime()) * NS_PER_MS).toString(),
-		to: (BigInt(to.getTime()) * NS_PER_MS).toString(),
+		from: BigInt(from.getTime()).toString(),
+		to: BigInt(to.getTime()).toString(),
 	};
-	const fromNs = BigInt(from.getTime()) * NS_PER_MS;
+	const fromMs = BigInt(from.getTime());
 	const search = await searchKeys(
 		keyQuery(
 			conditions,
@@ -288,10 +287,8 @@ export async function readPoints(
 			fieldsInFilters.some(isContinuityField),
 		),
 		params,
-		fromNs,
-		input.cursor
-			? BigInt(input.cursor.timeNs)
-			: BigInt(to.getTime()) * NS_PER_MS,
+		fromMs,
+		input.cursor ? BigInt(input.cursor.timeMs) : BigInt(to.getTime()),
 		input.cursor?.sampleId ?? AFTER_ALL,
 		signal,
 		connection,
@@ -306,7 +303,7 @@ export async function readPoints(
 					days: [...new Set(keys.map((key) => key.day))],
 					ids: [...new Set(keys.map((key) => key.seriesId))],
 					series: keys.map(
-						(key) => new TupleParam([BigInt(key.seriesId), BigInt(key.timeNs)]),
+						(key) => new TupleParam([BigInt(key.seriesId), BigInt(key.timeMs)]),
 					),
 					samples: keys.map((key) => key.sampleId),
 				},
@@ -322,17 +319,17 @@ export async function readPoints(
 		: {
 				from,
 				to,
-				timeNs: search.cursorNs.toString(),
+				timeMs: search.cursorMs.toString(),
 				sampleId: search.cursorSample,
 			};
 	const last = keys.at(-1);
 	if (search.keys.length > PAGE_SIZE && last)
-		nextCursor = { from, to, timeNs: last.timeNs, sampleId: last.sampleId };
+		nextCursor = { from, to, timeMs: last.timeMs, sampleId: last.sampleId };
 	return {
 		points,
 		from,
 		to,
-		searchedTo: nanosecondsDate(nextCursor?.timeNs ?? fromNs.toString()),
+		searchedTo: new Date(Number(nextCursor?.timeMs ?? fromMs)),
 		nextCursor,
 	};
 }
@@ -342,7 +339,7 @@ export async function readPoint(
 	signal?: AbortSignal,
 	connection?: ClickHouseClient,
 ): Promise<PointDetail> {
-	const day = Number(BigInt(input.timeNs) / 86400000000000n);
+	const day = Number(BigInt(input.timeMs) / 86_400_000n);
 	const attributes = [
 		"resource_attributes",
 		"scope_attributes",
@@ -356,7 +353,7 @@ export async function readPoint(
 		)
 		.join(",");
 	const rows = await query<JsonObject>(
-		`SELECT * EXCEPT(original_position,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_nano,last_seen_unix_nano,logical_series_id,resource_kind,metric_kind,temporality,monotonic,value_kind,statistics_present)
+		`SELECT * EXCEPT(original_position,stream_id,resource_attributes,scope_attributes,point_attributes,metric_metadata,exemplars,resource_entity_refs,resource_continuity,point_continuity,first_seen_unix_milli,last_seen_unix_milli,logical_series_id,resource_kind,metric_kind,temporality,monotonic,value_kind,statistics_present)
 REPLACE (${["count", "sum", "min", "max", "scale", "zero_count", "zero_threshold", "positive_offset", "negative_offset"].map((name, i) => `if(bitTest(statistics_present,${i}),${name},NULL) AS ${name}`).join(",")}),
 toUInt8(resource_kind) AS resource_kind,toUInt8(metric_kind) AS metric_kind,toUInt8(temporality) AS temporality,
 nullIf(toUInt8(monotonic),2) AS monotonic,
@@ -364,8 +361,8 @@ hex(stream_id) AS stream_id_hex,hex(original_position) AS original_hex,
 arrayMap(value -> base64Encode(value),exemplars) AS exemplars_base64,arrayMap(value -> base64Encode(value),resource_entity_refs) AS resource_entity_refs_base64,${projected}
 FROM ${streamEvidenceSource(
 			seriesPointSource(
-				` AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_nano <= {time:UInt64} AND ${seriesLastSeen("{time:UInt64}")}`,
-				`AND event_day={day:UInt32} AND time_unix_nano={time:UInt64} AND series_id={series:UInt64} AND stream_id=unhex({stream:String})`,
+				` AND source_id={source:String} AND resource_id={resource:String} AND metric_name={metric:String} AND first_seen_unix_milli <= {time:UInt64} AND ${seriesLastSeen("{time:UInt64}")}`,
+				`AND event_day={day:UInt32} AND time_unix_milli={time:UInt64} AND series_id={series:UInt64} AND stream_id=unhex({stream:String})`,
 				undefined,
 				"AND metric_name={metric:String}",
 			),
@@ -377,7 +374,7 @@ FROM ${streamEvidenceSource(
 			resource: input.resourceId,
 			metric: input.metricName,
 			day,
-			time: input.timeNs,
+			time: input.timeMs,
 			series: BigInt(`0x${input.sampleId.slice(0, 16)}`).toString(),
 			stream: input.sampleId.slice(16),
 		},
@@ -416,7 +413,7 @@ FROM ${streamEvidenceSource(
 		newest: string;
 	}>(
 		`SELECT hex(d.delivery_request) AS request, hex(c.delivery_context) AS context, toString(received_unix_nano) AS received,
-		  toString(min_event_unix_nano) AS oldest, toString(max_event_unix_nano) AS newest
+		  toString(min_event_unix_milli) AS oldest, toString(max_event_unix_milli) AS newest
 		FROM (SELECT * FROM deliveries FINAL WHERE project_id={project:String} AND source_id={source:String}
 		  AND raw_partition={partition:UInt32} AND raw_offset={offset:UInt64}) d
 		INNER JOIN (SELECT delivery_context_id, delivery_context FROM delivery_contexts FINAL
@@ -446,10 +443,14 @@ FROM ${streamEvidenceSource(
 		raw_partition: row.raw_partition,
 		raw_offset: String(row.raw_offset),
 		received_unix_nano: delivery.received,
-		min_event_unix_nano: delivery.oldest,
-		max_event_unix_nano: delivery.newest,
-		oldest_collection_delay_ns: String(received - BigInt(delivery.oldest)),
-		newest_collection_delay_ns: String(received - BigInt(delivery.newest)),
+		min_event_unix_milli: delivery.oldest,
+		max_event_unix_milli: delivery.newest,
+		oldest_collection_delay_ns: String(
+			received - BigInt(delivery.oldest) * 1_000_000n,
+		),
+		newest_collection_delay_ns: String(
+			received - BigInt(delivery.newest) * 1_000_000n,
+		),
 	};
 	delete row.original_hex;
 	// Binary values from ClickHouse use base64 at this JSON integration boundary.
@@ -460,7 +461,7 @@ FROM ${streamEvidenceSource(
 			"description",
 			"metric_kind",
 			"unit",
-			"time_unix_nano",
+			"time_unix_milli",
 			"start_time_unix_nano",
 			"int_value",
 			"double_value",

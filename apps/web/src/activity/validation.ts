@@ -32,12 +32,11 @@ function sample(value: unknown) {
 		throw new Error("Invalid sample identifier");
 	return value.toUpperCase();
 }
-function nanos(value: unknown) {
+function millis(value: unknown) {
 	if (
 		typeof value !== "string" ||
 		!/^[0-9]{1,20}$/.test(value) ||
-		BigInt(value) <= 0n ||
-		BigInt(value) > 18446744073709551615n
+		BigInt(value) > 18446744073709n
 	)
 		throw new Error("Invalid measurement timestamp");
 	return value;
@@ -103,10 +102,10 @@ export function parseExplorer(value: unknown): ExplorerInput {
 		cursor.to.getTime() > Date.now() + 30000
 	)
 		throw new Error("Invalid activity cursor");
-	const timeNs = nanos(cursor.timeNs);
+	const timeMs = millis(cursor.timeMs);
 	if (
-		BigInt(timeNs) < BigInt(cursor.from.getTime()) * 1000000n ||
-		BigInt(timeNs) > BigInt(cursor.to.getTime()) * 1000000n
+		BigInt(timeMs) < BigInt(cursor.from.getTime()) ||
+		BigInt(timeMs) > BigInt(cursor.to.getTime())
 	)
 		throw new Error("Cursor outside activity interval");
 	return {
@@ -114,7 +113,7 @@ export function parseExplorer(value: unknown): ExplorerInput {
 		cursor: {
 			from: cursor.from,
 			to: cursor.to,
-			timeNs,
+			timeMs,
 			sampleId: sample(cursor.sampleId),
 		},
 	};
@@ -127,7 +126,7 @@ export function parsePoint(value: unknown): PointInput {
 		sourceId: text(input.sourceId, 128),
 		resourceId: text(input.resourceId, 128),
 		metricName: text(input.metricName, 1024),
-		timeNs: nanos(input.timeNs),
+		timeMs: millis(input.timeMs),
 	};
 }
 export function parsePacket(value: unknown): PacketInput {

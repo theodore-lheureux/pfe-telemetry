@@ -60,8 +60,8 @@ fn main() {
         let context_id = compact[0].delivery_context_id.clone();
         let (received, oldest, newest) = (
             compact[0].received_unix_nano,
-            compact[0].min_event_unix_nano,
-            compact[0].max_event_unix_nano,
+            compact[0].min_event_unix_milli,
+            compact[0].max_event_unix_milli,
         );
         for (row, compact) in rows.iter_mut().zip(compact) {
             row.sample_id.clear();
@@ -71,8 +71,8 @@ fn main() {
             row.delivery_context_id = context_id.clone();
             row.original_position = compact.original_position;
             row.received_unix_nano = received;
-            row.min_event_unix_nano = oldest;
-            row.max_event_unix_nano = newest;
+            row.min_event_unix_milli = oldest;
+            row.max_event_unix_milli = newest;
         }
     }
     if args.get(1).map(String::as_str) == Some("--stats") {
@@ -99,7 +99,7 @@ fn main() {
             row.resource_attributes.sort_by(|a, b| a.path.cmp(&b.path));
             row.point_attributes.sort_by(|a, b| a.path.cmp(&b.path));
         }
-        let key = |point: &AnalyticalPoint| (point.time_unix_nano, point.stream_id.clone());
+        let key = |point: &AnalyticalPoint| (point.time_unix_milli, point.stream_id.clone());
         rows.sort_by_key(key);
         actual.sort_by_key(key);
         assert_eq!(actual, rows);

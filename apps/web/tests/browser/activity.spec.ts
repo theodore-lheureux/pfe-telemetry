@@ -90,6 +90,7 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 	let producerFailure: unknown;
 	let gateway: ChildProcess | undefined;
 	const time = BigInt(Date.now()) * 1000000n;
+	const timeMs = time / 1000000n;
 	const connection = {
 		connection_id: randomUUID(),
 		connected_unix_nano: time.toString(),
@@ -206,8 +207,8 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 						project_id: project.id,
 						series_id: "1",
 						logical_series_id: "1",
-						first_seen_unix_nano: (time - BigInt(index)).toString(),
-						last_seen_unix_nano: (time - BigInt(index)).toString(),
+						first_seen_unix_milli: (timeMs - BigInt(index)).toString(),
+						last_seen_unix_milli: (timeMs - BigInt(index)).toString(),
 						source_id: "activity-test-source",
 						resource_id: "activity-node-1",
 						resource_kind: 1,
@@ -217,11 +218,11 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 						metric_kind: 1,
 						received_unix_nano: time.toString(),
 						raw_offset: "1",
-						min_event_unix_nano: (time - 104n).toString(),
-						max_event_unix_nano: time.toString(),
+						min_event_unix_milli: (timeMs - 104n).toString(),
+						max_event_unix_milli: timeMs.toString(),
 						stream_id: createHash("sha256").update(project.id).digest(),
-						time_unix_nano: (time - BigInt(index)).toString(),
-						event_day: Number(time / 86400000000000n),
+						time_unix_milli: (timeMs - BigInt(index)).toString(),
+						event_day: Number(timeMs / 86400000n),
 						int_value: "9223372036854775807",
 						resource_present: true,
 						scope_present: true,
@@ -251,10 +252,10 @@ test("Activity has compact real point rows, expandable JSON, Explorer filters, l
 			const query =
 				table === "metric_points"
 					? `INSERT INTO telemetry.metric_points
-					(project_id, metric_name, series_id, stream_id, raw_partition, raw_offset, event_day, time_unix_nano, int_value, value_kind)
+					(project_id, metric_name, series_id, stream_id, raw_partition, raw_offset, event_day, time_unix_milli, int_value, value_kind)
 					SELECT *, 'INTEGER' FROM input('project_id String, metric_name String, series_id UInt64,
 						stream_id FixedString(32), raw_partition UInt32, raw_offset UInt64, event_day UInt32,
-						time_unix_nano UInt64, int_value Int64') FORMAT Protobuf`
+						time_unix_milli UInt64, int_value Int64') FORMAT Protobuf`
 					: `INSERT INTO telemetry.${table} FORMAT Protobuf`;
 			const result = await clickhouse.exec({
 				query,

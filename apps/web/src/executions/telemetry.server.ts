@@ -64,16 +64,16 @@ WITH samples AS (
   SELECT chart_id AS id,
     hex(stream_id) AS segment, metric_name AS metric, unit, host_id AS hostId,
     cpu_mode AS cpuMode,
-    time_unix_nano, series_id, flags,
+    time_unix_milli, series_id, flags,
     if(bitAnd(flags,1)=0,int_value,NULL) AS integer_value,
     if(bitAnd(flags,1)=0,double_value,NULL) AS scalar_double,
-    intDiv(time_unix_nano-{from:UInt64},{step:UInt64}) AS bucket
+    intDiv(time_unix_milli-{from:UInt64},{step:UInt64}) AS bucket
   FROM (${executionTelemetrySource})
 )
 SELECT id,segment,metric,unit,hostId,cpuMode,
-  toString({from:UInt64}+bucket*{step:UInt64}) AS bucketNs,
-  argMax(tuple(toString(time_unix_nano),if(isNull(integer_value),NULL,toString(integer_value)),scalar_double,flags),
-    tuple(time_unix_nano,series_id)) AS sample
+  toString({from:UInt64}+bucket*{step:UInt64}) AS bucketMs,
+  argMax(tuple(toString(time_unix_milli),if(isNull(integer_value),NULL,toString(integer_value)),scalar_double,flags),
+    tuple(time_unix_milli,series_id)) AS sample
 FROM samples GROUP BY id,segment,metric,unit,hostId,cpuMode,bucket
 `;
 
@@ -84,7 +84,7 @@ interface Row {
 	unit: "s" | "By";
 	hostId: string | null;
 	cpuMode: string | null;
-	bucketNs: string;
+	bucketMs: string;
 	sample: [string, string | null, number | null, number];
 }
 const settings = z.object({
@@ -172,8 +172,8 @@ function groupRows(rows: Row[]): TelemetrySeries[] {
 			entry.segments.push({ id: row.segment, points });
 		}
 		points.push({
-			bucketMs: Number(BigInt(row.bucketNs) / 1000000n),
-			timeNs: row.sample[0],
+			bucketMs: Number(row.bucketMs),
+			timeMs: row.sample[0],
 			integer: row.sample[1],
 			double: row.sample[2],
 			flags: row.sample[3],
@@ -205,9 +205,9 @@ export async function readTelemetry(
 				source: scope.sourceId,
 				allHosts: scope.hostId === null ? 1 : 0,
 				host: scope.hostId ?? "",
-				from: (BigInt(scope.from.getTime()) * 1000000n).toString(),
-				to: (BigInt(scope.to.getTime()) * 1000000n).toString(),
-				step: (BigInt(bucketMs) * 1000000n).toString(),
+				from: BigInt(scope.from.getTime()).toString(),
+				to: BigInt(scope.to.getTime()).toString(),
+				step: BigInt(bucketMs).toString(),
 				firstDay: Math.floor(scope.from.getTime() / 86400000),
 				lastDay: Math.floor((scope.to.getTime() - 1) / 86400000),
 			},

@@ -52,8 +52,8 @@ __POINT_COLUMNS__
 )
 ENGINE = ReplacingMergeTree(raw_offset)
 PARTITION BY event_day
-PRIMARY KEY (project_id, metric_name, series_id, time_unix_nano)
-ORDER BY (project_id, metric_name, series_id, time_unix_nano, stream_id)
+PRIMARY KEY (project_id, metric_name, series_id, time_unix_milli)
+ORDER BY (project_id, metric_name, series_id, time_unix_milli, stream_id)
 SETTINGS index_granularity = 1024, merge_max_block_size = 8192, merge_max_block_size_bytes = 10485760,
     fsync_after_insert = 0, fsync_part_directory = 1;
 
@@ -111,13 +111,13 @@ __KAFKA_SETTINGS__
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_series
 TO __DATABASE__.metric_series AS SELECT __SERIES_SELECT__ FROM __DATABASE__.normalized_kafka AS src
-WHERE last_seen_unix_nano != 0;
+WHERE last_seen_unix_milli != 0;
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_metric_points
 TO __DATABASE__.metric_points AS SELECT __POINT_SELECT__ FROM __DATABASE__.normalized_kafka AS src;
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_deliveries
-TO __DATABASE__.deliveries AS SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_request, delivery_context_id FROM __DATABASE__.normalized_kafka
+TO __DATABASE__.deliveries AS SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_milli, max_event_unix_milli, delivery_request, delivery_context_id FROM __DATABASE__.normalized_kafka
 WHERE notEmpty(delivery_request);
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_delivery_contexts
@@ -147,13 +147,13 @@ __KAFKA_SETTINGS__
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_metric_series
 TO __DATABASE__.metric_series AS SELECT __SERIES_SELECT__ FROM __DATABASE__.late_kafka AS src
-WHERE last_seen_unix_nano != 0;
+WHERE last_seen_unix_milli != 0;
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_metric_points
 TO __DATABASE__.metric_points AS SELECT __POINT_SELECT__ FROM __DATABASE__.late_kafka AS src;
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_deliveries
-TO __DATABASE__.deliveries AS SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_request, delivery_context_id FROM __DATABASE__.late_kafka
+TO __DATABASE__.deliveries AS SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_milli, max_event_unix_milli, delivery_request, delivery_context_id FROM __DATABASE__.late_kafka
 WHERE notEmpty(delivery_request);
 
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.ingest_late_delivery_contexts

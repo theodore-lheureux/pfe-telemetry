@@ -35,8 +35,8 @@ fn frame_size(point: &AnalyticalPoint, metadata: Option<&SeriesMetadata>) -> usi
         + metadata.map_or(0, |row| {
             row.attached_len(
                 !point.source_id.is_empty(),
-                point.time_unix_nano,
-                point.time_unix_nano,
+                point.time_unix_milli,
+                point.time_unix_milli,
             )
         });
     prost::length_delimiter_len(len) + len
@@ -55,20 +55,20 @@ impl Packet {
                 index: self.points.len(),
                 metadata,
                 resource,
-                first: point.time_unix_nano,
-                last: point.time_unix_nano,
+                first: point.time_unix_milli,
+                last: point.time_unix_milli,
             });
         }
         if let Some(bounds) = self.series.get_mut(&point.series_id) {
-            bounds.first = bounds.first.min(point.time_unix_nano);
-            bounds.last = bounds.last.max(point.time_unix_nano);
+            bounds.first = bounds.first.min(point.time_unix_milli);
+            bounds.last = bounds.last.max(point.time_unix_milli);
         }
         self.points.push(point);
         self.bytes += bytes;
     }
 
     fn finish(self, partition: u32, now: u64, emissions: &mut Vec<Emission>) -> RoutedRecord {
-        let time_unix_nano = self.points[0].time_unix_nano;
+        let time_unix_milli = self.points[0].time_unix_milli;
         let mut payload = Vec::with_capacity(self.bytes);
         for (index, point) in self.points.into_iter().enumerate() {
             if let Some(series) = self.series.get(&point.series_id)
@@ -93,7 +93,7 @@ impl Packet {
         debug_assert_eq!(self.bytes, payload.len());
         RoutedRecord {
             partition,
-            time_unix_nano,
+            time_unix_milli,
             payload,
         }
     }
@@ -168,19 +168,19 @@ pub(super) fn pack_prepared(
         let partition = identity::partition(&stream, partitions)
             .ok_or(PackError::Invariant("positive partition count required"))?;
         let metadata = metadata.unwrap_or_else(|| Arc::new(SeriesMetadata::new(&mut point)));
-        let late = !recent(point.time_unix_nano, now);
+        let late = !recent(point.time_unix_milli, now);
         let emission = Emission {
             series: point.series_id,
-            first: point.time_unix_nano,
-            time: point.time_unix_nano,
+            first: point.time_unix_milli,
+            time: point.time_unix_milli,
             emitted_at: now,
             lane_partition: partition * 2 + u32::from(late),
         };
         let emit = cache.is_none_or(|c| c.should_emit(emission));
         let stream_emission = Emission {
             series: stream,
-            first: point.time_unix_nano,
-            time: point.time_unix_nano,
+            first: point.time_unix_milli,
+            time: point.time_unix_milli,
             emitted_at: now,
             lane_partition: emission.lane_partition,
         };
@@ -194,11 +194,11 @@ pub(super) fn pack_prepared(
                 attach(&mut point);
                 emissions.streams.push(stream_emission);
             }
-            let time_unix_nano = point.time_unix_nano;
+            let time_unix_milli = point.time_unix_milli;
             let payload = if emit {
                 emissions.series.push(emission);
                 metadata
-                    .attach(point, resource.as_deref(), time_unix_nano, time_unix_nano)
+                    .attach(point, resource.as_deref(), time_unix_milli, time_unix_milli)
                     .encode_to_vec()
             } else {
                 point.encode_to_vec()
@@ -206,7 +206,7 @@ pub(super) fn pack_prepared(
             body_fits(payload.len(), broker_bytes).map_err(|_| PackError::RecordTooLarge)?;
             output.push(RoutedRecord {
                 partition,
-                time_unix_nano,
+                time_unix_milli,
                 payload,
             });
             continue;
@@ -259,14 +259,14 @@ mod tests {
             metric_name: "metric".into(),
             stream_id: [vec![0; 7], vec![stream], vec![0; 24]].concat(),
             int_value: Some(sample.into()),
-            time_unix_nano: t,
+            time_unix_milli: t,
             ..Default::default()
         }
     }
 
     #[test]
     fn packets_repeat_dimensions_only_across_packet_boundaries_and_track_event_bounds() {
-        let now = 1_800_000_000_000_000_000;
+        let now = 1_800_000_000_000;
         let mut records: Vec<_> = (0..129)
             .rev()
             .flat_map(|i| [point(now + i as u64, 0, i), point(now + i as u64, 1, i)])
@@ -275,14 +275,14 @@ mod tests {
         records[0].delivery_request = vec![1, 2, 3];
         let result = pack(records, 2, now, 2 * PACKED_BYTES, true).unwrap();
         assert_eq!(result.len(), 5);
-        let late = result.iter().find(|p| p.time_unix_nano == 1).unwrap();
+        let late = result.iter().find(|p| p.time_unix_milli == 1).unwrap();
         let late = AnalyticalPoint::decode(late.payload.as_slice()).unwrap();
-        assert_eq!(late.last_seen_unix_nano, 1);
+        assert_eq!(late.last_seen_unix_milli, 1);
         assert!(late.delivery_request.is_empty());
         for partition in [0, 1] {
             let packets: Vec<Vec<_>> = result
                 .iter()
-                .filter(|p| p.partition == partition && recent(p.time_unix_nano, now))
+                .filter(|p| p.partition == partition && recent(p.time_unix_milli, now))
                 .map(|p| {
                     let mut buf = p.payload.as_slice();
                     std::iter::from_fn(|| {
@@ -293,11 +293,11 @@ mod tests {
                 })
                 .collect();
             assert_eq!([packets[0].len(), packets[1].len()], [128, 1]);
-            assert_eq!(packets[0][0].first_seen_unix_nano, now + 1);
-            assert_eq!(packets[0][0].last_seen_unix_nano, now + 128);
-            assert_eq!(packets[0][1].last_seen_unix_nano, 0);
+            assert_eq!(packets[0][0].first_seen_unix_milli, now + 1);
+            assert_eq!(packets[0][0].last_seen_unix_milli, now + 128);
+            assert_eq!(packets[0][1].last_seen_unix_milli, 0);
             assert_eq!(packets[0][1].series_id, packets[0][0].series_id);
-            assert_eq!(packets[1][0].last_seen_unix_nano, now);
+            assert_eq!(packets[1][0].last_seen_unix_milli, now);
             assert_eq!(
                 packets
                     .iter()
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn framing_is_bounded_and_an_indivisible_point_fails_closed() {
-        let now = 1_800_000_000_000_000_000;
+        let now = 1_800_000_000_000;
         let wide = |size| AnalyticalPoint {
             delivery_request: vec![1; size],
             ..point(now, 0, 0)
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn stream_evidence_is_packet_local_and_only_acknowledged_output_suppresses_it() {
-        let now = 1_800_000_000_000_000_000;
+        let now = 1_800_000_000_000;
         let cache = SeriesCache::new(16, 60);
         let pack = |at| {
             let points = [point(now, 0, 1), point(now + 1, 0, 2), point(now + 2, 2, 3)]

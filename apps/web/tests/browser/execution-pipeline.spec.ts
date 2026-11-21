@@ -728,7 +728,7 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 									.filter((s) => s.metric === metric)
 									.flatMap((s) =>
 										s.segments.flatMap((segment) =>
-											segment.points.map((p) => p.timeNs),
+											segment.points.map((p) => p.timeMs),
 										),
 									),
 							);
@@ -796,9 +796,9 @@ test("real Linux collector to Kafka/ClickHouse to authorized English/French exec
 							.flatMap((segment) => segment.points)
 							.reduce(
 								(latest, point) =>
-									BigInt(point.timeNs) > latest ? BigInt(point.timeNs) : latest,
+									BigInt(point.timeMs) > latest ? BigInt(point.timeMs) : latest,
 								0n,
-							) / 1_000_000n,
+							),
 					),
 				),
 			),

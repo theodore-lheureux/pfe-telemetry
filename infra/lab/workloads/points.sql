@@ -8,12 +8,12 @@ WITH memberships AS (
 ), selected_series AS (
     SELECT * FROM telemetry.metric_series FINAL
     WHERE project_id = {project:String}
-      AND last_seen_unix_nano >= ({start:UInt64} - least({start:UInt64}, toUInt64(60000000000)))
-      AND first_seen_unix_nano <= {end:UInt64}
+      AND last_seen_unix_milli >= (intDiv({start:UInt64}, 1000000) - least(intDiv({start:UInt64}, 1000000), toUInt64(60000)))
+      AND first_seen_unix_milli <= intDiv({end:UInt64}, 1000000)
       AND (source_id, resource_id) IN (SELECT node_id, resource FROM memberships)
 )
 SELECT project_id, source_id, resource_id, metric_name, unit,
-       hex(stream_id) AS stream_id, series_id, time_unix_nano,
+       hex(stream_id) AS stream_id, series_id, time_unix_milli,
        start_time_unix_nano, if(value_kind=1,int_value,NULL) AS int_value,
        if(value_kind=2,double_value,NULL) AS double_value, toUInt8(temporality) AS temporality,
        nullIf(toUInt8(monotonic),2) AS monotonic, scope_name, scope_version,
@@ -22,12 +22,12 @@ FROM (
     SELECT * FROM telemetry.metric_points FINAL
     WHERE project_id = {project:String} AND series_id IN (SELECT series_id FROM selected_series)
       AND event_day BETWEEN intDiv({start:UInt64}, 86400000000000) AND intDiv({end:UInt64}, 86400000000000)
-      AND time_unix_nano >= {start:UInt64} AND time_unix_nano <= {end:UInt64}
+      AND time_unix_milli * 1000000 >= {start:UInt64} AND time_unix_milli * 1000000 <= {end:UInt64}
 ) INNER JOIN selected_series USING (project_id, metric_name, series_id)
 WHERE arrayExists(
       m -> m.1 = source_id AND m.2 = resource_id
-           AND time_unix_nano >= m.3 AND time_unix_nano < m.4,
+           AND time_unix_milli * 1000000 >= m.3 AND time_unix_milli * 1000000 < m.4,
       (SELECT groupArray((node_id, resource, start, end)) FROM memberships)
   )
-ORDER BY source_id, resource_id, metric_name, series_id, time_unix_nano
+ORDER BY source_id, resource_id, metric_name, series_id, time_unix_milli
 FORMAT JSONEachRow

@@ -473,7 +473,7 @@
   "collection_profile": "Profile: {profile}",
   "start_utc_iso": "Start (UTC ISO timestamp)",
   "end_utc_iso": "End (UTC ISO timestamp, exclusive)",
-  "sample_nanoseconds": "Sample timestamp (Unix nanoseconds)",
+  "sample_milliseconds": "Sample timestamp (Unix milliseconds)",
   "no_recorded_value": "No recorded value",
   "chart_exact_values": "Dots show measured values only, without interpolation. Integers too large for exact chart coordinates appear only in the exact-value table.",
   "unidentified_host": "Unidentified host",

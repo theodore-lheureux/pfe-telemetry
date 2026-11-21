@@ -145,7 +145,7 @@ export function ActivityPage({
 			live
 				? live.packets.map((packet) => ({ id: packet.id, packet }))
 				: (page?.points.map((point) => ({
-						id: `${point.timeNs}:${point.sampleId}`,
+						id: `${point.timeMs}:${point.sampleId}`,
 						point,
 					})) ?? []),
 		[live, page],

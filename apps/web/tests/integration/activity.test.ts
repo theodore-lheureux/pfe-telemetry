@@ -114,7 +114,7 @@ test("all activity operations authorize canonical project access before touching
 		sourceId: "source",
 		resourceId: "node",
 		metricName: "metric",
-		timeNs: "1",
+		timeMs: "1",
 		sampleId: "aa".repeat(40),
 	};
 	await expect(

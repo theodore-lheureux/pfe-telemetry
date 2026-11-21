@@ -238,15 +238,7 @@ export function useActivityColumns({
 				cell: ({ row }) => {
 					const point = row.original.point;
 					const value = point?.measuredAt ?? row.original.packet?.receivedAt;
-					return value ? (
-						<TimeDisplay
-							value={value}
-							mode="relative"
-							unixNanoseconds={point?.timeNs}
-						/>
-					) : (
-						"—"
-					);
+					return value ? <TimeDisplay value={value} mode="relative" /> : "—";
 				},
 			},
 		],

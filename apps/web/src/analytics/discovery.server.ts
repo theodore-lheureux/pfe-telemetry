@@ -29,12 +29,11 @@ interface MetricRow {
 	monotonic: number;
 	unit: string;
 	description: string;
-	firstSeenNs: string;
-	lastSeenNs: string;
+	firstSeenMs: string;
+	lastSeenMs: string;
 }
 
-const nanosecondsDate = (value: string) =>
-	new Date(Number(BigInt(value) / 1_000_000n));
+const millisecondsDate = (value: string) => new Date(Number(BigInt(value)));
 
 function definition(row: MetricRow): MetricDefinition {
 	// 2 records an unknown monotonicity in the catalog's non-nullable key.
@@ -47,15 +46,15 @@ function definition(row: MetricRow): MetricDefinition {
 		unit: row.unit,
 		description: row.description,
 		behavior: metricBehavior(row.kind, row.temporality, monotonic),
-		firstSeen: nanosecondsDate(row.firstSeenNs),
-		lastSeen: nanosecondsDate(row.lastSeenNs),
+		firstSeen: millisecondsDate(row.firstSeenMs),
+		lastSeen: millisecondsDate(row.lastSeenMs),
 	};
 }
 
 const METRICS = `SELECT metric_name AS name, toUInt8(metric_kind) AS kind, toUInt8(temporality) AS temporal,
-    toUInt8(monotonic) AS monotonic_state, unit, argMax(description, last_seen_unix_nano) AS description,
-    toString(min(first_seen_unix_nano)) AS firstSeenNs,
-    toString(max(last_seen_unix_nano)) AS lastSeenNs
+    toUInt8(monotonic) AS monotonic_state, unit, argMax(description, last_seen_unix_milli) AS description,
+    toString(min(first_seen_unix_milli)) AS firstSeenMs,
+    toString(max(last_seen_unix_milli)) AS lastSeenMs
   FROM metric_series
   WHERE project_id = {project:String}`;
 
@@ -71,7 +70,7 @@ export async function listMetrics(
 	const result = await connection.query({
 		query: `SELECT * EXCEPT(monotonic_state, temporal), monotonic_state AS monotonic, temporal AS temporality FROM (${METRICS}
   GROUP BY name, kind, temporal, monotonic_state, unit
-  ORDER BY name, max(last_seen_unix_nano) DESC
+  ORDER BY name, max(last_seen_unix_milli) DESC
   LIMIT ${MAX_METRICS})`,
 		format: "JSONEachRow",
 		query_params: { project: projectId },
@@ -91,7 +90,7 @@ export async function metricDefinitions(
 	const result = await connection.query({
 		query: `SELECT * EXCEPT(monotonic_state, temporal), monotonic_state AS monotonic, temporal AS temporality FROM (${METRICS} AND metric_name IN {metrics:Array(String)}
   GROUP BY name, kind, temporal, monotonic_state, unit
-  ORDER BY max(last_seen_unix_nano) DESC
+  ORDER BY max(last_seen_unix_milli) DESC
   LIMIT 1 BY name)`,
 		format: "JSONEachRow",
 		query_params: { project: projectId, metrics: [...new Set(metrics)] },
@@ -104,7 +103,7 @@ export async function metricDefinitions(
 }
 
 const attributeSource = (allMetrics: boolean) => `
-  SELECT metric_name, last_seen_unix_nano, entry.1 AS scope,
+  SELECT metric_name, last_seen_unix_milli, entry.1 AS scope,
     substring(entry.2, 2) AS attribute_key, toUInt8(entry.3) AS value_kind
   FROM metric_series
   ARRAY JOIN arrayConcat(
@@ -142,7 +141,7 @@ interface AttributeRow {
 	scope: "point" | "resource";
 	key: string;
 	kind: number;
-	lastSeenNs: string;
+	lastSeenMs: string;
 	metrics: string[];
 }
 
@@ -161,7 +160,7 @@ export async function listAttributeCatalog(
 ) {
 	const result = await connection.query({
 		query: `SELECT scope, attribute_key AS key, value_kind AS kind,
-    toString(max(last_seen_unix_nano)) AS lastSeenNs,
+    toString(max(last_seen_unix_milli)) AS lastSeenMs,
     arraySort(groupUniqArray(${MAX_ATTRIBUTE_METRICS})(metric_name)) AS metrics
   FROM (${attributeSource(metric === undefined)})
   GROUP BY scope, key, kind
@@ -175,9 +174,9 @@ export async function listAttributeCatalog(
 		abort_signal: signal,
 		clickhouse_settings: SETTINGS,
 	});
-	return (await result.json<AttributeRow>()).map(({ lastSeenNs, ...row }) => ({
+	return (await result.json<AttributeRow>()).map(({ lastSeenMs, ...row }) => ({
 		...row,
-		lastSeen: nanosecondsDate(lastSeenNs),
+		lastSeen: millisecondsDate(lastSeenMs),
 	}));
 }
 
@@ -215,7 +214,7 @@ export async function metricAttributeExamples(
 		query_params: {
 			project: projectId,
 			metric,
-			from: String(BigInt(from) * 1_000_000n),
+			from: String(BigInt(from)),
 		},
 		abort_signal: signal,
 		clickhouse_settings: SETTINGS,
@@ -249,7 +248,7 @@ export async function attributeValueSample(
 	const column = scope === "point" ? "point_attributes" : "resource_attributes";
 	const points = seriesPointSource(
 		` AND metric_name IN {metrics:Array(String)} AND ${seriesLastSeen("{from:UInt64}")}`,
-		"AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}",
+		"AND event_day >= {firstDay:UInt32} AND time_unix_milli >= {from:UInt64}",
 		"s.suggested",
 		"",
 		[`${column} AS suggested`],
@@ -273,7 +272,7 @@ export async function attributeValueSample(
 			metrics,
 			path: `/${key}`,
 			firstDay: Math.floor(from / 86_400_000),
-			from: String(BigInt(from) * 1_000_000n),
+			from: String(BigInt(from)),
 		},
 		abort_signal: signal,
 		clickhouse_settings: SETTINGS,
@@ -309,7 +308,7 @@ export async function listAttributeValues(
 	const onPoint = isPointField(field);
 	const points = seriesPointSource(
 		` AND ${seriesLastSeen("{from:UInt64}")}${metric === undefined ? "" : " AND metric_name = {metric:String}"}`,
-		"AND event_day >= {firstDay:UInt32} AND time_unix_nano >= {from:UInt64}",
+		"AND event_day >= {firstDay:UInt32} AND time_unix_milli >= {from:UInt64}",
 		onPoint ? "" : "s.suggested",
 		"",
 		onPoint ? [] : [`${value} AS suggested`],
@@ -325,7 +324,7 @@ export async function listAttributeValues(
 			...params,
 			project: projectId,
 			firstDay: Math.floor(from / 86_400_000),
-			from: (BigInt(from) * 1_000_000n).toString(),
+			from: BigInt(from).toString(),
 			...(metric === undefined ? {} : { metric }),
 		},
 		abort_signal: signal,

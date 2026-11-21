@@ -163,7 +163,8 @@ message AnalyticalPoint {
   MetricKind metric_kind = 9;
   bytes sample_id = 10;
   bytes stream_id = 11;
-  fixed64 time_unix_nano = 12;
+  // Floored OTLP event time. Start time retains nanoseconds for continuity.
+  fixed64 time_unix_milli = 12;
   fixed64 start_time_unix_nano = 13;
   uint32 event_day = 14;
   reserved 15;
@@ -206,8 +207,8 @@ message AnalyticalPoint {
   bytes lineage = 51;
   fixed64 series_id = 52;
   fixed64 logical_series_id = 53;
-  fixed64 first_seen_unix_nano = 54;
-  fixed64 last_seen_unix_nano = 55;
+  fixed64 first_seen_unix_milli = 54;
+  fixed64 last_seen_unix_milli = 55;
   repeated ContinuityNode resource_continuity = 56;
   repeated ContinuityNode point_continuity = 57;
   reserved 58;
@@ -218,8 +219,8 @@ message AnalyticalPoint {
   bool stream_evidence = 63;
   uint32 raw_partition = 64;
   fixed64 raw_offset = 65;
-  fixed64 min_event_unix_nano = 66;
-  fixed64 max_event_unix_nano = 67;
+  fixed64 min_event_unix_milli = 66;
+  fixed64 max_event_unix_milli = 67;
   bytes delivery_context_id = 68;
   bytes delivery_context = 69;
 }

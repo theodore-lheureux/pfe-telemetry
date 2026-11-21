@@ -408,10 +408,10 @@ fn lower(
                     } else {
                         identity::sample_id(raw, &original)?.to_vec()
                     };
-                    row.time_unix_nano = observation.time();
+                    row.time_unix_milli = observation.time() / 1_000_000;
                     row.start_time_unix_nano = observation.start();
                     row.flags = observation.flags();
-                    row.event_day = (observation.time() / 86_400_000_000_000) as u32;
+                    row.event_day = (row.time_unix_milli / 86_400_000) as u32;
                     row.lineage = lineage.as_ref().map_or_else(Vec::new, |lineage| {
                         PointLineage {
                             original: Some(original),
@@ -424,8 +424,8 @@ fn lower(
                     } else {
                         Vec::new()
                     };
-                    min_event = min_event.min(row.time_unix_nano);
-                    max_event = max_event.max(row.time_unix_nano);
+                    min_event = min_event.min(row.time_unix_milli);
+                    max_event = max_event.max(row.time_unix_milli);
                     lower_observation(&mut row, observation)?;
                     let mut source_len = 0;
                     if compact
@@ -462,8 +462,8 @@ fn lower(
     if compact && let Some(first) = out.first_mut() {
         let first_frame_len = first.frame.encoded_len();
         first.frame.received_unix_nano = raw.received_unix_nano;
-        first.frame.min_event_unix_nano = min_event;
-        first.frame.max_event_unix_nano = max_event;
+        first.frame.min_event_unix_milli = min_event;
+        first.frame.max_event_unix_milli = max_event;
         // The per-delivery socket peer is independent of the collector connection.
         if let Some(mut connection) = request_lineage.delivery.take() {
             request_lineage.delivery = Some(DeliveryContext {
@@ -740,7 +740,7 @@ pub fn normalized_routing_key(point: &AnalyticalPoint) -> Result<[u8; 32], &'sta
 pub struct RoutedRecord {
     pub partition: u32,
     pub payload: Vec<u8>,
-    pub time_unix_nano: u64,
+    pub time_unix_milli: u64,
 }
 
 pub fn kafka_records(
@@ -762,7 +762,7 @@ pub fn kafka_records(
         records.push(RoutedRecord {
             partition,
             payload: row,
-            time_unix_nano: point.time_unix_nano,
+            time_unix_milli: point.time_unix_milli,
         });
     }
     Ok(records)

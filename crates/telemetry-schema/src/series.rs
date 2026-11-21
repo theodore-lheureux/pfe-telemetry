@@ -149,8 +149,8 @@ impl SeriesMetadata {
             point.resource_attributes.clone_from(&resource.dimensions);
             point.resource_entity_refs.clone_from(&resource.entity_refs);
         }
-        point.first_seen_unix_nano = first;
-        point.last_seen_unix_nano = last;
+        point.first_seen_unix_milli = first;
+        point.last_seen_unix_milli = last;
         point
     }
 }
@@ -233,8 +233,8 @@ impl ResourceAttributes {
 /// the storage key but doesn't split the logical series used for dashboard math.
 pub fn split(point: &mut AnalyticalPoint) -> AnalyticalPoint {
     let (mut series, _) = split_identity(point, None);
-    series.first_seen_unix_nano = point.time_unix_nano;
-    series.last_seen_unix_nano = point.time_unix_nano;
+    series.first_seen_unix_milli = point.time_unix_milli;
+    series.last_seen_unix_milli = point.time_unix_milli;
     series
 }
 
@@ -370,7 +370,7 @@ mod tests {
         let fixture = AnalyticalPoint {
             project_id: "p".into(),
             metric_name: "counter".into(),
-            time_unix_nano: 100,
+            time_unix_milli: 100,
             resource_attributes: vec![
                 attr("/hostname", "host"),
                 attr("/recount.host.boot_id", "1"),
@@ -396,12 +396,12 @@ mod tests {
         .unwrap();
         assert_eq!(decoded.series_id, series.series_id);
         assert_eq!(decoded.logical_series_id, series.logical_series_id);
-        assert_eq!(decoded.first_seen_unix_nano, point.time_unix_nano);
+        assert_eq!(decoded.first_seen_unix_milli, point.time_unix_milli);
         assert_eq!(decoded.project_id, point.project_id);
         assert_eq!(decoded.resource_continuity, point.resource_continuity);
 
         let mut next = fixture.clone();
-        next.time_unix_nano = 200;
+        next.time_unix_milli = 200;
         next.point_attributes[0] = attr("/recount.counter.segment_id", "2");
         next.resource_attributes[1] = attr("/recount.host.boot_id", "2");
         assert_eq!(split(&mut next).series_id, series.series_id);

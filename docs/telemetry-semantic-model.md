@@ -23,7 +23,7 @@ Status: accepted design for [PFE-74](https://linear.app/pfe-telemetry/issue/PFE-
 
 | Field                                                    | Type                   | Source                                                              |
 | -------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------- |
-| `time`                                                   | timestamp (ns)         | `time_unix_nano`                                                    |
+| `time`                                                   | timestamp (ms)         | `time_unix_milli`                                                   |
 | `node`                                                   | node reference         | `source_id`, resolved to the collector node for display             |
 | `resource.id`, `resource.kind`                           | string, enum           | `resource_id`, `resource_kind`                                      |
 | `host`                                                   | string                 | `host_id`                                                           |

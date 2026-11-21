@@ -14,8 +14,6 @@ import {
 } from "./series-source.server";
 import { type ParsedField, parseField } from "./validation";
 
-const NS_PER_MS = 1_000_000n;
-
 // Combining the sources' values in a bucket. Percentiles are exact over those values.
 const COMBINE_SQL: Record<Combine, string> = {
 	sum: "sum(value)",
@@ -184,7 +182,7 @@ function perSeries(
 	// Rates divide by the time the range covers within each bucket, so the current,
 	// still-filling bucket and a range starting mid-bucket are not understated.
 	const covered = timeseries
-		? "((least(bucket + {step:UInt64}, {to:UInt64}) - greatest(bucket, {from:UInt64})) / 1e9)"
+		? "((least(bucket + {step:UInt64}, {to:UInt64}) - greatest(bucket, {from:UInt64})) / 1e3)"
 		: "{seconds:Float64}";
 	const scale = measure.calculation === "rate" ? ` / ${covered}` : "";
 	if (behavior === "delta")
@@ -296,7 +294,7 @@ function measureSelect(
 	// Timeseries buckets align to the interval; a table result is one bucket.
 	const bucket =
 		query.shape === "timeseries"
-			? "intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64}"
+			? "intDiv(time_unix_milli, {step:UInt64}) * {step:UInt64}"
 			: "toUInt64(0)";
 	const groups = groupColumns.join(", ");
 	// A sum or count is larger than each source, so their band would not surround it.
@@ -309,16 +307,16 @@ function measureSelect(
 	const selection =
 		groups && query.other
 			? `SELECT ${groupColumns.map((column) => `if(rank <= {seriesLimit:UInt32}, ${column}, NULL) AS k_${column}`).join(", ")},
-  rank > {seriesLimit:UInt32} AS other, toString(bucket) AS bucket_ns, ${OTHER_SQL[measure.combine]} AS series_value, min(rank) AS series_rank,
+  rank > {seriesLimit:UInt32} AS other, toString(bucket) AS bucket_ms, ${OTHER_SQL[measure.combine]} AS series_value, min(rank) AS series_rank,
   if(other, NULL, any(low)) AS series_low, if(other, NULL, any(high)) AS series_high,
   if(other, NULL, any(sources)) AS series_sources
-FROM ranked GROUP BY ${groupColumns.map((column) => `k_${column}`).join(", ")}, other, bucket_ns`
-			: `SELECT ${groupColumns.map((column) => `${column} AS k_${column}`).join(", ")}${groups ? ", " : ""}0 AS other, toString(bucket) AS bucket_ns, value AS series_value, rank AS series_rank,
+FROM ranked GROUP BY ${groupColumns.map((column) => `k_${column}`).join(", ")}, other, bucket_ms`
+			: `SELECT ${groupColumns.map((column) => `${column} AS k_${column}`).join(", ")}${groups ? ", " : ""}0 AS other, toString(bucket) AS bucket_ms, value AS series_value, rank AS series_rank,
   low AS series_low, high AS series_high, sources AS series_sources
 FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
 	return `WITH base AS (
   SELECT logical_series_id AS series, stream_id AS stream, series_id AS storage_series,
-    ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_nano AS t,
+    ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_milli AS t,
     ${bucket} AS bucket, ${VALUE} AS v
   FROM ${usesExecution ? executionPointSource(points) : `(${points})`}
   ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
@@ -348,8 +346,8 @@ export function compileMeasure(
 ): CompiledQuery {
 	const params = new Params();
 	const sql = measureSelect(query, measure, scope, params);
-	const from = BigInt(window.from.getTime()) * NS_PER_MS,
-		to = BigInt(window.to.getTime()) * NS_PER_MS;
+	const from = BigInt(window.from.getTime()),
+		to = BigInt(window.to.getTime());
 	const bucketSeconds =
 		query.shape === "timeseries" && query.interval
 			? INTERVALS[query.interval]
@@ -361,7 +359,7 @@ export function compileMeasure(
 			project: window.projectId,
 			from: from.toString(),
 			to: to.toString(),
-			step: (BigInt(Math.round(bucketSeconds)) * 1_000_000_000n).toString(),
+			step: (BigInt(Math.round(bucketSeconds)) * 1_000n).toString(),
 			seconds: bucketSeconds,
 			firstDay: Math.floor(window.from.getTime() / 86_400_000),
 			lastDay: Math.floor((window.to.getTime() - 1) / 86_400_000),

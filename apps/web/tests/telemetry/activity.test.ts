@@ -5,7 +5,7 @@ import {
 	createPointFixture,
 	from,
 	insertPoints,
-	ns,
+	ms,
 	stringNode,
 } from "./fixture";
 
@@ -17,7 +17,7 @@ afterAll(async () => {
 	await fixture?.close();
 });
 
-const MINUTE = 60_000_000_000n;
+const MINUTE = 60_000n;
 
 async function cpu(
 	project: string,
@@ -37,7 +37,7 @@ async function cpu(
 			project,
 			source: "node-a",
 			host: "node-a",
-			time: (ns + at * MINUTE).toString(),
+			time: (ms + at * MINUTE).toString(),
 			integer: null as unknown as string,
 			mode,
 			sample,
@@ -63,7 +63,7 @@ const page = (
 			cursor: {
 				from,
 				to,
-				timeNs: (BigInt(to.getTime()) * 1_000_000n).toString(),
+				timeMs: BigInt(to.getTime()).toString(),
 				sampleId: "FF".repeat(40),
 			},
 			...options,
@@ -131,7 +131,7 @@ test("inspector restores request provenance from a compact delivery", async () =
 		sourceId: point.sourceId,
 		resourceId: point.resourceId,
 		metricName: point.metricName,
-		timeNs: point.timeNs,
+		timeMs: point.timeMs,
 		sampleId: point.sampleId,
 	};
 	const detail = await readPoint(input, undefined, fixture.reader);

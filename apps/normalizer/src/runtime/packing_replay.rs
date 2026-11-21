@@ -334,13 +334,13 @@ async fn scenario_with_linger(
             let dimensions = series::split(&mut point);
             expected_ids.push(format!(
                 "{}\t{}\t{}\t{}\t{}",
-                point.time_unix_nano,
+                point.time_unix_milli,
                 dimensions.series_id,
                 identity::hex(&point.stream_id),
                 dimensions.logical_series_id,
                 index / if replicas { 3 } else { 1 },
             ));
-            expected.push(point.time_unix_nano);
+            expected.push(point.time_unix_milli);
         }
         let sent = Instant::now();
         producer
@@ -359,7 +359,7 @@ async fn scenario_with_linger(
         }
         loop {
             let count: usize = sql(&format!(
-                "SELECT uniqExact(series_id,stream_id,time_unix_nano) FROM {db}.metric_points"
+                "SELECT uniqExact(series_id,stream_id,time_unix_milli) FROM {db}.metric_points"
             ))
             .trim()
             .parse()
@@ -424,7 +424,7 @@ async fn scenario_with_linger(
             let mut payload = message.payload().unwrap();
             while !payload.is_empty() {
                 let point = AnalyticalPoint::decode_length_delimited(&mut payload).unwrap();
-                if point.last_seen_unix_nano != 0 {
+                if point.last_seen_unix_milli != 0 {
                     *series_frames.entry(point.series_id).or_default() += 1;
                 }
             }
@@ -466,7 +466,7 @@ async fn scenario_with_linger(
         );
     }
     let actual = sql(&format!(
-            "SELECT p.time_unix_nano, p.series_id, lower(hex(p.stream_id)), s.logical_series_id, p.raw_offset
+            "SELECT p.time_unix_milli, p.series_id, lower(hex(p.stream_id)), s.logical_series_id, p.raw_offset
             FROM (SELECT * FROM {db}.metric_points FINAL) AS p
             INNER JOIN (SELECT * FROM {db}.metric_series FINAL) AS s USING (project_id, series_id)
             INNER JOIN (SELECT * FROM {db}.deliveries FINAL) AS d
@@ -486,7 +486,7 @@ async fn scenario_with_linger(
         "one delivery row per raw request",
     );
     let logical_rows = sql(&format!(
-        "SELECT hex(formatRow('RowBinary', *)) FROM {db}.metric_points FINAL ORDER BY series_id,stream_id,time_unix_nano"
+        "SELECT hex(formatRow('RowBinary', *)) FROM {db}.metric_points FINAL ORDER BY series_id,stream_id,time_unix_milli"
     ));
     eprintln!(
         "packed={packed} linger={linger_ms:?} burst={burst}: {} verified points; observed visibility delays {delays:?}",

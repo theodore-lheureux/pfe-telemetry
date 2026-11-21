@@ -88,7 +88,8 @@ async fn normalize(
     let payload = (frame.0.len() <= state.config.limits.decoded_bytes).then(|| frame.0.to_vec());
     let partitions = state.config.normalized_partitions;
     let limits = state.config.limits;
-    let now = unix_nanos();
+    let now_ns = unix_nanos();
+    let now = now_ns / 1_000_000;
     let broker_bytes = state.config.normalized_broker_max_bytes;
     let packed_recent = state.packed_recent;
     let cache = state.series_cache.clone();
@@ -113,10 +114,10 @@ async fn normalize(
                     .as_slice()
                     .try_into()
                     .expect("context digest"),
-                first: frame.min_event_unix_nano,
-                time: frame.max_event_unix_nano,
+                first: frame.min_event_unix_milli,
+                time: frame.max_event_unix_milli,
                 emitted_at: now,
-                lane_partition: u32::from(!recent(frame.time_unix_nano, now)),
+                lane_partition: u32::from(!recent(frame.time_unix_milli, now)),
             };
             if delivery_cache.should_emit(emission) {
                 Some(emission)
@@ -156,7 +157,7 @@ async fn normalize(
                 partition,
                 offset,
                 timestamp,
-                now,
+                now_ns,
             ));
             let mut headers = HeaderMap::new();
             headers.insert(
@@ -189,7 +190,7 @@ async fn normalize(
     let points: Vec<(Point, i32, &str)> = records
         .into_iter()
         .map(|record| {
-            let topic = if recent(record.time_unix_nano, now) {
+            let topic = if recent(record.time_unix_milli, now) {
                 &state.config.normalized_topic
             } else {
                 &state.config.late_topic
@@ -317,16 +318,16 @@ fn app(config: Config, packed_recent: bool) -> impl App {
             preparation: Arc::new(Semaphore::new(config.max_active)),
             series_cache: Arc::new(SeriesCache::new(
                 config.series_cache_entries,
-                config.series_resend_ns,
+                config.series_resend_ms,
             )),
             identity_cache: Arc::new(IdentityCache::default()),
             stream_cache: Arc::new(SeriesCache::new(
                 config.series_cache_entries,
-                config.series_resend_ns,
+                config.series_resend_ms,
             )),
             delivery_cache: Arc::new(SeriesCache::new(
                 config.series_cache_entries,
-                config.series_resend_ns,
+                config.series_resend_ms,
             )),
             config,
             packed_recent,

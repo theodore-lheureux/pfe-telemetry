@@ -152,11 +152,11 @@ test("browser counters do not count old queued measurements as reporting", () =>
 test("activity cursors bind time bounds and reject invalid identifiers without coercing UInt64 timestamps", () => {
 	const to = new Date(),
 		from = new Date(to.getTime() - 3600000),
-		timeNs = (BigInt(to.getTime()) * 1000000n).toString();
+		timeMs = BigInt(to.getTime()).toString();
 	expect(
 		parseExplorer({
 			...reference,
-			cursor: { to, from, timeNs, sampleId: "aa".repeat(40) },
+			cursor: { to, from, timeMs, sampleId: "aa".repeat(40) },
 		}).cursor?.to,
 	).toBe(to);
 	expect(() =>
@@ -165,7 +165,7 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 			cursor: {
 				to,
 				from: new Date(to.getTime() + 1),
-				timeNs,
+				timeMs,
 				sampleId: "aa".repeat(40),
 			},
 		}),
@@ -173,7 +173,7 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 	expect(() =>
 		parseExplorer({
 			...reference,
-			cursor: { to, from, timeNs: "1", sampleId: "aa".repeat(40) },
+			cursor: { to, from, timeMs: "1", sampleId: "aa".repeat(40) },
 		}),
 	).toThrow();
 	expect(() =>
@@ -182,7 +182,7 @@ test("activity cursors bind time bounds and reject invalid identifiers without c
 			sourceId: "source",
 			resourceId: "node",
 			metricName: "metric",
-			timeNs: "18446744073709551616",
+			timeMs: "18446744073709551616",
 			sampleId: "aa".repeat(40),
 		}),
 	).toThrow();
@@ -238,7 +238,7 @@ test("Explorer filters are validated and intervals must be ordered and in the pa
 		cursor = {
 			to,
 			from,
-			timeNs: (BigInt(to.getTime()) * 1000000n).toString(),
+			timeMs: BigInt(to.getTime()).toString(),
 			sampleId: "aa".repeat(40),
 		};
 	expect(parseExplorer({ ...reference, from, to, cursor }).cursor?.from).toBe(

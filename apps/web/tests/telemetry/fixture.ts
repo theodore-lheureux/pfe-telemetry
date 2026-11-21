@@ -37,7 +37,11 @@ interface Layout {
 function storageStatements(layout: Layout) {
 	return template()
 		.split(";")
-		.slice(1, 6)
+		.filter((statement) =>
+			/CREATE TABLE __CREATE_GUARD____DATABASE__\.(metric_points|metric_series|metric_streams|deliveries|delivery_contexts)\s/.test(
+				statement,
+			),
+		)
 		.map((statement) =>
 			withoutComments(
 				statement
@@ -69,8 +73,8 @@ function fixtureViews(layout: Layout) {
 				![
 					"series_id",
 					"logical_series_id",
-					"first_seen_unix_nano",
-					"last_seen_unix_nano",
+					"first_seen_unix_milli",
+					"last_seen_unix_milli",
 				].includes(key),
 		)
 		.join(", ");
@@ -81,7 +85,7 @@ function fixtureViews(layout: Layout) {
 		`arrayMap(a -> tuple(toUInt32(0), a), arraySort(a -> a.path, arrayFilter(a -> NOT (${predicate}), ${column})))`;
 	return [
 		`CREATE MATERIALIZED VIEW fixture_deliveries TO deliveries AS
-		SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_nano, max_event_unix_nano, delivery_request, delivery_context_id
+		SELECT project_id, source_id, raw_partition, raw_offset, received_unix_nano, min_event_unix_milli, max_event_unix_milli, delivery_request, delivery_context_id
 		FROM fixture_input WHERE notEmpty(delivery_request)`,
 		`CREATE MATERIALIZED VIEW fixture_delivery_contexts TO delivery_contexts AS
 		SELECT project_id, source_id, delivery_context_id, delivery_context FROM fixture_input WHERE notEmpty(delivery_context)`,
@@ -91,7 +95,7 @@ function fixtureViews(layout: Layout) {
 		${continuity("point_attributes", point)} AS point_continuity FROM fixture_input`,
 		`CREATE MATERIALIZED VIEW fixture_series TO metric_series AS
 		SELECT ${layout.seriesSelect} FROM (SELECT * REPLACE (${id} AS series_id, ${logical} AS logical_series_id,
-		time_unix_nano AS first_seen_unix_nano, time_unix_nano AS last_seen_unix_nano) FROM (${clean})) src`,
+		time_unix_milli AS first_seen_unix_milli, time_unix_milli AS last_seen_unix_milli) FROM (${clean})) src`,
 		`CREATE MATERIALIZED VIEW fixture_points TO metric_points AS
 		SELECT ${layout.pointSelect} FROM (
 			SELECT * REPLACE (series_key AS series_id)
@@ -251,7 +255,8 @@ export async function createPointFixture(
 }
 
 export const from = new Date("2026-11-03T10:00:00Z");
-export const ns = BigInt(from.getTime()) * 1000000n;
+export const ms = BigInt(from.getTime());
+export const ns = ms * 1_000_000n;
 export function scope(
 	projectId: string,
 	sourceId: string,
@@ -283,8 +288,8 @@ export function insertPoints(
 		host_id: "{host:String}",
 		sample_id: "SHA256({sample:String})",
 		stream_id: "SHA256({stream:String})",
-		time_unix_nano: "{time:UInt64}",
-		event_day: "toUInt32(intDiv({time:UInt64},86400000000000))",
+		time_unix_milli: "{time:UInt64}",
+		event_day: "toUInt32(intDiv({time:UInt64},86400000))",
 		start_time_unix_nano: "toUInt64(0)",
 		metric_name: "'recount.node.memory.total'",
 		int_value: "CAST({integer:Nullable(String)},'Nullable(Int64)')",

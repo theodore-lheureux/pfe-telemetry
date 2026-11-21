@@ -473,7 +473,7 @@
   "collection_profile": "Profil : {profile}",
   "start_utc_iso": "Début (horodatage ISO UTC)",
   "end_utc_iso": "Fin (horodatage ISO UTC, exclue)",
-  "sample_nanoseconds": "Horodatage de la mesure (nanosecondes Unix)",
+  "sample_milliseconds": "Horodatage de la mesure (millisecondes Unix)",
   "no_recorded_value": "Aucune valeur enregistrée",
   "chart_exact_values": "Les points représentent uniquement les valeurs mesurées, sans interpolation. Les entiers trop grands pour des coordonnées exactes figurent uniquement dans le tableau des valeurs exactes.",
   "unidentified_host": "Hôte non identifié",

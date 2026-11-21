@@ -159,7 +159,7 @@ def freshness_metrics():
         selected = ",".join(f"'{part}'" for part in inserted)
         points = clickhouse_query(
             "SELECT _part, received_unix_nano FROM telemetry.metric_points "
-            f"PREWHERE _part IN ({selected}) AND cityHash64(series_id, stream_id, time_unix_nano) % 32 = 0 "
+            f"PREWHERE _part IN ({selected}) AND cityHash64(series_id, stream_id, time_unix_milli) % 32 = 0 "
             "WHERE received_unix_nano != 0 LIMIT 8192 "
             "SETTINGS max_rows_to_read=220000,max_bytes_to_read=67108864,max_block_size=4096 FORMAT TSV"
         )

@@ -63,7 +63,7 @@ def inventory():
 
     codecs = """SELECT name, compression_codec FROM system.columns
         WHERE database='telemetry' AND table='metric_points'
-        AND name IN ('time_unix_nano','received_unix_nano') FORMAT JSONEachRow"""
+        AND name IN ('time_unix_milli','raw_offset') FORMAT JSONEachRow"""
     for line in command("docker", "exec", CLICKHOUSE, "clickhouse-client",
                         "--readonly=1", "--max_execution_time=5", "-q", codecs).splitlines():
         row = json.loads(line)

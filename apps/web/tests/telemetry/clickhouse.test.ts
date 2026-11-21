@@ -8,7 +8,7 @@ import {
 	createPointFixture,
 	from,
 	insertPoints,
-	ns,
+	ms,
 	scope,
 	stringNode,
 } from "./fixture";
@@ -86,7 +86,7 @@ async function seed(
 			project,
 			source,
 			host: options.host ?? "node1",
-			time: (options.time ?? ns).toString(),
+			time: (options.time ?? ms).toString(),
 			integer:
 				options.integer === undefined ? "9007199254740993" : options.integer,
 			sample: options.sample ?? randomUUID(),
@@ -106,7 +106,7 @@ test("exact nanoseconds, no-recorded flags, tenant/source/host filters and repla
 	const exact = await read(scope(project, source, "node1", 1));
 	expect(exact.series[0].segments[0].points[0]).toEqual({
 		bucketMs: from.getTime(),
-		timeNs: ns.toString(),
+		timeMs: ms.toString(),
 		integer: "9007199254740993",
 		double: null,
 		flags: 0,
@@ -115,11 +115,11 @@ test("exact nanoseconds, no-recorded flags, tenant/source/host filters and repla
 	await seed(project, source, { sample });
 	expect(await read(scope(project, source, "node1", 1))).toEqual(exact);
 	await seed(project, source, {
-		time: ns + 1000001n,
+		time: ms + 1n,
 		integer: "9223372036854775807",
 		replace: { flags: "toUInt32(3)" },
 	});
-	await seed(project, source, { time: ns - 1n, integer: "5" });
+	await seed(project, source, { time: ms - 1n, integer: "5" });
 	await seed(project, source, { host: "node2", integer: "7" });
 	await seed(randomUUID(), source);
 	await seed(project, randomUUID());
@@ -128,7 +128,7 @@ test("exact nanoseconds, no-recorded flags, tenant/source/host filters and repla
 	expect(result.series[0].segments[0].points).toEqual([
 		{
 			bucketMs: from.getTime(),
-			timeNs: (ns + 1000001n).toString(),
+			timeMs: (ms + 1n).toString(),
 			integer: null,
 			double: null,
 			flags: 3,
@@ -192,7 +192,7 @@ test("two hosts and three epochs retain18 logical groups and54 restart segments"
 						host,
 						epoch: `epoch${epoch}`,
 						stream: `${host}/${metric}/${epoch}`,
-						time: ns + BigInt(epoch * 10000 + tick * 1000) * 1000000n,
+						time: ms + BigInt(epoch * 10000 + tick * 1000),
 						replace: cpu
 							? {
 									metric_name: "'recount.node.cpu.time'",
@@ -200,7 +200,7 @@ test("two hosts and three epochs retain18 logical groups and54 restart segments"
 									metric_kind: "toUInt8(2)",
 									temporality: "toUInt8(2)",
 									monotonic: "toUInt8(1)",
-									start_time_unix_nano: String(ns + BigInt(epoch)),
+									start_time_unix_nano: String(ms * 1_000_000n + BigInt(epoch)),
 									int_value: "NULL",
 									double_value: String(epoch === 1 ? tick : 100 + tick),
 									point_attributes: `[${stringNode("/cpu.mode", `'mode${metric}'`)},${stringNode("/recount.counter.segment_id", "{epoch:String}")}]`,
@@ -393,7 +393,7 @@ test("continuity segment and physical point limits fail rather than truncate", a
 			stream: "unused",
 			epoch: "epoch",
 			integer: "1",
-			time: ns.toString(),
+			time: ms.toString(),
 		},
 	});
 	await expect(read(scope(project, source))).rejects.toMatchObject({
@@ -403,7 +403,7 @@ test("continuity segment and physical point limits fail rather than truncate", a
 	for (let offset = 0; offset < 100001; offset += 4096)
 		await fixture.client.command({
 			query: insertPoints(
-				{ time_unix_nano: "{time:UInt64} + number" },
+				{ time_unix_milli: "{time:UInt64} + number" },
 				`CROSS JOIN numbers(${offset},${Math.min(4096, 100001 - offset)}) AS ticks`,
 			),
 			query_params: {
@@ -414,7 +414,7 @@ test("continuity segment and physical point limits fail rather than truncate", a
 				stream: "stream",
 				epoch: "epoch",
 				integer: "1",
-				time: ns.toString(),
+				time: ms.toString(),
 			},
 			clickhouse_settings: {
 				max_threads: 1,
@@ -423,7 +423,9 @@ test("continuity segment and physical point limits fail rather than truncate", a
 				max_insert_block_size: "4096",
 			},
 		});
-	await expect(read(scope(crowded, source))).rejects.toMatchObject({
+	await expect(
+		read(scope(crowded, source, "node1", 100001)),
+	).rejects.toMatchObject({
 		code: "CAPACITY",
 	});
 });
@@ -445,7 +447,7 @@ test("the later receipt wins for one series, stream and timestamp before and aft
 				stream: "same",
 				epoch: "same",
 				integer,
-				time: ns.toString(),
+				time: ms.toString(),
 			},
 		});
 	const value = async () =>

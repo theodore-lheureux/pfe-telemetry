@@ -16,7 +16,7 @@ docker exec -i "$container" sh -ec \
     < "$release/backend/schema/point-timestamp-codecs.sql"
 actual=$(docker exec "$container" sh -ec \
     'exec clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASSWORD" --query "$1"' \
-    sh "SELECT name, compression_codec FROM system.columns WHERE database='telemetry' AND table='metric_points' AND name IN ('time_unix_nano','received_unix_nano') ORDER BY name FORMAT TSVRaw")
+    sh "SELECT name, compression_codec FROM system.columns WHERE database='telemetry' AND table='metric_points' AND name IN ('time_unix_milli','raw_offset') ORDER BY name FORMAT TSVRaw")
 printf '%s\n' "$actual"
-expected=$(printf 'received_unix_nano\tCODEC(DoubleDelta, LZ4)\ntime_unix_nano\tCODEC(DoubleDelta, LZ4)')
+expected=$(printf 'raw_offset\tCODEC(DoubleDelta, LZ4)\ntime_unix_milli\tCODEC(DoubleDelta, LZ4)')
 [[ $actual == "$expected" ]]

@@ -13,7 +13,7 @@ import {
 	createPointFixture,
 	from,
 	insertPoints,
-	ns,
+	ms,
 	stringNode,
 } from "./fixture";
 
@@ -25,7 +25,7 @@ afterAll(async () => {
 	await fixture?.close();
 });
 
-const SECOND = 1_000_000_000n;
+const SECOND = 1_000n;
 const range = {
 	from: from.toISOString(),
 	to: new Date(from.getTime() + 300_000).toISOString(),
@@ -41,7 +41,7 @@ async function gauge(project: string, node: string, at: bigint, value: number) {
 			project,
 			source: node,
 			host: node,
-			time: (ns + at * SECOND).toString(),
+			time: (ms + at * SECOND).toString(),
 			integer: String(value),
 			sample: randomUUID(),
 			stream: `${node}/memory`,
@@ -72,7 +72,7 @@ async function counter(
 			project,
 			source: node,
 			host: node,
-			time: (ns + at * SECOND).toString(),
+			time: (ms + at * SECOND).toString(),
 			integer: null as unknown as string,
 			double: String(value),
 			mode: options.mode ?? "user",
@@ -142,9 +142,9 @@ test("a short point window keeps a series whose metadata has not been refreshed"
 	await gauge(project, "node-a", -45n, 100);
 	await fixture.client.command({
 		query: `INSERT INTO metric_points SELECT * REPLACE (
-			{time:UInt64} AS time_unix_nano, toInt64(200) AS int_value)
+			{time:UInt64} AS time_unix_milli, toInt64(200) AS int_value)
 			FROM metric_points WHERE project_id={project:String}`,
-		query_params: { project, time: (ns + 10_000_000_000n).toString() },
+		query_params: { project, time: (ms + 10_000n).toString() },
 	});
 	const result = await run(project, {
 		shape: "timeseries",
@@ -570,7 +570,7 @@ test("timeseries report which buckets each node's collector was online in", asyn
 				project,
 				source: node,
 				host: node,
-				time: (ns + at * SECOND).toString(),
+				time: (ms + at * SECOND).toString(),
 				integer: "10",
 				sample: randomUUID(),
 				stream: `${node}/heartbeat`,

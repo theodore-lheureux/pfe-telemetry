@@ -160,18 +160,18 @@ fn compact_delivery_carries_receipt_and_event_bounds_only_once() {
     let (first, tail) = points.split_first().unwrap();
     assert_eq!(first.received_unix_nano, raw.received_unix_nano);
     assert_eq!(
-        first.min_event_unix_nano,
-        points.iter().map(|p| p.time_unix_nano).min().unwrap()
+        first.min_event_unix_milli,
+        points.iter().map(|p| p.time_unix_milli).min().unwrap()
     );
     assert_eq!(
-        first.max_event_unix_nano,
-        points.iter().map(|p| p.time_unix_nano).max().unwrap()
+        first.max_event_unix_milli,
+        points.iter().map(|p| p.time_unix_milli).max().unwrap()
     );
     assert!(!first.delivery_request.is_empty());
     assert_eq!(first.delivery_context_id.len(), 32);
     assert!(tail.iter().all(|p| p.received_unix_nano == 0
-        && p.min_event_unix_nano == 0
-        && p.max_event_unix_nano == 0
+        && p.min_event_unix_milli == 0
+        && p.max_event_unix_milli == 0
         && p.delivery_request.is_empty()
         && p.delivery_context_id.is_empty()
         && p.delivery_context.is_empty()));
@@ -596,7 +596,7 @@ fn every_kind_lowers_original_observations_and_authorized_context_to_sql_fields(
         assert_eq!(row.scope_schema_url, s.schema_url);
         assert_eq!(row.metric_name, metric.name);
         assert_eq!(row.unit, metric.unit);
-        assert_eq!(row.time_unix_nano, observation.time());
+        assert_eq!(row.time_unix_milli, observation.time() / 1_000_000);
         assert_eq!(row.start_time_unix_nano, observation.start());
         assert_eq!(
             row.event_day,
@@ -721,11 +721,11 @@ fn every_kind_lowers_original_observations_and_authorized_context_to_sql_fields(
     }
     assert_eq!(points[0].int_value, Some(i64::MIN));
     assert_eq!(points[1].int_value, Some(i64::MAX));
-    assert_eq!(points[1].time_unix_nano, u64::MAX);
+    assert_eq!(points[1].time_unix_milli, u64::MAX / 1_000_000);
     assert_eq!(points[2].double_value, Some(-12.5));
     assert_eq!(points[3].flags, 1);
     assert_eq!((points[3].int_value, points[3].double_value), (None, None));
-    assert_eq!(points[11].time_unix_nano, 1_780_000_000_000_000_123);
+    assert_eq!(points[11].time_unix_milli, 1_780_000_000_000);
     let sensor = points.iter().find(|p| p.resource_id == "sensor-a").unwrap();
     assert!(sensor.host_id.is_none());
     assert!(
@@ -1782,7 +1782,7 @@ fn source_upload_policy_is_separate_from_measurement_time_and_accepted_replay() 
     cases::gauge_mut(&mut request, "integer.extremes").data_points[0].time_unix_nano = 1;
     raw.otlp_request = request.encode_to_vec();
     let accepted = validate::raw(&raw, Limits::default()).unwrap();
-    assert_eq!(accepted[0].time_unix_nano, 1);
+    assert_eq!(accepted[0].time_unix_milli, 0);
     assert_eq!(
         metadata::age(raw.batch.as_ref().unwrap(), received + 20 * day, 7 * day, 0)
             .unwrap_err()
@@ -1879,7 +1879,7 @@ fn cached_gpu_observations_are_distinct_positions_not_invented_counter_epochs() 
         .filter(|p| p.metric_name == "DCGM_FI_PROF_SM_ACTIVE")
         .collect();
     assert_eq!(gpu.len(), 2);
-    assert_eq!(gpu[0].time_unix_nano, gpu[1].time_unix_nano);
+    assert_eq!(gpu[0].time_unix_milli, gpu[1].time_unix_milli);
     assert_ne!(gpu[0].sample_id, gpu[1].sample_id);
     assert_eq!(gpu[0].metric_kind, 1);
 }

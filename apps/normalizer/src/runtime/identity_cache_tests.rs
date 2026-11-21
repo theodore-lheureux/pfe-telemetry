@@ -74,16 +74,16 @@ fn parity(raw: &RawRecord, cache: &IdentityCache) -> Vec<PreparedPoint> {
                 .attach(
                     frame,
                     actual.resource.as_deref(),
-                    metadata.first_seen_unix_nano,
-                    metadata.last_seen_unix_nano
+                    metadata.first_seen_unix_milli,
+                    metadata.last_seen_unix_milli
                 )
                 .encode_to_vec()
         );
     }
     for (now, packed) in [
-        (raw.received_unix_nano, true),
-        (raw.received_unix_nano, false),
-        (raw.received_unix_nano + 10_800_000_000_000, true),
+        (raw.received_unix_nano / 1_000_000, true),
+        (raw.received_unix_nano / 1_000_000, false),
+        (raw.received_unix_nano / 1_000_000 + 10_800_000, true),
     ] {
         let expected = pack(uncached.clone(), 3, now, 2 * 1024 * 1024, packed).unwrap();
         let (actual, _) =
@@ -91,7 +91,7 @@ fn parity(raw: &RawRecord, cache: &IdentityCache) -> Vec<PreparedPoint> {
         assert_eq!(expected.len(), actual.len());
         for (expected, actual) in expected.iter().zip(actual) {
             assert_eq!(expected.partition, actual.partition);
-            assert_eq!(expected.time_unix_nano, actual.time_unix_nano);
+            assert_eq!(expected.time_unix_milli, actual.time_unix_milli);
             assert_eq!(expected.payload, actual.payload);
         }
     }
@@ -141,6 +141,11 @@ fn collector_and_varied_exports_keep_ids_and_packing() {
         after[0].metadata.as_ref().unwrap()
     ));
     assert_ne!(before[0].frame.stream_id, after[0].frame.stream_id);
+    assert_eq!(
+        before[0].frame.time_unix_milli,
+        after[0].frame.time_unix_milli
+    );
+    assert_eq!(after[0].frame.start_time_unix_nano, 11);
 }
 
 #[test]

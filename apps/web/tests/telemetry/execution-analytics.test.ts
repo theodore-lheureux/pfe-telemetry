@@ -6,7 +6,7 @@ import { listAttributeValues } from "../../src/analytics/discovery.server";
 import { runQuery } from "../../src/analytics/runner.server";
 import { readExecutionFacts } from "../../src/executions/participants.server";
 import { executionParticipant } from "../execution-participant";
-import { createPointFixture, from, insertPoints, ns } from "./fixture";
+import { createPointFixture, from, insertPoints, ms, ns } from "./fixture";
 
 let fixture: Awaited<ReturnType<typeof createPointFixture>>;
 beforeAll(async () => {
@@ -77,7 +77,7 @@ async function point(
 			source: node,
 			host: node,
 			resource,
-			time: (ns + at * second).toString(),
+			time: (ms + at * 1_000n).toString(),
 			integer: String(value),
 			sample: randomUUID(),
 			stream: `${node}/${resource}`,
@@ -110,7 +110,7 @@ test("late facts, corrected times and retractions change reads without changing 
 	const identities = async () => {
 		const result = await fixture.client.query({
 			query:
-				"SELECT time_unix_nano,hex(stream_id),series_id FROM metric_points FINAL WHERE project_id={project:String} ORDER BY time_unix_nano,series_id,stream_id",
+				"SELECT time_unix_milli,hex(stream_id),series_id FROM metric_points FINAL WHERE project_id={project:String} ORDER BY time_unix_milli,series_id,stream_id",
 			query_params: { project },
 			format: "JSONEachRow",
 		});
@@ -323,7 +323,7 @@ test("execution process usage can be subtracted from node-wide load without attr
 			project,
 			source: node,
 			host: node,
-			time: (ns + 10n * second).toString(),
+			time: (ms + 10_000n).toString(),
 			integer: "10",
 			sample: randomUUID(),
 			stream: "node-load",

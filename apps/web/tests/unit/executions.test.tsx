@@ -85,14 +85,14 @@ test("renders exact large integers, missing values and translated chart labels w
 												points: [
 													{
 														bucketMs: 0,
-														timeNs: "18446744073709551614",
+														timeMs: "18446744073709",
 														flags: 0,
 														integer: "9007199254740993",
 														double: null,
 													},
 													{
 														bucketMs: 1,
-														timeNs: "1000001",
+														timeMs: "1000001",
 														flags: 1,
 														integer: null,
 														double: null,
@@ -108,7 +108,7 @@ test("renders exact large integers, missing values and translated chart labels w
 				),
 		);
 		const output = await response.text();
-		expect(output).toContain("18446744073709551614");
+		expect(output).toContain("18446744073709");
 		expect(output.replaceAll(/[\s\u202f\u00a0,]/g, "")).toContain(
 			"9007199254740993",
 		);

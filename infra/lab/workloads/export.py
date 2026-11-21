@@ -26,7 +26,7 @@ def summarize(points):
         segment = dict(point["attributes"]).get("/recount.counter.segment_id")
         series[(point["source_id"], point["series_id"], segment)].append(point)
         if point["metric_name"] == "recount.process.memory.rss":
-            rss[(point["source_id"], point["time_unix_nano"])] += int(point["int_value"])
+            rss[(point["source_id"], point["time_unix_milli"])] += int(point["int_value"])
     counters = defaultdict(int)
     counters_by_node = defaultdict(lambda: defaultdict(int))
     intervals = defaultdict(list)
@@ -48,7 +48,7 @@ def summarize(points):
         counters[key] += numbers[-1] - numbers[0]
         counters_by_node[first["source_id"]][key] += numbers[-1] - numbers[0]
         intervals[first["source_id"]].append(
-            (int(first["time_unix_nano"]), int(last["time_unix_nano"]))
+            (int(first["time_unix_milli"]), int(last["time_unix_milli"]))
         )
     return {
         "point_count": len(points),
@@ -64,7 +64,7 @@ def summarize(points):
             for node in sorted({key[0] for key in rss})
         },
         "counter_sample_span_seconds_by_node": {
-            node: (max(end for _, end in spans) - min(start for start, _ in spans)) / 1e9
+            node: (max(end for _, end in spans) - min(start for start, _ in spans)) / 1e3
             for node, spans in sorted(intervals.items())
         },
     }

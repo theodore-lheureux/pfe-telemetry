@@ -3,7 +3,6 @@ import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useId } from "react";
 import { TimeDisplay } from "../components/time-display";
-import { dateFromNanoseconds } from "../lib/time-display";
 import type {
 	TelemetryPoint,
 	TelemetryResult,
@@ -116,7 +115,7 @@ function Series({
 						<tr>
 							<th>{m.continuity_segment()}</th>
 							<th>{m.bucket_start({ timeZone })}</th>
-							<th>{m.sample_nanoseconds()}</th>
+							<th>{m.sample_milliseconds()}</th>
 							<th>{series.unit}</th>
 						</tr>
 					</thead>
@@ -132,9 +131,8 @@ function Series({
 									</td>
 									<td className="font-mono text-xs">
 										<TimeDisplay
-											value={dateFromNanoseconds(point.timeNs)}
-											unixNanoseconds={point.timeNs}
-											label={point.timeNs}
+											value={new Date(Number(point.timeMs))}
+											label={point.timeMs}
 										/>
 									</td>
 									<td>{sampleText(point, formatSample)}</td>

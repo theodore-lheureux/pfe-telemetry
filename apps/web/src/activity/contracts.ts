@@ -57,7 +57,7 @@ export interface PointReference {
 	sourceId: string;
 	resourceId: string;
 	metricName: string;
-	timeNs: string;
+	timeMs: string;
 }
 export interface PointSummary extends PointReference {
 	node: ActivityNode | null;
@@ -76,7 +76,7 @@ export interface PointSummary extends PointReference {
 export interface PointCursor {
 	from: Date;
 	to: Date;
-	timeNs: string;
+	timeMs: string;
 	sampleId: string;
 }
 export interface PointPage {

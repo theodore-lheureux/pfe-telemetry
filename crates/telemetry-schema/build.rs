@@ -36,8 +36,8 @@ const SERIES_FIELDS: &[&str] = &[
     "resource_entity_refs",
     "series_id",
     "logical_series_id",
-    "first_seen_unix_nano",
-    "last_seen_unix_nano",
+    "first_seen_unix_milli",
+    "last_seen_unix_milli",
 ];
 
 const STATISTICS: [&str; 9] = [
@@ -104,16 +104,16 @@ fn check_analytical_field(owner: &str, field: &FieldDescriptorProto) {
         | ("ContinuityNode", "ordinal") => Type::Uint32,
         (
             "AnalyticalPoint",
-            "time_unix_nano"
+            "time_unix_milli"
             | "start_time_unix_nano"
             | "received_unix_nano"
             | "raw_offset"
-            | "min_event_unix_nano"
-            | "max_event_unix_nano"
+            | "min_event_unix_milli"
+            | "max_event_unix_milli"
             | "series_id"
             | "logical_series_id"
-            | "first_seen_unix_nano"
-            | "last_seen_unix_nano"
+            | "first_seen_unix_milli"
+            | "last_seen_unix_milli"
             | "count"
             | "zero_count"
             | "bucket_counts"
@@ -337,8 +337,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             | "received_unix_nano"
                             | "raw_partition"
                             | "raw_offset"
-                            | "min_event_unix_nano"
-                            | "max_event_unix_nano"
+                            | "min_event_unix_milli"
+                            | "max_event_unix_milli"
                             | "delivery_request"
                             | "delivery_context_id"
                     )
@@ -386,8 +386,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             | "delivery_context"
                             | "delivery_context_id"
                             | "received_unix_nano"
-                            | "min_event_unix_nano"
-                            | "max_event_unix_nano"
+                            | "min_event_unix_milli"
+                            | "max_event_unix_milli"
                             | "stream_evidence"
                             | "resource_continuity"
                             | "point_continuity"
@@ -416,7 +416,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ]);
             let mut changes = Vec::new();
             for (name, ty) in &mut points {
-                if matches!(*name, "time_unix_nano" | "raw_offset") {
+                if matches!(*name, "time_unix_milli" | "raw_offset") {
                     ty.push_str(" CODEC(DoubleDelta, LZ4)");
                     changes.push(format!("    MODIFY COLUMN {name} {ty}"));
                 }
@@ -435,8 +435,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     (
                         name,
                         match name {
-                            "first_seen_unix_nano" => "SimpleAggregateFunction(min, UInt64)".into(),
-                            "last_seen_unix_nano" => "SimpleAggregateFunction(max, UInt64)".into(),
+                            "first_seen_unix_milli" => {
+                                "SimpleAggregateFunction(min, UInt64)".into()
+                            }
+                            "last_seen_unix_milli" => "SimpleAggregateFunction(max, UInt64)".into(),
                             "monotonic" => MONOTONIC.into(),
                             "host_id" => plain(&ty),
                             _ => ty,

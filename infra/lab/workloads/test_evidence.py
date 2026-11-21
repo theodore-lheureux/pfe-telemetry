@@ -13,7 +13,7 @@ def point(metric, value, timestamp, series, *, node="node-a", segment="segment-a
         "metric_name": metric,
         "int_value": value,
         "double_value": None,
-        "time_unix_nano": timestamp,
+        "time_unix_milli": timestamp,
         "temporality": 2,
         "monotonic": 1,
         "scope_version": "0.1.0",
@@ -24,12 +24,12 @@ def point(metric, value, timestamp, series, *, node="node-a", segment="segment-a
 class EvidenceSummaryTests(unittest.TestCase):
     def test_counter_deltas_exclude_initial_values_and_do_not_bridge_segments(self):
         points = [
-            point("process.cpu.time", 100, 1_000_000_000, "cpu"),
-            point("process.cpu.time", 105, 2_000_000_000, "cpu"),
-            point("process.cpu.time", 0, 3_000_000_000, "cpu", segment="segment-b"),
-            point("process.cpu.time", 2, 4_000_000_000, "cpu", segment="segment-b"),
-            point("process.disk.io", 4096, 1_000_000_000, "write", direction="write"),
-            point("process.disk.io", 8192, 2_000_000_000, "write", direction="write"),
+            point("process.cpu.time", 100, 1000, "cpu"),
+            point("process.cpu.time", 105, 2000, "cpu"),
+            point("process.cpu.time", 0, 3000, "cpu", segment="segment-b"),
+            point("process.cpu.time", 2, 4000, "cpu", segment="segment-b"),
+            point("process.disk.io", 4096, 1000, "write", direction="write"),
+            point("process.disk.io", 8192, 2000, "write", direction="write"),
         ]
         summary = summarize(points)
         self.assertEqual(summary["sampled_counter_deltas"], {
@@ -61,9 +61,9 @@ class EvidenceSummaryTests(unittest.TestCase):
 
     def test_clickhouse_quoted_integers_remain_exact(self):
         points = [
-            point("process.disk.io", str(2**53), "1000000000", "write", direction="write"),
-            point("process.disk.io", str(2**53 + 1), "2000000000", "write", direction="write"),
-            point("recount.process.memory.rss", "123", "1000000000", "rss"),
+            point("process.disk.io", str(2**53), "1000", "write", direction="write"),
+            point("process.disk.io", str(2**53 + 1), "2000", "write", direction="write"),
+            point("recount.process.memory.rss", "123", "1000", "rss"),
         ]
         summary = summarize(points)
         self.assertEqual(summary["sampled_counter_deltas"]["process.disk.io:write"], 1)

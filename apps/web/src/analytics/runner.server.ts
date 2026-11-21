@@ -81,7 +81,7 @@ function pointOf(row: Row, query: AnalyticsQuery, window: Window) {
 	return {
 		bucketMs:
 			query.shape === "timeseries"
-				? Number(BigInt(String(row.bucket_ns)) / 1_000_000n) + window.shiftMs
+				? Number(BigInt(String(row.bucket_ms))) + window.shiftMs
 				: null,
 		value: number(row.series_value),
 		...(query.spread
@@ -197,11 +197,11 @@ async function coverage(
 	step: number,
 	signal: AbortSignal,
 ): Promise<Record<string, number[]> | null> {
-	const ns = (date: Date) => (BigInt(date.getTime()) * 1_000_000n).toString();
+	const millis = (date: Date) => String(date.getTime());
 	try {
 		const result = await connection.query({
 			query: `SELECT source_id AS node,
-  arraySort(groupUniqArray(toString(intDiv(time_unix_nano, {step:UInt64}) * {step:UInt64}))) AS buckets
+  arraySort(groupUniqArray(toString(intDiv(time_unix_milli, {step:UInt64}) * {step:UInt64}))) AS buckets
 FROM (${seriesPointSource(`${SERIES_WINDOW} AND metric_name = {heartbeat:String}`, POINT_WINDOW, "s.source_id", "AND metric_name = {heartbeat:String}")})
 GROUP BY node
 LIMIT 500`,
@@ -210,9 +210,9 @@ LIMIT 500`,
 				project: projectId,
 				firstDay: Math.floor(from.getTime() / 86_400_000),
 				lastDay: Math.floor(to.getTime() / 86_400_000),
-				from: ns(from),
-				to: ns(to),
-				step: (BigInt(step) * 1_000_000_000n).toString(),
+				from: millis(from),
+				to: millis(to),
+				step: (BigInt(step) * 1_000n).toString(),
 				heartbeat: HEARTBEAT,
 			},
 			abort_signal: signal,
@@ -222,7 +222,7 @@ LIMIT 500`,
 		return Object.fromEntries(
 			rows.map((row) => [
 				row.node,
-				row.buckets.map((bucket) => Number(BigInt(bucket) / 1_000_000n)),
+				row.buckets.map((bucket) => Number(BigInt(bucket))),
 			]),
 		);
 	} catch {

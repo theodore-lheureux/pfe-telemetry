@@ -566,7 +566,7 @@ fn consumer(broker: &str, group: &str) -> BaseConsumer {
 fn observation(row: AnalyticalPoint) -> AnalyticalPoint {
     AnalyticalPoint {
         stream_id: row.stream_id,
-        time_unix_nano: row.time_unix_nano,
+        time_unix_milli: row.time_unix_milli,
         start_time_unix_nano: row.start_time_unix_nano,
         flags: row.flags,
         int_value: row.int_value,
