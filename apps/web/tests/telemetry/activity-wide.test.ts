@@ -60,7 +60,14 @@ test("Explorer hydrates a page and a detail from 80,000 wide series", async () =
 		const page = await readPoints(input, undefined, reader);
 		expect(page.points).toHaveLength(100);
 		const first = page.points[0];
-		expect(first.node?.name).toBe("wide-host");
+		expect(first.node?.name).toBe("wide-node");
+		const hostname = 'resource.attributes["host.name"]';
+		const names = await readPoints(
+			{ ...input, fields: [hostname] },
+			undefined,
+			reader,
+		);
+		expect(names.points[0]?.fields[hostname]).toBe("wide-node");
 		const field = 'resource.attributes["custom"]';
 		const projected = await readPoints(
 			{ ...input, fields: [field, 'resource.attributes["host.name"]'] },

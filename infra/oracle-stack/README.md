@@ -483,6 +483,15 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    `schema.sql` here: it also contains the participant bootstrap statements,
    which fail when participant objects already exist.
 
+   For a release that adds the Activity series lookup to a retained ClickHouse
+   database, install the release's ClickHouse reader configuration and run
+   `bash "$release/apply-activity-series.sh" "$release"` as root before activating
+   the web application. This separate maintenance step creates the lookup and
+   its insert view, then copies only narrow columns from `metric_series`. It
+   records completion for the target table UUID. Retained series are available
+   immediately; their node labels use `host_id` until a series refresh provides
+   `host.name`. Fresh databases create the lookup during schema initialization.
+
    Explorer reads receipts from `deliveries` and uses `activity_event_minmax`
    to narrow reads of `metric_points`. Verify the index exists and covers the
    readable point parts before switching the web application. Running

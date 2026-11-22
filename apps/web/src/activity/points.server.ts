@@ -109,6 +109,7 @@ interface SeriesRow {
 	sourceId: string;
 	resourceId: string;
 	hostId: string | null;
+	hostName?: string | null;
 	resourceKind: number;
 	kind: number;
 	unit: string;
@@ -132,6 +133,7 @@ const POINT_KEY = "concat(leftPad(hex(series_id), 16, '0'), hex(stream_id))";
 function candidateQuery(metric: boolean) {
 	return `SELECT toString(series_id) AS seriesId,metric_name AS metricName,
 resource_id AS resourceId,source_id AS sourceId,nullIf(host_id,'') AS hostId,
+max(host_name) AS hostName,
 resource_kind AS resourceKind,metric_kind AS kind,unit,scope_name AS scopeName,scope_version AS scopeVersion
 FROM activity_series
 WHERE project_id={project:String} AND source_id={source:String}
@@ -182,6 +184,7 @@ FROM metric_series
 PREWHERE project_id={project:String} AND metric_name IN {metrics:Array(String)}`;
 
 const PAGE_SIZE = 100;
+const HOST_NAME_FIELD = 'resource.attributes["host.name"]';
 const SERIES_BATCH = 200;
 const RECEIPTS_PER_SEARCH = 8;
 const MAX_SEARCHES = 16;
@@ -200,11 +203,7 @@ function summary(
 		metricName: row.metricName,
 		timeMs: row.timeMs,
 		node: row.hostId
-			? activityNode(
-					projectId,
-					row.hostId,
-					fields['resource.attributes["host.name"]'] ?? "",
-				)
+			? activityNode(projectId, row.hostId, row.hostName ?? "")
 			: null,
 		resourceKind: row.resourceKind,
 		kind: row.kind,
@@ -340,7 +339,15 @@ async function readDelivery(
 				})
 			: [];
 		rows.push(...found);
-		dimensions.push(...eligible);
+		const labels = new Map(
+			selected.map((row) => [seriesKey(row), row.hostName]),
+		);
+		dimensions.push(
+			...eligible.map((row) => ({
+				...row,
+				hostName: labels.get(seriesKey(row)),
+			})),
+		);
 		if (rows.length === limit) {
 			const last = rows[limit - 2];
 			return {
@@ -450,8 +457,11 @@ export async function readPoints(
 	const metric = input.metric !== undefined;
 	const fields = input.fields ?? [];
 	const seriesFields = fields.filter((field) => !isContinuityField(field));
+	const projectedFields = seriesFields.filter(
+		(field) => field !== HOST_NAME_FIELD,
+	);
 	const streamFields = fields.filter(isContinuityField);
-	const projection = compileFields(seriesFields);
+	const projection = compileFields(projectedFields);
 	const execution = fieldsInFilters.includes("execution");
 	const params = {
 		...filters.params,
@@ -691,6 +701,14 @@ LIMIT 1 BY streamId`,
 	);
 }
 
+function seriesFieldValues(series: SeriesRow, fields: string[]) {
+	let index = 0;
+	return fields.map((field) => {
+		if (field === HOST_NAME_FIELD) return [field, series.hostName ?? null];
+		return [field, series.fields?.[index++] ?? null];
+	});
+}
+
 function assemblePage(
 	project: string,
 	rows: PointRow[],
@@ -717,10 +735,7 @@ function assemblePage(
 				project,
 				{ ...row, ...series },
 				Object.fromEntries([
-					...seriesFields.map((field, i) => [
-						field,
-						series.fields?.[i] ?? null,
-					]),
+					...seriesFieldValues(series, seriesFields),
 					...streamFields.map((field, i) => [field, stream?.[i] ?? null]),
 				]),
 			),

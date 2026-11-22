@@ -78,6 +78,7 @@ CREATE TABLE __CREATE_GUARD____DATABASE__.activity_series
     metric_name LowCardinality(String),
     resource_id String,
     host_id String,
+    host_name SimpleAggregateFunction(max, Nullable(String)),
     resource_kind UInt8,
     metric_kind UInt8,
     unit LowCardinality(String),
@@ -94,6 +95,7 @@ SETTINGS allow_dimensions_outside_sorting_key = 1, index_granularity = 256, fsyn
 CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.activity_series_by_source
 TO __DATABASE__.activity_series AS
 SELECT project_id, source_id, series_id, metric_name, resource_id, host_id,
+    arrayFirst(a -> a.path = '/host.name' AND a.kind = 2, resource_attributes).string_value AS host_name,
     toUInt8(resource_kind) AS resource_kind, toUInt8(metric_kind) AS metric_kind,
     unit, scope_name, scope_version, first_seen_unix_milli, last_seen_unix_milli
 FROM __DATABASE__.metric_series;
