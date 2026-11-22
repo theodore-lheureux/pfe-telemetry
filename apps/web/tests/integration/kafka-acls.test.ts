@@ -6,6 +6,7 @@ import { Kafka, logLevel } from "kafkajs";
 const brokers = process.env.RECOUNT_KAFKA_ACL_TEST_BROKERS;
 const directory = process.env.RECOUNT_KAFKA_ACL_TEST_SECRETS;
 const run = brokers && directory ? test : test.skip;
+const denialOnly = process.env.RECOUNT_KAFKA_ACL_TEST_DENIAL_ONLY === "1";
 
 function client(username: string, wrong = false, errors?: string[]) {
 	return new Kafka({
@@ -65,11 +66,11 @@ run(
 							messages: [{ value: "disposable ACL test" }],
 						});
 					if (user === "ingestion-api") {
-						await expect(send(raw)).resolves.toHaveLength(1);
+						if (!denialOnly) await expect(send(raw)).resolves.toHaveLength(1);
 						await expect(send(normalized)).rejects.toThrow(/authorization/i);
 					} else {
 						await expect(send(raw)).rejects.toThrow(/authorization/i);
-						if (user === "normalizer")
+						if (user === "normalizer" && !denialOnly)
 							await expect(send(normalized)).resolves.toHaveLength(1);
 					}
 				} finally {
