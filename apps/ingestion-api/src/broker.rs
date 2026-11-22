@@ -54,11 +54,10 @@ impl KafkaSink {
             return Err("raw partition count must be positive".into());
         }
         body_fits(max_bytes, broker_max_bytes)?;
-        let admin = ClientConfig::new()
-            .set("bootstrap.servers", bootstrap)
-            .create()?;
-        let producer = ClientConfig::new()
-            .set("bootstrap.servers", bootstrap)
+        let config = client_config(bootstrap)?;
+        let admin = config.create()?;
+        let producer = config
+            .clone()
             .set("enable.idempotence", "true")
             .set("acks", "all")
             // Matches the raw topic's codec, so the broker stores batches unchanged.
@@ -84,6 +83,17 @@ impl KafkaSink {
             participant_partitions: participants.partitions,
         })
     }
+}
+
+pub(crate) fn client_config(bootstrap: &str) -> Result<ClientConfig> {
+    let mut config = ClientConfig::new();
+    config.set("bootstrap.servers", bootstrap);
+    if let Some(settings) = recount_telemetry_validation::kafka_auth::settings("ingestion-api")? {
+        for (key, value) in settings {
+            config.set(key, value);
+        }
+    }
+    Ok(config)
 }
 
 #[tonic::async_trait]

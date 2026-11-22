@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import kafkaJs, { type Consumer, type Kafka as KafkaClient } from "kafkajs";
 import * as z from "zod";
 import { integer, readEnv } from "../lib/env.server";
@@ -120,9 +121,20 @@ export function partitionConsumer(
 }
 
 export function createLiveKafka() {
+	const path = process.env.RECOUNT_KAFKA_PASSWORD_FILE;
+	if (!path) throw new Error("RECOUNT_KAFKA_PASSWORD_FILE is required");
+	let password: string;
+	try {
+		password = readFileSync(path, "utf8").trimEnd();
+	} catch {
+		throw new Error("Cannot read Kafka credential file");
+	}
+	if (!/^[0-9a-f]{64}$/.test(password))
+		throw new Error("Invalid Kafka credential file");
 	return new Kafka({
 		clientId: "recount-live",
 		brokers: liveKafkaSettings().brokers,
+		sasl: { mechanism: "scram-sha-512", username: "live", password },
 		logLevel: logLevel.NOTHING,
 		connectionTimeout: 3000,
 		requestTimeout: 5000,

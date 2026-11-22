@@ -16,7 +16,13 @@ pub async fn preflight(config: Config) -> Result<(), String> {
     config.validate_transport().map_err(str::to_owned)?;
     let declaration = config.clone();
     let admin = tokio::task::spawn_blocking(move || {
-        let admin: AdminClient<_> = ClientConfig::new()
+        let mut client = ClientConfig::new();
+        if let Some(settings) = recount_telemetry_validation::kafka_auth::settings("normalizer")? {
+            for (key, value) in settings {
+                client.set(key, value);
+            }
+        }
+        let admin: AdminClient<_> = client
             .set("bootstrap.servers", &declaration.bootstrap)
             .set("allow.auto.create.topics", "false")
             .set("socket.timeout.ms", "3000")

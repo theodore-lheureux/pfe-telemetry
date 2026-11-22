@@ -3,10 +3,7 @@ use opentelemetry_proto::tonic::{
     metrics::v1::metric::Data,
 };
 use prost::Message;
-use rdkafka::{
-    ClientConfig,
-    producer::{FutureProducer, FutureRecord},
-};
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use recount_telemetry_schema::wire::{LiveNode, LiveNotification, RawRecord};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -123,8 +120,7 @@ impl LivePublisher {
         if partitions == 0 || partitions > 256 {
             return Err("Live partitions must be within 1..=256".into());
         }
-        let producer: FutureProducer = ClientConfig::new()
-            .set("bootstrap.servers", bootstrap)
+        let producer: FutureProducer = crate::broker::client_config(bootstrap)?
             .set("enable.idempotence", "true")
             .set("acks", "all")
             .set("allow.auto.create.topics", "false")

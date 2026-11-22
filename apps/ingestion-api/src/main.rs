@@ -26,6 +26,7 @@ async fn serve(
     config: Config,
     limits: recount_telemetry_validation::validate::Limits,
 ) -> Result<()> {
+    recount_telemetry_validation::kafka_auth::required("ingestion-api")?;
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
