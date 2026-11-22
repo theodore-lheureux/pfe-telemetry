@@ -109,26 +109,22 @@ pub(super) fn prepare(
     }
     let raw =
         RawRecord::decode(payload).map_err(|_| Rejection::new(Reason::InvalidEnvelope, None))?;
+    validate::admitted_envelope(&raw).map_err(|_| Rejection::new(Reason::InvalidEnvelope, None))?;
     if !identity::raw_routing_key(&raw).is_ok_and(|expected| key == Some(expected.as_slice())) {
         return Err(Rejection::new(Reason::RoutingKeyMismatch, None));
     }
     // Only a role-authorized raw producer can establish ownership. Require the
     // validated, key-matched envelope and the API's canonical tenant/node IDs.
-    match validate::retained_cached_delivery(&raw, limits, cache) {
+    match validate::admitted_delivery(&raw, limits, cache) {
         Ok(rows) => Ok((rows, raw)),
-        Err(issue) => {
-            if validate::envelope(&raw, limits).is_err() {
-                return Err(Rejection::new(Reason::InvalidEnvelope, None));
-            }
-            Err(Rejection::new(
-                match issue.path.as_str() {
-                    "otlp" => Reason::InvalidOtlp,
-                    "normalized" => Reason::Projection,
-                    _ => Reason::RetainedValidation,
-                },
-                verified_scope(&raw),
-            ))
-        }
+        Err(issue) => Err(Rejection::new(
+            match issue.path.as_str() {
+                "otlp" => Reason::InvalidOtlp,
+                "normalized" => Reason::Projection,
+                _ => Reason::RetainedValidation,
+            },
+            verified_scope(&raw),
+        )),
     }
 }
 
@@ -213,5 +209,90 @@ mod tests {
         };
         assert_eq!(scoped.reason, Reason::InvalidOtlp);
         assert!(scoped.scope.is_some());
+    }
+
+    #[test]
+    fn broker_prepare_rejects_missing_authority_and_malformed_bindings() {
+        let cache = IdentityCache::default();
+        let limits = Limits::default();
+        let mut raw = super::super::cases::reader_raw();
+        let key = identity::raw_routing_key(&raw).unwrap();
+        let check = |raw: &RawRecord, key: Option<&[u8]>| {
+            prepare(&raw.encode_to_vec(), key, limits, &cache)
+                .err()
+                .expect("expected rejection")
+        };
+        assert_eq!(check(&raw, None).reason, Reason::RoutingKeyMismatch);
+        assert!(check(&raw, None).scope.is_none());
+        let mut missing = raw.clone();
+        missing.security = None;
+        assert_eq!(check(&missing, Some(&key)).reason, Reason::InvalidEnvelope);
+        assert!(check(&missing, Some(&key)).scope.is_none());
+        assert_eq!(
+            prepare(&[255], Some(&key), limits, &cache)
+                .err()
+                .expect("expected rejection")
+                .reason,
+            Reason::InvalidEnvelope
+        );
+        raw.bindings[0].original_resource = u32::MAX;
+        assert_eq!(check(&raw, Some(&key)).reason, Reason::Projection);
+        raw.bindings.clear();
+        assert_eq!(check(&raw, Some(&key)).reason, Reason::RetainedValidation);
+    }
+
+    #[test]
+    fn broker_prepare_keeps_input_and_output_caps_on_warm_cache() {
+        let cache = IdentityCache::default();
+        let limits = Limits::default();
+        let raw = super::super::cases::raw();
+        let bytes = raw.encode_to_vec();
+        let key = identity::raw_routing_key(&raw).unwrap();
+        prepare(&bytes, Some(&key), limits, &cache).unwrap();
+        for (limits, expected) in [
+            (
+                Limits {
+                    decoded_bytes: bytes.len() - 1,
+                    ..limits
+                },
+                Reason::RawTooLarge,
+            ),
+            (
+                Limits {
+                    points: 1,
+                    ..limits
+                },
+                Reason::RetainedValidation,
+            ),
+            (
+                Limits {
+                    expanded_items: 1,
+                    ..limits
+                },
+                Reason::RetainedValidation,
+            ),
+            (
+                Limits {
+                    attributes_per_set: 1,
+                    ..limits
+                },
+                Reason::RetainedValidation,
+            ),
+            (
+                Limits {
+                    normalized_record_bytes: 1,
+                    ..limits
+                },
+                Reason::Projection,
+            ),
+        ] {
+            assert_eq!(
+                prepare(&bytes, Some(&key), limits, &cache)
+                    .err()
+                    .expect("expected rejection")
+                    .reason,
+                expected
+            );
+        }
     }
 }

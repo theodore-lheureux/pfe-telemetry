@@ -12,6 +12,9 @@ use recount_telemetry_schema::{
 };
 use std::collections::BTreeSet;
 
+mod admitted;
+pub use admitted::{admitted_delivery, admitted_envelope};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Limits {
     pub decoded_bytes: usize,
@@ -310,7 +313,8 @@ pub fn raw(raw: &RawRecord, limits: Limits) -> Result<Vec<AnalyticalPoint>, Issu
 
 // Admission only, after authorization: `request` has passed `request()` with
 // these limits and is the unchanged decoded body encoded into `raw`.
-// Retained boundaries must use raw().
+// General retained readers use raw(); the authenticated broker path has its
+// own structural checks before projection.
 pub fn preflight(
     raw: &RawRecord,
     request: &ExportMetricsServiceRequest,
@@ -338,6 +342,10 @@ pub fn envelope(raw: &RawRecord, limits: Limits) -> Result<(), Issue> {
     if raw.encoded_len() > limits.decoded_bytes {
         return Err(Issue::new(Category::Limit, "raw", "raw record byte limit"));
     }
+    envelope_fields(raw)
+}
+
+fn envelope_fields(raw: &RawRecord) -> Result<(), Issue> {
     let security = raw
         .security
         .as_ref()

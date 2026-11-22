@@ -88,6 +88,16 @@ fn parity(raw: &RawRecord, cache: &IdentityCache) -> Vec<PreparedPoint> {
         let expected = pack(uncached.clone(), 3, now, 2 * 1024 * 1024, packed).unwrap();
         let (actual, _) =
             pack_prepared(cached(), 3, now, 2 * 1024 * 1024, packed, None, None).unwrap();
+        let (admitted, _) =
+            super::dead_letter::prepare(&bytes, Some(&key), Limits::default(), cache).unwrap();
+        let (admitted, _) =
+            pack_prepared(admitted, 3, now, 2 * 1024 * 1024, packed, None, None).unwrap();
+        assert_eq!(actual.len(), admitted.len());
+        for (actual, admitted) in actual.iter().zip(admitted) {
+            assert_eq!(actual.partition, admitted.partition);
+            assert_eq!(actual.time_unix_milli, admitted.time_unix_milli);
+            assert_eq!(actual.payload, admitted.payload);
+        }
         assert_eq!(expected.len(), actual.len());
         for (expected, actual) in expected.iter().zip(actual) {
             assert_eq!(expected.partition, actual.partition);

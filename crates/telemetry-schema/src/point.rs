@@ -63,7 +63,7 @@ pub fn observations(metric: &Metric) -> Vec<Observation<'_>> {
     observation_iter(metric).collect()
 }
 
-fn observation_iter(metric: &Metric) -> impl Iterator<Item = Observation<'_>> {
+pub fn observation_iter(metric: &Metric) -> impl Iterator<Item = Observation<'_>> {
     let mut number = [].iter();
     let mut histogram = [].iter();
     let mut exponential = [].iter();
