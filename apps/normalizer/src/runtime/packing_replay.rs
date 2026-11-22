@@ -264,7 +264,7 @@ async fn scenario_with_linger(
     let mut first = Some((
         stop,
         tokio::spawn(async move {
-            app(RunState::new(config, packed))
+            app(RunState::new(config, packed), None)
                 .run_until(async {
                     let _ = stopped.await;
                 })
@@ -276,7 +276,7 @@ async fn scenario_with_linger(
         (
             stop,
             tokio::spawn(async move {
-                app(RunState::new(second_config, packed))
+                app(RunState::new(second_config, packed), None)
                     .run_until(async {
                         let _ = stopped.await;
                     })

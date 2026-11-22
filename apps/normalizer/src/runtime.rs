@@ -305,7 +305,7 @@ fn unix_nanos() -> u64 {
     u64::try_from(elapsed.as_nanos()).expect("system clock within u64 nanoseconds")
 }
 
-fn app(state: RunState, auth: [(&'static str, String); 4]) -> impl App {
+fn app(state: RunState, auth: Option<[(&'static str, String); 4]>) -> impl App {
     let config = &state.config;
     let budget = ConsumerBudget::raw(config.raw_broker_max_bytes).expect("validated raw budget");
     // A killed Kafka group member sends no LeaveGroup, so replacement assignment
@@ -351,6 +351,7 @@ fn app(state: RunState, auth: [(&'static str, String); 4]) -> impl App {
         );
     let broker = auth
         .into_iter()
+        .flatten()
         .fold(broker, |broker, (key, value)| broker.config(key, value));
     let source = KafkaTopic::new(&config.raw_topic)
         .group(&config.group)
@@ -435,7 +436,7 @@ pub async fn run(config: Config, metrics: RetentionMetrics) -> Result<(), String
     };
     let auth = recount_telemetry_validation::kafka_auth::settings("normalizer")?
         .ok_or("RECOUNT_KAFKA_PASSWORD_FILE is required")?;
-    let app = app(state.clone(), auth);
+    let app = app(state.clone(), Some(auth));
     let run = app.run_until(async {
         #[cfg(unix)]
         tokio::select! { _ = term.recv() => {}, _ = tokio::signal::ctrl_c() => {} }
