@@ -108,6 +108,28 @@ ENGINE = ReplacingMergeTree
 ORDER BY (project_id, source_id, raw_partition, raw_offset)
 SETTINGS fsync_after_insert = 0, fsync_part_directory = 1;
 
+CREATE TABLE __CREATE_GUARD____DATABASE__.activity_receipts
+(
+    project_id String,
+    received_unix_nano UInt64,
+    source_id String,
+    raw_partition UInt32,
+    raw_offset UInt64,
+    min_event_unix_milli UInt64,
+    max_event_unix_milli UInt64,
+    INDEX activity_receipt_first min_event_unix_milli TYPE minmax GRANULARITY 1,
+    INDEX activity_receipt_last max_event_unix_milli TYPE minmax GRANULARITY 1
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (project_id, received_unix_nano, source_id, raw_partition, raw_offset)
+SETTINGS index_granularity = 256, fsync_after_insert = 0, fsync_part_directory = 1;
+
+CREATE MATERIALIZED VIEW __CREATE_GUARD____DATABASE__.activity_receipts_by_time
+TO __DATABASE__.activity_receipts AS
+SELECT project_id, received_unix_nano, source_id, raw_partition, raw_offset,
+    min_event_unix_milli, max_event_unix_milli
+FROM __DATABASE__.deliveries;
+
 CREATE TABLE __CREATE_GUARD____DATABASE__.delivery_contexts
 (
 __DELIVERY_CONTEXT_COLUMNS__

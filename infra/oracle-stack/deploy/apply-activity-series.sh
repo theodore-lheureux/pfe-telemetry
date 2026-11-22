@@ -18,18 +18,28 @@ schema="$release/backend/schema/metric-schema.sql"
 ddl=$(sed -n \
     -e '/^CREATE TABLE IF NOT EXISTS telemetry\.activity_series$/,/;$/p' \
     -e '/^CREATE MATERIALIZED VIEW IF NOT EXISTS telemetry\.activity_series_by_source$/,/;$/p' \
+    -e '/^CREATE TABLE IF NOT EXISTS telemetry\.activity_receipts$/,/;$/p' \
+    -e '/^CREATE MATERIALIZED VIEW IF NOT EXISTS telemetry\.activity_receipts_by_time$/,/;$/p' \
     "$schema")
-[[ $ddl == *'TO telemetry.activity_series AS'* && $ddl == *'host_name SimpleAggregateFunction'* ]]
+[[ $ddl == *'TO telemetry.activity_series AS'* && $ddl == *'host_name SimpleAggregateFunction'* &&
+   $ddl == *'TO telemetry.activity_receipts AS'* ]]
 printf '%s\n' "$ddl" | ch
 
 # Track completion against the target table UUID, not the release ID.
-uuid=$(printf '%s\n' "SELECT uuid FROM system.tables WHERE database='telemetry' AND name='activity_series'" | ch)
-[[ $uuid =~ ^[a-f0-9-]{36}$ ]]
-marker=/opt/recount/backend/.activity-series-backfill
-if [[ -f $marker && $(cat "$marker") == "$uuid" ]]; then
-    exit 0
-fi
-ch <<'SQL'
+backfill() {
+    local target=$1 marker=$2 uuid
+    uuid=$(printf '%s\n' "SELECT uuid FROM system.tables WHERE database='telemetry' AND name='$target'" | ch)
+    [[ $uuid =~ ^[a-f0-9-]{36}$ ]]
+    if [[ -f $marker && $(cat "$marker") == "$uuid" ]]; then
+        return
+    fi
+    ch
+    umask 077
+    printf '%s\n' "$uuid" > "$marker.tmp"
+    mv "$marker.tmp" "$marker"
+}
+
+backfill activity_series /opt/recount/backend/.activity-series-backfill <<'SQL'
 INSERT INTO telemetry.activity_series
     (project_id, source_id, series_id, metric_name, resource_id, host_id,
      resource_kind, metric_kind, unit, scope_name, scope_version,
@@ -40,6 +50,13 @@ SELECT project_id, source_id, series_id, metric_name, resource_id, host_id,
 FROM telemetry.metric_series
 SETTINGS max_threads=1, max_insert_threads=1;
 SQL
-umask 077
-printf '%s\n' "$uuid" > "$marker.tmp"
-mv "$marker.tmp" "$marker"
+
+backfill activity_receipts /opt/recount/backend/.activity-receipts-backfill <<'SQL'
+INSERT INTO telemetry.activity_receipts
+    (project_id, received_unix_nano, source_id, raw_partition, raw_offset,
+     min_event_unix_milli, max_event_unix_milli)
+SELECT project_id, received_unix_nano, source_id, raw_partition, raw_offset,
+       min_event_unix_milli, max_event_unix_milli
+FROM telemetry.deliveries
+SETTINGS max_threads=1, max_insert_threads=1;
+SQL

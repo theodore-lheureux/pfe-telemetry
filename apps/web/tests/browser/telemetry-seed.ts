@@ -57,6 +57,7 @@ export async function clearTelemetry(
 		"metric_series",
 		"activity_series",
 		"deliveries",
+		"activity_receipts",
 	])
 		await client.command({
 			query: `ALTER TABLE telemetry.${table} DELETE WHERE project_id = {project:String} SETTINGS mutations_sync = 1`,

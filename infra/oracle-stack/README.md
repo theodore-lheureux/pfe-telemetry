@@ -492,7 +492,14 @@ Once the old output is deleted, do not reactivate the old writer or reader.
    immediately; their node labels use `host_id` until a series refresh provides
    `host.name`. Fresh databases create the lookup during schema initialization.
 
-   Explorer reads receipts from `deliveries` and uses `activity_event_minmax`
+   Run the same maintenance script for the receipt index before activating a
+   web release that uses it. The script creates the insert view first, then
+   copies receipt keys and event bounds from `deliveries` without reading
+   delivery evidence. It tracks each lookup's backfill independently.
+
+   Explorer lists receipts from `activity_receipts`, in receipt order, including
+   when filtering historical event times. The inspector still reads the original
+   receipt by its raw position from `deliveries`. Explorer uses `activity_event_minmax`
    to narrow reads of `metric_points`. Verify the index exists and covers the
    readable point parts before switching the web application. Running
    `CREATE TABLE IF NOT EXISTS` on an existing table does not add an index.

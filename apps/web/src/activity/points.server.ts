@@ -222,9 +222,10 @@ function deliveryQuery() {
 	return `SELECT toString(received_unix_nano) AS receivedNs, source_id AS sourceId,
 raw_partition AS partition, toString(raw_offset) AS offset,
 toString(min_event_unix_milli) AS firstMs, toString(max_event_unix_milli) AS lastMs
-FROM deliveries FINAL WHERE project_id={project:String}
+FROM activity_receipts FINAL WHERE project_id={project:String}
 AND max_event_unix_milli >= {from:UInt64} AND min_event_unix_milli < {to:UInt64}
 AND received_unix_nano < {receivedThrough:UInt64}
+AND received_unix_nano <= {receiptCeiling:UInt64}
 AND ({hasCursor:UInt8}=0 OR
     (received_unix_nano,source_id,raw_partition,raw_offset) <
     ({receivedNs:UInt64},{source:String},{partition:UInt32},{offset:UInt64})
@@ -240,6 +241,7 @@ function deliveryParams(cursor?: PointCursor) {
 		hasCursor: Number(cursor !== undefined),
 		inDelivery: Number(cursor?.series !== undefined),
 		receivedNs: cursor?.delivery.receivedNs ?? "0",
+		receiptCeiling: cursor?.delivery.receivedNs ?? "18446744073709551615",
 		source: cursor?.delivery.sourceId ?? "",
 		partition: cursor?.delivery.partition ?? 0,
 		offset: cursor?.delivery.offset ?? "0",

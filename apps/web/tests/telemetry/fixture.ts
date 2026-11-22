@@ -38,7 +38,7 @@ function storageStatements(layout: Layout) {
 	return template()
 		.split(";")
 		.filter((statement) =>
-			/CREATE (?:TABLE|MATERIALIZED VIEW) __CREATE_GUARD____DATABASE__\.(metric_points|metric_series|metric_streams|deliveries|delivery_contexts|activity_series|activity_series_by_source)\s/.test(
+			/CREATE (?:TABLE|MATERIALIZED VIEW) __CREATE_GUARD____DATABASE__\.(metric_points|metric_series|metric_streams|deliveries|delivery_contexts|activity_series|activity_series_by_source|activity_receipts|activity_receipts_by_time)\s/.test(
 				statement,
 			),
 		)
@@ -234,6 +234,7 @@ export async function createPointFixture(
 			"activity_series",
 			"metric_streams",
 			"deliveries",
+			"activity_receipts",
 			"delivery_contexts",
 			...(options.participants ? ["execution_participants"] : []),
 		])
