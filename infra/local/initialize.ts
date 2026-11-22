@@ -37,6 +37,14 @@ async function initialize() {
 				name,
 				"--env",
 				`RECOUNT_INITIALIZE_ROLE=${selected}`,
+				...(selected === "kafka"
+					? [
+							"--env",
+							`CLUSTER_ID=${Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("base64url")}`,
+							"--volume",
+							`${process.env.RECOUNT_KAFKA_SECRETS_DIRECTORY ?? `${process.cwd()}/.state/kafka-secrets`}/format-scram.args:/run/recount-kafka/format-scram.args:ro`,
+						]
+					: []),
 				selected,
 			],
 			{ stdout: "ignore", stderr: "inherit", timeout: 120_000 },

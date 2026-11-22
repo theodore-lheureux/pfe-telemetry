@@ -163,6 +163,24 @@
   when: recount_schema_image.rc == 1
   changed_when: true
 
+- name: Render private Kafka service credentials
+  ansible.builtin.command:
+    argv:
+      [
+        bash,
+        /opt/recount/backend/infra/kafka/render-secrets.sh,
+        /etc/recount/kafka,
+      ]
+  no_log: true
+  changed_when: false
+
+- name: Configure the host-private Kafka credential directory
+  ansible.builtin.lineinfile:
+    path: /etc/recount/ingestion.env
+    regexp: "^RECOUNT_KAFKA_SECRETS_DIRECTORY="
+    line: RECOUNT_KAFKA_SECRETS_DIRECTORY=/etc/recount/kafka
+  no_log: true
+
 - name: Inspect and initialize only explicitly approved empty backend data
   ansible.builtin.include_tasks: initialize-role.yml
   loop: [postgres, kafka]
@@ -193,18 +211,7 @@
 
 - name: Inspect existing project topics
   ansible.builtin.command:
-    argv:
-      [
-        docker,
-        compose,
-        exec,
-        -T,
-        kafka,
-        /opt/kafka/bin/kafka-topics.sh,
-        --bootstrap-server,
-        kafka:9092,
-        --list,
-      ]
+    argv: [docker, compose, run, --rm, --no-deps, kafka-topics, list]
   environment: "{{ recount_compose_environment }}"
   register: recount_existing_topics
   changed_when: false

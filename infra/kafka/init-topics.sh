@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-mode=${1:?usage: init-topics.sh create|create-live|create-dead-letter|create-metric-output|verify}
+mode=${1:?usage: init-topics.sh create|create-live|create-dead-letter|create-metric-output|verify|list}
+if [[ $# == 1 && $mode == list ]]; then
+    exec /opt/kafka/bin/kafka-topics.sh --bootstrap-server "${RECOUNT_KAFKA_BOOTSTRAP:?}" \
+        --command-config "${RECOUNT_KAFKA_ADMIN_PROPERTIES:?}" --list
+fi
 [[ $# == 1 && ( "$mode" == create || "$mode" == create-live || "$mode" == create-dead-letter || "$mode" == create-metric-output || "$mode" == verify ) ]] || { echo 'Expected create, create-live, create-dead-letter, create-metric-output or verify' >&2; exit 1; }
 dead_letter_only=false
 if [[ "$mode" == create-dead-letter ]]; then dead_letter_only=true; mode=create; fi
@@ -29,6 +33,11 @@ export RECOUNT_LIVE_SEGMENT_MS=${RECOUNT_LIVE_SEGMENT_MS:-60000}
 export RECOUNT_LIVE_BROKER_MAX_BYTES=${RECOUNT_LIVE_BROKER_MAX_BYTES:-65536}
 export RECOUNT_PARTICIPANT_PARTITIONS=${RECOUNT_PARTICIPANT_PARTITIONS:-3}
 tool=/opt/kafka/bin
+connection=(--bootstrap-server "$bootstrap")
+if [[ -n ${RECOUNT_KAFKA_ADMIN_PROPERTIES:-} ]]; then
+    [[ -s $RECOUNT_KAFKA_ADMIN_PROPERTIES ]] || { echo 'Kafka administrator configuration is missing' >&2; exit 1; }
+    connection+=(--command-config "$RECOUNT_KAFKA_ADMIN_PROPERTIES")
+fi
 
 for value in "$raw" "$normalized" "$late" "$live" "$participants" "$dead_letter"; do
     [[ "$value" =~ ^[a-zA-Z0-9._-]+$ ]] || { echo 'Invalid topic name' >&2; exit 1; }
@@ -67,13 +76,13 @@ ensure_topic() {
     # Producers send this codec, so matching batches are stored without recompression.
     config+=(--config "compression.type=$compression")
     if [[ "$mode" == create ]]; then
-        "$tool/kafka-topics.sh" --bootstrap-server "$bootstrap" --create --topic "$topic" --partitions "$count" --replication-factor 1 "${config[@]}"
+        "$tool/kafka-topics.sh" "${connection[@]}" --create --topic "$topic" --partitions "$count" --replication-factor 1 "${config[@]}"
     fi
-    description=$("$tool/kafka-topics.sh" --bootstrap-server "$bootstrap" --describe --topic "$topic")
+    description=$("$tool/kafka-topics.sh" "${connection[@]}" --describe --topic "$topic")
     actual=$(sed -nE 's/.*PartitionCount: ([0-9]+).*/\1/p' <<< "$description")
     [[ "$actual" == "$count" ]] || { echo "Partition mismatch for $topic; no automatic resize" >&2; exit 1; }
     grep -Eq 'ReplicationFactor: 1([[:space:]]|$)' <<< "$description" || { echo "Replication mismatch for $topic" >&2; exit 1; }
-    settings=$("$tool/kafka-configs.sh" --bootstrap-server "$bootstrap" --entity-type topics --entity-name "$topic" --describe --all)
+    settings=$("$tool/kafka-configs.sh" "${connection[@]}" --entity-type topics --entity-name "$topic" --describe --all)
     # Only effective values, never a matching inherited value in the synonyms field.
     settings=$(awk '{for(i=1;i<=NF;i++) {if($i ~ /^synonyms=/) break; print $i}}' <<< "$settings" | tr ',' '\n')
     local mismatch=false
@@ -108,4 +117,7 @@ if [[ "$live_only" == false ]]; then
     ensure_topic "$dead_letter" 1 RECOUNT_DEAD_LETTER lz4
 fi
 ensure_topic "$live" "$RECOUNT_LIVE_PARTITIONS" RECOUNT_LIVE
+if [[ $status == 0 && $live_only == false && -n ${RECOUNT_KAFKA_ADMIN_PROPERTIES:-} ]]; then
+    bash /etc/recount/init-acls.sh "$mode"
+fi
 exit "$status"

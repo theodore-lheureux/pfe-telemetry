@@ -11,6 +11,10 @@ x-logging: &logging
 
 x-topic-interface: &topic-interface
   <<: *console-environment
+  RECOUNT_KAFKA_ADMIN_PROPERTIES: /run/recount-kafka/admin.properties
+  RECOUNT_NORMALIZER_GROUP: ${RECOUNT_NORMALIZER_GROUP:-recount-normalizer}
+  RECOUNT_CLICKHOUSE_GROUP: ${RECOUNT_CLICKHOUSE_GROUP:-recount-clickhouse}
+  RECOUNT_CLICKHOUSE_LATE_GROUP: ${RECOUNT_CLICKHOUSE_LATE_GROUP:-recount-clickhouse-late}
   RECOUNT_KAFKA_BOOTSTRAP: kafka:9092
   RECOUNT_RAW_TOPIC: ${RECOUNT_RAW_TOPIC:-recount.metrics.raw}
   RECOUNT_NORMALIZED_TOPIC: ${RECOUNT_NORMALIZED_TOPIC:-recount.metrics.normalized-packed}
@@ -89,19 +93,24 @@ services:
 
   kafka:
     entrypoint: [/bin/sh, /etc/recount/data-entrypoint.sh, kafka]
-    command: [/etc/kafka/docker/run]
+    command: [/bin/bash, /etc/recount/kafka-start.sh]
     image: apache/kafka:4.3.1@sha256:77e3df9054047a88b520d0cc46e16696d3b22022e1d580aeccd2632df6532837
     environment:
       KAFKA_NODE_ID: 1
       <<: *console-environment
       RECOUNT_DATA_ID: ${RECOUNT_KAFKA_DATA_ID:-}
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://:9092,HOST://:19092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://127.0.0.1:${RECOUNT_KAFKA_HOST_PORT:-19092}
+      KAFKA_LISTENERS: SASL_PLAINTEXT://:9092,HOST://:19092,CONTROLLER://127.0.0.1:9093
+      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka:9092,HOST://127.0.0.1:${RECOUNT_KAFKA_HOST_PORT:-19092}
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,SASL_PLAINTEXT:SASL_PLAINTEXT,HOST:SASL_PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: SASL_PLAINTEXT
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-512
+      KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
+      KAFKA_SUPER_USERS: "User:ANONYMOUS;User:broker;User:admin"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_OFFSETS_TOPIC_NUM_PARTITIONS: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -125,6 +134,9 @@ services:
     networks: [broker, kafka-access]
     volumes:
       - kafka-data:/var/lib/kafka/data
+      - ../kafka/start.sh:/etc/recount/kafka-start.sh:ro
+      - ${RECOUNT_KAFKA_SECRETS_DIRECTORY:-./.state/kafka-secrets}/broker.jaas:/run/recount-kafka/broker.jaas:ro
+      - ${RECOUNT_KAFKA_SECRETS_DIRECTORY:-./.state/kafka-secrets}/broker.properties:/run/recount-kafka/broker.properties:ro
       - type: bind
         source: ./data-entrypoint.sh
         target: /etc/recount/data-entrypoint.sh
@@ -142,6 +154,8 @@ services:
           /opt/kafka/bin/kafka-topics.sh,
           --bootstrap-server,
           localhost:9092,
+          --command-config,
+          /run/recount-kafka/broker.properties,
           --list,
         ]
       interval: 10s
@@ -157,6 +171,8 @@ services:
     command: [verify]
     environment: *topic-interface
     volumes:
+      - ../kafka/init-acls.sh:/etc/recount/init-acls.sh:ro
+      - ${RECOUNT_KAFKA_SECRETS_DIRECTORY:-./.state/kafka-secrets}/admin.properties:/run/recount-kafka/admin.properties:ro
       - type: bind
         source: ../kafka/init-topics.sh
         target: /etc/recount/init-topics.sh
@@ -188,6 +204,7 @@ services:
     ports: ["127.0.0.1:${RECOUNT_CLICKHOUSE_PORT:-18123}:8123"]
     volumes:
       - clickhouse-data:/var/lib/clickhouse
+      - ${RECOUNT_KAFKA_SECRETS_DIRECTORY:-./.state/kafka-secrets}/clickhouse.xml:/etc/clickhouse-server/config.d/recount-kafka-auth.xml:ro
       - type: bind
         source: ./data-entrypoint.sh
         target: /etc/recount/data-entrypoint.sh

@@ -30,8 +30,18 @@ services:
   kafka-exporter:
     <<: *restrictions
     image: danielqsj/kafka-exporter:v1.9.0@sha256:4150e46b2e9697ac30e4be8de03ec1704b4bdc7037577b83b8d35a32be298c16
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - 'export SASL_USER_PASSWORD="$$(cat /run/recount-kafka/password)"; test -n "$$SASL_USER_PASSWORD"; exec /bin/kafka_exporter "$$@"'
+      - kafka-exporter
+    volumes:
+      - /etc/recount/kafka/kafka-exporter.password:/run/recount-kafka/password:ro
     command:
       - --kafka.server=kafka:9092
+      - --sasl.enabled
+      - --sasl.username=kafka-exporter
+      - --sasl.mechanism=scram-sha512
       - --topic.filter=^recount\.(metrics\.(raw|normalized-packed|late|dead-letter)|participants)$$
       - --group.filter=^(recount-normalizer|recount-clickhouse(-late|-participants|-dead-letter)?)$$
       - --offset.show-all

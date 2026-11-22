@@ -70,7 +70,8 @@ def inventory():
         result[f"telemetry-codec:metric_points:{row['name']}"] = row["compression_codec"]
 
     kafka = ("docker", "exec", KAFKA, "/opt/kafka/bin/")
-    endpoint = ("--bootstrap-server", "localhost:9092")
+    endpoint = ("--bootstrap-server", "localhost:9092",
+                "--command-config", "/run/recount-kafka/broker.properties")
     topics = command(*kafka[:3], kafka[3] + "kafka-topics.sh", *endpoint,
                      "--describe").decode().splitlines()
     for line in topics:

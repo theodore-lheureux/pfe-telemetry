@@ -283,6 +283,16 @@ ANSIBLE_CONFIG=infra/oracle-stack/ansible/ansible.cfg \
 
 ## Activate and verify
 
+### Kafka authentication cutover
+
+This cutover requires a fresh Kafka data directory and fresh disposable ClickHouse analytical tables. Raw offsets restart in the new cluster, and the point and delivery tables use raw positions; keeping old analytics with the new cluster can associate new receipts with old points.
+
+1. Stop writers and consumers and drain the old cluster or explicitly approve discarding its backlog. Identify and set aside the selected Kafka and ClickHouse data directories. Preserve PostgreSQL, collector queues, and unrelated state.
+2. Provision new empty directories and remove only the corresponding recorded Kafka and ClickHouse data identities from the private deployment environment. Run approved Ansible backend initialization for the new release. It renders the broker and client files under `/etc/recount/kafka`, initializes Kafka with a fresh cluster ID, and verifies the topics and exact ACLs before ClickHouse and the applications use them.
+3. Verify ingestion, normalization, ClickHouse consumption, Live packets, and exporter lag before resuming collectors. Do not copy raw records from the unauthenticated cluster into the new trusted topic.
+
+Runtime passwords stay in separately mounted files. The host credential directory must remain root-private; do not print or include its contents in a release bundle. For routine rotation, use an admin credential and the Kafka config tool's `--add-config-file` with a protected file, not a password in the command line. Replace and rerender the affected service's file and recreate its container to remount it and close existing sessions. Verify access before resuming work. If a credential is compromised, first revoke its ACLs and terminate its existing sessions.
+
 Each push to `main` runs `Release · build and deploy`, whose deploy job waits for
 approval in the `ingestion-deploy` environment. The runner verifies the build
 attestation of that run's archive against this repository's release workflow on

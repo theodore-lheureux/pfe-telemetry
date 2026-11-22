@@ -3,6 +3,7 @@ services:
     mem_limit: 1024m
     memswap_limit: 1024m
   kafka:
+    ports: !reset []
     mem_limit: 1536m
     memswap_limit: 1536m
     environment:

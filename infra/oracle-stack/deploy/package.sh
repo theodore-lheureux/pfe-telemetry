@@ -19,7 +19,7 @@ mkdir "$bundle/backend/infra/clickhouse" "$bundle/backend/infra/kafka"
 for file in Dockerfile entrypoint.sh verify-schema.sh healthcheck.sh users.xml config.xml; do
     cp "infra/clickhouse/$file" "$bundle/backend/infra/clickhouse/"
 done
-cp infra/kafka/init-topics.sh "$bundle/backend/infra/kafka/"
+cp infra/kafka/{init-topics,init-acls,start,render-secrets}.sh "$bundle/backend/infra/kafka/"
 mkdir -p "$bundle/backend/infra/oracle-stack/deploy"
 cp infra/oracle-stack/deploy/clickhouse-memory.xml "$bundle/backend/infra/oracle-stack/deploy/"
 cp infra/local/data.binds.yaml "$bundle/backend/infra/local/"
