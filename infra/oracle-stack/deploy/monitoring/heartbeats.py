@@ -26,6 +26,8 @@ LIVE = "recount.metrics.live"
 LIVE_PARTITIONS = 8
 RAW_LAG_LIMIT = 1000
 FRESH_SECONDS = 180
+# Native collectors report this once per collection cycle regardless of their other metrics.
+COLLECTOR_HEARTBEAT = "recount.collection.discovered.processes"
 INGEST_HOST = "ingest.recount.cloud"
 EXPORTER = f"{PROJECT}-monitoring-kafka-exporter-1"
 
@@ -159,11 +161,11 @@ def pg_scalar(sql):
     return pg("psql", "-XAtq", "-v", "ON_ERROR_STOP=1", "-U", "recount", "-d", "recount", "-c", sql)
 
 
-def clickhouse(sql):
+def clickhouse(sql, *settings):
     return command("docker", "exec", f"{PROJECT}-clickhouse-1", "clickhouse-client",
                    "--readonly=1", "--max_execution_time=3", "--max_threads=1",
                    "--max_rows_to_read=2000000", "--max_bytes_to_read=67108864",
-                   "--query", sql).strip()
+                   *settings, "--query", sql).strip()
 
 
 def sources_sending():
@@ -179,8 +181,8 @@ def sources_sending():
 
 
 def fresh_data():
-    # Check a real point for the project of the latest recent stored receipt.
-    # The event timestamp bounds include both ends of a UTC day rollover.
+    # Scope the point lookup to the project and metric prefix of the primary
+    # key. A time filter alone can read every metric's granules in recent parts.
     return clickhouse(
         f"WITH now64(3) AS upper, upper - INTERVAL {FRESH_SECONDS} SECOND AS lower "
         "SELECT 1 FROM telemetry.metric_points "
@@ -188,9 +190,12 @@ def fresh_data():
         "WHERE received_unix_nano BETWEEN toUnixTimestamp64Nano(lower) AND toUnixTimestamp64Nano(upper) "
         "AND max_event_unix_milli BETWEEN toUnixTimestamp64Milli(lower) AND toUnixTimestamp64Milli(upper) "
         "ORDER BY received_unix_nano DESC LIMIT 1) "
+        f"AND metric_name = '{COLLECTOR_HEARTBEAT}' "
         "AND event_day BETWEEN intDiv(toUnixTimestamp(lower),86400) AND intDiv(toUnixTimestamp(upper),86400) "
         "AND time_unix_milli BETWEEN toUnixTimestamp64Milli(lower) AND toUnixTimestamp64Milli(upper) "
-        "LIMIT 1") == b"1"
+        "LIMIT 1",
+        "--force_primary_key=1",
+    ) == b"1"
 
 
 def clickhouse_healthy():

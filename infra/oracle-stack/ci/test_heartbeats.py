@@ -73,6 +73,18 @@ class HeartbeatsTest(unittest.TestCase):
                 curl.return_value = data
                 self.assertFalse(heartbeats.pipeline_healthy())
 
+    def test_freshness_checks_one_indexed_collector_point_and_a_recent_receipt(self):
+        with patch.object(heartbeats, "clickhouse", return_value=b"1") as query:
+            self.assertTrue(heartbeats.fresh_data())
+            sql, *settings = query.call_args.args
+            self.assertIn("FROM telemetry.activity_receipts WHERE received_unix_nano BETWEEN", sql)
+            self.assertIn("ORDER BY received_unix_nano DESC LIMIT 1", sql)
+            self.assertIn("AND metric_name = 'recount.collection.discovered.processes'", sql)
+            self.assertIn("AND time_unix_milli BETWEEN", sql)
+            self.assertIn("--force_primary_key=1", settings)
+            query.return_value = b""
+            self.assertFalse(heartbeats.fresh_data())
+
     def test_withholds_ping_and_does_not_log_secrets(self):
         send = Mock(side_effect=OSError("fixture-secret"))
         output = io.StringIO()
