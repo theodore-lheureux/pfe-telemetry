@@ -81,6 +81,11 @@ type Row = Record<
 	counts?: string[];
 };
 
+function measureSettings(nodeGrid?: boolean) {
+	if (nodeGrid) return { ...SETTINGS, max_threads: 1, max_block_size: "1024" };
+	return SETTINGS;
+}
+
 const number = (value: Row[string]) =>
 	typeof value === "number" || typeof value === "string" ? Number(value) : null;
 
@@ -138,14 +143,18 @@ async function readWindow(
 			format: "JSONEachRow",
 			query_params: compiled.params,
 			abort_signal: abort,
-			clickhouse_settings: SETTINGS,
+			clickhouse_settings: measureSettings(query.nodeGrid),
 		});
 		const batch = await result.json<Row>();
-		if (isHistogramPercentile(measure.calculation) && batch.length > 32768)
+		if (
+			!query.nodeGrid &&
+			isHistogramPercentile(measure.calculation) &&
+			batch.length > 32768
+		)
 			throw new OperationError("CAPACITY", "Histogram result limit exceeded");
 		for (const row of batch) rows.push({ ...row, measure_index: index });
 	}
-	const limit = query.limit ?? DEFAULT_SERIES_LIMIT;
+	const limit = query.nodeGrid ? 1000 : (query.limit ?? DEFAULT_SERIES_LIMIT);
 	const groups = new Map<string, SeriesResult & { rank: number }>();
 	let limited = false;
 	for (const row of rows) {
@@ -203,7 +212,12 @@ async function readWindow(
 
 function finishHistogramPoints(entry: SeriesResult, query: AnalyticsQuery) {
 	const measure = query.measures.find(({ name }) => name === entry.measure);
-	if (!measure || !isHistogramPercentile(measure.calculation) || query.heatmap)
+	if (
+		!measure ||
+		!isHistogramPercentile(measure.calculation) ||
+		query.heatmap ||
+		query.nodeGrid
+	)
 		return entry.points;
 	const percentile = Number(measure.calculation.slice(1)) / 100;
 	return entry.points.map(({ histograms, ...point }) => ({
@@ -321,6 +335,8 @@ export async function runQuery(
 				);
 			if (
 				definition.behavior === "population" &&
+				!query.heatmap &&
+				!query.nodeGrid &&
 				(query.groupBy?.includes("execution") ||
 					query.filters?.some(({ field }) => field === "execution") ||
 					measure.filters?.some(({ field }) => field === "execution"))

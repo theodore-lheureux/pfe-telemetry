@@ -12,6 +12,7 @@ import type { Display } from "./draft";
 import { bucketGrid, coverageBands, coverageState, onGrid } from "./grid";
 import { HistogramHeatmap } from "./histogram-heatmap";
 import { type FormulaNames, plottedTitle, seriesSource } from "./labels";
+import { NodeGrid } from "./node-grid";
 import { NumberResults } from "./number-results";
 import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
 
@@ -49,6 +50,7 @@ export function InsightChart({
 	onRefresh,
 	onZoom,
 	highlight,
+	onNode,
 }: {
 	result: QueryResult;
 	view: SeriesView;
@@ -63,6 +65,7 @@ export function InsightChart({
 	onZoom: (from: Date, to: Date) => void;
 	/** The line hovered in the results table. */
 	highlight: string | null;
+	onNode?: (host: string) => void;
 }) {
 	const title =
 		display.type === "heatmap"
@@ -98,6 +101,7 @@ export function InsightChart({
 				hydrated={hydrated}
 				onZoom={onZoom}
 				highlight={highlight}
+				onNode={onNode}
 			/>
 			{view.current.length > CHART_SERIES && display.type !== "table" && (
 				<p className="text-xs text-muted-foreground">
@@ -118,6 +122,7 @@ export function ChartBody({
 	highlight,
 	height = "h-72",
 	fill = false,
+	onNode,
 }: {
 	result: QueryResult;
 	view: SeriesView;
@@ -129,8 +134,13 @@ export function ChartBody({
 	height?: string;
 	/** Stretches stat cards across the space, as on a dashboard tile. */
 	fill?: boolean;
+	onNode?: (host: string) => void;
 }) {
 	const zone = useDisplayTimeZone();
+	if (display.type === "node-grid") {
+		if (!hydrated) return <Skeleton className={`${height} w-full`} />;
+		return <NodeGrid result={result} view={view} zone={zone} onNode={onNode} />;
+	}
 	const bucketSeconds = result.bucketSeconds ?? 60;
 	const step = bucketSeconds * 1000;
 	const watermark = result.ingestedThrough;

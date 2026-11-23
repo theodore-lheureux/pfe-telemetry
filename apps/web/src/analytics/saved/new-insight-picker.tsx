@@ -27,6 +27,7 @@ const DESCRIPTION: Record<DisplayType, () => string> = {
 	stat: m.saved_create_stat,
 	table: m.saved_create_table,
 	heatmap: m.insight_display_heatmap,
+	"node-grid": m.insight_display_node_grid,
 };
 
 export function NewInsightPicker({
@@ -57,7 +58,7 @@ export function NewInsightPicker({
 				</div>
 				<div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
 					{(Object.keys(DISPLAY_LABEL) as DisplayType[])
-						.filter((type) => type !== "heatmap")
+						.filter((type) => type !== "heatmap" && type !== "node-grid")
 						.map((type) => {
 							const Icon = DISPLAY_ICON[type];
 							const label = DISPLAY_LABEL[type]();

@@ -161,7 +161,11 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			await page
 				.getByRole("option", { name: /Process CPU distribution/i })
 				.click({ timeout: 6000 });
-			await expect(page.getByLabel("Histogram percentile")).toHaveCount(3);
+			await expect(page.getByLabel("Histogram percentile")).toHaveCount(1);
+			for (const percentile of ["p50", "p95", "p99"])
+				await expect(
+					page.getByRole("button", { name: percentile, exact: true }),
+				).toHaveAttribute("aria-pressed", "true");
 			await expect(page.locator(".recharts-surface").first()).toBeVisible();
 			await expect(
 				page.getByRole("row").filter({ hasText: "Process CPU distribution" }),
@@ -175,9 +179,26 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				page.locator("[data-time-window] rect title").first(),
 			).toContainText("Count:");
 			await expect(page.getByLabel("Time slice")).toHaveCount(0);
+			const cell = page.locator("[data-time-window] rect").first();
+			await cell.hover();
+			const tooltip = page.getByRole("tooltip");
+			await expect(tooltip).toContainText(
+				/\d.*[–-].*\d.*%.*Count:.*of this time bucket/,
+			);
 			await page.screenshot({
 				path: info.outputPath(`histogram-heatmap-${theme}.png`),
 			});
+			await page.getByRole("combobox", { name: "Chart type" }).click();
+			await page.getByRole("option", { name: "Node grid" }).click();
+			const host = page
+				.getByRole("button", { name: /Open node heatmap: node-/ })
+				.first();
+			await expect(host).toBeVisible();
+			await page.screenshot({
+				path: info.outputPath(`histogram-grid-${theme}.png`),
+			});
+			await host.click();
+			await expect(page.locator("[data-time-window]").first()).toBeVisible();
 
 			await page.goto(`${path}/activity`);
 			await page

@@ -1,5 +1,17 @@
 import { isRatioMetric } from "./metric-names";
 
+export function heatColor(ratio: number) {
+	return `color-mix(in oklab, var(--chart-1) ${100 * Math.min(1, Math.max(0, ratio))}%, var(--muted))`;
+}
+
+export const DISTRIBUTIONS: Readonly<Record<string, string>> = {
+	"process.cpu.time": "recount.node.process.cpu.utilization.distribution",
+	"recount.calculated.process-cpu":
+		"recount.node.process.cpu.utilization.distribution",
+	"recount.process.memory.rss": "recount.node.process.memory.rss.distribution",
+	"process.disk.io": "recount.node.process.disk.io.rate.distribution",
+};
+
 export interface HistogramWindow {
 	bucket: string;
 	bounds: number[];

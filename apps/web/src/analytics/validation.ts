@@ -21,6 +21,7 @@ import {
 	MAX_FORMULAS,
 	MAX_GROUP_BY,
 	MAX_MEASURES,
+	MAX_NODE_GRID_BUCKETS,
 	MAX_RANGE_SECONDS,
 	MAX_RESULT_POINTS,
 	MAX_SERIES,
@@ -228,9 +229,16 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 				"Interval is too small for this range",
 			);
 	}
-	const measures = list(input.measures, MAX_MEASURES, "measures").map(
-		parseMeasure,
-	);
+	const measures = list(
+		input.measures,
+		MAX_MEASURES * HISTOGRAM_PERCENTILES.length,
+		"measures",
+	).map(parseMeasure);
+	if (
+		measures.filter((measure) => !isHistogramPercentile(measure.calculation))
+			.length > MAX_MEASURES
+	)
+		throw new InputError("INVALID_QUERY", "Too many scalar measures");
 	if (!measures.length)
 		throw new InputError("INVALID_QUERY", "At least one measure is required");
 	if (new Set(measures.map((measure) => measure.name)).size !== measures.length)
@@ -292,6 +300,7 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 	return {
 		shape: input.shape,
 		...heatmapOption(input, measures),
+		...nodeGridOption(input, measures, groupBy, buckets),
 		range,
 		...(interval && { interval }),
 		measures,
@@ -302,6 +311,35 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		...(input.other ? { other: true } : {}),
 		...comparisonOptions(input),
 	};
+}
+
+function nodeGridOption(
+	input: Record<string, unknown>,
+	measures: Measure[],
+	groups: unknown[],
+	buckets: number,
+) {
+	if (input.nodeGrid === undefined) return {};
+	if (
+		input.nodeGrid !== true ||
+		input.heatmap ||
+		input.shape !== "timeseries" ||
+		input.compare ||
+		input.aggregate ||
+		input.spread ||
+		input.other ||
+		groups.length !== 1 ||
+		groups[0] !== "host" ||
+		buckets > MAX_NODE_GRID_BUCKETS ||
+		(Array.isArray(input.formulas) && input.formulas.length > 0) ||
+		measures.length !== 1 ||
+		!isHistogramPercentile(measures[0].calculation)
+	)
+		throw new InputError(
+			"INVALID_QUERY",
+			"Node grid requires one histogram and at most 120 time buckets",
+		);
+	return { nodeGrid: true } as const;
 }
 
 function heatmapOption(input: Record<string, unknown>, measures: Measure[]) {

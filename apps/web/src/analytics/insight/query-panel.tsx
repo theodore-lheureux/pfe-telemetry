@@ -11,8 +11,10 @@ import type { MetricDefinition } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
 import { isHistogramPercentile } from "../validation";
 import {
+	activeHeatmapSeries,
 	draftMetricNames,
 	type InsightDraft,
+	isDistributionView,
 	newSeries,
 	nextSeriesName,
 	removeSeries,
@@ -72,6 +74,10 @@ export function QueryPanel({
 		wantsAttributes,
 	);
 	let next = nextSeriesName(draft.series);
+	const active = isDistributionView(draft.display.type)
+		? activeHeatmapSeries(draft)
+		: undefined;
+	if (active) next = null;
 	if (editingCalculation && draft.series.length >= MAX_CALCULATED_INPUTS)
 		next = null;
 	return (
@@ -98,17 +104,23 @@ export function QueryPanel({
 					)
 				}
 			>
-				{draft.series.map((series, index) => (
+				{(active ? [active] : draft.series).map((series, index) => (
 					<SeriesRow
 						key={series.name}
 						userId={userId}
 						reference={reference}
 						series={series}
 						color={`var(--viz-${(index % 8) + 1})`}
-						metrics={metrics}
+						metrics={
+							active
+								? metrics.filter(
+										(metric) => metric.kind === 3 && metric.temporality === 1,
+									)
+								: metrics
+						}
 						disabled={disabled}
-						removable={draft.series.length > 1}
-						heatmap={draft.display.type === "heatmap"}
+						removable={!active && draft.series.length > 1}
+						heatmap={isDistributionView(draft.display.type)}
 						onChange={(updated) => {
 							const selected = metrics.find(
 								(metric) => metric.name === updated.metric,
@@ -132,32 +144,28 @@ export function QueryPanel({
 									? metrics.find((metric) => metric.name === updated.metric)
 											?.defaultBreakdown
 									: undefined;
-							const rows = draft.series.map((entry) =>
-								entry.name === series.name ? updated : entry,
-							);
 							if (
 								draft.series.length === 1 &&
 								updated.metric !== series.metric &&
 								isHistogramPercentile(updated.calculation) &&
-								!editingCalculation
+								!editingCalculation &&
+								!active
 							) {
-								rows.push(
-									{ ...updated, name: "B", calculation: "p95" },
-									{ ...updated, name: "C", calculation: "p99" },
-								);
 								base.display = { ...base.display, type: "line" };
 							}
 							onChange({
 								...base,
 								// An edited series no longer belongs to its calculated metric.
-								series: rows,
+								series: draft.series.map((entry) =>
+									entry.name === series.name ? updated : entry,
+								),
 								...(breakdown ? { groupBy: breakdown } : {}),
 							});
 						}}
 						onRemove={() => onChange(removeSeries(draft, series.name))}
 					/>
 				))}
-				{draft.display.type !== "heatmap" && (
+				{!isDistributionView(draft.display.type) && (
 					<FormulaFields
 						draft={draft}
 						disabled={disabled}
@@ -199,7 +207,7 @@ export function QueryPanel({
 					</p>
 				)}
 			</Section>
-			{draft.display.type !== "stat" && (
+			{draft.display.type !== "stat" && draft.display.type !== "node-grid" && (
 				<Section title={m.insight_group_by()}>
 					<GroupByFields
 						draft={draft}

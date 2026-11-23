@@ -6,7 +6,9 @@ import { DataTable } from "../../components/data-table";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 import type { QueryResult, SeriesResult } from "../contracts";
+import { isHistogramPercentile } from "../validation";
 import {
+	histogramTimeseriesColumns,
 	type InsightTableMeta,
 	insightTableFeatures,
 	insightTablePrecision,
@@ -58,8 +60,14 @@ export function InsightTable({
 	onHover: (line: string | null) => void;
 }) {
 	const [sorting, setSorting] = useState<SortingState>([]);
-	const columns =
-		result.shape === "table" ? insightTotalColumns : insightTimeseriesColumns;
+	let columns = insightTimeseriesColumns;
+	if (result.shape === "table") columns = insightTotalColumns;
+	else if (
+		result.measures.some(({ calculation }) =>
+			isHistogramPercentile(calculation),
+		)
+	)
+		columns = histogramTimeseriesColumns;
 	const visibleSorting = useMemo(
 		() =>
 			sorting.filter((entry) =>

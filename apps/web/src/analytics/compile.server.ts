@@ -51,14 +51,45 @@ const VALUE = `if(bitAnd(flags, 1) = 0,
     if(isNull(int_value), double_value, toFloat64(int_value)), NULL)`;
 const POPULATION_SUM = `if(bitAnd(flags, 1) = 0 AND bitTest(statistics_present, 1), \`sum\`, NULL)`;
 
-function histogramSelect(base: string, columns: string[]) {
+function histogramSelect(
+	base: string,
+	columns: string[],
+	nodeGrid: boolean,
+	quantile: number,
+) {
 	const keys = [...columns, "bucket", "bounds"].join(", ");
 	const groups = columns.join(", ");
 	const rank = groups ? `dense_rank() OVER (ORDER BY ${groups})` : "1";
-	return `WITH base AS (${base}), pooled AS (
- SELECT ${keys}, arrayMap(n -> toString(n), sumForEach(arrayMap(n -> toUInt128(n), counts))) AS counts
+	const countArray = "sumForEach(arrayMap(n -> toUInt128(n), counts))";
+	const pooledCounts = nodeGrid
+		? countArray
+		: `arrayMap(n -> toString(n), ${countArray})`;
+	const ctes = `WITH base AS (${base}), pooled AS (
+ SELECT ${keys}, ${pooledCounts} AS counts
  FROM base GROUP BY ${keys}
-), ranked AS (
+)`;
+	if (nodeGrid)
+		return `${ctes}, cells AS (
+ SELECT g0, bucket, groupArray(tuple(bounds, arrayCumSum(arrayMap(n -> toFloat64(n), counts)))) AS layouts,
+ arrayFilter(b -> arrayAll(l -> has(l.1,b), layouts), layouts[1].1) AS shared,
+ arrayMap(b -> arraySum(arrayMap(l -> l.2[indexOf(l.1,b)], layouts)), shared) AS cumulative,
+ arraySum(arrayMap(l -> l.2[-1], layouts)) AS observations,
+ observations * ${quantile} AS target,
+ arrayFirstIndex(n -> n >= target, cumulative) AS hit,
+ multiIf(observations = 0 OR empty(shared), NULL,
+   hit = 0, shared[-1], hit = 1, shared[1],
+   shared[hit - 1] + (shared[hit] - shared[hit - 1]) *
+     (target - cumulative[hit - 1]) / nullIf(cumulative[hit] - cumulative[hit - 1], 0)) AS q
+ FROM pooled WHERE g0 IS NOT NULL GROUP BY g0, bucket
+), hosts AS (
+ SELECT g0, groupArray(tuple(bucket, q)) AS values,
+ dense_rank() OVER (ORDER BY max(q) DESC NULLS LAST, g0) AS series_rank
+ FROM cells GROUP BY g0
+)
+SELECT g0 AS k_g0, toString(cell.1) AS bucket_ms, cell.2 AS series_value, series_rank, 0 AS other
+FROM (SELECT * FROM hosts WHERE series_rank <= 1001)
+ARRAY JOIN values AS cell ORDER BY series_rank, bucket_ms`;
+	return `${ctes}, ranked AS (
  SELECT *, ${rank} AS series_rank FROM pooled
 )
 SELECT ${columns.map((name) => `${name} AS k_${name}, `).join("")}
@@ -322,7 +353,9 @@ function measureSelect(
 		query.shape === "timeseries"
 			? "intDiv(time_unix_milli, {step:UInt64}) * {step:UInt64}"
 			: "toUInt64(0)";
-	const source = usesExecution ? executionPointSource(points) : `(${points})`;
+	const source = usesExecution
+		? executionPointSource(points, histogram)
+		: `(${points})`;
 	if (histogram)
 		return histogramSelect(
 			`SELECT ${groupSelect ? `${groupSelect}, ` : ""}
@@ -335,6 +368,8 @@ function measureSelect(
 		"length(bucket_counts) = length(explicit_bounds) + 1",
  ].join(" AND ")}`,
 			groupColumns,
+			query.nodeGrid === true,
+			Number(measure.calculation.slice(1)) / 100,
 		);
 	const groups = groupColumns.join(", ");
 	// A sum or count is larger than each source, so their band would not surround it.

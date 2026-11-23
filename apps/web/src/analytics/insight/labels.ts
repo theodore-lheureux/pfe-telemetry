@@ -94,6 +94,7 @@ export const DISPLAY_ICON: Record<DisplayType, LucideIcon> = {
 	bar: BarChart3Icon,
 	stacked: BarChartBigIcon,
 	heatmap: Grid2X2Icon,
+	"node-grid": Grid2X2Icon,
 	stat: HashIcon,
 	table: TableIcon,
 };
@@ -103,6 +104,7 @@ export const DISPLAY_LABEL: Record<DisplayType, () => string> = {
 	bar: m.insight_display_bar,
 	stacked: m.insight_display_stacked,
 	heatmap: m.insight_display_heatmap,
+	"node-grid": m.insight_display_node_grid,
 	stat: m.insight_display_stat,
 	table: m.insight_display_table,
 };
@@ -296,7 +298,7 @@ function measureText(
 	measure: QueryResult["measures"][number],
 ) {
 	if (isHistogramPercentile(measure.calculation))
-		return `${metricLabel(measure.metric, measure.label)} · ${CALCULATION_LABEL[measure.calculation]()}`;
+		return `${metricLabel(measure.metric, measure.label)} ${CALCULATION_LABEL[measure.calculation]()}`;
 	if (result.measures.length > 1)
 		return `${measure.name} · ${metricLabel(measure.metric, measure.label)}`;
 	return metricLabel(measure.metric, measure.label);
@@ -325,7 +327,10 @@ export function seriesLabel(
 	const group = result.aggregate
 		? AGGREGATE_LABEL[result.aggregate]()
 		: groupText(series, groupLabel);
-	const parts = !group || shown > 1 ? [plotted(result, series, names)] : [];
+	const source = seriesSource(result, series);
+	const histogram = source && isHistogramPercentile(source.calculation);
+	const parts =
+		!group || shown > 1 || histogram ? [plotted(result, series, names)] : [];
 	if (group) parts.push(group);
 	const label = parts.join(" · ");
 	return series.comparison ? m.insight_previous_label({ label }) : label;

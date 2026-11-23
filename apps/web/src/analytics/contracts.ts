@@ -27,6 +27,7 @@ export type RelativeRange = keyof typeof RELATIVE_RANGES;
 
 export const MAX_RANGE_SECONDS = 2592000;
 export const MAX_BUCKETS = 600;
+export const MAX_NODE_GRID_BUCKETS = 120;
 /** Series letters A–Z. */
 export const MAX_MEASURES = 26;
 export const MAX_FILTERS = 8;
@@ -116,6 +117,7 @@ export type Comparison =
 export interface AnalyticsQuery {
 	shape: "timeseries" | "table";
 	heatmap?: true;
+	nodeGrid?: true;
 	range: QueryRange;
 	/** Required for timeseries; ignored for table results. */
 	interval?: Interval;

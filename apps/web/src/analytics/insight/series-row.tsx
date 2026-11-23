@@ -12,6 +12,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../../components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import {
 	Tooltip,
 	TooltipContent,
@@ -23,6 +24,8 @@ import { useMetricAttributes } from "../catalog";
 import {
 	type Calculation,
 	type Combine,
+	HISTOGRAM_PERCENTILES,
+	type HistogramPercentile,
 	MAX_FILTERS,
 	type MetricDefinition,
 } from "../contracts";
@@ -30,7 +33,7 @@ import { FilterChips, withFilter } from "../filter-chips";
 import { metricDescription } from "../metric-names";
 import { MetricPicker } from "../metric-picker";
 import { ALLOWED_CALCULATIONS } from "../validation";
-import type { DraftSeries } from "./draft";
+import { type DraftSeries, selectedPercentiles } from "./draft";
 import {
 	CALCULATION_LABEL,
 	COMBINE_GROUPS,
@@ -112,6 +115,7 @@ export function SeriesRow({
 								...series,
 								metric: next.name,
 								calculation: "p50",
+								percentiles: [...HISTOGRAM_PERCENTILES],
 								combine: "sum",
 								filters: [],
 							});
@@ -190,7 +194,37 @@ export function SeriesRow({
 					)}
 					{!definition.calculated && (
 						<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-							{!heatmap && (
+							{histogram && heatmap && (
+								<span className="px-1.5 text-xs text-muted-foreground">
+									{m.insight_heatmap_active()}
+								</span>
+							)}
+							{histogram && !heatmap && (
+								<ToggleGroup
+									type="multiple"
+									size="sm"
+									variant="outline"
+									aria-label={m.insight_histogram_percentile()}
+									disabled={disabled}
+									value={selectedPercentiles(series)}
+									onValueChange={(values) => {
+										const percentiles = values as HistogramPercentile[];
+										if (percentiles.length)
+											onChange({ ...series, percentiles });
+									}}
+								>
+									{HISTOGRAM_PERCENTILES.map((value) => (
+										<ToggleGroupItem
+											key={value}
+											value={value}
+											aria-label={value}
+										>
+											{value}
+										</ToggleGroupItem>
+									))}
+								</ToggleGroup>
+							)}
+							{!histogram && (
 								<Select
 									value={series.calculation}
 									disabled={disabled}

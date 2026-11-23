@@ -18,13 +18,22 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../../components/ui/select";
-import { type Comparison, INTERVALS, type Interval } from "../contracts";
+import {
+	type Comparison,
+	HISTOGRAM_PERCENTILES,
+	INTERVALS,
+	type Interval,
+	type MetricDefinition,
+} from "../contracts";
+import { DISTRIBUTIONS } from "../histograms";
 import { autoInterval, effectiveInterval, intervalFits } from "../intervals";
+import { metricLabel } from "../metric-names";
 import { isHistogramPercentile } from "../validation";
 import { DisplayOptions, spreadUnavailable } from "./display-options";
 import {
 	type DisplayType,
 	type InsightDraft,
+	isDistributionView,
 	MAX_RANGE_DAYS,
 	withDisplay,
 } from "./draft";
@@ -74,10 +83,12 @@ export function comparisonKey(comparison: Comparison | undefined) {
 /** Time range, interval and comparison on the left; options and chart type on the right. */
 export function InsightToolbar({
 	draft,
+	metrics,
 	disabled,
 	onChange,
 }: {
 	draft: InsightDraft;
+	metrics: MetricDefinition[];
 	disabled: boolean;
 	onChange: (draft: InsightDraft) => void;
 }) {
@@ -96,8 +107,55 @@ export function InsightToolbar({
 					interval: PER_INTERVAL_LABEL[autoInterval(from, to)](),
 				});
 	const display = draft.display;
+	const hasHistogram = draft.series.some(({ calculation }) =>
+		isHistogramPercentile(calculation),
+	);
+	const matching = draft.series.find(
+		({ metric }) =>
+			metric &&
+			metrics.some(
+				(candidate) =>
+					candidate.name === DISTRIBUTIONS[metric] &&
+					candidate.kind === 3 &&
+					candidate.temporality === 1 &&
+					candidate.status !== "hidden",
+			),
+	);
+	const alternative = matching?.metric
+		? DISTRIBUTIONS[matching.metric]
+		: undefined;
 	const setDisplay = (next: Partial<InsightDraft["display"]>) =>
 		onChange(withDisplay(draft, { ...display, ...next }));
+	const chooseType = (type: DisplayType) => {
+		if (
+			!isDistributionView(type) ||
+			hasHistogram ||
+			!matching ||
+			!alternative
+		) {
+			setDisplay({ type });
+			return;
+		}
+		onChange({
+			...draft,
+			display: { ...display, type },
+			series: draft.series.map((series) =>
+				series === matching
+					? {
+							...series,
+							metric: alternative,
+							calculation: "p50",
+							percentiles: [...HISTOGRAM_PERCENTILES],
+							combine: "sum",
+							filters: series.filters.filter(
+								({ field }) =>
+									field === "host" || field === "node" || field === "execution",
+							),
+						}
+					: series,
+			),
+		});
+	};
 	return (
 		<div className="flex flex-wrap items-center gap-2">
 			<DateRangePicker
@@ -139,7 +197,30 @@ export function InsightToolbar({
 					</Select>
 				</div>
 			)}
-			{display.type !== "heatmap" && (
+			{display.type === "node-grid" && (
+				<Select
+					value={display.gridPercentile ?? "p95"}
+					disabled={disabled}
+					onValueChange={(value) => {
+						const gridPercentile = HISTOGRAM_PERCENTILES.find(
+							(p) => p === value,
+						);
+						if (gridPercentile) setDisplay({ gridPercentile });
+					}}
+				>
+					<SelectTrigger aria-label={m.insight_histogram_percentile()}>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{HISTOGRAM_PERCENTILES.map((p) => (
+							<SelectItem key={p} value={p}>
+								{p}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			)}
+			{!isDistributionView(display.type) && (
 				<Select
 					value={comparisonKey(draft.compare)}
 					disabled={disabled}
@@ -164,7 +245,7 @@ export function InsightToolbar({
 				</Select>
 			)}
 			<div className="ml-auto flex items-center gap-2">
-				{display.type !== "heatmap" && (
+				{!isDistributionView(display.type) && (
 					<Popover>
 						<PopoverTrigger asChild>
 							<Button
@@ -191,7 +272,7 @@ export function InsightToolbar({
 				<Select
 					value={display.type}
 					disabled={disabled}
-					onValueChange={(type) => setDisplay({ type: type as DisplayType })}
+					onValueChange={(type) => chooseType(type as DisplayType)}
 				>
 					<SelectTrigger aria-label={m.insight_display()}>
 						<SelectValue />
@@ -204,14 +285,24 @@ export function InsightToolbar({
 									key={type}
 									value={type}
 									disabled={
-										type === "heatmap" &&
-										!draft.series.some(({ calculation }) =>
-											isHistogramPercentile(calculation),
-										)
+										isDistributionView(type) && !hasHistogram && !alternative
+									}
+									title={
+										isDistributionView(type) && !hasHistogram && !alternative
+											? m.insight_choose_distribution()
+											: undefined
 									}
 								>
 									<Icon aria-hidden="true" />
 									{DISPLAY_LABEL[type]()}
+									{isDistributionView(type) && !hasHistogram && (
+										<span className="text-xs text-muted-foreground">
+											·{" "}
+											{alternative
+												? metricLabel(alternative)
+												: m.insight_choose_distribution()}
+										</span>
+									)}
 								</SelectItem>
 							);
 						})}

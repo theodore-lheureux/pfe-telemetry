@@ -7,6 +7,7 @@ import { LineChartIcon, TriangleAlertIcon } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { LoadingBar } from "../../components/loading-bar";
 import { useDisplayTimeZone } from "../../components/time-display";
+import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { IconEmptyState } from "../../components/workspace";
 import { operationMessage } from "../../lib/operation-message";
@@ -16,8 +17,14 @@ import { runAnalyticsQuery } from "../analytics.functions";
 import { AnalyticsHeader } from "../analytics-header";
 import type { CalculatedMetric } from "../calculated-metrics";
 import type { MetricDefinition, QueryResult } from "../contracts";
-import { isProcessDetailMetric } from "../histograms";
-import { formulaNames, type InsightDraft, toQuery } from "./draft";
+import { DISTRIBUTIONS, isProcessDetailMetric } from "../histograms";
+import {
+	activeHeatmapSeries,
+	formulaNames,
+	type InsightDraft,
+	isDistributionView,
+	toQuery,
+} from "./draft";
 import { InsightChart } from "./insight-chart";
 import { InsightTable } from "./insight-table";
 import { InsightToolbar } from "./insight-toolbar";
@@ -101,6 +108,14 @@ export function InsightEditor({
 	const view =
 		result.data &&
 		seriesView(result.data, applied.display, groupLabel, names, locale);
+	const host = draft.filters.find(
+		({ field, op }) => field === "host" && op === "eq",
+	);
+	const selectedHistogram = activeHeatmapSeries(draft);
+	const detail = Object.entries(DISTRIBUTIONS).find(
+		([name, distribution]) =>
+			isProcessDetailMetric(name) && distribution === selectedHistogram?.metric,
+	)?.[0];
 	return (
 		<section className="flex min-w-0 flex-col gap-5">
 			<AnalyticsHeader
@@ -146,9 +161,36 @@ export function InsightEditor({
 							<LoadingBar active={result.isFetching && !!result.data} />
 							<InsightToolbar
 								draft={draft}
+								metrics={usable}
 								disabled={!hydrated}
 								onChange={onDraft}
 							/>
+							{draft.display.type === "heatmap" && host && detail && (
+								<Button
+									variant="outline"
+									size="sm"
+									className="self-start"
+									onClick={() =>
+										onDraft({
+											...draft,
+											series: [
+												{
+													name: "A",
+													metric: detail,
+													calculation: detail.endsWith(".rss") ? "avg" : "rate",
+													combine: "sum",
+													filters: [],
+												},
+											],
+											groupBy: 'resource.attributes["process.pid"]',
+											formulas: [],
+											display: { ...draft.display, type: "line" },
+										})
+									}
+								>
+									{m.insight_grid_processes()}
+								</Button>
+							)}
 							<ResultState ready={query !== null} error={result.error}>
 								{view && result.data && (
 									<InsightChart
@@ -166,6 +208,17 @@ export function InsightEditor({
 										names={names}
 										onRefresh={() => setNow(new Date())}
 										highlight={hovered}
+										onNode={(host) =>
+											onDraft({
+												...draft,
+												groupBy: undefined,
+												filters: [
+													...draft.filters,
+													{ field: "host", op: "eq", values: [host] },
+												],
+												display: { ...draft.display, type: "heatmap" },
+											})
+										}
 										onZoom={(from, to) =>
 											onDraft({
 												...draft,
@@ -180,7 +233,7 @@ export function InsightEditor({
 							result.data &&
 							query !== null &&
 							!result.isError &&
-							applied.display.type !== "heatmap" && (
+							!isDistributionView(applied.display.type) && (
 								<div className="relative overflow-hidden rounded-lg border bg-card p-4">
 									<LoadingBar active={result.isFetching} />
 									<InsightTable

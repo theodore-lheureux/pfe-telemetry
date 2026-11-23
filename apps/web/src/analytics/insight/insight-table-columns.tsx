@@ -112,6 +112,9 @@ export const insightTimeseriesColumns: Column[] = [
 	seriesColumn,
 	...STAT_COLUMNS.map(([key, label]) => numericColumn(key, label)),
 ];
+export const histogramTimeseriesColumns = insightTimeseriesColumns.filter(
+	({ id }) => id !== "p95" && id !== "p99",
+);
 
 export function insightTableRows(view: SeriesView): InsightTableRow[] {
 	return view.visible.map((series) => ({

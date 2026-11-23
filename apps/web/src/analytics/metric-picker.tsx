@@ -85,6 +85,18 @@ export function MetricPicker({
 		onChange(name);
 		setOpen(false);
 	};
+	const isDistribution = (name: string) =>
+		metrics?.some(
+			(metric) =>
+				metric.name === name && metric.kind === 3 && metric.temporality === 1,
+		);
+	const groups = [
+		{ label: undefined, names: names.filter((name) => !isDistribution(name)) },
+		{
+			label: m.insight_distribution_group(),
+			names: names.filter(isDistribution),
+		},
+	];
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -123,29 +135,35 @@ export function MetricPicker({
 								{allLabel}
 							</CommandItem>
 						)}
-						{names.map((name) => (
-							<CommandItem
-								key={name}
-								// Search matches the friendly and the technical name.
-								value={name}
-								keywords={[metricText(name)]}
-								data-checked={value === name}
-								onSelect={() => choose(name)}
-							>
-								<DefinitionChoice
-									kind="metric"
-									name={name}
-									label={metricText(name)}
-									description={previews.get(name)?.description}
-								/>
-								{unit(name) && (
-									<span className="text-xs text-muted-foreground">
-										{unit(name)}
-									</span>
-								)}
-							</CommandItem>
-						))}
 					</CommandGroup>
+					{groups
+						.filter((group) => group.names.length)
+						.map((group) => (
+							<CommandGroup key={group.label ?? ""} heading={group.label}>
+								{group.names.map((name) => (
+									<CommandItem
+										key={name}
+										// Search matches the friendly and the technical name.
+										value={name}
+										keywords={[metricText(name)]}
+										data-checked={value === name}
+										onSelect={() => choose(name)}
+									>
+										<DefinitionChoice
+											kind="metric"
+											name={name}
+											label={metricText(name)}
+											description={previews.get(name)?.description}
+										/>
+										{unit(name) && (
+											<span className="text-xs text-muted-foreground">
+												{unit(name)}
+											</span>
+										)}
+									</CommandItem>
+								))}
+							</CommandGroup>
+						))}
 				</PickerCommand>
 			</PopoverContent>
 		</Popover>

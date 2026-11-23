@@ -1,8 +1,13 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
+import { useState } from "react";
 import { ScatterChart, usePlotArea, XAxis, YAxis } from "recharts";
 import { ChartContainer } from "../../components/ui/chart";
-import { type HistogramWindow, histogramFormatter } from "../histograms";
+import {
+	type HistogramWindow,
+	heatColor,
+	histogramFormatter,
+} from "../histograms";
 
 interface Timeline {
 	from: number;
@@ -66,7 +71,12 @@ function HeatmapLayout({
 	const locale = getLocale();
 	const { from, to } = timeline;
 	const bounds = rows[0].bounds;
-	const size = bounds.length + 1;
+	const occupied = rows[0].counts.flatMap((_, i) =>
+		rows.some((row) => Number(row.counts[i]) > 0) ? [i] : [],
+	);
+	const first = Math.max(0, (occupied[0] ?? 0) - 1);
+	const last = Math.min(bounds.length, (occupied.at(-1) ?? 0) + 1);
+	const size = last - first + 1;
 	const number = new Intl.NumberFormat(locale);
 	const format = histogramFormatter(
 		unit,
@@ -84,11 +94,12 @@ function HeatmapLayout({
 		timeStyle: "medium",
 		timeZone: zone,
 	});
-	const tickInterval = Math.ceil(size / 8);
-	const bucketTicks = Array.from(
-		{ length: size },
-		(_, index) => index + 0.5,
-	).filter((_, index) => index % tickInterval === 0 || index === size - 1);
+	const [hover, setHover] = useState<{
+		x: number;
+		y: number;
+		text: string;
+	} | null>(null);
+	const bucketTicks = Array.from({ length: size }, (_, index) => index + 0.5);
 	return (
 		<figure className="min-w-0 space-y-2">
 			<figcaption className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -104,7 +115,7 @@ function HeatmapLayout({
 			<ChartContainer
 				config={{}}
 				className="aspect-auto w-full"
-				style={{ height: Math.max(220, size * 10 + 36) }}
+				style={{ height: Math.max(180, size * 20 + 36) }}
 			>
 				<ScatterChart
 					accessibilityLayer={false}
@@ -124,15 +135,41 @@ function HeatmapLayout({
 						domain={[0, size]}
 						width={112}
 						ticks={bucketTicks}
-						tickFormatter={(value) => format.range(bounds, Math.floor(value))}
+						interval={0}
+						tickFormatter={(value) =>
+							format.range(bounds, first + Math.floor(value))
+						}
 						allowDataOverflow
 					/>
 					<HeatmapCells
-						rows={rows}
+						rows={rows.map((row) => ({
+							...row,
+							counts: row.counts.slice(first, last + 1),
+						}))}
 						timeline={timeline}
-						range={(index) => format.range(bounds, index)}
+						range={(index) => format.range(bounds, first + index)}
 						time={(value) => detailTime.format(value)}
 						count={(value) => number.format(BigInt(value))}
+						onHover={(x, y, start, index, value) => {
+							const total =
+								rows
+									.find((row) => Number(row.bucket) === start)
+									?.counts.reduce((sum, count) => sum + Number(count), 0) ?? 0;
+							const share = new Intl.NumberFormat(locale, {
+								style: "percent",
+								maximumFractionDigits: 1,
+							}).format(total ? Number(value) / total : 0);
+							const interval = detailTime.formatRange(
+								Math.max(start, from),
+								Math.min(start + timeline.step, to),
+							);
+							setHover({
+								x,
+								y,
+								text: `${interval} · ${format.range(bounds, first + index)} · ${m.histogram_count()}: ${number.format(BigInt(value))} · ${m.histogram_column_share({ share })}`,
+							});
+						}}
+						onLeave={() => setHover(null)}
 					/>
 					<TimeTicks
 						from={from}
@@ -141,6 +178,18 @@ function HeatmapLayout({
 					/>
 				</ScatterChart>
 			</ChartContainer>
+			{hover && (
+				<div
+					role="tooltip"
+					className="pointer-events-none fixed z-50 max-w-80 rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
+					style={{
+						left: Math.min(hover.x + 12, window.innerWidth - 330),
+						top: Math.max(4, hover.y - 64),
+					}}
+				>
+					{hover.text}
+				</div>
+			)}
 		</figure>
 	);
 }
@@ -186,12 +235,22 @@ function HeatmapCells({
 	range,
 	time,
 	count,
+	onHover,
+	onLeave,
 }: {
 	rows: HistogramWindow[];
 	timeline: Timeline;
 	range: (index: number) => string;
 	time: (value: number) => string;
 	count: (value: string) => string;
+	onHover: (
+		x: number,
+		y: number,
+		start: number,
+		index: number,
+		value: string,
+	) => void;
+	onLeave: () => void;
 }) {
 	const area = usePlotArea();
 	if (!area) return null;
@@ -218,7 +277,12 @@ function HeatmapCells({
 								y={area.y + area.height - (index + 1) * height}
 								width={Math.max(0, width - 1)}
 								height={Math.max(0, height - 1)}
-								fill={`color-mix(in oklab, var(--chart-1) ${(100 * Math.log1p(Number(value))) / Math.log1p(peak)}%, var(--muted))`}
+								pointerEvents="all"
+								onPointerEnter={(event) =>
+									onHover(event.clientX, event.clientY, start, index, value)
+								}
+								onPointerLeave={onLeave}
+								fill={heatColor(Math.log1p(Number(value)) / Math.log1p(peak))}
 							>
 								<title>{`${time(start)} · ${range(index)} · ${m.histogram_count()}: ${count(value)}`}</title>
 							</rect>
