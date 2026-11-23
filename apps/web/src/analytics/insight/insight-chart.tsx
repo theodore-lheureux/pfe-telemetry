@@ -1,14 +1,17 @@
 import { formatSeconds } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { ChartNoAxesColumnIcon } from "lucide-react";
+import { useDisplayTimeZone } from "../../components/time-display";
 import { Skeleton } from "../../components/ui/skeleton";
 import { IconEmptyState } from "../../components/workspace";
 import { type ChartSeries, TimeseriesChart } from "../charts";
 import type { QueryResult, SeriesResult } from "../contracts";
+import { metricLabel } from "../metric-names";
 import { ComputedAt, RefreshButton } from "../refresh-status";
 import type { Display } from "./draft";
 import { bucketGrid, coverageBands, coverageState, onGrid } from "./grid";
-import { type FormulaNames, plottedTitle } from "./labels";
+import { HistogramHeatmap } from "./histogram-heatmap";
+import { type FormulaNames, plottedTitle, seriesSource } from "./labels";
 import { NumberResults } from "./number-results";
 import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
 
@@ -61,7 +64,16 @@ export function InsightChart({
 	/** The line hovered in the results table. */
 	highlight: string | null;
 }) {
-	const title = plottedTitle(result, names);
+	const title =
+		display.type === "heatmap"
+			? [
+					...new Set(
+						result.measures.map((measure) =>
+							metricLabel(measure.metric, measure.label),
+						),
+					),
+				].join(", ")
+			: plottedTitle(result, names);
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -118,6 +130,7 @@ export function ChartBody({
 	/** Stretches stat cards across the space, as on a dashboard tile. */
 	fill?: boolean;
 }) {
+	const zone = useDisplayTimeZone();
 	const bucketSeconds = result.bucketSeconds ?? 60;
 	const step = bucketSeconds * 1000;
 	const watermark = result.ingestedThrough;
@@ -138,6 +151,46 @@ export function ChartBody({
 		)
 			return m.insight_no_data_received();
 	};
+	if (display.type === "heatmap") {
+		if (!hydrated) return <Skeleton className={`${height} w-full`} />;
+		const timeline = {
+			from: result.from.getTime(),
+			to: result.to.getTime(),
+			step,
+		};
+		return (
+			<div className="space-y-4">
+				{result.limited && <p role="status">{m.histogram_limited()}</p>}
+				{result.series.length === 0 && <p>{m.histogram_empty()}</p>}
+				{result.series.map((series) => {
+					const measure = seriesSource(result, series);
+					if (!measure) return null;
+					const rows = series.points.flatMap((point) =>
+						(point.histograms ?? []).map((layout) => ({
+							...layout,
+							bucket: String(point.bucketMs),
+						})),
+					);
+					const key = lineId(series);
+					return (
+						<section key={key} className="space-y-2">
+							{series.group.length > 0 && (
+								<h3 className="text-sm font-medium">{view.label(series)}</h3>
+							)}
+							<HistogramHeatmap
+								rows={rows}
+								metric={measure.metric}
+								unit={measure.unit}
+								limited={false}
+								zone={zone}
+								timeline={timeline}
+							/>
+						</section>
+					);
+				})}
+			</div>
+		);
+	}
 	if (view.empty)
 		return (
 			<IconEmptyState

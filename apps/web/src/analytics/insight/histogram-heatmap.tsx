@@ -1,13 +1,8 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
-import { useState } from "react";
 import { ScatterChart, usePlotArea, XAxis, YAxis } from "recharts";
 import { ChartContainer } from "../../components/ui/chart";
-import {
-	NativeSelect,
-	NativeSelectOption,
-} from "../../components/ui/native-select";
-import { type HistogramWindow, histogramRange } from "../histograms";
+import { type HistogramWindow, histogramFormatter } from "../histograms";
 
 interface Timeline {
 	from: number;
@@ -18,12 +13,14 @@ interface Timeline {
 export function HistogramHeatmap({
 	rows,
 	unit,
+	metric,
 	limited,
 	zone,
 	timeline,
 }: {
 	rows: HistogramWindow[];
 	unit: string;
+	metric: string;
 	limited: boolean;
 	zone: string;
 	timeline: Timeline;
@@ -44,6 +41,7 @@ export function HistogramHeatmap({
 					key={`${timeline.from}:${key}`}
 					rows={windows}
 					unit={unit}
+					metric={metric}
 					zone={zone}
 					timeline={timeline}
 				/>
@@ -55,21 +53,27 @@ export function HistogramHeatmap({
 function HeatmapLayout({
 	rows,
 	unit,
+	metric,
 	zone,
 	timeline,
 }: {
 	rows: HistogramWindow[];
 	unit: string;
+	metric: string;
 	zone: string;
 	timeline: Timeline;
 }) {
 	const locale = getLocale();
 	const { from, to } = timeline;
-	const [activeBucket, setActiveBucket] = useState(rows.at(-1)?.bucket ?? "");
-	const active = rows.find((row) => row.bucket === activeBucket) ?? rows[0];
 	const bounds = rows[0].bounds;
 	const size = bounds.length + 1;
-	const number = new Intl.NumberFormat(locale, { maximumSignificantDigits: 6 });
+	const number = new Intl.NumberFormat(locale);
+	const format = histogramFormatter(
+		unit,
+		metric,
+		locale,
+		Math.max(0, ...bounds.map(Math.abs)),
+	);
 	const time = new Intl.DateTimeFormat(locale, {
 		hour: "numeric",
 		minute: "2-digit",
@@ -88,9 +92,7 @@ function HeatmapLayout({
 	return (
 		<figure className="min-w-0 space-y-2">
 			<figcaption className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-				<span>
-					{m.histogram_bucket()} {unit && `(${unit})`}
-				</span>
+				<span>{m.histogram_bucket()}</span>
 				<span className="flex items-center gap-2">
 					{m.histogram_intensity()}
 					<span
@@ -122,16 +124,13 @@ function HeatmapLayout({
 						domain={[0, size]}
 						width={112}
 						ticks={bucketTicks}
-						tickFormatter={(value) =>
-							histogramRange(bounds, Math.floor(value), number)
-						}
+						tickFormatter={(value) => format.range(bounds, Math.floor(value))}
 						allowDataOverflow
 					/>
 					<HeatmapCells
 						rows={rows}
 						timeline={timeline}
-						active={active.bucket}
-						range={(index) => histogramRange(bounds, index, number)}
+						range={(index) => format.range(bounds, index)}
 						time={(value) => detailTime.format(value)}
 						count={(value) => number.format(BigInt(value))}
 					/>
@@ -142,41 +141,6 @@ function HeatmapLayout({
 					/>
 				</ScatterChart>
 			</ChartContainer>
-			<div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
-				<NativeSelect
-					aria-label={m.histogram_time_slice()}
-					value={active.bucket}
-					onChange={(event) => setActiveBucket(event.target.value)}
-				>
-					{rows.map((row) => (
-						<NativeSelectOption key={row.bucket} value={row.bucket}>
-							{detailTime.format(Number(row.bucket))}
-						</NativeSelectOption>
-					))}
-				</NativeSelect>
-				<dl className="flex flex-wrap gap-x-5 gap-y-1 text-sm tabular-nums">
-					{(
-						[
-							[
-								m.histogram_count(),
-								new Intl.NumberFormat(locale).format(BigInt(active.count)),
-							],
-							[m.histogram_mean(), active.mean],
-							[m.histogram_min(), active.min],
-							[m.histogram_max(), active.max],
-						] as const
-					).map(([label, value]) => (
-						<div key={label} className="flex gap-1.5">
-							<dt className="text-muted-foreground">{label}</dt>
-							<dd>
-								{typeof value === "number"
-									? number.format(value)
-									: (value ?? "—")}
-							</dd>
-						</div>
-					))}
-				</dl>
-			</div>
 		</figure>
 	);
 }
@@ -219,14 +183,12 @@ function TimeTicks({
 function HeatmapCells({
 	rows,
 	timeline,
-	active,
 	range,
 	time,
 	count,
 }: {
 	rows: HistogramWindow[];
 	timeline: Timeline;
-	active: string;
 	range: (index: number) => string;
 	time: (value: number) => string;
 	count: (value: string) => string;
@@ -245,7 +207,7 @@ function HeatmapCells({
 		<g>
 			{rows.map((row) => {
 				const start = Number(row.bucket);
-				const x = position(start);
+				const x = position(Math.max(start, from));
 				const width = position(Math.min(start + step, to)) - x;
 				return (
 					<g key={row.bucket} data-time-window={row.bucket}>
@@ -258,20 +220,9 @@ function HeatmapCells({
 								height={Math.max(0, height - 1)}
 								fill={`color-mix(in oklab, var(--chart-1) ${(100 * Math.log1p(Number(value))) / Math.log1p(peak)}%, var(--muted))`}
 							>
-								<title>{`${time(start)} · ${range(index)} · ${count(value)}`}</title>
+								<title>{`${time(start)} · ${range(index)} · ${m.histogram_count()}: ${count(value)}`}</title>
 							</rect>
 						))}
-						{row.bucket === active && (
-							<rect
-								x={x}
-								y={area.y}
-								width={width}
-								height={area.height}
-								fill="none"
-								stroke="var(--foreground)"
-								pointerEvents="none"
-							/>
-						)}
 					</g>
 				);
 			})}

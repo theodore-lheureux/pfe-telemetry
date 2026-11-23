@@ -155,18 +155,26 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			const later = page.getByRole("dialog", { name: /passkey/i });
 			if (await later.isVisible())
 				await later.getByRole("button", { name: /later/i }).click();
-			const picker = page.getByLabel("Distribution over time");
-			await expect(picker).toBeEnabled();
-			await picker.selectOption(JSON.stringify([metric, "1"]));
-			await expect(page.locator("svg [data-time-window]")).toHaveCount(48);
-			await expect(page.locator("[data-time-axis] text")).toHaveCount(5);
+			await page
+				.getByRole("combobox", { name: "Choose a metric" })
+				.click({ timeout: 6000 });
+			await page
+				.getByRole("option", { name: /Process CPU distribution/i })
+				.click({ timeout: 6000 });
+			await expect(page.getByLabel("Histogram percentile")).toHaveCount(3);
+			await expect(page.locator(".recharts-surface").first()).toBeVisible();
 			await expect(
-				page.getByLabel("Time slice").getByRole("option"),
-			).toHaveCount(48);
-			const chart = page
-				.getByRole("figure")
-				.filter({ has: page.getByLabel("Time slice") });
-			await expect(chart).toContainText("17,760");
+				page.getByRole("row").filter({ hasText: "Process CPU distribution" }),
+			).toHaveCount(3);
+			await page.getByRole("combobox", { name: "Chart type" }).click();
+			await page.getByRole("option", { name: "Heatmap" }).click();
+			await expect(
+				page.locator("svg [data-time-window]").first(),
+			).toBeVisible();
+			await expect(
+				page.locator("[data-time-window] rect title").first(),
+			).toContainText("Count:");
+			await expect(page.getByLabel("Time slice")).toHaveCount(0);
 			await page.screenshot({
 				path: info.outputPath(`histogram-heatmap-${theme}.png`),
 			});

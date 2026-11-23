@@ -3,6 +3,7 @@ import {
 	AreaChartIcon,
 	BarChart3Icon,
 	BarChartBigIcon,
+	Grid2X2Icon,
 	HashIcon,
 	LineChartIcon,
 	type LucideIcon,
@@ -17,7 +18,9 @@ import type {
 	QueryResult,
 	SeriesResult,
 } from "../contracts";
+import { histogramFormatter } from "../histograms";
 import { metricLabel } from "../metric-names";
+import { isHistogramPercentile } from "../validation";
 import type { Display, DisplayType, DisplayUnit, InsightDraft } from "./draft";
 
 export const CALCULATION_LABEL: Record<Calculation, () => string> = {
@@ -27,6 +30,9 @@ export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	max: m.insight_calc_max,
 	rate: m.insight_calc_rate,
 	increase: m.insight_calc_increase,
+	p50: () => "p50",
+	p95: () => "p95",
+	p99: () => "p99",
 };
 /** How sources combine, phrased to read after the calculation: "Rate per second · Sum of all sources". */
 export const COMBINE_OPTION_LABEL: Record<Combine, () => string> = {
@@ -87,6 +93,7 @@ export const DISPLAY_ICON: Record<DisplayType, LucideIcon> = {
 	area: AreaChartIcon,
 	bar: BarChart3Icon,
 	stacked: BarChartBigIcon,
+	heatmap: Grid2X2Icon,
 	stat: HashIcon,
 	table: TableIcon,
 };
@@ -95,6 +102,7 @@ export const DISPLAY_LABEL: Record<DisplayType, () => string> = {
 	area: m.insight_display_area,
 	bar: m.insight_display_bar,
 	stacked: m.insight_display_stacked,
+	heatmap: m.insight_display_heatmap,
 	stat: m.insight_display_stat,
 	table: m.insight_display_table,
 };
@@ -134,7 +142,7 @@ export const CUSTOM_UNITS: DisplayUnit[] = ["prefix", "postfix"];
 export function formatValue(
 	value: number | null,
 	display: Pick<Display, "unit" | "unitAffix">,
-	stored: { unit: string; calculation: Calculation } | null,
+	stored: { unit: string; calculation: Calculation; metric?: string } | null,
 	locale: string,
 ) {
 	return formatValueDetails(value, display, stored, locale).text;
@@ -151,7 +159,7 @@ function affixed(
 export function formatValueDetails(
 	value: number | null,
 	{ unit, unitAffix = "" }: Pick<Display, "unit" | "unitAffix">,
-	stored: { unit: string; calculation: Calculation } | null,
+	stored: { unit: string; calculation: Calculation; metric?: string } | null,
 	locale: string,
 	minimumFractionDigits = 0,
 ): FormattedNumber {
@@ -228,6 +236,16 @@ export function formatValueDetails(
 			break;
 	}
 	if (!stored) return number();
+	if (isHistogramPercentile(stored.calculation))
+		return {
+			text: histogramFormatter(
+				stored.unit,
+				stored.metric ?? "",
+				locale,
+				Math.abs(value),
+			).value(value),
+			fractionDigits: 0,
+		};
 	const storedUnit = readableUnit(stored.unit);
 	if (stored.calculation === "rate") {
 		// Seconds per second (such as CPU time) is a plain ratio, roughly busy cores.
@@ -277,6 +295,8 @@ function measureText(
 	result: QueryResult,
 	measure: QueryResult["measures"][number],
 ) {
+	if (isHistogramPercentile(measure.calculation))
+		return `${metricLabel(measure.metric, measure.label)} · ${CALCULATION_LABEL[measure.calculation]()}`;
 	if (result.measures.length > 1)
 		return `${measure.name} · ${metricLabel(measure.metric, measure.label)}`;
 	return metricLabel(measure.metric, measure.label);
@@ -339,9 +359,13 @@ export function plottedNames(
 		return draft.formulas.map(
 			(formula) => formula.name?.trim() || formula.expression,
 		);
-	return draft.series.flatMap((series) =>
-		series.metric
-			? [metricLabel(series.metric, labels.get(series.metric))]
-			: [],
-	);
+	return [
+		...new Set(
+			draft.series.flatMap((series) =>
+				series.metric
+					? [metricLabel(series.metric, labels.get(series.metric))]
+					: [],
+			),
+		),
+	];
 }

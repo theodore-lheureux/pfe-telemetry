@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
-import { histogramRange } from "../analytics/histograms";
+import { histogramFormatter } from "../analytics/histograms";
 import {
 	Table,
 	TableBody,
@@ -23,14 +23,25 @@ export function hasHistogramBuckets(measurement: PointDetail["measurement"]) {
 
 export function HistogramDetail({
 	measurement,
-}: Pick<PointDetail, "measurement">) {
+	metric,
+}: Pick<PointDetail, "measurement"> & { metric: string }) {
 	const { bucket_counts, explicit_bounds, count, sum, min, max, unit } =
 		measurement;
 	if (!Array.isArray(bucket_counts) || !Array.isArray(explicit_bounds))
 		return null;
 	const bounds = explicit_bounds.map(Number);
 	const locale = getLocale();
-	const number = new Intl.NumberFormat(locale, { maximumSignificantDigits: 8 });
+	const storedUnit = typeof unit === "string" ? unit : "";
+	const format = (value: number) =>
+		histogramFormatter(storedUnit, metric, locale, Math.abs(value)).value(
+			value,
+		);
+	const buckets = histogramFormatter(
+		storedUnit,
+		metric,
+		locale,
+		Math.max(...bounds.map(Math.abs), 0),
+	);
 	const integers = new Intl.NumberFormat(locale);
 	const mean =
 		typeof sum === "number" && Number(count) > 0 ? sum / Number(count) : null;
@@ -51,9 +62,7 @@ export function HistogramDetail({
 					<div key={label} className="flex gap-1.5">
 						<dt className="text-muted-foreground">{label}</dt>
 						<dd>
-							{typeof value === "number"
-								? number.format(value)
-								: (value ?? "—")}
+							{typeof value === "number" ? format(value) : (value ?? "—")}
 						</dd>
 					</div>
 				))}
@@ -62,10 +71,7 @@ export function HistogramDetail({
 				<Table>
 					<TableHeader>
 						<TableRow>
-							<TableHead>
-								{m.histogram_bucket()}{" "}
-								{typeof unit === "string" && unit && `(${unit})`}
-							</TableHead>
+							<TableHead>{m.histogram_bucket()} </TableHead>
 							<TableHead className="text-right">
 								{m.histogram_count()}
 							</TableHead>
@@ -75,7 +81,7 @@ export function HistogramDetail({
 						{bucket_counts.map((value, index) => (
 							<TableRow key={bounds[index] ?? "overflow"}>
 								<TableHead scope="row">
-									{histogramRange(bounds, index, number)}
+									{buckets.range(bounds, index)}
 								</TableHead>
 								<TableCell className="text-right tabular-nums">
 									{integers.format(BigInt(String(value)))}

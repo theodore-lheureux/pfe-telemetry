@@ -14,6 +14,7 @@ import {
 } from "./contracts";
 import { metricDefinitions } from "./discovery.server";
 import { formulaSeries } from "./formula-series";
+import { histogramQuantile } from "./histograms";
 import { pipelineIngestedThrough } from "./ingested-through.server";
 import {
 	POINT_FINAL_SETTINGS,
@@ -24,6 +25,7 @@ import {
 import {
 	ALLOWED_CALCULATIONS,
 	comparisonRange,
+	isHistogramPercentile,
 	resolveRange,
 } from "./validation";
 
@@ -71,10 +73,16 @@ interface Window {
 	shiftMs: number;
 }
 
-type Row = Record<string, string | number | null>;
+type Row = Record<
+	string,
+	string | number | null | number[] | string[] | undefined
+> & {
+	bounds?: number[];
+	counts?: string[];
+};
 
-const number = (value: string | number | null | undefined) =>
-	value === null || value === undefined ? null : Number(value);
+const number = (value: Row[string]) =>
+	typeof value === "number" || typeof value === "string" ? Number(value) : null;
 
 /** One bucket's value, with its band across sources when the query asks for one. */
 function pointOf(row: Row, query: AnalyticsQuery, window: Window) {
@@ -116,7 +124,7 @@ async function readWindow(
 ) {
 	// One statement per measure, one after another: every statement has the reader's
 	// memory limit, and a single statement over several metrics under FINAL can exceed it.
-	const rows: Record<string, string | number | null>[] = [];
+	const rows: Row[] = [];
 	let groupColumns: string[] = [];
 	for (const [index, measure] of query.measures.entries()) {
 		const compiled = compileMeasure(query, measure, scopes[index], {
@@ -132,10 +140,10 @@ async function readWindow(
 			abort_signal: abort,
 			clickhouse_settings: SETTINGS,
 		});
-		for (const row of await result.json<
-			Record<string, string | number | null>
-		>())
-			rows.push({ ...row, measure_index: index });
+		const batch = await result.json<Row>();
+		if (isHistogramPercentile(measure.calculation) && batch.length > 32768)
+			throw new OperationError("CAPACITY", "Histogram result limit exceeded");
+		for (const row of batch) rows.push({ ...row, measure_index: index });
 	}
 	const limit = query.limit ?? DEFAULT_SERIES_LIMIT;
 	const groups = new Map<string, SeriesResult & { rank: number }>();
@@ -166,7 +174,15 @@ async function readWindow(
 			groups.set(key, entry);
 		}
 		countPercentile(entry, measure, row, other);
-		entry.points.push(pointOf(row, query, window));
+		const point = pointOf(row, query, window);
+		if (row.bounds && row.counts) {
+			let last = entry.points.at(-1);
+			if (!last || last.bucketMs !== point.bucketMs) {
+				last = { ...point, histograms: [] };
+				entry.points.push(last);
+			}
+			last.histograms?.push({ bounds: row.bounds, counts: row.counts });
+		} else entry.points.push(point);
 	}
 	// Rows arrive unordered: series follow the query's measures, then rank.
 	const series = [...groups.values()]
@@ -178,11 +194,22 @@ async function readWindow(
 		)
 		.map(({ rank: _, ...entry }) => ({
 			...entry,
-			points: entry.points.sort(
+			points: finishHistogramPoints(entry, query).sort(
 				(a, b) => (a.bucketMs ?? 0) - (b.bucketMs ?? 0),
 			),
 		}));
 	return { series, limited };
+}
+
+function finishHistogramPoints(entry: SeriesResult, query: AnalyticsQuery) {
+	const measure = query.measures.find(({ name }) => name === entry.measure);
+	if (!measure || !isHistogramPercentile(measure.calculation) || query.heatmap)
+		return entry.points;
+	const percentile = Number(measure.calculation.slice(1)) / 100;
+	return entry.points.map(({ histograms, ...point }) => ({
+		...point,
+		value: histograms ? histogramQuantile(histograms, percentile) : null,
+	}));
 }
 
 // Collectors report this once per collection cycle, whatever else they measure.

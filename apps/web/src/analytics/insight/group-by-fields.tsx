@@ -58,7 +58,7 @@ export function GroupByFields({
 					})
 				}
 			/>
-			{draft.groupBy && (
+			{draft.groupBy && draft.display.type !== "heatmap" && (
 				<Select
 					value={draft.aggregate ?? EACH_GROUP}
 					disabled={disabled}
@@ -92,45 +92,48 @@ export function GroupByFields({
 				</Select>
 			)}
 			{/* One combined line needs no limit or Other. */}
-			{draft.groupBy && !draft.aggregate && (
-				<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-					<div className="flex items-center gap-2">
-						<Label htmlFor={`${id}-limit`} className="text-xs font-normal">
-							{m.insight_limit()}
-						</Label>
-						<Input
-							id={`${id}-limit`}
-							type="number"
-							min={1}
-							max={MAX_SERIES}
-							value={draft.limit}
-							disabled={disabled}
-							className="h-7 w-16 text-xs"
-							onChange={(event) =>
-								onChange({
-									...draft,
-									limit: Math.min(
-										Math.max(Math.round(Number(event.target.value)) || 1, 1),
-										MAX_SERIES,
-									),
-								})
-							}
-						/>
+			{draft.groupBy &&
+				(!draft.aggregate || draft.display.type === "heatmap") && (
+					<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+						<div className="flex items-center gap-2">
+							<Label htmlFor={`${id}-limit`} className="text-xs font-normal">
+								{m.insight_limit()}
+							</Label>
+							<Input
+								id={`${id}-limit`}
+								type="number"
+								min={1}
+								max={MAX_SERIES}
+								value={draft.limit}
+								disabled={disabled}
+								className="h-7 w-16 text-xs"
+								onChange={(event) =>
+									onChange({
+										...draft,
+										limit: Math.min(
+											Math.max(Math.round(Number(event.target.value)) || 1, 1),
+											MAX_SERIES,
+										),
+									})
+								}
+							/>
+						</div>
+						{draft.display.type !== "heatmap" && (
+							<div className="flex items-center gap-2">
+								<Label htmlFor={`${id}-other`} className="text-xs font-normal">
+									{m.insight_other_group()}
+								</Label>
+								<Switch
+									id={`${id}-other`}
+									size="sm"
+									checked={draft.other}
+									disabled={disabled}
+									onCheckedChange={(other) => onChange({ ...draft, other })}
+								/>
+							</div>
+						)}
 					</div>
-					<div className="flex items-center gap-2">
-						<Label htmlFor={`${id}-other`} className="text-xs font-normal">
-							{m.insight_other_group()}
-						</Label>
-						<Switch
-							id={`${id}-other`}
-							size="sm"
-							checked={draft.other}
-							disabled={disabled}
-							onCheckedChange={(other) => onChange({ ...draft, other })}
-						/>
-					</div>
-				</div>
-			)}
+				)}
 		</>
 	);
 }

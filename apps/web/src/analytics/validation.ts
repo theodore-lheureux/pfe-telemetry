@@ -13,6 +13,7 @@ import {
 	DEFAULT_SERIES_LIMIT,
 	type Filter,
 	type FilterOperator,
+	HISTOGRAM_PERCENTILES,
 	INTERVALS,
 	type Interval,
 	MAX_BUCKETS,
@@ -50,6 +51,7 @@ const CALCULATIONS: readonly Calculation[] = [
 	"max",
 	"rate",
 	"increase",
+	...HISTOGRAM_PERCENTILES,
 ];
 const OPERATORS: readonly FilterOperator[] = [
 	"eq",
@@ -70,7 +72,8 @@ export const ALLOWED_CALCULATIONS: Record<
 	gauge: ["last", "avg", "min", "max"],
 	counter: ["rate", "increase"],
 	delta: ["increase", "rate"],
-	population: ["last", "avg", "min", "max"],
+	population: [...HISTOGRAM_PERCENTILES, "last", "avg", "min", "max"],
+	histogram: HISTOGRAM_PERCENTILES,
 	unsupported: [],
 };
 
@@ -83,6 +86,7 @@ export function metricBehavior(
 ): MetricBehavior {
 	if (kind === 3 && temporality === 1 && name && PROCESS_POPULATIONS.has(name))
 		return "population";
+	if (kind === 3 && temporality === 1) return "histogram";
 	if (kind === 1) return "gauge";
 	if (kind === 2) {
 		if (monotonic !== true) return "gauge";
@@ -287,6 +291,7 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		);
 	return {
 		shape: input.shape,
+		...heatmapOption(input, measures),
 		range,
 		...(interval && { interval }),
 		measures,
@@ -297,6 +302,25 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		...(input.other ? { other: true } : {}),
 		...comparisonOptions(input),
 	};
+}
+
+function heatmapOption(input: Record<string, unknown>, measures: Measure[]) {
+	if (input.heatmap === undefined) return {};
+	if (
+		input.heatmap !== true ||
+		input.shape !== "timeseries" ||
+		input.compare ||
+		input.aggregate ||
+		input.spread ||
+		(Array.isArray(input.formulas) && input.formulas.length > 0) ||
+		measures.some((measure) => !isHistogramPercentile(measure.calculation))
+	)
+		throw new InputError("INVALID_QUERY", "Invalid heatmap options");
+	return { heatmap: true } as const;
+}
+
+export function isHistogramPercentile(value: Calculation) {
+	return HISTOGRAM_PERCENTILES.some((percentile) => percentile === value);
 }
 
 /** The comparison window, collapsed groups and band a query asks for, if any. */

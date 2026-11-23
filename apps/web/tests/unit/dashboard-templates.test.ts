@@ -58,7 +58,7 @@ const catalog = (metrics: MetricDefinition[]) => [
 
 test("Node health panels are ordinary saved drafts and expand through the normal query contract", () => {
 	const template = nodeHealthTemplate();
-	expect(template.tiles).toHaveLength(6);
+	expect(template.tiles).toHaveLength(7);
 	const definitions = new Map(
 		builtInCalculations().map((definition) => [
 			`recount.calculated.${definition.id}`,
@@ -75,8 +75,12 @@ test("Node health panels are ordinary saved drafts and expand through the normal
 		if (!query) throw new Error("Missing query");
 		const plan = calculatedPlan(query, definitions);
 		expect(
-			plan.query.measures.every((measure) =>
-				raw.some((source) => source.name === measure.metric),
+			plan.query.measures.every(
+				(measure) =>
+					raw.some((source) => source.name === measure.metric) ||
+					(query.heatmap === true &&
+						measure.metric ===
+							"recount.node.process.cpu.utilization.distribution"),
 			),
 		).toBe(true);
 	}
@@ -126,14 +130,14 @@ test("recommendations count complete panels and require at least 60%, not 60% of
 	});
 	expect(templateCoverage(template, catalog(raw))).toMatchObject({
 		count: 6,
-		total: 6,
+		total: 7,
 		recommended: true,
 	});
 	expect(templateCoverage(template, catalog(raw.slice(0, 4)))).toMatchObject({
 		count: 4,
-		total: 6,
-		recommended: true,
-		available: [true, true, true, false, false, true],
+		total: 7,
+		recommended: false,
+		available: [true, true, true, false, false, true, false],
 	});
 	const missingMemory = raw.filter(
 		(entry) => entry.name !== "recount.node.memory.available",
@@ -144,6 +148,7 @@ test("recommendations count complete panels and require at least 60%, not 60% of
 		true,
 		true,
 		true,
+		false,
 		false,
 	]);
 	const fivePanels = { ...template, tiles: template.tiles.slice(0, 5) };

@@ -86,6 +86,7 @@ export function dashboardTemplate(
 
 // Template JSON names its labels by message key; only labels resolve at runtime.
 const TEMPLATE_LABELS: Record<string, () => string> = {
+	metric_hist_process_cpu: m.metric_hist_process_cpu,
 	dashboard_template_node_health: m.dashboard_template_node_health,
 	dashboard_template_node_health_description:
 		m.dashboard_template_node_health_description,

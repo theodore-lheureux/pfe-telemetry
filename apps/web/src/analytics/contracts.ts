@@ -55,7 +55,16 @@ export type CoreField =
 	| "resource.kind"
 	| "scope.name";
 
-export type Calculation = "last" | "avg" | "min" | "max" | "rate" | "increase";
+export const HISTOGRAM_PERCENTILES = ["p50", "p95", "p99"] as const;
+export type HistogramPercentile = (typeof HISTOGRAM_PERCENTILES)[number];
+export type Calculation =
+	| "last"
+	| "avg"
+	| "min"
+	| "max"
+	| "rate"
+	| "increase"
+	| HistogramPercentile;
 /** How the values of a measure's sources combine per bucket (and per group). */
 export const COMBINES = [
 	"sum",
@@ -106,6 +115,7 @@ export type Comparison =
 
 export interface AnalyticsQuery {
 	shape: "timeseries" | "table";
+	heatmap?: true;
 	range: QueryRange;
 	/** Required for timeseries; ignored for table results. */
 	interval?: Interval;
@@ -140,6 +150,7 @@ export type MetricBehavior =
 	| "counter"
 	| "delta"
 	| "population"
+	| "histogram"
 	| "unsupported";
 
 export interface MetricDefinition {
@@ -197,6 +208,7 @@ export interface SeriesResult {
 		value: number | null;
 		low?: number | null;
 		high?: number | null;
+		histograms?: { bounds: number[]; counts: string[] }[];
 	}[];
 }
 

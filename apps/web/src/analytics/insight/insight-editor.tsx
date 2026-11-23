@@ -18,7 +18,6 @@ import type { CalculatedMetric } from "../calculated-metrics";
 import type { MetricDefinition, QueryResult } from "../contracts";
 import { isProcessDetailMetric } from "../histograms";
 import { formulaNames, type InsightDraft, toQuery } from "./draft";
-import { HistogramPanel } from "./histogram-panel";
 import { InsightChart } from "./insight-chart";
 import { InsightTable } from "./insight-table";
 import { InsightToolbar } from "./insight-toolbar";
@@ -109,15 +108,6 @@ export function InsightEditor({
 				heading={heading}
 				description={description}
 			/>
-			{!editingCalculation && (
-				<HistogramPanel
-					reference={reference}
-					userId={userId}
-					metrics={metrics}
-					range={applied.range}
-					now={now}
-				/>
-			)}
 			{applied.series.some((series) =>
 				isProcessDetailMetric(series.metric),
 			) && (
@@ -186,17 +176,21 @@ export function InsightEditor({
 								)}
 							</ResultState>
 						</div>
-						{view && result.data && query !== null && !result.isError && (
-							<div className="relative overflow-hidden rounded-lg border bg-card p-4">
-								<LoadingBar active={result.isFetching} />
-								<InsightTable
-									result={result.data}
-									view={view}
-									hydrated={hydrated}
-									onHover={setHovered}
-								/>
-							</div>
-						)}
+						{view &&
+							result.data &&
+							query !== null &&
+							!result.isError &&
+							applied.display.type !== "heatmap" && (
+								<div className="relative overflow-hidden rounded-lg border bg-card p-4">
+									<LoadingBar active={result.isFetching} />
+									<InsightTable
+										result={result.data}
+										view={view}
+										hydrated={hydrated}
+										onHover={setHovered}
+									/>
+								</div>
+							)}
 					</div>
 				</div>
 			)}

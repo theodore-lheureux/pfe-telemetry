@@ -51,6 +51,7 @@ export function SeriesRow({
 	metrics,
 	disabled,
 	removable,
+	heatmap,
 	onChange,
 	onRemove,
 }: {
@@ -61,6 +62,7 @@ export function SeriesRow({
 	metrics: MetricDefinition[];
 	disabled: boolean;
 	removable: boolean;
+	heatmap: boolean;
 	onChange: (series: DraftSeries) => void;
 	onRemove: () => void;
 }) {
@@ -72,7 +74,10 @@ export function SeriesRow({
 		wantsAttributes && series.metric !== undefined,
 	);
 	const definition = metrics.find((metric) => metric.name === series.metric);
-	const allowed = definition ? ALLOWED_CALCULATIONS[definition.behavior] : [];
+	const histogram = definition?.kind === 3 && definition.temporality === 1;
+	const allowed = definition
+		? ALLOWED_CALCULATIONS[histogram ? "histogram" : definition.behavior]
+		: [];
 	const fixedFilters = Math.max(
 		0,
 		...(definition?.calculated?.inputs.map(
@@ -102,6 +107,16 @@ export function SeriesRow({
 					onChange={(name) => {
 						const next = metrics.find((metric) => metric.name === name);
 						if (!next) return;
+						if (next.kind === 3 && next.temporality === 1) {
+							onChange({
+								...series,
+								metric: next.name,
+								calculation: "p50",
+								combine: "sum",
+								filters: [],
+							});
+							return;
+						}
 						if (next.calculated) {
 							onChange({
 								...series,
@@ -175,58 +190,66 @@ export function SeriesRow({
 					)}
 					{!definition.calculated && (
 						<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-							<Select
-								value={series.calculation}
-								disabled={disabled}
-								onValueChange={(value) =>
-									onChange({ ...series, calculation: value as Calculation })
-								}
-							>
-								<SelectTrigger
-									size="sm"
-									aria-label={m.insight_calculation()}
-									className={INLINE}
+							{!heatmap && (
+								<Select
+									value={series.calculation}
+									disabled={disabled}
+									onValueChange={(value) =>
+										onChange({ ...series, calculation: value as Calculation })
+									}
 								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent position="popper" align="start">
-									{allowed.map((value) => (
-										<SelectItem key={value} value={value}>
-											{CALCULATION_LABEL[value]()}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-							<Select
-								value={series.combine}
-								disabled={disabled}
-								onValueChange={(value) =>
-									onChange({ ...series, combine: value as Combine })
-								}
-							>
-								<SelectTrigger
-									size="sm"
-									aria-label={m.insight_combine()}
-									className={INLINE}
+									<SelectTrigger
+										size="sm"
+										aria-label={
+											histogram
+												? m.insight_histogram_percentile()
+												: m.insight_calculation()
+										}
+										className={INLINE}
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent position="popper" align="start">
+										{allowed.map((value) => (
+											<SelectItem key={value} value={value}>
+												{CALCULATION_LABEL[value]()}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							)}
+							{!histogram && (
+								<Select
+									value={series.combine}
+									disabled={disabled}
+									onValueChange={(value) =>
+										onChange({ ...series, combine: value as Combine })
+									}
 								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent position="popper" align="start">
-									<p className="max-w-64 px-1.5 py-1 text-xs text-muted-foreground">
-										{m.insight_combine_help()}
-									</p>
-									{COMBINE_GROUPS.map((group) => (
-										<SelectGroup key={group.values[0]}>
-											<SelectLabel>{group.label()}</SelectLabel>
-											{group.values.map((value) => (
-												<SelectItem key={value} value={value}>
-													{COMBINE_OPTION_LABEL[value]()}
-												</SelectItem>
-											))}
-										</SelectGroup>
-									))}
-								</SelectContent>
-							</Select>
+									<SelectTrigger
+										size="sm"
+										aria-label={m.insight_combine()}
+										className={INLINE}
+									>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent position="popper" align="start">
+										<p className="max-w-64 px-1.5 py-1 text-xs text-muted-foreground">
+											{m.insight_combine_help()}
+										</p>
+										{COMBINE_GROUPS.map((group) => (
+											<SelectGroup key={group.values[0]}>
+												<SelectLabel>{group.label()}</SelectLabel>
+												{group.values.map((value) => (
+													<SelectItem key={value} value={value}>
+														{COMBINE_OPTION_LABEL[value]()}
+													</SelectItem>
+												))}
+											</SelectGroup>
+										))}
+									</SelectContent>
+								</Select>
+							)}
 						</div>
 					)}
 					<span className="shrink-0">

@@ -16,7 +16,12 @@ import { cn } from "../lib/utils";
 import type { MetricDefinition } from "./contracts";
 import { DefinitionChoice } from "./definition-choice";
 import { DefinitionSourceIcon } from "./definition-source-icon";
-import { isNamedMetric, metricLabel, unitLabel } from "./metric-names";
+import {
+	isNamedMetric,
+	isRatioMetric,
+	metricLabel,
+	unitLabel,
+} from "./metric-names";
 import {
 	metricPreview,
 	PICKER_CONTENT_CLASS,
@@ -64,7 +69,9 @@ export function MetricPicker({
 		),
 	];
 	const unit = (name: string) =>
-		unitLabel(metrics?.find((metric) => metric.name === name)?.unit ?? "");
+		isRatioMetric(name)
+			? "%"
+			: unitLabel(metrics?.find((metric) => metric.name === name)?.unit ?? "");
 	const previews = new Map<string, PickerPreview>();
 	for (const name of names) {
 		const metric = metrics?.find((item) => item.name === name);

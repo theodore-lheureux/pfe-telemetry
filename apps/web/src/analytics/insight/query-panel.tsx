@@ -9,6 +9,7 @@ import { MAX_CALCULATED_INPUTS } from "../calculated-metrics";
 import { useQueryAttributes } from "../catalog";
 import type { MetricDefinition } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
+import { isHistogramPercentile } from "../validation";
 import {
 	draftMetricNames,
 	type InsightDraft,
@@ -107,6 +108,7 @@ export function QueryPanel({
 						metrics={metrics}
 						disabled={disabled}
 						removable={draft.series.length > 1}
+						heatmap={draft.display.type === "heatmap"}
 						onChange={(updated) => {
 							const selected = metrics.find(
 								(metric) => metric.name === updated.metric,
@@ -130,27 +132,42 @@ export function QueryPanel({
 									? metrics.find((metric) => metric.name === updated.metric)
 											?.defaultBreakdown
 									: undefined;
+							const rows = draft.series.map((entry) =>
+								entry.name === series.name ? updated : entry,
+							);
+							if (
+								draft.series.length === 1 &&
+								updated.metric !== series.metric &&
+								isHistogramPercentile(updated.calculation) &&
+								!editingCalculation
+							) {
+								rows.push(
+									{ ...updated, name: "B", calculation: "p95" },
+									{ ...updated, name: "C", calculation: "p99" },
+								);
+								base.display = { ...base.display, type: "line" };
+							}
 							onChange({
 								...base,
 								// An edited series no longer belongs to its calculated metric.
-								series: draft.series.map((entry) =>
-									entry.name === series.name ? updated : entry,
-								),
+								series: rows,
 								...(breakdown ? { groupBy: breakdown } : {}),
 							});
 						}}
 						onRemove={() => onChange(removeSeries(draft, series.name))}
 					/>
 				))}
-				<FormulaFields
-					draft={draft}
-					disabled={disabled}
-					onChange={onChange}
-					userId={userId}
-					reference={reference}
-					canWrite={canWrite}
-					editingCalculation={editingCalculation}
-				/>
+				{draft.display.type !== "heatmap" && (
+					<FormulaFields
+						draft={draft}
+						disabled={disabled}
+						onChange={onChange}
+						userId={userId}
+						reference={reference}
+						canWrite={canWrite}
+						editingCalculation={editingCalculation}
+					/>
+				)}
 			</Section>
 			<Section
 				title={m.insight_filters()}

@@ -12,7 +12,11 @@ import {
 	seriesPointSource,
 	streamEvidenceSource,
 } from "./series-source.server";
-import { type ParsedField, parseField } from "./validation";
+import {
+	isHistogramPercentile,
+	type ParsedField,
+	parseField,
+} from "./validation";
 
 // Combining the sources' values in a bucket. Percentiles are exact over those values.
 const COMBINE_SQL: Record<Combine, string> = {
@@ -45,7 +49,23 @@ const OTHER_SQL: Record<Combine, string> = {
 // Missing or no-recorded values stay NULL and are skipped, never counted as zero.
 const VALUE = `if(bitAnd(flags, 1) = 0,
     if(isNull(int_value), double_value, toFloat64(int_value)), NULL)`;
-const POPULATION_SUM = `if(bitAnd(flags, 1) = 0 AND bitTest(statistics_present, 1), sum, NULL)`;
+const POPULATION_SUM = `if(bitAnd(flags, 1) = 0 AND bitTest(statistics_present, 1), \`sum\`, NULL)`;
+
+function histogramSelect(base: string, columns: string[]) {
+	const keys = [...columns, "bucket", "bounds"].join(", ");
+	const groups = columns.join(", ");
+	const rank = groups ? `dense_rank() OVER (ORDER BY ${groups})` : "1";
+	return `WITH base AS (${base}), pooled AS (
+ SELECT ${keys}, arrayMap(n -> toString(n), sumForEach(arrayMap(n -> toUInt128(n), counts))) AS counts
+ FROM base GROUP BY ${keys}
+), ranked AS (
+ SELECT *, ${rank} AS series_rank FROM pooled
+)
+SELECT ${columns.map((name) => `${name} AS k_${name}, `).join("")}
+ toString(bucket) AS bucket_ms, bounds, counts, series_rank, 0 AS other
+FROM ranked WHERE series_rank <= {seriesLimit:UInt32} + 1
+ORDER BY series_rank, bucket, bounds LIMIT 32769`;
+}
 
 class Params {
 	readonly values: Record<string, string | number | string[]> = {};
@@ -205,6 +225,7 @@ per_series AS (
 
 /** The stored kind and behavior of a measured metric. */
 export interface MeasureScope {
+	unit?: string;
 	/** Stored kind of the measured metric, so mixed-kind names are never combined. */
 	kind: number;
 	behavior: MetricBehavior;
@@ -249,6 +270,10 @@ function measureSelect(
 		...allFilters.map(({ field }) => field),
 	].some((field) => continuityColumn(parseField(field)) !== undefined);
 	const metric = params.bind(measure.metric, "String");
+	const histogram = isHistogramPercentile(measure.calculation);
+	const unit = histogram
+		? ` AND temporality = 1 AND unit = ${params.bind(scope.unit ?? "", "String")}`
+		: "";
 	const groupColumns = groupBy.map((_, column) => `g${column}`);
 	const staticGroups = groupBy.flatMap((field, column) =>
 		isPointField(field)
@@ -275,7 +300,7 @@ function measureSelect(
 		})
 		.join(", ");
 	const pointSource = seriesPointSource(
-		`${SERIES_WINDOW} AND metric_name = ${metric} AND CAST(metric_kind, 'Int16') = ${params.bind(scope.kind, "Int16")}${seriesFilters}`,
+		`${SERIES_WINDOW} AND metric_name = ${metric} AND CAST(metric_kind, 'Int16') = ${params.bind(scope.kind, "Int16")}${unit}${seriesFilters}`,
 		POINT_WINDOW,
 		[
 			"s.logical_series_id",
@@ -297,6 +322,20 @@ function measureSelect(
 		query.shape === "timeseries"
 			? "intDiv(time_unix_milli, {step:UInt64}) * {step:UInt64}"
 			: "toUInt64(0)";
+	const source = usesExecution ? executionPointSource(points) : `(${points})`;
+	if (histogram)
+		return histogramSelect(
+			`SELECT ${groupSelect ? `${groupSelect}, ` : ""}
+ ${bucket} AS bucket, explicit_bounds AS bounds, bucket_counts AS counts
+ FROM ${source}
+ WHERE ${[
+		...pointFilters,
+		"bitAnd(flags, 1) = 0",
+		"length(explicit_bounds) <= 64",
+		"length(bucket_counts) = length(explicit_bounds) + 1",
+ ].join(" AND ")}`,
+			groupColumns,
+		);
 	const groups = groupColumns.join(", ");
 	// A sum or count is larger than each source, so their band would not surround it.
 	const banded =
@@ -319,7 +358,7 @@ FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
   SELECT logical_series_id AS series, stream_id AS stream, series_id AS storage_series,
     ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_milli AS t,
     ${bucket} AS bucket, ${scope.behavior === "population" ? POPULATION_SUM : VALUE} AS v
-  FROM ${usesExecution ? executionPointSource(points) : `(${points})`}
+  FROM ${source}
   ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
 ),
 ${perSeries(measure, scope.behavior, groups, query.shape === "timeseries")},

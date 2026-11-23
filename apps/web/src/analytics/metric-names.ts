@@ -6,6 +6,36 @@ const METRICS: Record<
 	string,
 	{ name: () => string; description: () => string; ratio?: boolean }
 > = {
+	"recount.node.process.cpu.utilization.distribution": {
+		name: m.metric_hist_process_cpu,
+		description: m.metric_hist_process_cpu,
+		ratio: true,
+	},
+	"recount.node.process.memory.rss.distribution": {
+		name: m.metric_hist_process_memory,
+		description: m.metric_hist_process_memory,
+	},
+	"recount.node.process.disk.io.rate.distribution": {
+		name: m.metric_hist_process_disk,
+		description: m.metric_hist_process_disk,
+	},
+	"recount.node.gpu.utilization.distribution": {
+		name: m.metric_hist_gpu_utilization,
+		description: m.metric_hist_gpu_utilization,
+		ratio: true,
+	},
+	"recount.node.gpu.memory.used.distribution": {
+		name: m.metric_hist_gpu_memory,
+		description: m.metric_hist_gpu_memory,
+	},
+	"recount.node.gpu.power.distribution": {
+		name: m.metric_hist_gpu_power,
+		description: m.metric_hist_gpu_power,
+	},
+	"recount.node.tcp.rtt.distribution": {
+		name: m.metric_hist_tcp_rtt,
+		description: m.metric_hist_tcp_rtt,
+	},
 	"recount.process.gpu.memory.used": {
 		name: m.gpu_process_memory,
 		description: m.gpu_process_memory_description,

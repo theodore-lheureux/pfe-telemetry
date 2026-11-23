@@ -20,6 +20,7 @@ import {
 } from "../../components/ui/select";
 import { type Comparison, INTERVALS, type Interval } from "../contracts";
 import { autoInterval, effectiveInterval, intervalFits } from "../intervals";
+import { isHistogramPercentile } from "../validation";
 import { DisplayOptions, spreadUnavailable } from "./display-options";
 import {
 	type DisplayType,
@@ -138,49 +139,55 @@ export function InsightToolbar({
 					</Select>
 				</div>
 			)}
-			<Select
-				value={comparisonKey(draft.compare)}
-				disabled={disabled}
-				onValueChange={(key) => {
-					const { compare: _, ...rest } = draft;
-					const value = COMPARISONS.find((option) => option.key === key)?.value;
-					onChange(value ? { ...draft, compare: value } : rest);
-				}}
-			>
-				<SelectTrigger aria-label={m.insight_compare()}>
-					<SelectValue />
-				</SelectTrigger>
-				<SelectContent position="popper" align="start">
-					{COMPARISONS.map((option) => (
-						<SelectItem key={option.key} value={option.key}>
-							{option.label()}
-						</SelectItem>
-					))}
-				</SelectContent>
-			</Select>
+			{display.type !== "heatmap" && (
+				<Select
+					value={comparisonKey(draft.compare)}
+					disabled={disabled}
+					onValueChange={(key) => {
+						const { compare: _, ...rest } = draft;
+						const value = COMPARISONS.find(
+							(option) => option.key === key,
+						)?.value;
+						onChange(value ? { ...draft, compare: value } : rest);
+					}}
+				>
+					<SelectTrigger aria-label={m.insight_compare()}>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent position="popper" align="start">
+						{COMPARISONS.map((option) => (
+							<SelectItem key={option.key} value={option.key}>
+								{option.label()}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			)}
 			<div className="ml-auto flex items-center gap-2">
-				<Popover>
-					<PopoverTrigger asChild>
-						<Button
-							variant="outline"
-							size="icon"
-							aria-label={m.insight_options()}
-							title={m.insight_options()}
-							disabled={disabled}
-						>
-							<SlidersHorizontalIcon aria-hidden="true" />
-						</Button>
-					</PopoverTrigger>
-					<PopoverContent align="end" className="w-auto">
-						<DisplayOptions
-							display={display}
-							disabled={disabled}
-							showType={false}
-							spreadBlocked={spreadUnavailable(draft)}
-							onChange={(next) => onChange({ ...draft, display: next })}
-						/>
-					</PopoverContent>
-				</Popover>
+				{display.type !== "heatmap" && (
+					<Popover>
+						<PopoverTrigger asChild>
+							<Button
+								variant="outline"
+								size="icon"
+								aria-label={m.insight_options()}
+								title={m.insight_options()}
+								disabled={disabled}
+							>
+								<SlidersHorizontalIcon aria-hidden="true" />
+							</Button>
+						</PopoverTrigger>
+						<PopoverContent align="end" className="w-auto">
+							<DisplayOptions
+								display={display}
+								disabled={disabled}
+								showType={false}
+								spreadBlocked={spreadUnavailable(draft)}
+								onChange={(next) => onChange({ ...draft, display: next })}
+							/>
+						</PopoverContent>
+					</Popover>
+				)}
 				<Select
 					value={display.type}
 					disabled={disabled}
@@ -193,7 +200,16 @@ export function InsightToolbar({
 						{(Object.keys(DISPLAY_LABEL) as DisplayType[]).map((type) => {
 							const Icon = DISPLAY_ICON[type];
 							return (
-								<SelectItem key={type} value={type}>
+								<SelectItem
+									key={type}
+									value={type}
+									disabled={
+										type === "heatmap" &&
+										!draft.series.some(({ calculation }) =>
+											isHistogramPercentile(calculation),
+										)
+									}
+								>
 									<Icon aria-hidden="true" />
 									{DISPLAY_LABEL[type]()}
 								</SelectItem>

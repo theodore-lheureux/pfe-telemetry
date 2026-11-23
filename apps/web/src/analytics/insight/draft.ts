@@ -19,6 +19,7 @@ import {
 	type Spread,
 } from "../contracts";
 import { effectiveInterval } from "../intervals";
+import { isHistogramPercentile } from "../validation";
 
 // An insight being edited. It is plain JSON so it can live in the URL and later be
 // saved; `toQuery` turns it into the server's query object when it runs.
@@ -50,6 +51,7 @@ export type DisplayType =
 	| "area"
 	| "bar"
 	| "stacked"
+	| "heatmap"
 	| "stat"
 	| "table";
 export type DisplayUnit =
@@ -224,25 +226,47 @@ export function toQuery(
 	// A table shows one value per series over the whole range; every other view is a timeseries.
 	const table = draft.display.type === "table";
 	const grouped = draft.display.type !== "stat" && !!draft.groupBy;
+	const heatmap = draft.display.type === "heatmap";
+	const measures = draft.series.filter((entry, index, all) => {
+		if (!heatmap) return true;
+		return (
+			isHistogramPercentile(entry.calculation) &&
+			all.findIndex(
+				(other) =>
+					isHistogramPercentile(other.calculation) &&
+					other.metric === entry.metric &&
+					JSON.stringify(other.filters) === JSON.stringify(entry.filters),
+			) === index
+		);
+	});
+	if (!measures.length) return null;
 	return {
 		shape: table ? "table" : "timeseries",
+		...(heatmap ? { heatmap: true as const } : {}),
 		range: { from: from.toISOString(), to: to.toISOString() },
 		...(table ? {} : { interval }),
-		measures: draft.series.map((entry) => ({
+		measures: measures.map((entry) => ({
 			name: entry.name,
 			metric: entry.metric as string,
 			calculation: entry.calculation,
 			combine: entry.combine,
 			filters: entry.filters,
 		})),
-		...(formulas(draft).length ? { formulas: formulas(draft) } : {}),
+		...(!heatmap && formulas(draft).length
+			? { formulas: formulas(draft) }
+			: {}),
 		filters: draft.filters,
 		groupBy: grouped ? [draft.groupBy as string] : [],
 		limit: draft.limit,
-		other: draft.other,
-		...(grouped && draft.aggregate ? { aggregate: draft.aggregate } : {}),
-		...(draft.compare ? { compare: draft.compare } : {}),
-		...(draft.display.spread && !table && draft.display.type !== "stat"
+		other: !heatmap && draft.other,
+		...(!heatmap && grouped && draft.aggregate
+			? { aggregate: draft.aggregate }
+			: {}),
+		...(!heatmap && draft.compare ? { compare: draft.compare } : {}),
+		...(!heatmap &&
+		draft.display.spread &&
+		!table &&
+		draft.display.type !== "stat"
 			? { spread: draft.display.spread }
 			: {}),
 	};

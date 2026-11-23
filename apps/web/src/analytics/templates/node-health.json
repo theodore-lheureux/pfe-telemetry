@@ -267,6 +267,41 @@
           }
         }
       }
+    },
+    {
+      "width": 12,
+      "height": 3,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "metric_hist_process_cpu",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.node.process.cpu.utilization.distribution",
+              "calculation": "p50",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "groupBy": "node",
+          "limit": 4,
+          "other": false,
+          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "interval": "1m",
+          "display": {
+            "type": "heatmap",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          }
+        }
+      }
     }
   ]
 }
