@@ -68,7 +68,7 @@ export function InsightChart({
 	onNode?: (host: string) => void;
 }) {
 	const title =
-		display.type === "heatmap"
+		display.type === "heatmap" || display.type === "node-grid"
 			? [
 					...new Set(
 						result.measures.map((measure) =>
@@ -182,14 +182,14 @@ export function ChartBody({
 						})),
 					);
 					const key = lineId(series);
+					const group = view.groupLabel(series);
 					return (
 						<section key={key} className="space-y-2">
-							{series.group.length > 0 && (
-								<h3 className="text-sm font-medium">{view.label(series)}</h3>
-							)}
+							{group && <h3 className="text-sm font-medium">{group}</h3>}
 							<HistogramHeatmap
 								rows={rows}
 								metric={measure.metric}
+								label={measure.label}
 								unit={measure.unit}
 								limited={false}
 								zone={zone}

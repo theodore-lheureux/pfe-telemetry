@@ -304,7 +304,7 @@ function measureText(
 	return metricLabel(measure.metric, measure.label);
 }
 
-function groupText(
+export function groupText(
 	series: SeriesResult,
 	groupLabel: (value: string | null) => string,
 ) {

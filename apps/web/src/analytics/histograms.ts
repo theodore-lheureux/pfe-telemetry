@@ -1,5 +1,32 @@
 import { isRatioMetric } from "./metric-names";
 
+export function visibleHistogramBuckets(
+	rows: HistogramWindow[],
+	unit: string,
+	metric: string,
+) {
+	const bounds = rows[0].bounds;
+	const occupied = rows[0].counts.flatMap((_, i) =>
+		rows.some((row) => Number(row.counts[i]) > 0) ? [i] : [],
+	);
+	const lastOccupied = occupied.at(-1) ?? 0;
+	if (unit === "%" || (unit === "1" && isRatioMetric(metric))) {
+		const full = unit === "%" ? 100 : 1;
+		const upper = bounds.findIndex((bound) => bound >= full);
+		return {
+			first: Math.max(
+				0,
+				bounds.findIndex((bound) => bound >= 0),
+			),
+			last: Math.max(upper < 0 ? bounds.length : upper, lastOccupied),
+		};
+	}
+	return {
+		first: Math.max(0, (occupied[0] ?? 0) - 1),
+		last: Math.min(bounds.length, lastOccupied + 1),
+	};
+}
+
 export function heatColor(ratio: number) {
 	return `color-mix(in oklab, var(--chart-1) ${100 * Math.min(1, Math.max(0, ratio))}%, var(--muted))`;
 }

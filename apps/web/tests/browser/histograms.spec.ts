@@ -175,16 +175,26 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			await expect(
 				page.locator("svg [data-time-window]").first(),
 			).toBeVisible();
+			await expect(page.locator("[data-time-window] rect title")).toHaveCount(
+				0,
+			);
 			await expect(
-				page.locator("[data-time-window] rect title").first(),
-			).toContainText("Count:");
+				page
+					.locator("figcaption")
+					.getByText("CPU per process", { exact: true }),
+			).toBeVisible();
+			await expect(
+				page.getByText("Processes · fewer → more (log scale)"),
+			).toBeVisible();
+			await expect(page.getByText("50–100 %", { exact: true })).toBeVisible();
 			await expect(page.getByLabel("Time slice")).toHaveCount(0);
 			const cell = page.locator("[data-time-window] rect").first();
 			await cell.hover();
 			const tooltip = page.getByRole("tooltip");
-			await expect(tooltip).toContainText(
-				/\d.*[–-].*\d.*%.*Count:.*of this time bucket/,
-			);
+			await expect(tooltip).toContainText("CPU per process");
+			await expect(tooltip).toContainText("Processes");
+			await expect(tooltip).toContainText(/% of this interval\)/);
+			await expect(tooltip).not.toContainText("Count:");
 			await page.screenshot({
 				path: info.outputPath(`histogram-heatmap-${theme}.png`),
 			});

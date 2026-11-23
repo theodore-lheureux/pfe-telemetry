@@ -41,10 +41,12 @@ function ChartContainer({
 	className,
 	children,
 	config,
+	overlay,
 	initialDimension = INITIAL_DIMENSION,
 	...props
 }: React.ComponentProps<"div"> & {
 	config: ChartConfig;
+	overlay?: React.ReactNode;
 	children: React.ComponentProps<
 		typeof RechartsPrimitive.ResponsiveContainer
 	>["children"];
@@ -73,6 +75,7 @@ function ChartContainer({
 				>
 					{children}
 				</RechartsPrimitive.ResponsiveContainer>
+				{overlay}
 			</div>
 		</ChartContext.Provider>
 	);

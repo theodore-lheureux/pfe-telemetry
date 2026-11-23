@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import type { QueryResult } from "../contracts";
 import { heatColor } from "../histograms";
+import { distributionLabels } from "../metric-names";
 import { bucketGrid } from "./grid";
 import type { SeriesView } from "./series-view";
 
@@ -22,6 +23,14 @@ export function NodeGrid({
 	onNode?: (host: string) => void;
 }) {
 	const [scroll, setScroll] = useState(0);
+	const measure = result.measures[0];
+	const labels = measure && distributionLabels(measure.metric, measure.label);
+	const quantity =
+		labels &&
+		m.histogram_percentile_quantity({
+			quantity: labels.quantity,
+			percentile: measure.calculation,
+		});
 	const buckets = bucketGrid(
 		result.from,
 		result.to,
@@ -47,6 +56,7 @@ export function NodeGrid({
 		<div className="space-y-2">
 			<div className="flex justify-between px-2 text-xs text-muted-foreground">
 				<span>{m.insight_grid_active()}</span>
+				{quantity && <span>{m.histogram_value_intensity({ quantity })}</span>}
 				<span>{time.formatRange(result.from, result.to)}</span>
 			</div>
 			<div
@@ -97,7 +107,7 @@ export function NodeGrid({
 											return (
 												<span
 													key={bucket}
-													title={`${time.format(bucket)} · ${format(value ?? null)}`}
+													title={`${time.format(bucket)} · ${quantity ?? ""}: ${format(value ?? null)}`}
 													style={{
 														background:
 															value == null

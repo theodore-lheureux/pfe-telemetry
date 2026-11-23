@@ -1,40 +1,75 @@
 import { m } from "@recount/i18n/messages";
 
+type DistributionLabels = { quantity: string; subject: string };
+
 // Friendly names for the metrics Recount's collector sends. Other metrics, including
 // any sent by standard OpenTelemetry exporters, keep their technical names.
 const METRICS: Record<
 	string,
-	{ name: () => string; description: () => string; ratio?: boolean }
+	{
+		name: () => string;
+		description: () => string;
+		ratio?: boolean;
+		distribution?: () => DistributionLabels;
+	}
 > = {
 	"recount.node.process.cpu.utilization.distribution": {
 		name: m.metric_hist_process_cpu,
 		description: m.metric_hist_process_cpu,
 		ratio: true,
+		distribution: () => ({
+			quantity: m.histogram_process_cpu(),
+			subject: m.histogram_subject_processes(),
+		}),
 	},
 	"recount.node.process.memory.rss.distribution": {
 		name: m.metric_hist_process_memory,
 		description: m.metric_hist_process_memory,
+		distribution: () => ({
+			quantity: m.histogram_process_memory(),
+			subject: m.histogram_subject_processes(),
+		}),
 	},
 	"recount.node.process.disk.io.rate.distribution": {
 		name: m.metric_hist_process_disk,
 		description: m.metric_hist_process_disk,
+		distribution: () => ({
+			quantity: m.histogram_process_disk(),
+			subject: m.histogram_subject_processes(),
+		}),
 	},
 	"recount.node.gpu.utilization.distribution": {
 		name: m.metric_hist_gpu_utilization,
 		description: m.metric_hist_gpu_utilization,
 		ratio: true,
+		distribution: () => ({
+			quantity: m.histogram_gpu_utilization(),
+			subject: m.histogram_subject_gpus(),
+		}),
 	},
 	"recount.node.gpu.memory.used.distribution": {
 		name: m.metric_hist_gpu_memory,
 		description: m.metric_hist_gpu_memory,
+		distribution: () => ({
+			quantity: m.histogram_gpu_memory(),
+			subject: m.histogram_subject_gpus(),
+		}),
 	},
 	"recount.node.gpu.power.distribution": {
 		name: m.metric_hist_gpu_power,
 		description: m.metric_hist_gpu_power,
+		distribution: () => ({
+			quantity: m.histogram_gpu_power(),
+			subject: m.histogram_subject_gpus(),
+		}),
 	},
 	"recount.node.tcp.rtt.distribution": {
 		name: m.metric_hist_tcp_rtt,
 		description: m.metric_hist_tcp_rtt,
+		distribution: () => ({
+			quantity: m.histogram_tcp_rtt(),
+			subject: m.histogram_subject_connections(),
+		}),
 	},
 	"recount.process.gpu.memory.used": {
 		name: m.gpu_process_memory,
@@ -218,6 +253,18 @@ export function metricLabel(name: string, label?: string) {
 
 export function metricDescription(name: string) {
 	return METRICS[name]?.description() ?? null;
+}
+
+export function distributionLabels(
+	name: string,
+	label?: string,
+): DistributionLabels {
+	return (
+		METRICS[name]?.distribution?.() ?? {
+			quantity: metricLabel(name, label),
+			subject: m.histogram_subject_observations(),
+		}
+	);
 }
 
 export function isRatioMetric(name: string) {

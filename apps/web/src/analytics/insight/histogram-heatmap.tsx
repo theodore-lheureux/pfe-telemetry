@@ -2,12 +2,14 @@ import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useState } from "react";
 import { ScatterChart, usePlotArea, XAxis, YAxis } from "recharts";
-import { ChartContainer } from "../../components/ui/chart";
+import { ChartContainer, ChartTooltipContent } from "../../components/ui/chart";
 import {
 	type HistogramWindow,
 	heatColor,
 	histogramFormatter,
+	visibleHistogramBuckets,
 } from "../histograms";
+import { distributionLabels } from "../metric-names";
 
 interface Timeline {
 	from: number;
@@ -19,6 +21,7 @@ export function HistogramHeatmap({
 	rows,
 	unit,
 	metric,
+	label,
 	limited,
 	zone,
 	timeline,
@@ -26,6 +29,7 @@ export function HistogramHeatmap({
 	rows: HistogramWindow[];
 	unit: string;
 	metric: string;
+	label?: string;
 	limited: boolean;
 	zone: string;
 	timeline: Timeline;
@@ -47,6 +51,7 @@ export function HistogramHeatmap({
 					rows={windows}
 					unit={unit}
 					metric={metric}
+					label={label}
 					zone={zone}
 					timeline={timeline}
 				/>
@@ -59,53 +64,67 @@ function HeatmapLayout({
 	rows,
 	unit,
 	metric,
+	label,
 	zone,
 	timeline,
 }: {
 	rows: HistogramWindow[];
 	unit: string;
 	metric: string;
+	label?: string;
 	zone: string;
 	timeline: Timeline;
 }) {
 	const locale = getLocale();
 	const { from, to } = timeline;
 	const bounds = rows[0].bounds;
-	const occupied = rows[0].counts.flatMap((_, i) =>
-		rows.some((row) => Number(row.counts[i]) > 0) ? [i] : [],
-	);
-	const first = Math.max(0, (occupied[0] ?? 0) - 1);
-	const last = Math.min(bounds.length, (occupied.at(-1) ?? 0) + 1);
+	const { first, last } = visibleHistogramBuckets(rows, unit, metric);
+	const { quantity, subject } = distributionLabels(metric, label);
 	const size = last - first + 1;
 	const number = new Intl.NumberFormat(locale);
 	const format = histogramFormatter(
 		unit,
 		metric,
 		locale,
-		Math.max(0, ...bounds.map(Math.abs)),
+		Math.max(
+			0,
+			...bounds.slice(Math.max(0, first - 1), last + 1).map(Math.abs),
+		),
 	);
 	const time = new Intl.DateTimeFormat(locale, {
 		hour: "numeric",
 		minute: "2-digit",
+		...(timeline.step < 60_000 ? { second: "2-digit" } : {}),
 		timeZone: zone,
 	});
 	const detailTime = new Intl.DateTimeFormat(locale, {
 		dateStyle: "short",
-		timeStyle: "medium",
+		timeStyle: timeline.step < 60_000 ? "medium" : "short",
 		timeZone: zone,
+	});
+	const day = new Intl.DateTimeFormat(locale, {
+		dateStyle: "short",
+		timeZone: zone,
+	});
+	const today = day.format(new Date());
+	const percent = new Intl.NumberFormat(locale, {
+		style: "percent",
+		maximumFractionDigits: 1,
 	});
 	const [hover, setHover] = useState<{
 		x: number;
 		y: number;
-		text: string;
+		header: string;
+		range: string;
+		count: string;
 	} | null>(null);
 	const bucketTicks = Array.from({ length: size }, (_, index) => index + 0.5);
 	return (
 		<figure className="min-w-0 space-y-2">
 			<figcaption className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-				<span>{m.histogram_bucket()}</span>
+				<span>{quantity}</span>
 				<span className="flex items-center gap-2">
-					{m.histogram_intensity()}
+					{m.histogram_intensity({ subject })}
 					<span
 						aria-hidden="true"
 						className="h-2 w-24 rounded-sm bg-[linear-gradient(to_right,var(--muted),var(--chart-1))]"
@@ -113,14 +132,47 @@ function HeatmapLayout({
 				</span>
 			</figcaption>
 			<ChartContainer
-				config={{}}
+				config={{ quantity: { label: quantity }, subject: { label: subject } }}
 				className="aspect-auto w-full"
 				style={{ height: Math.max(180, size * 20 + 36) }}
+				overlay={
+					hover && (
+						<div
+							role="tooltip"
+							className="pointer-events-none fixed z-50 max-w-80"
+							style={{
+								left: Math.max(
+									4,
+									Math.min(hover.x + 12, window.innerWidth - 330),
+								),
+								top: Math.max(4, hover.y - 64),
+							}}
+						>
+							<ChartTooltipContent
+								active
+								hideIndicator
+								label={hover.header}
+								payload={[
+									{
+										graphicalItemId: "quantity",
+										name: "quantity",
+										value: hover.range,
+									},
+									{
+										graphicalItemId: "subject",
+										name: "subject",
+										value: hover.count,
+									},
+								]}
+							/>
+						</div>
+					)
+				}
 			>
 				<ScatterChart
 					accessibilityLayer={false}
 					margin={{ top: 4, right: 18, bottom: 0, left: 0 }}
-					aria-label={m.histogram_title()}
+					aria-label={quantity}
 				>
 					<XAxis
 						type="number"
@@ -147,26 +199,29 @@ function HeatmapLayout({
 							counts: row.counts.slice(first, last + 1),
 						}))}
 						timeline={timeline}
-						range={(index) => format.range(bounds, first + index)}
-						time={(value) => detailTime.format(value)}
-						count={(value) => number.format(BigInt(value))}
 						onHover={(x, y, start, index, value) => {
 							const total =
 								rows
 									.find((row) => Number(row.bucket) === start)
 									?.counts.reduce((sum, count) => sum + Number(count), 0) ?? 0;
-							const share = new Intl.NumberFormat(locale, {
-								style: "percent",
-								maximumFractionDigits: 1,
-							}).format(total ? Number(value) / total : 0);
-							const interval = detailTime.formatRange(
-								Math.max(start, from),
-								Math.min(start + timeline.step, to),
-							);
+							const share = percent.format(total ? Number(value) / total : 0);
+							const beginning = Math.max(start, from);
+							const end = Math.min(start + timeline.step, to);
+							const timestamp =
+								day.format(beginning) === today && day.format(end) === today
+									? time
+									: detailTime;
+							const count = number.format(BigInt(value));
+							const describeCount =
+								end - beginning === 60_000
+									? m.histogram_minute_share
+									: m.histogram_column_share;
 							setHover({
 								x,
 								y,
-								text: `${interval} · ${format.range(bounds, first + index)} · ${m.histogram_count()}: ${number.format(BigInt(value))} · ${m.histogram_column_share({ share })}`,
+								header: timestamp.formatRange(beginning, end),
+								range: format.range(bounds, first + index),
+								count: describeCount({ count, share }),
 							});
 						}}
 						onLeave={() => setHover(null)}
@@ -178,18 +233,6 @@ function HeatmapLayout({
 					/>
 				</ScatterChart>
 			</ChartContainer>
-			{hover && (
-				<div
-					role="tooltip"
-					className="pointer-events-none fixed z-50 max-w-80 rounded-md border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-md"
-					style={{
-						left: Math.min(hover.x + 12, window.innerWidth - 330),
-						top: Math.max(4, hover.y - 64),
-					}}
-				>
-					{hover.text}
-				</div>
-			)}
 		</figure>
 	);
 }
@@ -232,17 +275,11 @@ function TimeTicks({
 function HeatmapCells({
 	rows,
 	timeline,
-	range,
-	time,
-	count,
 	onHover,
 	onLeave,
 }: {
 	rows: HistogramWindow[];
 	timeline: Timeline;
-	range: (index: number) => string;
-	time: (value: number) => string;
-	count: (value: string) => string;
 	onHover: (
 		x: number,
 		y: number,
@@ -282,10 +319,12 @@ function HeatmapCells({
 									onHover(event.clientX, event.clientY, start, index, value)
 								}
 								onPointerLeave={onLeave}
-								fill={heatColor(Math.log1p(Number(value)) / Math.log1p(peak))}
-							>
-								<title>{`${time(start)} · ${range(index)} · ${m.histogram_count()}: ${count(value)}`}</title>
-							</rect>
+								fill={
+									value === "0"
+										? "transparent"
+										: heatColor(Math.log1p(Number(value)) / Math.log1p(peak))
+								}
+							/>
 						))}
 					</g>
 				);

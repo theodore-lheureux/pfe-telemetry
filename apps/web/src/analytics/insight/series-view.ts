@@ -4,6 +4,7 @@ import type { Display } from "./draft";
 import {
 	type FormulaNames,
 	formatValueDetails,
+	groupText,
 	seriesLabel,
 	seriesSource,
 	visibleSeries,
@@ -76,6 +77,7 @@ export function seriesView(
 		color: (series: SeriesResult) => colors.get(identity(series)),
 		label: (series: SeriesResult) =>
 			seriesLabel(result, series, groupLabel, names),
+		groupLabel: (series: SeriesResult) => groupText(series, groupLabel),
 		format: (series: SeriesResult | undefined) => (value: number | null) =>
 			formatted(series, value).text,
 		formatDetails:

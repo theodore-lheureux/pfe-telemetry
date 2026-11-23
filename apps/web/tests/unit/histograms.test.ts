@@ -2,7 +2,33 @@ import { expect, test } from "bun:test";
 import {
 	histogramFormatter,
 	histogramQuantile,
+	visibleHistogramBuckets,
 } from "../../src/analytics/histograms";
+
+test("ratio heatmaps keep zero to 100% and only extend when occupied", () => {
+	const metric = "recount.node.process.cpu.utilization.distribution";
+	const bounds = [0, 0.1, 0.5, 1, 2, 4];
+	const row = {
+		bucket: "0",
+		bounds,
+		counts: ["1", "2", "0", "0", "0", "0", "0"],
+	};
+	expect(visibleHistogramBuckets([row], "1", metric)).toEqual({
+		first: 0,
+		last: 3,
+	});
+	expect(
+		visibleHistogramBuckets(
+			[{ ...row, counts: ["1", "2", "0", "0", "1", "0", "0"] }],
+			"1",
+			metric,
+		),
+	).toEqual({ first: 0, last: 4 });
+	expect(visibleHistogramBuckets([row], "By", "")).toEqual({
+		first: 0,
+		last: 2,
+	});
+});
 
 test("percentiles pool counts before interpolation and respect overflow bounds", () => {
 	const layouts = [
