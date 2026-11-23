@@ -1,7 +1,7 @@
 ---
 import { LANG_LABELS, LANGS, type Lang, localePath, switchPath } from "../i18n";
 import { strings } from "../i18n/strings";
-import { appHref, GITHUB_URL, icons } from "../lib/site";
+import { appHref, GITHUB_URL, icons, STATUS_URL } from "../lib/site";
 import AppLinkLabel from "./AppLinkLabel.astro";
 import Container from "./Container.astro";
 import GitHubIcon from "./GitHubIcon.astro";
@@ -49,6 +49,7 @@ const columns = [
 			{ href: p("/contact/"), label: f.contact },
 			{ href: p("/privacy/"), label: f.privacy },
 			{ href: p("/terms/"), label: f.terms },
+			{ href: `${STATUS_URL}/${lang}`, label: f.status },
 			{ href: GITHUB_URL, label: t.nav.github },
 		],
 	},

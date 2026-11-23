@@ -13,6 +13,7 @@ export function appHref(lang: Lang) {
 export const TURNSTILE_SITE_KEY = "0x4AAAAAAF5saUgthVLrgwUX";
 export const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
 
+export const STATUS_URL = "https://status.recount.cloud";
 export const GITHUB_URL = "https://github.com/theodore-lheureux/pfe-telemetry";
 
 // Shared with Starlight so the landing page and docs keep the same theme choice:
