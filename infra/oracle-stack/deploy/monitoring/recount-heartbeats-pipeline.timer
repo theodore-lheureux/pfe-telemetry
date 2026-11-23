@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the Recount ingestion pipeline every five minutes
+
+[Timer]
+OnActiveSec=10s
+OnUnitActiveSec=5min
+AccuracySec=1s
+Unit=recount-heartbeats@pipeline.service
+
+[Install]
+WantedBy=timers.target

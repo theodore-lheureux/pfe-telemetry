@@ -169,6 +169,7 @@ jobs:
           POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
           POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
           LANDING_ORIGIN: ${{ vars.LANDING_ORIGIN }}
+          RECOUNT_BETTERSTACK_HEARTBEATS: ${{ secrets.RECOUNT_BETTERSTACK_HEARTBEATS }}
         run: |
           archive="$PWD/assets/recount-stack-$ARCH.tar"
           digest=$(sha256sum "$archive" | cut -d' ' -f1)
