@@ -101,3 +101,36 @@
     - name: Report the activation
       ansible.builtin.debug:
         msg: "{{ recount_activation.stdout_lines | last }}"
+
+    - name: Render the protected heartbeat configuration when supplied
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.env', 'RECOUNT_BETTERSTACK_HEARTBEATS') }}"
+        dest: /etc/recount/betterstack-heartbeats.env
+        owner: root
+        group: root
+        mode: "0600"
+        validate: "/usr/bin/python3 {{ recount_release_directory }}/monitoring/heartbeats.py validate %s"
+      when: lookup('ansible.builtin.env', 'RECOUNT_BETTERSTACK_HEARTBEATS') | length > 0
+      no_log: true
+      diff: false
+
+    - name: Install the heartbeat units from the attested release
+      ansible.builtin.copy:
+        src: "{{ recount_release_directory }}/monitoring/{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - recount-heartbeats@.service
+        - recount-heartbeats-components.timer
+        - recount-heartbeats-pipeline.timer
+
+    - name: Enable and start the heartbeat timers
+      ansible.builtin.systemd_service:
+        name: "recount-heartbeats-{{ item }}.timer"
+        daemon_reload: true
+        enabled: true
+        state: started
+      loop: [components, pipeline]

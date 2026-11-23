@@ -1,0 +1,15 @@
+[Unit]
+Description=Recount ingestion %i heartbeat checks
+After=docker.service caddy.service network-online.target
+ConditionPathExists=/etc/recount/betterstack-heartbeats.env
+ConditionPathExists=/opt/recount/current/monitoring/heartbeats.py
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/recount/current/monitoring/heartbeats.py %i
+TimeoutStartSec=55s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+UMask=0077

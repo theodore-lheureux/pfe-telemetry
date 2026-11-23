@@ -1,0 +1,11 @@
+[Unit]
+Description=Check Recount ingestion components every minute
+
+[Timer]
+OnActiveSec=5s
+OnUnitActiveSec=60s
+AccuracySec=1s
+Unit=recount-heartbeats@components.service
+
+[Install]
+WantedBy=timers.target

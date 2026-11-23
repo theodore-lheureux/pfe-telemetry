@@ -565,6 +565,29 @@ or late lag rises, investigate the corresponding ClickHouse consumer. An absent
 series is unknown, not zero. The lag counts are neutral; use the backlog growth
 trend and retained offset headroom to tell whether a queue needs attention.
 
+### Better Stack heartbeats
+
+Set the `RECOUNT_BETTERSTACK_HEARTBEATS` secret in the protected
+`ingestion-deploy` environment from the operator's dotenv file. It takes five
+`RECOUNT_HEARTBEAT_*` entries: `KAFKA`, `NORMALIZERS`, `CLICKHOUSE`, `POSTGRES`
+and `PIPELINE`. Ansible validates and installs the file as root-only (`0600`).
+Update the secret and redeploy to rotate URLs.
+
+| Heartbeat   | Schedule  | When it pings                                                                                                                                                                                       |
+| ----------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kafka       | 1 minute  | The authenticated Kafka exporter sees the broker and every expected partition has a leader. The Live reader credential checks offsets on all Live partitions, which are outside the exporter's ACL. |
+| Normalizers | 1 minute  | Three replicas are running and all raw partition lags are known, with less than 1,000 records in total.                                                                                             |
+| ClickHouse  | 1 minute  | `SELECT 1` works. If the ingestion API has accepted metrics in the last three minutes, ClickHouse must also have a receipt and a recent stored point. An idle source is not a storage failure.      |
+| PostgreSQL  | 1 minute  | `pg_isready` and a read-only `SELECT 1` succeed.                                                                                                                                                    |
+| Pipeline    | 5 minutes | The ingestion API reports gRPC `SERVING` through local Caddy, and ClickHouse has a receipt and a stored point from the last three minutes. No ping is sent while sources are idle.                  |
+
+Check delivery in `journalctl -u 'recount-heartbeats@*.service'`. The journal
+records the check name and result, never the heartbeat URL. No new port is
+published. Leave the pipeline heartbeat paused if this stack is intentionally
+idle for longer than its Better Stack grace period.
+
+### Read the host metrics
+
 A host timer samples ClickHouse CPU throttling, data-volume request latency and
 server-wide read latency and failures. These reads include monitoring and are
 not specific to dashboards. The points-written panel counts rows in new
