@@ -1214,6 +1214,7 @@
   "calculated_process_cpu_description": "CPU cores used by observed processes across the node, not attributed to jobs",
   "insight_display_heatmap": "Heatmap",
   "insight_display_grid": "Grid",
+  "insight_group_missing": "Not reported",
   "insight_groups_limited": "Only the largest groups are shown. Raise the series limit under Breakdown to see more.",
   "insight_grid_uniform": "Every cell is {value} in this range",
   "insight_grid_uniform_description": "Rows only differ by color, so try a higher percentile, another metric or a longer range.",

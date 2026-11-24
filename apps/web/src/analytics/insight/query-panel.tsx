@@ -65,7 +65,7 @@ export function QueryPanel({
 	editingCalculation?: CalculatedMetric;
 }) {
 	const [wantsAttributes, setWantsAttributes] = useState(false);
-	// Query-wide filters and breakdowns can use any attribute in the project.
+	// Query-wide filters and breakdowns offer the attributes every series' metric carries.
 	const attributes = useQueryAttributes(
 		userId,
 		reference,

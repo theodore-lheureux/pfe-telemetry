@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { getLocale } from "@recount/i18n/runtime";
 
 // What a histogram's observations are, so counts read "5 processes" in each locale.
 const SUBJECTS = {
@@ -323,15 +324,17 @@ export function approximateCount(count: number, locale: string) {
 export function distributionLabels(name: string, label?: string) {
 	const entry = METRICS[name]?.distribution;
 	const subject = SUBJECTS[entry?.subject ?? "observations"];
+	const counted = (text: string, count: number) =>
+		new Intl.PluralRules(getLocale()).select(count) === "one"
+			? subject.one({ count: text })
+			: subject.other({ count: text });
 	return {
 		quantity: entry?.quantity() ?? metricLabel(name, label),
 		subject: subject.name(),
-		count: (count: number, locale: string) => {
-			const text = approximateCount(count, locale);
-			return new Intl.PluralRules(locale).select(Math.round(count)) === "one"
-				? subject.one({ count: text })
-				: subject.other({ count: text });
-		},
+		count: (count: number, locale: string) =>
+			counted(approximateCount(count, locale), Math.round(count)),
+		/** A count already formatted, such as "2.2", with its subject. */
+		counted,
 		range: entry?.range ?? m.histogram_range_default,
 	};
 }

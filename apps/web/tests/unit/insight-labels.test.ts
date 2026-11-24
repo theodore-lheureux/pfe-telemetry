@@ -109,3 +109,17 @@ test("per-scan process counts round to whole processes and mark the rounding", (
 	expect(String(cpu.count(1.2, "en"))).toBe("≈1 busy process");
 	expect(approximateCount(1234.4, "fr")).toMatch(/^≈1\s234$/u);
 });
+
+test("a count of observations reads as subjects, not in the metric's unit", () => {
+	const auto = { unit: "auto" as const };
+	const stored = {
+		unit: "1",
+		calculation: "count" as const,
+		metric: "recount.node.process.cpu.utilization.distribution",
+	};
+	expect(formatValue(2.17, auto, stored, "en")).toBe("2.2 busy processes");
+	expect(formatValue(1, auto, stored, "en")).toBe("1 busy process");
+	expect(formatValue(0.5, auto, { ...stored, calculation: "p95" }, "en")).toBe(
+		"50%",
+	);
+});

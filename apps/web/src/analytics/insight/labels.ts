@@ -19,7 +19,11 @@ import type {
 	QueryResult,
 	SeriesResult,
 } from "../contracts";
-import { isRatioMetric, metricLabel } from "../metric-names";
+import {
+	distributionLabels,
+	isRatioMetric,
+	metricLabel,
+} from "../metric-names";
 import { isHistogramPercentile } from "../validation";
 import type { Display, DisplayType, DisplayUnit, InsightDraft } from "./draft";
 
@@ -241,6 +245,17 @@ export function formatValueDetails(
 			break;
 	}
 	if (!stored) return number();
+	// A count of observations is a number of subjects, whatever unit they are measured in.
+	if (stored.calculation === "count") {
+		const counted = number(1);
+		return {
+			...counted,
+			text: distributionLabels(stored.metric ?? "").counted(
+				counted.text,
+				value,
+			),
+		};
+	}
 	const storedUnit = readableUnit(stored.unit);
 	if (stored.calculation === "rate") {
 		// Seconds per second, such as CPU time, reads as a share of one core.

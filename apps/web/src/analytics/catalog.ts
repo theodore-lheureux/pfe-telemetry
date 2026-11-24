@@ -10,7 +10,7 @@ import {
 	getMetricAttributes,
 	runAnalyticsQuery,
 } from "./analytics.functions";
-import { commonAttributes, isCalculatedMetric } from "./calculated-metrics";
+import { commonAttributes } from "./calculated-metrics";
 import type { AnalyticsQuery, AttributeDefinition, Filter } from "./contracts";
 
 /** Where attribute value suggestions come from: a project and, optionally, one metric. */
@@ -73,18 +73,23 @@ function metricAttributeOptions(
 }
 
 /** Calculated series expose only dimensions shared by every selected calculation. */
+/**
+ * Whose attributes a query can filter or break down by: those every chosen metric
+ * carries, or the project's when none is chosen yet.
+ */
+export function attributeSources(metrics: string[]): (string | undefined)[] {
+	const chosen = [...new Set(metrics)];
+	return chosen.length ? chosen : [undefined];
+}
+
 export function useQueryAttributes(
 	userId: string,
 	reference: ProjectReference,
 	metrics: string[],
 	enabled: boolean,
 ) {
-	const calculated = [...new Set(metrics.filter(isCalculatedMetric))];
-	const names: (string | undefined)[] = calculated.length
-		? calculated
-		: [undefined];
 	const queries = useQueries({
-		queries: names.map((metric) =>
+		queries: attributeSources(metrics).map((metric) =>
 			metricAttributeOptions(userId, reference, metric, enabled),
 		),
 	});

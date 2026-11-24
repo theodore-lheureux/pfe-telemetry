@@ -154,7 +154,7 @@ export const DashboardTileCard = memo(function DashboardTileCard({
 	const view = useMemo(() => {
 		if (!result.data) return undefined;
 		const groupLabel = (value: string | null) => {
-			if (value === null) return "—";
+			if (!value) return m.insight_group_missing();
 			if (draft.groupBy !== "node") return value;
 			return nodeNames.get(value) ?? value;
 		};

@@ -1214,6 +1214,7 @@
   "calculated_process_cpu_description": "Cœurs CPU utilisés par les processus observés sur le nœud, sans attribution aux tâches",
   "insight_display_heatmap": "Carte thermique",
   "insight_display_grid": "Grille",
+  "insight_group_missing": "Non signalé",
   "insight_groups_limited": "Seuls les groupes les plus grands sont affichés. Augmentez le nombre de séries sous Ventilation pour en voir davantage.",
   "insight_grid_uniform": "Toutes les cellules valent {value} sur cette période",
   "insight_grid_uniform_description": "Les lignes ne se distinguent que par la couleur : essayez un centile plus élevé, une autre métrique ou une période plus longue.",
