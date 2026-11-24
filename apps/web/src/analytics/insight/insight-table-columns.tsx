@@ -62,16 +62,19 @@ const seriesColumn: Column = {
 						}}
 					/>
 				)}
-				<span className="truncate">{row.original.label}</span>
+				<span className="truncate">
+					{row.original.label}
+					{/* Without a results title to name it, a count's subject follows its series. */}
+					{(embedded || !view.subject) && view.subjectOf(series) && (
+						<span className="text-muted-foreground">
+							{` · ${view.subjectOf(series)}`}
+						</span>
+					)}
+				</span>
 			</span>
 		);
 	},
 };
-
-/** A header naming the subject the cells count, such as "Latest (busy processes)". */
-function withSubject(label: string, { view }: InsightTableMeta) {
-	return view.subject ? `${label} (${view.subject})` : label;
-}
 
 function numericColumn(
 	key: keyof InsightTableRow["stats"],
@@ -84,9 +87,9 @@ function numericColumn(
 		sortUndefined: "last",
 		sortDescFirst: true,
 		meta: { className: "text-right" },
-		header: ({ column, table }) => (
+		header: ({ column }) => (
 			<SortableHeader
-				label={withSubject(label(), table.options.meta as InsightTableMeta)}
+				label={label()}
 				column={column}
 				className="ml-auto -mr-2"
 				showUnsorted
@@ -97,7 +100,7 @@ function numericColumn(
 			return (
 				<span className="block text-right font-mono tabular-nums">
 					{
-						view.formatShort(row.original.series)(
+						view.formatCell(row.original.series)(
 							row.original.stats[key],
 							precision.get(key),
 						).text

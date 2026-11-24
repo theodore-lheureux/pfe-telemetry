@@ -73,16 +73,16 @@ export function seriesView(
 			minimumFractionDigits,
 			bare,
 		);
-	// Counts name their subject once, in a header or axis title, when every series shares it.
-	const subjects = new Set(
-		visible.map((series) => {
-			const source = seriesSource(result, series);
-			return source?.calculation === "count" && display.unit === "auto"
-				? distributionLabels(source.metric, source.label).noun
-				: null;
-		}),
-	);
-	const [subject] = subjects;
+	// A count names its subject once: in a title when every series shares it, else by its name.
+	const subjectOf = (series: SeriesResult) => {
+		const source = seriesSource(result, series);
+		return source?.calculation === "count" && display.unit === "auto"
+			? distributionLabels(source.metric, source.label).noun
+			: null;
+	};
+	const subjects = new Set(visible.map(subjectOf));
+	const [shared] = subjects;
+	const subject = subjects.size === 1 ? (shared ?? null) : null;
 	return {
 		visible,
 		current,
@@ -97,18 +97,19 @@ export function seriesView(
 			(series: SeriesResult | undefined) =>
 			(value: number | null, minimumFractionDigits = 0) =>
 				formatted(series, value, minimumFractionDigits),
-		/** The subject every value counts, for a header or axis title, if they share one. */
-		subject: subjects.size === 1 && subject ? subject : null,
-		/** Values for table cells and axis ticks, without a subject the title names. */
+		/** The subject every value counts, for the results or axis title, if they share one. */
+		subject,
+		subjectOf,
+		/** Axis ticks, without a subject the axis title names. */
 		formatShort:
 			(series: SeriesResult | undefined) =>
 			(value: number | null, minimumFractionDigits = 0) =>
-				formatted(
-					series,
-					value,
-					minimumFractionDigits,
-					subjects.size === 1 && !!subject,
-				),
+				formatted(series, value, minimumFractionDigits, !!subject),
+		/** Table cells, whose subject the title or the series name carries. */
+		formatCell:
+			(series: SeriesResult) =>
+			(value: number | null, minimumFractionDigits = 0) =>
+				formatted(series, value, minimumFractionDigits, !!subjectOf(series)),
 		empty: !visible.some((series) =>
 			series.points.some((point) => point.value !== null),
 		),

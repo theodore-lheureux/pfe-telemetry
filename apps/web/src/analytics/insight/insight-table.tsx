@@ -96,7 +96,14 @@ export function InsightTable({
 		<div className={cn("flex min-h-0 flex-col", embedded ? "h-full" : "gap-3")}>
 			{!embedded && (
 				<div className="flex items-center justify-between gap-2">
-					<h2 className="text-sm font-semibold">{m.insight_results()}</h2>
+					<h2 className="text-sm font-semibold">
+						{m.insight_results()}
+						{view.subject && (
+							<span className="font-normal text-muted-foreground">
+								{` · ${view.subject}`}
+							</span>
+						)}
+					</h2>
 					<Button
 						variant="outline"
 						size="sm"
