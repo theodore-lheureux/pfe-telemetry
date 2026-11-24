@@ -3,6 +3,7 @@ import type { QueryResult, SeriesResult } from "../../src/analytics/contracts";
 import type { Display } from "../../src/analytics/insight/draft";
 import {
 	formatValue,
+	formatValueDetails,
 	plottedTitle,
 	seriesLabel,
 } from "../../src/analytics/insight/labels";
@@ -119,6 +120,10 @@ test("a count of observations reads as subjects, not in the metric's unit", () =
 	};
 	expect(formatValue(2.17, auto, stored, "en")).toBe("2.2 busy processes");
 	expect(formatValue(1, auto, stored, "en")).toBe("1 busy process");
+	// Table cells and axis ticks leave the subject to their title.
+	expect(formatValueDetails(2.17, auto, stored, "en", 0, true).text).toBe(
+		"2.2",
+	);
 	expect(formatValue(0.5, auto, { ...stored, calculation: "p95" }, "en")).toBe(
 		"50%",
 	);

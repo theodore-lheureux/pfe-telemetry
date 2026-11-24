@@ -560,6 +560,7 @@ export function TimeseriesChart({
 	series,
 	bucketSeconds,
 	format,
+	axisFormat = format,
 	label,
 	className,
 	type = "auto",
@@ -586,6 +587,8 @@ export function TimeseriesChart({
 	series: ChartSeries[];
 	bucketSeconds: number;
 	format: (value: number) => string;
+	/** Axis ticks, when they leave out what the axis title names; defaults to `format`. */
+	axisFormat?: (value: number) => string;
 	label: string;
 	className?: string;
 	/** `auto` fills a single series and draws several as lines. */
@@ -955,7 +958,7 @@ export function TimeseriesChart({
 									flat: drawn.every((entry) =>
 										entry.points.every((point) => !point.value),
 									),
-									format,
+									format: axisFormat,
 								}))}
 						label={
 							yLabel

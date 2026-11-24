@@ -266,6 +266,7 @@ export function ChartBody({
 			series={series}
 			bucketSeconds={bucketSeconds}
 			format={view.format(view.current[0])}
+			axisFormat={(value) => view.formatShort(view.current[0])(value).text}
 			type={display.type as ChartType}
 			logScale={display.logScale}
 			beginAtZero={display.beginAtZero}
@@ -286,7 +287,7 @@ export function ChartBody({
 			legendPosition={display.legend}
 			showValues={display.showValues}
 			xLabel={display.xLabel}
-			yLabel={display.yLabel ?? heatmap?.quantity}
+			yLabel={display.yLabel ?? heatmap?.quantity ?? view.subject ?? undefined}
 			yMax={display.yMax}
 			smooth={display.lineStyle === "smooth"}
 			trend={display.trend}

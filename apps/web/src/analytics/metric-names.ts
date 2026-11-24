@@ -335,6 +335,8 @@ export function distributionLabels(name: string, label?: string) {
 			counted(approximateCount(count, locale), Math.round(count)),
 		/** A count already formatted, such as "2.2", with its subject. */
 		counted,
+		/** The subject alone, for a header or axis title: "busy processes". */
+		noun: String(subject.other({ count: "" })).trim(),
 		range: entry?.range ?? m.histogram_range_default,
 	};
 }

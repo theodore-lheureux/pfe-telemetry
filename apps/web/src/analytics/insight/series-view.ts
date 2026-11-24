@@ -1,5 +1,6 @@
 import { combineValues } from "../aggregate";
 import type { QueryResult, SeriesResult } from "../contracts";
+import { distributionLabels } from "../metric-names";
 import type { Display } from "./draft";
 import {
 	type FormulaNames,
@@ -62,6 +63,7 @@ export function seriesView(
 		series: SeriesResult | undefined,
 		value: number | null,
 		minimumFractionDigits = 0,
+		bare = false,
 	) =>
 		formatValueDetails(
 			value,
@@ -69,7 +71,18 @@ export function seriesView(
 			series ? seriesSource(result, series) : null,
 			locale,
 			minimumFractionDigits,
+			bare,
 		);
+	// Counts name their subject once, in a header or axis title, when every series shares it.
+	const subjects = new Set(
+		visible.map((series) => {
+			const source = seriesSource(result, series);
+			return source?.calculation === "count" && display.unit === "auto"
+				? distributionLabels(source.metric, source.label).noun
+				: null;
+		}),
+	);
+	const [subject] = subjects;
 	return {
 		visible,
 		current,
@@ -84,6 +97,18 @@ export function seriesView(
 			(series: SeriesResult | undefined) =>
 			(value: number | null, minimumFractionDigits = 0) =>
 				formatted(series, value, minimumFractionDigits),
+		/** The subject every value counts, for a header or axis title, if they share one. */
+		subject: subjects.size === 1 && subject ? subject : null,
+		/** Values for table cells and axis ticks, without a subject the title names. */
+		formatShort:
+			(series: SeriesResult | undefined) =>
+			(value: number | null, minimumFractionDigits = 0) =>
+				formatted(
+					series,
+					value,
+					minimumFractionDigits,
+					subjects.size === 1 && !!subject,
+				),
 		empty: !visible.some((series) =>
 			series.points.some((point) => point.value !== null),
 		),

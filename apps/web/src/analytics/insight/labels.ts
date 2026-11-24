@@ -171,6 +171,8 @@ export function formatValueDetails(
 	stored: { unit: string; calculation: Calculation; metric?: string } | null,
 	locale: string,
 	minimumFractionDigits = 0,
+	/** Leaves out a count's subject, which a header or axis title names once. */
+	bare = false,
 ): FormattedNumber {
 	if (value === null) return { text: "—", fractionDigits: 0 };
 	// Small values keep two significant digits, so 0.0015 does not read as 0.002.
@@ -248,6 +250,7 @@ export function formatValueDetails(
 	// A count of observations is a number of subjects, whatever unit they are measured in.
 	if (stored.calculation === "count") {
 		const counted = number(1);
+		if (bare) return counted;
 		return {
 			...counted,
 			text: distributionLabels(stored.metric ?? "").counted(
