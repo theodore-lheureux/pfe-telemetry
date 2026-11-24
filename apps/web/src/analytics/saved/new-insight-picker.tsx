@@ -1,5 +1,5 @@
 import { m } from "@recount/i18n/messages";
-import { Link } from "@tanstack/react-router";
+import { Link, useHydrated } from "@tanstack/react-router";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
@@ -39,11 +39,12 @@ export function NewInsightPicker({
 }: {
 	reference: ProjectReference;
 }) {
+	const hydrated = useHydrated();
 	const [open, setOpen] = useState(false);
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button aria-label={m.saved_new()}>
+				<Button aria-label={m.saved_new()} disabled={!hydrated}>
 					<PlusIcon aria-hidden="true" />
 					{m.saved_create()}
 					<ChevronDownIcon aria-hidden="true" />
