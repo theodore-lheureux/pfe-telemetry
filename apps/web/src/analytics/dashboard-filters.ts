@@ -12,6 +12,7 @@ import {
 	MAX_FILTERS,
 } from "./contracts";
 import type { InsightDraft } from "./insight/draft";
+import { chartPolicy } from "./insight/panels/chart-policy";
 import { parseComparison, parseField, parseFilter } from "./validation";
 
 // Overrides a dashboard applies to every tile. An absent key keeps each insight's own
@@ -99,7 +100,10 @@ export function applyDashboardFilters(
 			MAX_FILTERS,
 		),
 	};
-	if (filters.breakdown !== undefined && draft.display.type !== "stat") {
+	if (
+		filters.breakdown !== undefined &&
+		!chartPolicy(draft.display.type).reducesSeries
+	) {
 		// A collapsed breakdown belongs to the insight's own grouping.
 		const { aggregate: _, ...rest } = next;
 		return applyCompare(

@@ -29,6 +29,7 @@ import {
 } from "./draft";
 import { CUSTOM_UNITS, FORMAT_UNITS, UNIT_LABEL } from "./labels";
 import { NumberDisplayOptions } from "./number-display-options";
+import { chartPolicy } from "./panels/chart-policy";
 import { chartLabel, chartTypes } from "./panels/registry";
 
 const SECTION =
@@ -153,10 +154,9 @@ function AxisBounds({
 	disabled: boolean;
 	onCommit: (key: "yMin" | "yMax", value: number | undefined) => void;
 }) {
-	const keys =
-		display.type === "heatmap"
-			? (["yMin", "yMax"] as const)
-			: (["yMax"] as const);
+	const keys = chartPolicy(display.type).bucketCounts
+		? (["yMin", "yMax"] as const)
+		: (["yMax"] as const);
 	return keys.map((key) => (
 		<Row
 			key={key}
@@ -208,10 +208,11 @@ export function DisplayOptions({
 			value === undefined ? (rest as Display) : { ...display, [key]: value },
 		);
 	};
-	const overTime = display.type !== "stat" && display.type !== "table";
-	// Heatmaps and grids color their values instead of drawing lines.
-	const lines =
-		overTime && display.type !== "heatmap" && display.type !== "grid";
+	const {
+		showAxes: overTime,
+		showLines: lines,
+		reducesSeries,
+	} = chartPolicy(display.type);
 	return (
 		// Typing in a menu would otherwise jump to the item starting with that letter.
 		<fieldset
@@ -266,7 +267,7 @@ export function DisplayOptions({
 					)}
 				</TabsList>
 				<TabsContent value="general" className="flex flex-col gap-3 pt-2">
-					{display.type === "stat" && (
+					{reducesSeries && (
 						<NumberDisplayOptions
 							display={display}
 							disabled={disabled}

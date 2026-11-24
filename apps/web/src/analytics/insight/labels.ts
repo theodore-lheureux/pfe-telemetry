@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { type FormattedNumber, formatNumeric } from "../../lib/number-format";
-import { calculatedValueUnit } from "../capabilities";
+import { calculatedValueUnit, capabilities } from "../capabilities";
 import type {
 	Calculation,
 	Combine,
@@ -10,7 +10,6 @@ import type {
 } from "../contracts";
 import { metricLabel } from "../definition-labels";
 import { countNoun, countText, formatMetricValue } from "../metric-units";
-import { isHistogramPercentile } from "../validation";
 import type { Display, DisplayUnit, InsightDraft } from "./draft";
 
 export const CALCULATION_LABEL: Record<Calculation, () => string> = {
@@ -273,7 +272,7 @@ function measureText(
 ) {
 	if (calculationsOnly(result))
 		return calculationLabel(measure.calculation, measure.unit);
-	if (isHistogramPercentile(measure.calculation))
+	if (capabilities(measure).percentileOfSeries)
 		return `${metricLabel(measure.metric, measure.label)} · ${calculationLabel(measure.calculation, measure.unit)}`;
 	if (result.measures.length > 1)
 		return `${measure.name} · ${metricLabel(measure.metric, measure.label)}`;

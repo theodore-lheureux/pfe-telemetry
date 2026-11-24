@@ -19,6 +19,7 @@ import {
 } from "./draft";
 import { FormulaFields } from "./formula-fields";
 import { GroupByFields } from "./group-by-fields";
+import { chartPolicy } from "./panels/chart-policy";
 import { SeriesRow } from "./series-row";
 
 function Section({
@@ -73,7 +74,7 @@ export function QueryPanel({
 	);
 	const breakdown = capabilities(undefined, attributes.data).attributes;
 	let next = nextSeriesName(draft.series);
-	const heatmap = draft.display.type === "heatmap";
+	const policy = chartPolicy(draft.display.type);
 	if (editingCalculation && draft.series.length >= MAX_CALCULATED_INPUTS)
 		next = null;
 	return (
@@ -82,7 +83,7 @@ export function QueryPanel({
 				title={m.insight_series()}
 				action={
 					next &&
-					(draft.display.type !== "stat" || draft.formulas.length > 0) && (
+					(!policy.reducesSeries || draft.formulas.length > 0) && (
 						<Button
 							variant="ghost"
 							size="sm"
@@ -112,7 +113,7 @@ export function QueryPanel({
 						)}
 						disabled={disabled}
 						removable={draft.series.length > 1}
-						heatmap={heatmap}
+						showCalculations={policy.showCalculations}
 						scope={draft}
 						onChange={(updated) => {
 							const selected = metrics.find(
@@ -131,7 +132,7 @@ export function QueryPanel({
 							// that is not split yet.
 							const breakdown =
 								updated.metric !== series.metric &&
-								draft.display.type !== "stat" &&
+								!policy.reducesSeries &&
 								!draft.groupBy &&
 								draft.series.length === 1
 									? capabilities(selected).breakdown
@@ -161,7 +162,7 @@ export function QueryPanel({
 						}
 					/>
 				))}
-				{!heatmap && (
+				{policy.supportsFormulas && (
 					<FormulaFields
 						draft={draft}
 						disabled={disabled}
@@ -203,7 +204,7 @@ export function QueryPanel({
 					</p>
 				)}
 			</Section>
-			{draft.display.type !== "stat" && (
+			{!policy.reducesSeries && (
 				<Section title={m.insight_group_by()}>
 					<GroupByFields
 						draft={draft}

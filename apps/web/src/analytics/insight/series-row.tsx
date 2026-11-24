@@ -53,7 +53,7 @@ export function SeriesRow({
 	metrics,
 	disabled,
 	removable,
-	heatmap,
+	showCalculations,
 	scope,
 	onChange,
 	onRemove,
@@ -66,7 +66,7 @@ export function SeriesRow({
 	metrics: MetricDefinition[];
 	disabled: boolean;
 	removable: boolean;
-	heatmap: boolean;
+	showCalculations: boolean;
 	/** The query's range and filters, which scope the process detail coverage. */
 	scope: Pick<InsightDraft, "range" | "filters">;
 	onChange: (series: DraftSeries) => void;
@@ -98,8 +98,6 @@ export function SeriesRow({
 	);
 	// Percentiles across processes come from the distribution, which sees all of them.
 	const combineGroups = detail ? COMBINE_GROUPS.slice(0, 1) : COMBINE_GROUPS;
-	// A heatmap shows every bucket, so a histogram row has no calculation to choose.
-	const controls = !heatmap;
 	const filter = (
 		<AttributeFilter
 			trigger="icon"
@@ -186,7 +184,7 @@ export function SeriesRow({
 						</TooltipContent>
 					</Tooltip>
 				)}
-				{definition && !controls && filter}
+				{definition && !showCalculations && filter}
 				{onDuplicate && (
 					<Button
 						variant="ghost"
@@ -213,7 +211,7 @@ export function SeriesRow({
 					</Button>
 				)}
 			</div>
-			{definition && controls && (
+			{definition && showCalculations && (
 				<div className="flex items-start gap-0.5 border-t px-1.5 py-1">
 					{definition.calculated && (
 						<span className="flex-1 self-center px-1.5 text-xs text-muted-foreground">
@@ -244,7 +242,7 @@ export function SeriesRow({
 									))}
 								</SelectContent>
 							</Select>
-							{!options.histogram && (
+							{options.showCombine && (
 								<Select
 									value={series.combine}
 									disabled={disabled}

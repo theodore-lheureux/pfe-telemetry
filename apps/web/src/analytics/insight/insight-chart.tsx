@@ -3,20 +3,19 @@ import { m } from "@recount/i18n/messages";
 import { ChartNoAxesColumnIcon } from "lucide-react";
 import { Skeleton } from "../../components/ui/skeleton";
 import { IconEmptyState } from "../../components/workspace";
-import { type ChartSeries, type ChartType, TimeseriesChart } from "../charts";
 import type { QueryResult, SeriesResult } from "../contracts";
 import { ComputedAt, RefreshButton } from "../refresh-status";
 import type { Display } from "./draft";
 import { bucketGrid, coverageBands, coverageState, onGrid } from "./grid";
 import type { FormulaNames } from "./labels";
+import { chartPolicy } from "./panels/chart-policy";
 import {
 	ChartPanel,
 	chartHandlesEmpty,
 	chartLimitsSeries,
 	chartTitle,
 } from "./panels/registry";
-import type { PanelProps } from "./panels/types";
-import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
+import { CHART_SERIES, type SeriesView } from "./series-view";
 
 /** Why a series has no value in a bucket: its node, or any node when not grouped by node. */
 function gapReason(
@@ -176,7 +175,7 @@ export function ChartBody({
 			/>
 		);
 	// The table below the chart already shows a table-shaped result.
-	if (display.type === "table") return null;
+	if (chartPolicy(display.type).queryShape === "table") return null;
 	if (!hydrated) return <Skeleton className={`${height} w-full`} />;
 	const pointsOf = (series: SeriesResult) =>
 		onGrid(
@@ -196,7 +195,6 @@ export function ChartBody({
 		);
 	const gapLabel = (series: SeriesResult, bucketMs: number) =>
 		gapReason(result, series, bucketMs, step);
-	const charting = view.visible.filter((series) => view.color(series));
 	const bands = coverage.map(({ from, to, kind }) =>
 		kind === "arriving"
 			? {
@@ -207,50 +205,6 @@ export function ChartBody({
 					detail: arrivalDetail,
 				}
 			: { from, to, label: m.insight_no_data_received() },
-	);
-	const timeline: PanelProps["timeline"] = (series: ChartSeries[], heatmap) => (
-		<TimeseriesChart
-			label={m.insight_chart_label()}
-			series={series}
-			bucketSeconds={bucketSeconds}
-			format={heatmap?.format ?? view.format(view.current[0])}
-			axisFormat={view.chartFormat(view.current[0])}
-			type={display.type as ChartType}
-			logScale={display.logScale}
-			beginAtZero={display.beginAtZero}
-			goal={display.goal}
-			domain={[
-				grid[0] ?? result.from.getTime(),
-				Math.max(
-					result.to.getTime(),
-					(grid.at(-1) ?? result.from.getTime()) + step,
-				),
-			]}
-			bands={bands}
-			height={height}
-			className={height}
-			onZoom={onZoom && ((from, to) => onZoom(new Date(from), new Date(to)))}
-			// Off unless chosen: the results table and the tooltip already name the lines.
-			legend={display.legend !== undefined}
-			legendPosition={display.legend}
-			showValues={display.showValues}
-			xLabel={display.xLabel}
-			yLabel={display.yLabel ?? heatmap?.quantity ?? view.subject ?? undefined}
-			yMax={display.yMax}
-			yMin={display.yMin}
-			smooth={display.lineStyle === "smooth"}
-			trend={display.trend}
-			movingAverage={display.movingAverage}
-			highlight={
-				series.find((_, index) => lineId(charting[index]) === highlight)?.key ??
-				null
-			}
-			gapLabel={(key, bucketMs) => {
-				const series = charting[Number(key.slice(1))];
-				return series ? gapLabel(series, bucketMs) : m.insight_gap_unknown();
-			}}
-			heatmap={heatmap}
-		/>
 	);
 	return (
 		<ChartPanel
@@ -264,7 +218,18 @@ export function ChartBody({
 			fill={fill}
 			onGroup={onGroup}
 			emptyDetail={emptyDetail()}
-			timeline={timeline}
+			highlight={highlight}
+			timeline={{
+				domain: [
+					grid[0] ?? result.from.getTime(),
+					Math.max(
+						result.to.getTime(),
+						(grid.at(-1) ?? result.from.getTime()) + step,
+					),
+				],
+				bands,
+				onZoom: onZoom && ((from, to) => onZoom(new Date(from), new Date(to))),
+			}}
 		/>
 	);
 }

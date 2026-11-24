@@ -16,6 +16,7 @@ import type { CalculatedMetric } from "../calculated-metrics";
 import { isCalculatedMetric } from "../calculated-metrics";
 import { MAX_FORMULAS } from "../contracts";
 import { type DraftFormula, type InsightDraft, withDisplay } from "./draft";
+import { chartPolicy } from "./panels/chart-policy";
 import { SaveCalculatedDialog } from "./save-calculated-dialog";
 
 /** Formula mode: named expressions that combine the series by letter. */
@@ -161,7 +162,7 @@ export function FormulaFields({
 			{draft.formulas.length > 0 && (
 				<div className="flex flex-col items-start gap-1.5">
 					{!editingCalculation &&
-						draft.display.type !== "stat" &&
+						!chartPolicy(draft.display.type).reducesSeries &&
 						draft.formulas.length < MAX_FORMULAS && (
 							<Button
 								variant="ghost"

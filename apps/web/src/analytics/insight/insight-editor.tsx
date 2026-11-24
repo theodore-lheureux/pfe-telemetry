@@ -22,6 +22,7 @@ import { formulaNames, type InsightDraft, toQuery } from "./draft";
 import { InsightChart } from "./insight-chart";
 import { InsightTable } from "./insight-table";
 import { InsightToolbar } from "./insight-toolbar";
+import { chartPolicy } from "./panels/chart-policy";
 import { QueryPanel } from "./query-panel";
 import { seriesView } from "./series-view";
 
@@ -179,9 +180,10 @@ export function InsightEditor({
 												return;
 											const { groupBy: _, ...rest } = draft;
 											// A distribution opens as its heatmap; other values as lines.
-											const type = charts.includes("heatmap")
-												? "heatmap"
-												: "line";
+											const type =
+												charts.find(
+													(candidate) => chartPolicy(candidate).bucketCounts,
+												) ?? "line";
 											onDraft({
 												...rest,
 												filters: withFilter(draft.filters, {
@@ -206,7 +208,7 @@ export function InsightEditor({
 							result.data &&
 							query !== null &&
 							!result.isError &&
-							applied.display.type !== "heatmap" && (
+							chartPolicy(applied.display.type).showResults && (
 								<div className="relative overflow-hidden rounded-lg border bg-card p-4">
 									<LoadingBar active={result.isFetching} />
 									<InsightTable

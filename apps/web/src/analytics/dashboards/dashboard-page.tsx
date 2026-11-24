@@ -53,6 +53,7 @@ import {
 	draftMetricNames,
 	encodeDraft,
 } from "../insight/draft";
+import { chartPolicy } from "../insight/panels/chart-policy";
 import { InsightNameDialog } from "../saved/name-dialog";
 import { AddTilesDialog } from "./add-tiles-dialog";
 import { useDashboardActions } from "./dashboard-actions";
@@ -571,8 +572,10 @@ export function DashboardPage({
 				open={overriding !== null}
 				supportsBreakdown={
 					!overriding ||
-					(drafts.get(overriding.id) ?? decodeDraft(overriding.insight.draft))
-						.display.type !== "stat"
+					!chartPolicy(
+						(drafts.get(overriding.id) ?? decodeDraft(overriding.insight.draft))
+							.display.type,
+					).reducesSeries
 				}
 				name={overriding?.insight.name ?? ""}
 				initial={overriding ? overridesOf(overriding) : EMPTY_OVERRIDES}

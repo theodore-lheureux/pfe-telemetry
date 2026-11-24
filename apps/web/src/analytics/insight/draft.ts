@@ -20,6 +20,11 @@ import {
 } from "../contracts";
 import { breakdownFields } from "../fields";
 import { effectiveInterval } from "../intervals";
+import {
+	chartPolicy,
+	DISPLAY_TYPES,
+	type DisplayType,
+} from "./panels/chart-policy";
 
 // An insight being edited. It is plain JSON so it can live in the URL and later be
 // saved; `toQuery` turns it into the server's query object when it runs.
@@ -46,17 +51,7 @@ export interface DraftFormula {
 	name?: string;
 }
 
-export const DISPLAY_TYPES = [
-	"line",
-	"area",
-	"bar",
-	"stacked",
-	"heatmap",
-	"grid",
-	"stat",
-	"table",
-] as const;
-export type DisplayType = (typeof DISPLAY_TYPES)[number];
+export type { DisplayType } from "./panels/chart-policy";
 export type DisplayUnit =
 	| "auto"
 	| "none"
@@ -154,7 +149,7 @@ export function withDisplay(
 	draft: InsightDraft,
 	display: Display,
 ): InsightDraft {
-	if (display.type !== "stat") return { ...draft, display };
+	if (!chartPolicy(display.type).reducesSeries) return { ...draft, display };
 	const { groupBy: _group, aggregate: _aggregate, ...rest } = draft;
 	const { spread: _spread, ...numberDisplay } = display;
 	const formulas = draft.formulas.slice(0, 1);
@@ -215,32 +210,27 @@ export function toQuery(
 	locale: string,
 ): AnalyticsQuery | null {
 	const draft = withDisplay(input, input.display);
-	const heatmap = draft.display.type === "heatmap";
+	const policy = chartPolicy(draft.display.type);
 	if (!draft.series.length || draft.series.some((entry) => !entry.metric))
 		return null;
-	if (
-		draft.display.type === "stat" &&
-		draft.formulas.length &&
-		!formulas(draft).length
-	)
+	const expressions = policy.supportsFormulas ? formulas(draft) : [];
+	if (policy.reducesSeries && draft.formulas.length && !expressions.length)
 		return null;
 	const resolved = resolveRange(draft.range, now, zone, locale);
 	const from = resolved.from,
 		to = resolved.to ?? now;
 	const interval = effectiveInterval(draft.interval, from, to);
-	// A table shows one value per series over the whole range; every other view is a timeseries.
-	const table = draft.display.type === "table";
-	const grouped = draft.display.type !== "stat" && !!draft.groupBy;
+	const grouped = !policy.reducesSeries && !!draft.groupBy;
 	return {
-		shape: table ? "table" : "timeseries",
-		...(heatmap ? { heatmap: true as const } : {}),
+		shape: policy.queryShape,
+		...(policy.bucketCounts ? { heatmap: true as const } : {}),
 		range: { from: from.toISOString(), to: to.toISOString() },
-		...(table ? {} : { interval }),
+		...(policy.queryShape === "timeseries" ? { interval } : {}),
 		// A heatmap shows a histogram whatever its calculation, so each one is read once.
 		measures: draft.series
 			.filter(
 				(entry, index, all) =>
-					!heatmap ||
+					!policy.bucketCounts ||
 					all.findIndex(
 						(other) =>
 							other.metric === entry.metric &&
@@ -254,21 +244,18 @@ export function toQuery(
 				combine: entry.combine,
 				filters: entry.filters,
 			})),
-		...(!heatmap && formulas(draft).length
-			? { formulas: formulas(draft) }
-			: {}),
+		...(expressions.length ? { formulas: expressions } : {}),
 		filters: draft.filters,
 		groupBy: grouped ? breakdownFields(draft.groupBy as string) : [],
 		limit: draft.limit,
-		other: !heatmap && draft.other,
-		...(!heatmap && grouped && draft.aggregate
+		other: policy.supportsOther && draft.other,
+		...(policy.supportsAggregation && grouped && draft.aggregate
 			? { aggregate: draft.aggregate }
 			: {}),
-		...(!heatmap && draft.compare ? { compare: draft.compare } : {}),
-		...(!heatmap &&
-		draft.display.spread &&
-		!table &&
-		draft.display.type !== "stat"
+		...(policy.supportsCompare && draft.compare
+			? { compare: draft.compare }
+			: {}),
+		...(policy.supportsSpread && draft.display.spread
 			? { spread: draft.display.spread }
 			: {}),
 	};

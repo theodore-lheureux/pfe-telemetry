@@ -7,14 +7,9 @@ import { useDisplayTimeZone } from "../../components/time-display";
 import { Button } from "../../components/ui/button";
 import { IconEmptyState } from "../../components/workspace";
 import { cn } from "../../lib/utils";
-import { heatColor } from "../chart-heatmap";
-import {
-	axisTime,
-	bucketTitle,
-	type ChartPoint,
-	ChartTooltipCard,
-	TooltipRows,
-} from "../charts";
+import { axisTime, bucketTitle, ChartTooltipCard } from "../chart-frame";
+import { ColorScale, heatColor } from "../chart-swatch";
+import { type ChartPoint, TooltipRows } from "../charts";
 import type { SeriesResult } from "../contracts";
 import type { Display } from "./draft";
 import type { SeriesView } from "./series-view";
@@ -159,12 +154,7 @@ export function SeriesGrid({
 			</div>
 			<div className="flex items-center gap-2 px-2 text-xs text-muted-foreground">
 				<span className="flex w-40 shrink-0 items-center gap-2">
-					<span className="tabular-nums">{format(low)}</span>
-					<span
-						aria-hidden="true"
-						className="h-2 w-12 rounded-sm bg-[linear-gradient(to_right,var(--muted),var(--viz-1))]"
-					/>
-					<span className="tabular-nums">{format(high)}</span>
+					<ColorScale from={format(low)} to={format(high)} width="w-12" />
 				</span>
 				<span className="flex min-w-0 flex-1 justify-between">
 					{ticks.map((bucket) => (

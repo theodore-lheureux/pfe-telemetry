@@ -69,6 +69,38 @@ test("drafts compare by content, not key order", () => {
 	expect(sameDraft({ ...draft, groupBy: "host" }, draft)).toBe(false);
 });
 
+test("bucket plots retain distinct inputs and omit incompatible query options", () => {
+	const a = {
+		...draft.series[0],
+		metric: "custom.duration",
+		calculation: "p95" as const,
+	};
+	const b = { ...a, name: "B", calculation: "p50" as const };
+	const c = { ...a, name: "C", filters: [] };
+	const query = toQuery(
+		{
+			...draft,
+			series: [a, b, c],
+			aggregate: "sum",
+			other: true,
+			display: { ...draft.display, type: "heatmap", spread: "range" },
+		},
+		now,
+		"UTC",
+		"en",
+	);
+	expect(query?.measures).toEqual([a, c]);
+	expect(query).toMatchObject({
+		heatmap: true,
+		groupBy: ["node"],
+		other: false,
+	});
+	expect(query?.formulas).toBeUndefined();
+	expect(query?.aggregate).toBeUndefined();
+	expect(query?.compare).toBeUndefined();
+	expect(query?.spread).toBeUndefined();
+});
+
 test("Number insights discard breakdowns and group aggregation at every query boundary", () => {
 	const grouped: InsightDraft = {
 		...draft,

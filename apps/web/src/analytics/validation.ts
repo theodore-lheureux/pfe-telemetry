@@ -299,10 +299,6 @@ function heatmapOption(input: Record<string, unknown>) {
 	return { heatmap: true } as const;
 }
 
-export function isHistogramPercentile(value: Calculation) {
-	return HISTOGRAM_PERCENTILES.some((percentile) => percentile === value);
-}
-
 /** The comparison window, collapsed groups and band a query asks for, if any. */
 function comparisonOptions(input: Record<string, unknown>) {
 	if (input.spread !== undefined && !SPREADS.includes(input.spread as Spread))

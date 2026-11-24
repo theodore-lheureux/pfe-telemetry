@@ -28,6 +28,7 @@ import {
 	withDisplay,
 } from "./draft";
 import { INTERVAL_LABEL, PER_INTERVAL_LABEL } from "./labels";
+import { chartPolicy } from "./panels/chart-policy";
 import { chartIcon, chartLabel, chartTypes } from "./panels/registry";
 
 export const COMPARISONS: {
@@ -93,6 +94,7 @@ export function InsightToolbar({
 					interval: PER_INTERVAL_LABEL[autoInterval(from, to)](),
 				});
 	const display = draft.display;
+	const policy = chartPolicy(display.type);
 	const setDisplay = (next: Partial<InsightDraft["display"]>) =>
 		onChange(withDisplay(draft, { ...display, ...next }));
 	return (
@@ -103,7 +105,7 @@ export function InsightToolbar({
 				maxDays={MAX_RANGE_DAYS}
 				onChange={(range) => onChange({ ...draft, range })}
 			/>
-			{display.type !== "table" && (
+			{policy.queryShape === "timeseries" && (
 				<div className="flex items-center gap-1.5">
 					<span className="text-sm text-muted-foreground">
 						{m.insight_interval_per()}
@@ -136,7 +138,7 @@ export function InsightToolbar({
 					</Select>
 				</div>
 			)}
-			{display.type !== "heatmap" && (
+			{policy.supportsCompare && (
 				<Select
 					value={comparisonKey(draft.compare)}
 					disabled={disabled}

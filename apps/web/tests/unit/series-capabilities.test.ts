@@ -3,7 +3,7 @@ import {
 	capabilities,
 	resultCountUnit,
 } from "../../src/analytics/capabilities";
-import { heatmapLayout } from "../../src/analytics/chart-heatmap";
+import { heatmapLayout } from "../../src/analytics/insight/panels/heatmap-panel";
 import { metricValuesFormatter } from "../../src/analytics/metric-units";
 
 test("series options need no metric name", () => {
@@ -51,9 +51,6 @@ test("ratio heatmaps reach 100% by default, extend for data, and honor explicit 
 	const heatmap = {
 		bounds: [0, 0.05, 0.5, 1, 2],
 		columns: [{ bucketMs: 0, counts: [0, 2, 0, 0, 0, 0] }],
-		subject: "",
-		count: String,
-		range: ({ range }: { range: string }) => range,
 		scale: 1,
 	};
 	expect(heatmapLayout(heatmap, true).indices).toEqual([0, 1, 2, 3]);

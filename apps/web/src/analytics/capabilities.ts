@@ -7,7 +7,7 @@ import {
 	type MetricDefinition,
 } from "./contracts";
 import { isFieldKey } from "./fields";
-import type { DisplayType } from "./insight/draft";
+import { chartPolicy, DISPLAY_TYPES } from "./insight/panels/chart-policy";
 import { countNoun, rateUnit } from "./metric-units";
 
 export const ALLOWED_CALCULATIONS: Record<
@@ -21,16 +21,9 @@ export const ALLOWED_CALCULATIONS: Record<
 	unsupported: [],
 };
 
-const CHARTS: readonly DisplayType[] = [
-	"line",
-	"area",
-	"bar",
-	"stacked",
-	"grid",
-	"stat",
-	"table",
-];
-const HISTOGRAM_CHARTS: readonly DisplayType[] = [...CHARTS, "heatmap"];
+const SCALAR_CHARTS = DISPLAY_TYPES.filter(
+	(type) => !chartPolicy(type).needsHistogram,
+);
 
 export function capabilities(
 	series?: Partial<
@@ -38,7 +31,7 @@ export function capabilities(
 			MetricDefinition,
 			"behavior" | "unit" | "calculated" | "defaultBreakdown" | "presentation"
 		>
-	>,
+	> & { calculation?: Calculation },
 	attributes?: AttributeDefinition[],
 ) {
 	const behavior = series?.behavior ?? "unsupported";
@@ -52,10 +45,14 @@ export function capabilities(
 	if (series?.calculated) defaultCalculation = "last";
 	return {
 		histogram,
+		percentileOfSeries: HISTOGRAM_PERCENTILES.some(
+			(value) => value === series?.calculation,
+		),
+		showCombine: !histogram,
 		calculations: ALLOWED_CALCULATIONS[behavior],
 		defaultCalculation,
 		defaultCombine: (gauge ? "avg" : "sum") as Combine,
-		charts: histogram ? HISTOGRAM_CHARTS : CHARTS,
+		charts: histogram ? DISPLAY_TYPES : SCALAR_CHARTS,
 		breakdown: series?.defaultBreakdown,
 		attributes: attributes?.filter(
 			({ key, status }) => status !== "hidden" && isFieldKey(key),

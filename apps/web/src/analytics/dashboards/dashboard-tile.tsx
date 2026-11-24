@@ -34,6 +34,7 @@ import type { DashboardTile, TileHeight, TileWidth } from "../dashboards";
 import { encodeDraft, formulaNames, type InsightDraft } from "../insight/draft";
 import { ChartBody } from "../insight/insight-chart";
 import { InsightTable } from "../insight/insight-table";
+import { chartPolicy } from "../insight/panels/chart-policy";
 import { type SeriesView, seriesView } from "../insight/series-view";
 import { TileInfo } from "./tile-info";
 import { TILE_COLOR_VAR, type TileTools } from "./tile-menu";
@@ -167,7 +168,8 @@ export const DashboardTileCard = memo(function DashboardTileCard({
 	}, [result.data, draft, nodeNames]);
 	const refresh = () => setRefreshed(new Date());
 	const color = tile.options.color;
-	const flush = draft.display.type === "stat" || draft.display.type === "table";
+	const policy = chartPolicy(draft.display.type);
+	const flush = policy.reducesSeries || policy.queryShape === "table";
 	return (
 		<article
 			ref={element}
@@ -358,7 +360,7 @@ const TileBody = memo(function TileBody({
 	if (!data || !view) return <Skeleton className="h-full w-full" />;
 	// Drawn again on returning near the screen, from the result it kept.
 	if (!near) return <div className="h-full w-full" aria-hidden="true" />;
-	if (draft.display.type === "table" && !view.empty)
+	if (chartPolicy(draft.display.type).queryShape === "table" && !view.empty)
 		return (
 			<InsightTable
 				embedded

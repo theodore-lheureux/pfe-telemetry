@@ -5,8 +5,8 @@ import { useMemo, useState } from "react";
 import { DataTable } from "../../components/data-table";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
+import { capabilities } from "../capabilities";
 import type { QueryResult, SeriesResult } from "../contracts";
-import { isHistogramPercentile } from "../validation";
 import {
 	type InsightTableMeta,
 	insightTableFeatures,
@@ -59,8 +59,8 @@ export function InsightTable({
 	onHover: (line: string | null) => void;
 }) {
 	const [sorting, setSorting] = useState<SortingState>([]);
-	const percentiles = result.measures.every(({ calculation }) =>
-		isHistogramPercentile(calculation),
+	const percentiles = result.measures.every(
+		(series) => capabilities(series).percentileOfSeries,
 	);
 	const columns = useMemo(() => {
 		const all =
