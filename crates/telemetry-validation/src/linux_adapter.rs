@@ -16,6 +16,7 @@ pub const INTERVAL_NS: &str = "recount.collection.interval_ns";
 pub const VISIBILITY: &str = "recount.collection.visibility";
 pub const PID: &str = "process.pid";
 pub const PARENT_PID: &str = "process.parent_pid";
+pub const EXECUTABLE_NAME: &str = "process.executable.name";
 pub const REAL_USER_ID: &str = "process.real_user.id";
 pub const SLURM_JOB_ID: &str = "recount.slurm.job.id";
 pub const SLURM_STEP_ID: &str = "recount.slurm.step.id";

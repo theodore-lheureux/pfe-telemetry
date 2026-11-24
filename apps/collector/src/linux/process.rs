@@ -222,6 +222,8 @@ impl Collector {
         attributes.extend([
             integer(adapter::PID, i64::from(stat.pid)),
             integer(adapter::PARENT_PID, i64::from(stat.ppid)),
+            // The kernel's short name only: arguments and executable paths stay unread.
+            string(adapter::EXECUTABLE_NAME, stat.comm.clone()),
             string(adapter::NAMESPACE_ID, self.namespace.clone()),
             string(
                 adapter::INCARNATION_ID,
