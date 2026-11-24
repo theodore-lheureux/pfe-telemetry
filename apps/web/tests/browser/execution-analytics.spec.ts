@@ -69,7 +69,8 @@ test("execution filters and breakdowns survive saved insights, dashboard overrid
 				source: node,
 				host: node,
 				resource,
-				time: time.toString(),
+				// Points are stored in milliseconds; participants in nanoseconds.
+				time: (time / 1_000_000n).toString(),
 				integer: String(value),
 				sample: randomUUID(),
 				stream: resource,

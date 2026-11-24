@@ -355,9 +355,16 @@ test("real workspace, collectors and administration retain Core geometry and key
 					.evaluateAll((elements) =>
 						elements.map((element) => {
 							const style = getComputedStyle(element);
+							// A button group joins its buttons, squaring their inner corners.
+							const joined =
+								element.parentElement?.dataset.slot === "button-group" &&
+								style.borderRadius.includes("4px") &&
+								style.borderRadius
+									.split(" ")
+									.every((corner) => corner === "4px" || corner === "0px");
 							return {
 								height: style.height,
-								radius: style.borderRadius,
+								radius: joined ? "4px" : style.borderRadius,
 								font: style.fontSize,
 							};
 						}),
