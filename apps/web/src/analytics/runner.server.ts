@@ -329,10 +329,10 @@ export async function runQuery(
 			(measure, index) => ({
 				name: measure.name,
 				metric: measure.metric,
-				// A count of sources or observations has no unit, whatever the metric measures.
+				// Source counts have no unit; observation counts use the unit's annotation.
 				unit:
-					measure.combine === "count" || measure.calculation === "count"
-						? "1"
+					measure.combine === "count" && measure.calculation !== "count"
+						? ""
 						: scopes[index].unit,
 				calculation: measure.calculation,
 			}),

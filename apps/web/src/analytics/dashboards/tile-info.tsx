@@ -208,7 +208,7 @@ export function TileInfo({
 									<span>
 										{series.metric ? metricLabel(series.metric) : "—"}
 										<span className="text-muted-foreground">
-											{` · ${calculationLabel(series.calculation, series.metric)} · ${COMBINE_OPTION_LABEL[series.combine]()}`}
+											{` · ${calculationLabel(series.calculation, result?.measures.find(({ name }) => name === series.name)?.unit)} · ${COMBINE_OPTION_LABEL[series.combine]()}`}
 										</span>
 									</span>
 								</li>

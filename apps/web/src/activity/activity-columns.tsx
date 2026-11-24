@@ -7,12 +7,12 @@ import {
 } from "@tanstack/react-table";
 import { ChevronsUpDownIcon, RadioIcon } from "lucide-react";
 import { useMemo } from "react";
+import { formatMetricValue } from "../analytics/metric-units";
 import { TimeDisplay } from "../components/time-display";
 import { Button } from "../components/ui/button";
 import { columnName } from "./column-names";
 import type { ExplorerColumn } from "./columns";
 import type { PacketSummary, PointSummary } from "./contracts";
-import { formatMeasurement } from "./format";
 import { NodeLabel } from "./node-label";
 
 export const activityFeatures = tableFeatures({ columnVisibilityFeature });
@@ -178,7 +178,7 @@ export function useActivityColumns({
 							cell: ({ row }: { row: { original: ActivityRow } }) => (
 								<span className="tabular-nums">
 									{
-										formatMeasurement(
+										formatMetricValue(
 											row.original.packet?.bytes ?? 0,
 											"By",
 											locale,
@@ -205,12 +205,10 @@ export function useActivityColumns({
 							cell: ({ row }: { row: { original: ActivityRow } }) => {
 								const point = row.original.point;
 								if (point?.value !== null && point?.value !== undefined) {
-									const value = formatMeasurement(
+									const value = formatMetricValue(
 										point.value,
 										point.unit,
 										locale,
-										0,
-										point.metricName,
 									);
 									return (
 										<span className="tabular-nums" title={value.exact}>

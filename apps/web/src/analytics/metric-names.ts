@@ -1,50 +1,4 @@
 import { m } from "@recount/i18n/messages";
-import { getLocale } from "@recount/i18n/runtime";
-
-// What a histogram's observations are, so counts read "5 processes" in each locale.
-const SUBJECTS = {
-	busy: {
-		name: m.histogram_subject_busy,
-		one: m.histogram_count_busy_one,
-		other: m.histogram_count_busy_other,
-	},
-	processes: {
-		name: m.histogram_subject_processes,
-		one: m.histogram_count_processes_one,
-		other: m.histogram_count_processes_other,
-	},
-	gpus: {
-		name: m.histogram_subject_gpus,
-		one: m.histogram_count_gpus_one,
-		other: m.histogram_count_gpus_other,
-	},
-	connections: {
-		name: m.histogram_subject_connections,
-		one: m.histogram_count_connections_one,
-		other: m.histogram_count_connections_other,
-	},
-	observations: {
-		name: m.histogram_subject_observations,
-		one: m.histogram_count_observations_one,
-		other: m.histogram_count_observations_other,
-	},
-};
-
-type Distribution = {
-	quantity: () => string;
-	subject: keyof typeof SUBJECTS;
-	/** Phrases a bucket's value range, such as "using 1–5 % CPU". */
-	range: (inputs: { range: string }) => string;
-	/** The coverage kind counting subjects left out as idle, if any. */
-	idle?: string;
-};
-
-const distribution = (
-	quantity: Distribution["quantity"],
-	subject: Distribution["subject"],
-	range: Distribution["range"],
-	idle?: string,
-): Distribution => ({ quantity, subject, range, idle });
 
 // Friendly names for the metrics Recount's collector sends. Other metrics, including
 // any sent by standard OpenTelemetry exporters, keep their technical names.
@@ -53,8 +7,6 @@ const METRICS: Record<
 	{
 		name: () => string;
 		description: () => string;
-		ratio?: boolean;
-		distribution?: Distribution;
 		/** Per-process detail the collector caps per node; its coverage is reported. */
 		detail?: boolean;
 	}
@@ -62,80 +14,40 @@ const METRICS: Record<
 	"recount.node.process.cpu.utilization.distribution": {
 		name: m.metric_hist_process_cpu,
 		description: m.metric_hist_process_cpu_description,
-		ratio: true,
-		distribution: distribution(
-			m.histogram_process_cpu,
-			"busy",
-			m.histogram_range_process_cpu,
-			"cpu_idle",
-		),
 	},
 	"recount.node.process.memory.rss.distribution": {
 		name: m.metric_hist_process_memory,
 		description: m.metric_hist_process_description,
-		distribution: distribution(
-			m.histogram_process_memory,
-			"processes",
-			m.histogram_range_process_memory,
-		),
 	},
 	"recount.node.process.disk.io.rate.distribution": {
 		name: m.metric_hist_process_disk,
 		description: m.metric_hist_process_description,
-		distribution: distribution(
-			m.histogram_process_disk,
-			"processes",
-			m.histogram_range_process_disk,
-		),
 	},
 	"recount.node.gpu.utilization.distribution": {
 		name: m.metric_hist_gpu_utilization,
 		description: m.metric_hist_gpu_utilization,
-		ratio: true,
-		distribution: distribution(
-			m.histogram_gpu_utilization,
-			"gpus",
-			m.histogram_range_gpu_utilization,
-		),
 	},
 	"recount.node.gpu.memory.used.distribution": {
 		name: m.metric_hist_gpu_memory,
 		description: m.metric_hist_gpu_memory,
-		distribution: distribution(
-			m.histogram_gpu_memory,
-			"gpus",
-			m.histogram_range_gpu_memory,
-		),
 	},
 	"recount.node.gpu.power.distribution": {
 		name: m.metric_hist_gpu_power,
 		description: m.metric_hist_gpu_power,
-		distribution: distribution(
-			m.histogram_gpu_power,
-			"gpus",
-			m.histogram_range_gpu_power,
-		),
 	},
 	"recount.node.tcp.rtt.distribution": {
 		name: m.metric_hist_tcp_rtt,
 		description: m.metric_hist_tcp_rtt,
-		distribution: distribution(
-			m.histogram_tcp_rtt,
-			"connections",
-			m.histogram_range_tcp_rtt,
-		),
 	},
 	"recount.process.gpu.memory.used": {
 		name: m.gpu_process_memory,
 		description: m.gpu_process_memory_description,
 	},
 	"recount.process.gpu.utilization": {
-		ratio: true,
 		name: m.gpu_process_utilization,
 		description: m.gpu_process_utilization_description,
 	},
 	"recount.process.gpu.memory.activity": {
-		ratio: true,
 		name: m.gpu_process_memory_activity,
 		description: m.gpu_process_memory_activity_description,
 	},
@@ -144,37 +56,30 @@ const METRICS: Record<
 		description: m.gpu_process_discovery_description,
 	},
 	"recount.gpu.engine.activity": {
-		ratio: true,
 		name: m.gpu_engine,
 		description: m.gpu_engine_description,
 	},
 	"recount.gpu.sm.activity": {
-		ratio: true,
 		name: m.gpu_sm_activity,
 		description: m.gpu_sm_activity_description,
 	},
 	"recount.gpu.sm.occupancy": {
-		ratio: true,
 		name: m.gpu_sm_occupancy,
 		description: m.gpu_sm_occupancy_description,
 	},
 	"recount.gpu.pipe.activity": {
-		ratio: true,
 		name: m.gpu_pipe_activity,
 		description: m.gpu_pipe_activity_description,
 	},
 	"recount.gpu.dram.activity": {
-		ratio: true,
 		name: m.gpu_dram_activity,
 		description: m.gpu_dram_activity_description,
 	},
 	"recount.gpu.utilization": {
-		ratio: true,
 		name: m.gpu_utilization,
 		description: m.gpu_utilization_description,
 	},
 	"recount.gpu.memory.activity": {
-		ratio: true,
 		name: m.gpu_memory_activity,
 		description: m.gpu_memory_activity_description,
 	},
@@ -313,48 +218,24 @@ export function metricDescription(name: string) {
 	return METRICS[name]?.description() ?? null;
 }
 
-/** An average count rounded to whole units, marked "≈" when rounding changed it. */
-export function approximateCount(count: number, locale: string) {
-	const rounded = Math.round(count);
-	const text = new Intl.NumberFormat(locale).format(rounded);
-	return rounded === count ? text : `≈${text}`;
-}
-
-/** How a histogram's rows, counts and value ranges read in charts and tooltips. */
-export function distributionLabels(name: string, label?: string) {
-	const entry = METRICS[name]?.distribution;
-	const subject = SUBJECTS[entry?.subject ?? "observations"];
-	const counted = (text: string, count: number) =>
-		new Intl.PluralRules(getLocale()).select(count) === "one"
-			? subject.one({ count: text })
-			: subject.other({ count: text });
-	return {
-		quantity: entry?.quantity() ?? metricLabel(name, label),
-		subject: subject.name(),
-		count: (count: number, locale: string) =>
-			counted(approximateCount(count, locale), Math.round(count)),
-		/** A count already formatted, such as "2.2", with its subject. */
-		counted,
-		/** The subject alone, for a header or axis title: "busy processes". */
-		noun: String(subject.other({ count: "" })).trim(),
-		range: entry?.range ?? m.histogram_range_default,
-	};
-}
-
 /**
  * The measure counting what a distribution leaves out as idle, from the collector's
  * coverage counters: its latest count per node, summed.
  */
 export function idleMeasure(name: string, measure: string) {
-	const kind = METRICS[name]?.distribution?.idle;
-	if (!kind) return undefined;
+	if (name !== "recount.node.process.cpu.utilization.distribution")
+		return undefined;
 	return {
 		name: `${measure}_idle`,
 		metric: "recount.collection.process.coverage",
 		calculation: "avg" as const,
 		combine: "sum" as const,
 		filters: [
-			{ field: 'attributes["coverage"]', op: "eq" as const, values: [kind] },
+			{
+				field: 'attributes["coverage"]',
+				op: "eq" as const,
+				values: ["cpu_idle"],
+			},
 		],
 	};
 }
@@ -414,10 +295,6 @@ export function breakdownFields(field: string) {
 		: [field];
 }
 
-export function isRatioMetric(name: string) {
-	return METRICS[name]?.ratio === true;
-}
-
 /** Whether the metric has a friendly name distinct from its technical one. */
 export function isNamedMetric(name: string) {
 	return name in METRICS;
@@ -429,13 +306,4 @@ export function attributeLabel(key: string) {
 
 export function isNamedAttribute(key: string) {
 	return key in ATTRIBUTES;
-}
-
-/** A readable unit: common UCUM codes named, `{annotation}` units shown without braces. */
-export function unitLabel(unit: string) {
-	if (!unit || unit === "1") return "";
-	if (unit === "By") return m.unit_bytes();
-	if (unit === "s") return m.unit_seconds();
-	if (unit === "Cel") return "°C";
-	return /^\{(.+)\}$/.exec(unit)?.[1] ?? unit;
 }

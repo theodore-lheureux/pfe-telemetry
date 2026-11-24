@@ -1,6 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { bucketRange } from "../analytics/histograms";
+import { formatMetricValue } from "../analytics/metric-units";
 import {
 	Table,
 	TableBody,
@@ -10,7 +11,6 @@ import {
 	TableRow,
 } from "../components/ui/table";
 import type { PointDetail } from "./contracts";
-import { formatMeasurement } from "./format";
 
 export function hasHistogramBuckets(measurement: PointDetail["measurement"]) {
 	const { bucket_counts, explicit_bounds, metric_kind } = measurement;
@@ -24,8 +24,7 @@ export function hasHistogramBuckets(measurement: PointDetail["measurement"]) {
 
 export function HistogramDetail({
 	measurement,
-	metric,
-}: Pick<PointDetail, "measurement"> & { metric: string }) {
+}: Pick<PointDetail, "measurement">) {
 	const { bucket_counts, explicit_bounds, count, sum, min, max, unit } =
 		measurement;
 	if (!Array.isArray(bucket_counts) || !Array.isArray(explicit_bounds))
@@ -34,7 +33,7 @@ export function HistogramDetail({
 	const locale = getLocale();
 	const storedUnit = typeof unit === "string" ? unit : "";
 	const format = (value: number) =>
-		formatMeasurement(value, storedUnit, locale, 0, metric).text;
+		formatMetricValue(value, storedUnit, locale).text;
 	const integers = new Intl.NumberFormat(locale);
 	const mean =
 		typeof sum === "number" && Number(count) > 0 ? sum / Number(count) : null;

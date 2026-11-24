@@ -6,11 +6,13 @@ import { IconEmptyState } from "../../components/workspace";
 import { cn } from "../../lib/utils";
 import { type ChartSeries, type ChartType, TimeseriesChart } from "../charts";
 import type { QueryResult, SeriesResult } from "../contracts";
+import { metricLabel } from "../metric-names";
 import {
-	distributionLabels,
-	isRatioMetric,
-	metricLabel,
-} from "../metric-names";
+	approximateCount,
+	countNoun,
+	countText,
+	ratioScale,
+} from "../metric-units";
 import { ComputedAt, RefreshButton } from "../refresh-status";
 import type { Display } from "./draft";
 import { bucketGrid, coverageBands, coverageState, onGrid } from "./grid";
@@ -366,18 +368,22 @@ function heatmapOf(
 	series: SeriesResult,
 	idle: SeriesResult | undefined,
 ) {
-	const labels = distributionLabels(measure.metric, measure.label);
-	// Ratios show at least their full scale, so cells keep their place over time.
-	let scale: number | undefined;
-	if (measure.unit === "%") scale = 100;
-	if (measure.unit === "1" && isRatioMetric(measure.metric)) scale = 1;
 	return {
 		bounds: series.bounds ?? [],
+		quantity: metricLabel(measure.metric, measure.label),
 		columns: series.points.flatMap(({ bucketMs, counts }) =>
 			bucketMs === null || !counts ? [] : [{ bucketMs, counts }],
 		),
-		...labels,
-		scale,
+		subject: countNoun(measure.unit),
+		count: (value: number, locale: string) =>
+			countText(
+				measure.unit,
+				approximateCount(value, locale),
+				Math.round(value),
+				locale,
+			),
+		range: m.histogram_range_default,
+		scale: ratioScale(measure.unit),
 		idle:
 			idle &&
 			new Map(idle.points.map(({ bucketMs, value }) => [bucketMs, value])),

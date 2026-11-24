@@ -28,7 +28,7 @@ import { type ChartConfig, ChartContainer } from "../components/ui/chart";
 import { cn } from "../lib/utils";
 import { movingAveragePoints, trendPoints } from "./chart-overlays";
 import { bucketRange } from "./histograms";
-import { approximateCount } from "./metric-names";
+import { approximateCount } from "./metric-units";
 
 export interface ChartPoint {
 	bucketMs: number;

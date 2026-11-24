@@ -263,7 +263,7 @@ export function SeriesRow({
 								<SelectContent position="popper" align="start">
 									{allowed.map((value) => (
 										<SelectItem key={value} value={value}>
-											{calculationLabel(value, series.metric)}
+											{calculationLabel(value, definition?.unit)}
 										</SelectItem>
 									))}
 								</SelectContent>

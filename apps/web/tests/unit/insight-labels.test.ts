@@ -7,10 +7,7 @@ import {
 	plottedTitle,
 	seriesLabel,
 } from "../../src/analytics/insight/labels";
-import {
-	approximateCount,
-	distributionLabels,
-} from "../../src/analytics/metric-names";
+import { approximateCount, countText } from "../../src/analytics/metric-units";
 
 const measure = (name: string) => ({
 	name,
@@ -102,19 +99,23 @@ test("a chosen unit formats every value, including custom text around it", () =>
 });
 
 test("per-scan process counts round to whole processes and mark the rounding", () => {
-	const cpu = distributionLabels(
-		"recount.node.process.cpu.utilization.distribution",
-	);
-	expect(String(cpu.count(24, "en"))).toBe("24 busy processes");
-	expect(String(cpu.count(23.6, "en"))).toBe("≈24 busy processes");
-	expect(String(cpu.count(1.2, "en"))).toBe("≈1 busy process");
+	const cpu = (value: number) =>
+		countText(
+			"1{busy_process}",
+			approximateCount(value, "en"),
+			Math.round(value),
+			"en",
+		);
+	expect(cpu(24)).toBe("24 busy processes");
+	expect(cpu(23.6)).toBe("≈24 busy processes");
+	expect(cpu(1.2)).toBe("≈1 busy process");
 	expect(approximateCount(1234.4, "fr")).toMatch(/^≈1\s234$/u);
 });
 
 test("a count of observations reads as subjects, not in the metric's unit", () => {
 	const auto = { unit: "auto" as const };
 	const stored = {
-		unit: "1",
+		unit: "1{busy_process}",
 		calculation: "count" as const,
 		metric: "recount.node.process.cpu.utilization.distribution",
 	};

@@ -376,10 +376,7 @@ export function ActivityInspector({
 						</p>
 					)}
 					{stored && tab.id === "buckets" ? (
-						<HistogramDetail
-							measurement={stored.measurement}
-							metric={String(stored.measurement.metric_name ?? "")}
-						/>
+						<HistogramDetail measurement={stored.measurement} />
 					) : (
 						<PropertyViewer value={tab.value} attributes={tab.attributes} />
 					)}

@@ -10,7 +10,6 @@ import {
 	type LucideIcon,
 	TableIcon,
 } from "lucide-react";
-import { formatMeasurement } from "../../activity/format";
 import { type FormattedNumber, formatNumeric } from "../../lib/number-format";
 import type {
 	Calculation,
@@ -19,11 +18,13 @@ import type {
 	QueryResult,
 	SeriesResult,
 } from "../contracts";
+import { metricLabel } from "../metric-names";
 import {
-	distributionLabels,
-	isRatioMetric,
-	metricLabel,
-} from "../metric-names";
+	countNoun,
+	countText,
+	formatMetricValue,
+	rateUnit,
+} from "../metric-units";
 import { isHistogramPercentile } from "../validation";
 import type { Display, DisplayType, DisplayUnit, InsightDraft } from "./draft";
 
@@ -42,10 +43,10 @@ export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	p99: () => "p99",
 };
 /** A calculation's name; a histogram's count is named by what it counts, such as Busy processes. */
-export function calculationLabel(calculation: Calculation, metric?: string) {
-	return calculation === "count"
-		? distributionLabels(metric ?? "").subject
-		: CALCULATION_LABEL[calculation]();
+export function calculationLabel(calculation: Calculation, unit = "") {
+	if (calculation !== "count") return CALCULATION_LABEL[calculation]();
+	const noun = countNoun(unit);
+	return noun.charAt(0).toLocaleUpperCase() + noun.slice(1);
 }
 /** How sources combine, phrased to read after the calculation: "Rate per second · Sum of all sources". */
 export const COMBINE_OPTION_LABEL: Record<Combine, () => string> = {
@@ -157,7 +158,7 @@ export const CUSTOM_UNITS: DisplayUnit[] = ["prefix", "postfix"];
 export function formatValue(
 	value: number | null,
 	display: Pick<Display, "unit" | "unitAffix">,
-	stored: { unit: string; calculation: Calculation; metric?: string } | null,
+	stored: { unit: string; calculation: Calculation } | null,
 	locale: string,
 ) {
 	return formatValueDetails(value, display, stored, locale).text;
@@ -174,7 +175,7 @@ function affixed(
 export function formatValueDetails(
 	value: number | null,
 	{ unit, unitAffix = "" }: Pick<Display, "unit" | "unitAffix">,
-	stored: { unit: string; calculation: Calculation; metric?: string } | null,
+	stored: { unit: string; calculation: Calculation } | null,
 	locale: string,
 	minimumFractionDigits = 0,
 	/** Leaves out a count's subject, which a header or axis title names once. */
@@ -201,14 +202,9 @@ export function formatValueDetails(
 		case "none":
 			return number();
 		case "milliseconds":
-			return formatMeasurement(
-				value / 1000,
-				"s",
-				locale,
-				minimumFractionDigits,
-			);
+			return formatMetricValue(value / 1e3, "s", locale, minimumFractionDigits);
 		case "nanoseconds":
-			return formatMeasurement(value / 1e9, "s", locale, minimumFractionDigits);
+			return formatMetricValue(value / 1e9, "s", locale, minimumFractionDigits);
 		case "currency":
 			return formatNumeric(
 				value,
@@ -246,9 +242,9 @@ export function formatValueDetails(
 				minimumFractionDigits,
 			);
 		case "bytes":
-			return formatMeasurement(value, "By", locale, minimumFractionDigits);
+			return formatMetricValue(value, "By", locale, minimumFractionDigits);
 		case "seconds":
-			return formatMeasurement(value, "s", locale, minimumFractionDigits);
+			return formatMetricValue(value, "s", locale, minimumFractionDigits);
 		case "auto":
 			break;
 	}
@@ -259,43 +255,12 @@ export function formatValueDetails(
 		if (bare) return counted;
 		return {
 			...counted,
-			text: distributionLabels(stored.metric ?? "").counted(
-				counted.text,
-				value,
-			),
+			text: countText(stored.unit, counted.text, value, locale),
 		};
 	}
-	const storedUnit = readableUnit(stored.unit);
-	if (stored.calculation === "rate") {
-		// Seconds per second, such as CPU time, reads as a share of one core.
-		if (storedUnit === "s")
-			return formatNumeric(
-				value,
-				locale,
-				{ style: "percent", maximumFractionDigits: 1 },
-				minimumFractionDigits,
-			);
-		if (!storedUnit) return number();
-		return affixed(number(), "", ` ${storedUnit}/s`);
-	}
-	if (storedUnit === "%") return affixed(number(1), "", " %");
-	if (stored.unit === "1" && isRatioMetric(stored.metric ?? ""))
-		return formatMeasurement(
-			value,
-			"1",
-			locale,
-			minimumFractionDigits,
-			stored.metric,
-		);
-	if (Number.isInteger(value) || ["By", "By/s", "s"].includes(storedUnit))
-		return formatMeasurement(value, storedUnit, locale, minimumFractionDigits);
-	return affixed(number(), "", storedUnit ? ` ${storedUnit}` : "");
-}
-
-/** A UCUM unit without its curly-brace annotations, such as `{process}`, which only name what is counted. */
-function readableUnit(unit: string) {
-	const readable = unit.replace(/\{[^}]*\}/g, "").trim();
-	return readable === "1" ? "" : readable;
+	const storedUnit =
+		stored.calculation === "rate" ? rateUnit(stored.unit) : stored.unit;
+	return formatMetricValue(value, storedUnit, locale, minimumFractionDigits);
 }
 
 /** The stored unit and calculation behind a series; null for formulas. */
@@ -342,9 +307,9 @@ function measureText(
 	measure: QueryResult["measures"][number],
 ) {
 	if (calculationsOnly(result))
-		return calculationLabel(measure.calculation, measure.metric);
+		return calculationLabel(measure.calculation, measure.unit);
 	if (isHistogramPercentile(measure.calculation))
-		return `${metricLabel(measure.metric, measure.label)} · ${calculationLabel(measure.calculation, measure.metric)}`;
+		return `${metricLabel(measure.metric, measure.label)} · ${calculationLabel(measure.calculation, measure.unit)}`;
 	if (result.measures.length > 1)
 		return `${measure.name} · ${metricLabel(measure.metric, measure.label)}`;
 	return metricLabel(measure.metric, measure.label);

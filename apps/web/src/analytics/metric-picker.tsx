@@ -20,13 +20,12 @@ import { DefinitionSourceIcon } from "./definition-source-icon";
 import { isDistribution } from "./histograms";
 import {
 	isNamedMetric,
-	isRatioMetric,
 	METRIC_SECTION_LABEL,
 	METRIC_SECTIONS,
 	metricLabel,
 	metricSection,
-	unitLabel,
 } from "./metric-names";
+import { unitLabel } from "./metric-units";
 import {
 	metricPreview,
 	PICKER_CONTENT_CLASS,
@@ -74,9 +73,7 @@ export function MetricPicker({
 		),
 	];
 	const unit = (name: string) =>
-		isRatioMetric(name)
-			? "%"
-			: unitLabel(metrics?.find((metric) => metric.name === name)?.unit ?? "");
+		unitLabel(metrics?.find((metric) => metric.name === name)?.unit ?? "");
 	const previews = new Map<string, PickerPreview>();
 	for (const name of names) {
 		const metric = metrics?.find((item) => item.name === name);

@@ -1,9 +1,6 @@
 import { expect, test } from "bun:test";
-import {
-	attributeLabel,
-	metricLabel,
-	unitLabel,
-} from "../../src/analytics/metric-names";
+import { attributeLabel, metricLabel } from "../../src/analytics/metric-names";
+import { unitLabel } from "../../src/analytics/metric-units";
 import {
 	metricBehavior,
 	parseField,
@@ -136,6 +133,6 @@ test("known metrics get friendly names; others keep their technical names", () =
 	expect(attributeLabel("custom.key")).toBe("custom.key");
 	expect(unitLabel("By")).toBe("bytes");
 	expect(unitLabel("{process}")).toBe("process");
-	expect(unitLabel("1")).toBe("");
+	expect(unitLabel("1")).toBe("%");
 	expect(unitLabel("ms")).toBe("ms");
 });

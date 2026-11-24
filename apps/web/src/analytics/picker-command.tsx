@@ -13,12 +13,8 @@ import {
 	type DefinitionKind,
 	DefinitionSourceIcon,
 } from "./definition-source-icon";
-import {
-	attributeLabel,
-	metricDescription,
-	metricLabel,
-	unitLabel,
-} from "./metric-names";
+import { attributeLabel, metricDescription, metricLabel } from "./metric-names";
+import { unitLabel } from "./metric-units";
 
 export interface PickerPreview {
 	title: string;

@@ -3,10 +3,6 @@ import { Root } from "protobufjs/light";
 import { displayedActivity } from "../../src/activity/activity-state";
 import { activityNode, decodePacket } from "../../src/activity/codec.server";
 import { parseColumns } from "../../src/activity/columns";
-import {
-	activityNumberFormat,
-	formatMeasurement,
-} from "../../src/activity/format";
 import generated from "../../src/activity/generated/descriptors.json";
 import {
 	emptyLive,
@@ -18,6 +14,10 @@ import {
 	parsePacket,
 	parsePoint,
 } from "../../src/activity/validation";
+import {
+	exactNumberFormat as activityNumberFormat,
+	formatMetricValue as formatMeasurement,
+} from "../../src/analytics/metric-units";
 import { MutationFailure } from "../../src/lib/operation-result";
 
 const root = Root.fromJSON(generated.schema);

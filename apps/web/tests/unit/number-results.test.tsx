@@ -25,7 +25,7 @@ test("Number results show a current headline and its comparison, not a second nu
 		bucketSeconds: 60,
 		groupBy: [],
 		measures: [
-			{ name: "A", metric: "custom.metric", unit: "1", calculation: "last" },
+			{ name: "A", metric: "custom.metric", unit: "", calculation: "last" },
 		],
 		formulas: [],
 		series: [

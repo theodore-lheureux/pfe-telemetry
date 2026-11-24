@@ -20,7 +20,7 @@ const result: QueryResult = {
 	bucketSeconds: null,
 	groupBy: [],
 	measures: [
-		{ name: "A", metric: "custom.metric", unit: "1", calculation: "last" },
+		{ name: "A", metric: "custom.metric", unit: "", calculation: "last" },
 	],
 	formulas: [],
 	series: [

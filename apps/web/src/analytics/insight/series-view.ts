@@ -1,6 +1,6 @@
 import { combineValues } from "../aggregate";
 import type { QueryResult, SeriesResult } from "../contracts";
-import { distributionLabels } from "../metric-names";
+import { countNoun } from "../metric-units";
 import type { Display } from "./draft";
 import {
 	type FormulaNames,
@@ -77,7 +77,7 @@ export function seriesView(
 	const subjectOf = (series: SeriesResult) => {
 		const source = seriesSource(result, series);
 		return source?.calculation === "count" && display.unit === "auto"
-			? distributionLabels(source.metric, source.label).noun
+			? countNoun(source.unit)
 			: null;
 	};
 	const subjects = new Set(visible.map(subjectOf));

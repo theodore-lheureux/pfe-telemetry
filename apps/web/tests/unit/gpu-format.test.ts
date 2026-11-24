@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { formatMeasurement } from "../../src/activity/format";
 import {
 	metricDescription,
 	metricLabel,
 } from "../../src/analytics/metric-names";
+import { formatMetricValue as formatMeasurement } from "../../src/analytics/metric-units";
 
 test("shared UCUM formatting handles GPU temperature, clocks, power and rates in both locales", () => {
 	expect(formatMeasurement("70", "Cel", "en").text).toBe("70 °C");
@@ -21,35 +21,18 @@ test("shared UCUM formatting handles GPU temperature, clocks, power and rates in
 	expect(metricDescription("recount.gpu.pipe.activity")).not.toBeNull();
 });
 
-test("Activity formats declared GPU ratios as percentages without changing stored units or diagnostics", () => {
-	for (const metric of [
-		"recount.gpu.pipe.activity",
-		"recount.gpu.engine.activity",
-		"recount.gpu.sm.activity",
-		"recount.gpu.sm.occupancy",
-		"recount.gpu.dram.activity",
-		"recount.gpu.utilization",
-		"recount.gpu.memory.activity",
-		"recount.process.gpu.utilization",
-		"recount.process.gpu.memory.activity",
-	]) {
-		const formatted = formatMeasurement(
-			0.8648393808352174,
-			"1",
-			"en",
-			0,
-			metric,
-		);
+test("Activity formats ratio units as percentages without changing stored values or diagnostics", () => {
+	for (const unit of ["1", "1{gpu}", "s/s"]) {
+		const formatted = formatMeasurement(0.8648393808352174, unit, "en");
 		expect(formatted.text).toBe("86.5%");
-		expect(formatted.exact).toBe("0.8648393808352174");
-		expect(
-			formatMeasurement(0.8648393808352174, "1", "fr", 0, metric).text,
-		).toBe("86,5 %");
-		expect(formatMeasurement(0, "1", "en", 0, metric).text).toBe("0%");
+		expect(formatMeasurement(0.8648393808352174, unit, "fr").text).toBe(
+			"86,5 %",
+		);
+		expect(formatMeasurement(0, unit, "en").text).toBe("0%");
 	}
-	expect(
-		formatMeasurement(1, "1", "en", 0, "recount.collection.read.status").text,
-	).toBe("1");
-	expect(formatMeasurement(0.5, "1", "en", 0, "custom.ratio").text).toBe("0.5");
+	expect(formatMeasurement(0.8648393808352174, "1", "en").exact).toBe(
+		"0.8648393808352174",
+	);
+	expect(formatMeasurement(1, "{status}", "en").text).toBe("1");
 	expect(formatMeasurement(86.48393808352174, "%", "en").text).toBe("86.5%");
 });
