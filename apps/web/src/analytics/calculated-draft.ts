@@ -42,6 +42,7 @@ export function calculationDraft(definition: CalculatedMetric): InsightDraft {
 		By: "bytes",
 		s: "seconds",
 		"1": "auto",
+		"{core}": "auto",
 	} as const;
 	return {
 		...DEFAULT_DRAFT,

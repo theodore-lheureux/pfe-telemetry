@@ -34,6 +34,22 @@ The [collector measurement catalogue](../apps/collector/README.md#baseline-measu
 
 Collector histograms use UCUM annotations to identify what the buckets count. For example, in `1{busy_process}` the bucket boundaries are ratios and the counts are busy processes. The annotation does not scale the boundaries, min, max or sum. Coverage gauges use stand-alone count units such as `{process}`, `{gpu}` and `{connection}`.
 
+Optional `recount.analytics.*` string entries in OTLP metric metadata describe how to present a metric. They do not change its values or grant access to other projects.
+
+| Entry suffix                       | Meaning                                                                                                           |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `section`                          | Picker section: `node`, `processes`, `gpu` or `diagnostics`. Unrecognized sections appear under Other.            |
+| `quantity`                         | Histogram quantity for a localized axis title and bucket range.                                                   |
+| `breakdown`                        | Resource attribute key to select by default. A member's chosen default takes precedence.                          |
+| `heartbeat`                        | `true` marks a metric emitted each collection cycle, used to distinguish missing scans from missing measurements. |
+| `coverage.metric`                  | Coverage gauge in the same project. Its `coverage` point attribute names each count.                              |
+| `coverage.mode`                    | `partial` for capped detail; `excluded` when a histogram intentionally omits a population.                        |
+| `coverage.omitted`                 | Kind in the coverage gauge that counts omitted subjects.                                                          |
+| `coverage.shown`, `coverage.total` | Optional kinds for the displayed and total subject counts.                                                        |
+| `coverage.reason`                  | Optional reason for intentional exclusions; `idle` identifies idle observations.                                  |
+
+A positive omission count means some subjects were left out. An absent reading does not prove complete coverage. The collector reports these counts per node, not per process or execution.
+
 CPU and I/O baselines are cumulative monotonic sums, not percentages or rates. Byte counters must fit signed Int64; out-of-range values produce a status instead of wrapping or rounding. Node CPU aggregates logical CPUs, keeps guest time within user/nice and excludes decreasing iowait from monotonic counters. RSS includes shared pages and is not private memory. Disk partitions/devices can overlap; do not sum every I/O series indiscriminately.
 
 The shared catalogue describes owned Linux GPU metrics and external DCGM fixture mappings. The collector's optional [GPU acquisition](nvidia-gpu-collection.md) exports device/MIG profiling ratios and supported core gauges with native DCGM timestamps, explicit unavailable statuses and host-local UUID identity. It does not establish process/job attribution or completed hardware validation. Standard application histograms, exponential histograms and summaries retain their native structures through the point pipeline; they are not flattened into scalar collector measurements.

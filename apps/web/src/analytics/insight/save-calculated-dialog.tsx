@@ -37,7 +37,8 @@ import { saveCalculatedMetric } from "../calculated-metrics.functions";
 import type { InsightDraft } from "./draft";
 
 const UNIT_LABEL = {
-	"1": m.insight_unit_none,
+	"1": m.insight_unit_ratio,
+	"{core}": m.insight_unit_cores,
 	"%": m.insight_unit_percent,
 	By: m.insight_unit_bytes,
 	s: m.insight_unit_seconds,

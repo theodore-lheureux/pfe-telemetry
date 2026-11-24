@@ -9,7 +9,12 @@ import { ComputedAt, RefreshButton } from "../refresh-status";
 import type { Display } from "./draft";
 import { bucketGrid, coverageBands, coverageState, onGrid } from "./grid";
 import type { FormulaNames } from "./labels";
-import { ChartPanel, chartLimitsSeries, chartTitle } from "./panels/registry";
+import {
+	ChartPanel,
+	chartHandlesEmpty,
+	chartLimitsSeries,
+	chartTitle,
+} from "./panels/registry";
 import type { PanelProps } from "./panels/types";
 import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
 
@@ -161,7 +166,7 @@ export function ChartBody({
 		)
 			return m.insight_no_data_received();
 	};
-	if (view.empty)
+	if (view.empty && !chartHandlesEmpty(display.type))
 		return (
 			<IconEmptyState
 				icon={<ChartNoAxesColumnIcon aria-hidden="true" />}

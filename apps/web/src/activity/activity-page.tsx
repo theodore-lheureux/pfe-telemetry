@@ -106,7 +106,7 @@ export function ActivityPage({
 	const catalog = useAnalyticsCatalog(
 		userId,
 		reference,
-		hydrated && mode === "live",
+		hydrated && (mode === "live" || !!selection.metric),
 	);
 	const result = mode === "live" ? liveResult : explorerResult;
 	const data = displayedActivity({
@@ -230,7 +230,7 @@ export function ActivityPage({
 				catalog.data?.metrics.find((metric) => metric.name === selection.metric)
 					?.presentation?.coverage?.mode === "partial" && (
 					<p className="text-sm text-muted-foreground">
-						{m.process_detail_partial()}
+						{m.metric_coverage_partial()}
 					</p>
 				)}
 			<div className="flex flex-wrap items-center justify-between gap-3">

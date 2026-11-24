@@ -12,12 +12,13 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { QueryResult } from "../../contracts";
-import type { DisplayType } from "../draft";
+import { DISPLAY_TYPES, type DisplayType } from "../draft";
 import { type FormulaNames, plottedTitle } from "../labels";
 import { NumberResults } from "../number-results";
 import { SeriesGrid } from "../series-grid";
 import { CartesianPanel } from "./cartesian-panel";
-import { HeatmapPanel, heatmapTitle } from "./heatmap-panel";
+import { heatmapTitle } from "./heatmap-data";
+import { HeatmapPanel } from "./heatmap-panel";
 import type { PanelProps } from "./types";
 
 interface ChartEntry {
@@ -29,6 +30,7 @@ interface ChartEntry {
 	needsGroupBy?: boolean;
 	reducesSeries?: boolean;
 	limitsSeries?: boolean;
+	handlesEmpty?: boolean;
 }
 
 const cartesian = { render: CartesianPanel, limitsSeries: true };
@@ -45,6 +47,7 @@ const registry: Record<DisplayType, ChartEntry> = {
 		label: m.insight_display_heatmap,
 		icon: Grid2X2Icon,
 		needsHistogram: true,
+		handlesEmpty: true,
 		render: HeatmapPanel,
 		title: heatmapTitle,
 	},
@@ -69,7 +72,7 @@ const registry: Record<DisplayType, ChartEntry> = {
 	},
 };
 
-export const chartTypes = Object.keys(registry) as DisplayType[];
+export const chartTypes = DISPLAY_TYPES;
 export const chartIcon = (type: DisplayType) => registry[type].icon;
 export const chartLabel = (type: DisplayType) => registry[type].label();
 export const chartTitle = (
@@ -79,6 +82,8 @@ export const chartTitle = (
 ) => (registry[type].title ?? plottedTitle)(result, names);
 export const chartLimitsSeries = (type: DisplayType) =>
 	registry[type].limitsSeries;
+export const chartHandlesEmpty = (type: DisplayType) =>
+	registry[type].handlesEmpty;
 
 export function chartChoices(histogram: boolean, grouped = true) {
 	return chartTypes.filter(

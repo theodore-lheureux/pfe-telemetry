@@ -142,7 +142,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			.click();
 		await expect(page).toHaveURL(/filters=/);
 		await page.getByRole("button", { name: /^Breakdown:/ }).click();
-		const breakdownSearch = page.getByRole("dialog").getByRole("combobox");
+		const breakdownSearch = page.getByPlaceholder("Search attributes");
 		await breakdownSearch.fill("Host name");
 		await expect(
 			page.getByRole("option", { name: /^Host name/ }),
@@ -156,7 +156,9 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		const changes = page.locator('[data-slot="hover-card-content"]');
 		await expect(changes.getByText("No date range override")).toBeVisible();
 		await expect(changes.getByText("Last 24 hours")).toBeVisible();
-		await expect(changes.getByText("Host name", { exact: true })).toBeVisible();
+		await expect(
+			changes.getByRole("definition").getByText("Host name", { exact: true }),
+		).toBeVisible();
 		await page.keyboard.press("Escape");
 		await page.getByRole("button", { name: "Save filters" }).click();
 		await expect(page).not.toHaveURL(/filters=/);
@@ -232,7 +234,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await page.setViewportSize({ width: 1440, height: 400 });
 		await page.reload();
 		await page.setViewportSize({ width: 800, height: 400 });
-		const value = number.getByText(/^\d[\d,.]*$/).first();
+		const value = number.getByText(/^\d[\d,.]*%$/).first();
 		await expect(
 			line.getByRole("img", { name: "Insight chart" }),
 		).toBeVisible();

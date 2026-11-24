@@ -9,7 +9,7 @@ import { parseQuery } from "./validation";
 
 export const CALCULATED_PREFIX = "recount.calculated.";
 export const MAX_CALCULATED_INPUTS = 8;
-export const CALCULATED_UNITS = ["1", "%", "By", "s"] as const;
+export const CALCULATED_UNITS = ["1", "%", "By", "s", "{core}"] as const;
 export type CalculatedUnit = (typeof CALCULATED_UNITS)[number];
 export interface CalculationDefinition {
 	inputs: Measure[];
@@ -164,7 +164,7 @@ export function builtInCalculations(): CalculatedMetric[] {
 				},
 			],
 			expression: "A",
-			unit: "1",
+			unit: "{core}",
 		},
 	].map((definition) => ({
 		...definition,

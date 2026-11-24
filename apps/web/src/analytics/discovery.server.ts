@@ -50,7 +50,16 @@ function presentation(metadata: MetricRow["metadata"]): MetricPresentation {
 		section: value("section"),
 		quantity: value("quantity"),
 		...(metric && omitted && (mode === "excluded" || mode === "partial")
-			? { coverage: { metric, omitted, mode } }
+			? {
+					coverage: {
+						metric,
+						omitted,
+						mode,
+						reason: value("coverage.reason"),
+						shown: value("coverage.shown"),
+						total: value("coverage.total"),
+					},
+				}
 			: {}),
 	};
 }

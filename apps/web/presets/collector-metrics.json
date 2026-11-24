@@ -2,6 +2,5 @@
   "nodeCpuTime": "recount.node.cpu.time",
   "nodeMemoryTotal": "recount.node.memory.total",
   "nodeMemoryAvailable": "recount.node.memory.available",
-  "processCpuDistribution": "recount.node.process.cpu.utilization.distribution",
-  "processCoverage": "recount.collection.process.coverage"
+  "processCpuDistribution": "recount.node.process.cpu.utilization.distribution"
 }

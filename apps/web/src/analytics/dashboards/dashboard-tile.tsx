@@ -280,7 +280,7 @@ export const DashboardTileCard = memo(function DashboardTileCard({
 					(measure) => measure.presentation?.coverage?.mode === "partial",
 				) && (
 					<p className="text-xs text-muted-foreground">
-						{m.process_detail_partial()}
+						{m.metric_coverage_partial()}
 					</p>
 				)}
 				<TileBody

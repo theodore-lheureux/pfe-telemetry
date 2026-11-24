@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import gpu from "../../presets/gpu.json" with { type: "json" };
 import nodeHealth from "../../presets/node-health.json" with { type: "json" };
 import type { ProjectReference } from "../organizations/contracts";
 import { capabilities } from "./capabilities";
@@ -13,7 +14,6 @@ import type {
 	DashboardTile,
 } from "./dashboards";
 import { decodeDraft } from "./insight/draft";
-import gpu from "./templates/gpu.json" with { type: "json" };
 
 export interface TemplateVariable {
 	name: "$node";

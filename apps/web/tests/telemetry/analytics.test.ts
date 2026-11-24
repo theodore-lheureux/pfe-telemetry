@@ -271,7 +271,7 @@ test("histogram percentiles pool counts on shared bounds, also for Other", async
 	// Node B's 5 bound is not shared, so its counts merge into the 0–10 bucket.
 	expect(pooled.series[0].bounds).toEqual([0, 10, 20]);
 	expect(
-		pooled.series.find((series) => series.measure === "cpu_omitted")?.points[0]
+		pooled.omissions?.find((series) => series.measure === "cpu")?.points[0]
 			.value,
 	).toBe(7);
 	expect(pooled.series[0].points[0].counts).toEqual([0, 99, 1, 0]);

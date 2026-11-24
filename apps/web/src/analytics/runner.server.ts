@@ -13,7 +13,7 @@ import {
 	type QueryResult,
 	type SeriesResult,
 } from "./contracts";
-import { omissionMeasure } from "./coverage";
+import { omissionMeasure, omissionName } from "./coverage";
 import { heartbeatDefinition, metricDefinitions } from "./discovery.server";
 import { formulaSeries } from "./formula-series";
 import { pipelineIngestedThrough } from "./ingested-through.server";
@@ -260,7 +260,9 @@ async function scopesForQuery(
 			...query,
 			measures: [
 				...query.measures,
-				...companions.filter(({ metric }) => definitions.has(metric)),
+				...companions.filter(
+					({ metric }) => counters.get(metric)?.behavior === "gauge",
+				),
 			],
 		};
 	}
@@ -335,7 +337,7 @@ export async function runQuery(
 			series.push(...read.series);
 			limited ||= read.limited;
 		}
-		const measures: QueryResult["measures"] = query.measures.map(
+		const measures: QueryResult["measures"] = requested.measures.map(
 			(measure, index) => ({
 				name: measure.name,
 				metric: measure.metric,
@@ -348,7 +350,15 @@ export async function runQuery(
 				calculation: measure.calculation,
 			}),
 		);
-		const all = [...series, ...formulaSeries(query, series)];
+		const byCompanion = new Map(
+			measures.map(({ name }) => [omissionName(name), name]),
+		);
+		const omissions = series.flatMap((entry) => {
+			const measure = byCompanion.get(entry.measure);
+			return measure ? [{ ...entry, measure }] : [];
+		});
+		const visible = series.filter(({ measure }) => !byCompanion.has(measure));
+		const all = [...visible, ...formulaSeries(query, visible)];
 		const ingestedThrough = await watermark;
 		return {
 			shape: query.shape,
@@ -372,6 +382,7 @@ export async function runQuery(
 			bucketSeconds,
 			groupBy: query.groupBy ?? [],
 			measures,
+			...(omissions.length ? { omissions } : {}),
 			formulas: query.formulas ?? [],
 			series: query.aggregate
 				? aggregateGroups(all, query.aggregate, query.spread)

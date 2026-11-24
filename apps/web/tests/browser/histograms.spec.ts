@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@clickhouse/client";
+import { m } from "@recount/i18n/messages";
 import { DEFAULT_DRAFT, encodeDraft } from "../../src/analytics/insight/draft";
 import { createOrganization } from "../../src/organizations/organizations.server";
 import { createProject } from "../../src/organizations/projects.server";
@@ -12,6 +13,8 @@ test.skip(
 );
 
 const metric = "recount.node.process.cpu.utilization.distribution";
+const detail = "recount.process.memory.rss";
+const coverage = "recount.collection.process.coverage";
 const context = "histogram-context-evidence-test1";
 const seconds = 1800;
 const nodes = 4;
@@ -22,7 +25,6 @@ function histogramPoint(second: number, node: number, from: number) {
 	const counts = new Array<number>(bounds.length + 1).fill(0);
 	const center = 2 + Math.floor(second / 360);
 	const values = Array.from({ length: 120 }, (_, process) => {
-		if (process < 35) return 0;
 		const skew = ((process * 17 + second * 7 + node * 13) % 11) - 5;
 		const bucket = Math.min(11, Math.max(1, center + Math.round(skew / 2)));
 		return bounds[bucket];
@@ -47,6 +49,91 @@ function histogramPoint(second: number, node: number, from: number) {
 
 function streamFor(node: number) {
 	return `histogram-test0${node}`;
+}
+
+const attr = (key: string, value: string) => [
+	`/${key}`,
+	2,
+	value,
+	null,
+	null,
+	null,
+	null,
+];
+const hint = (key: string, value: string) =>
+	attr(`recount.analytics.${key}`, value);
+
+async function seedCoverage(
+	insert: (table: string, row: Record<string, unknown>) => Promise<unknown>,
+	source: string,
+	from: number,
+	to: number,
+) {
+	const seed = async (
+		id: number,
+		metric: string,
+		unit: string,
+		value: number,
+		attributes: Record<string, unknown>,
+	) => {
+		const stream = `hist-extra-${id}`;
+		await insert("metric_series", {
+			source_id: source,
+			resource_id: "node-1",
+			host_id: "node-1",
+			resource_kind: 1,
+			metric_name: metric,
+			metric_kind: 1,
+			unit,
+			series_id: String(id),
+			logical_series_id: String(id),
+			first_seen_unix_milli: String(from),
+			last_seen_unix_milli: String(to - 1000),
+			...attributes,
+		});
+		await insert("metric_streams", { stream_id: stream });
+		await insert("metric_points", {
+			metric_name: metric,
+			series_id: String(id),
+			stream_id: stream,
+			time_unix_milli: String(to - 1000),
+			event_day: Math.floor((to - 1000) / 86_400_000),
+			value_kind: 1,
+			int_value: String(value),
+		});
+	};
+	for (const [pid, name, memory] of [
+		[902, "python", 735_000_000],
+		[901, "worker", 360_000_000],
+	] as const) {
+		await seed(pid, detail, "By", memory, {
+			resource_kind: 2,
+			resource_id: String(pid),
+			resource_attributes: [
+				attr("process.pid", String(pid)),
+				attr("process.executable.name", name),
+			],
+			metric_metadata: [
+				hint("section", "processes"),
+				hint("breakdown", "process.pid"),
+				hint("coverage.metric", coverage),
+				hint("coverage.mode", "partial"),
+				hint("coverage.omitted", "detail_deferred"),
+				hint("coverage.shown", "detail_emitted"),
+				hint("coverage.total", "verified"),
+			],
+		});
+	}
+	for (const [id, kind, count] of [
+		[81001, "detail_emitted", 2],
+		[81002, "verified", 124],
+		[81003, "detail_deferred", 1],
+	] as const) {
+		await seed(id, coverage, "{process}", count, {
+			point_attributes: [attr("coverage", kind)],
+			metric_metadata: [hint("section", "diagnostics")],
+		});
+	}
 }
 
 test("Explore pools matching buckets and Explorer exposes the stored buckets", async ({
@@ -100,16 +187,12 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				metric_kind: 3,
 				unit: "1{busy_process}",
 				metric_metadata: [
-					[
-						"/recount.analytics.section",
-						2,
-						"processes",
-						null,
-						null,
-						null,
-						null,
-					],
-					["/recount.analytics.quantity", 2, "cpu", null, null, null, null],
+					hint("section", "processes"),
+					hint("quantity", "cpu"),
+					hint("coverage.metric", coverage),
+					hint("coverage.mode", "excluded"),
+					hint("coverage.omitted", "cpu_idle"),
+					hint("coverage.reason", "idle"),
 				],
 				temporality: 1,
 				series_id: String(77 + node),
@@ -118,6 +201,20 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				last_seen_unix_milli: String(time),
 			});
 			await insert("metric_streams", { stream_id: streamFor(node) });
+			await insert("metric_series", {
+				source_id: project.id,
+				resource_id: `node-${node + 1}`,
+				host_id: `node-${node + 1}`,
+				resource_kind: 1,
+				metric_name: coverage,
+				metric_kind: 1,
+				unit: "{process}",
+				point_attributes: [attr("coverage", "cpu_idle")],
+				series_id: String(170 + node),
+				logical_series_id: String(170 + node),
+				first_seen_unix_milli: String(from),
+				last_seen_unix_milli: String(time),
+			});
 		}
 		await insert("deliveries", {
 			source_id: project.id,
@@ -127,6 +224,24 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			max_event_unix_milli: String(time),
 			delivery_context_id: context,
 			delivery_request: Buffer.from("1a0178", "hex").toString(),
+		});
+		await seedCoverage(insert, project.id, from, to);
+		await client.insert({
+			table: "telemetry.metric_points",
+			format: "JSONEachRow",
+			values: Array.from({ length: (seconds / 60) * nodes }, (_, index) => {
+				const bucket = from + Math.floor(index / nodes) * 60_000;
+				return {
+					project_id: project.id,
+					metric_name: coverage,
+					series_id: String(170 + (index % nodes)),
+					stream_id: streamFor(index % nodes),
+					time_unix_milli: String(bucket),
+					event_day: Math.floor(bucket / 86_400_000),
+					value_kind: 1,
+					int_value: "35",
+				};
+			}),
 		});
 		await insert("delivery_contexts", {
 			source_id: project.id,
@@ -171,6 +286,12 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			await page
 				.getByRole("combobox", { name: "Choose a metric" })
 				.click({ timeout: 6000 });
+			await expect(
+				page.getByRole("option", { name: /^Process CPU(?!\s*usage)/ }),
+			).toBeVisible();
+			await page.screenshot({
+				path: info.outputPath(`histogram-picker-${theme}.png`),
+			});
 			await page
 				.getByRole("option", { name: /^Process CPU(?!\s*usage)/ })
 				.click({ timeout: 6000 });
@@ -187,6 +308,9 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			await expect(
 				page.getByRole("row").filter({ hasText: /^p(50|95)/ }),
 			).toHaveCount(2);
+			await page.screenshot({
+				path: info.outputPath(`histogram-percentiles-${theme}.png`),
+			});
 			await page.getByRole("combobox", { name: "Chart type" }).click();
 			await page.getByRole("option", { name: "Heatmap" }).click();
 			const plot = page.locator(".recharts-surface").first();
@@ -199,6 +323,7 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			const tooltip = page.locator(".recharts-tooltip-wrapper");
 			await expect(tooltip).toContainText(/\d+ busy processes/);
 			await expect(tooltip).toContainText("CPU");
+			await expect(tooltip).toContainText("(140 idle)");
 			await page.screenshot({
 				path: info.outputPath(`histogram-heatmap-${theme}.png`),
 			});
@@ -256,7 +381,49 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			await page.screenshot({
 				path: info.outputPath(`histogram-explorer-${theme}.png`),
 			});
+			await page.goto(
+				`${path}/explore?q=${encodeURIComponent(JSON.stringify(q))}`,
+			);
+			await page.getByRole("combobox", { name: "Choose a metric" }).click();
+			await page
+				.getByRole("option", { name: /^Top processes · memory/ })
+				.click();
+			await expect(
+				page.getByRole("row", { name: /python · 902/ }),
+			).toBeVisible();
+			await expect(page.getByText(m.metric_coverage_warning())).toBeVisible();
+			await page
+				.getByRole("button", { name: m.insight_metric_about() })
+				.hover();
+			await expect(page.getByRole("tooltip")).toContainText(
+				"2 of 124 processes shown",
+			);
+			await page.screenshot({
+				path: info.outputPath(`histogram-top-processes-${theme}.png`),
+			});
 		}
+		await page
+			.context()
+			.addCookies([
+				{ name: "recount_locale", value: "fr", url: workspace.origin },
+			]);
+		await page.goto(
+			`${path}/explore?q=${encodeURIComponent(JSON.stringify(q))}`,
+		);
+		await expect(page.locator("html")).toHaveAttribute("lang", "fr");
+		await page
+			.getByRole("combobox", {
+				name: m.insight_metric_choose({}, { locale: "fr" }),
+			})
+			.click();
+		await expect(
+			page
+				.getByRole("option", {
+					name: new RegExp(m.metric_hist_process_cpu({}, { locale: "fr" })),
+				})
+				.first(),
+		).toBeVisible();
+		await page.screenshot({ path: info.outputPath("histogram-picker-fr.png") });
 	} finally {
 		await clearTelemetry(client, project.id);
 		for (const table of ["metric_streams", "delivery_contexts"])

@@ -1,4 +1,4 @@
-import type { MetricPresentation } from "./contracts";
+import type { MetricCoverage } from "./contracts";
 
 export function coverageMeasure(
 	name: string,
@@ -18,11 +18,11 @@ export function coverageMeasure(
 	};
 }
 
-export const omissionName = (measure: string) => `${measure}_omitted`;
+export const omissionName = (measure: string) => `${measure}~omitted`;
 
 export function omissionMeasure(
 	measure: string,
-	coverage: MetricPresentation["coverage"],
+	coverage: MetricCoverage | undefined,
 ) {
 	if (coverage?.mode !== "excluded") return [];
 	return [
@@ -33,5 +33,20 @@ export function omissionMeasure(
 			"avg",
 			"sum",
 		),
+	];
+}
+
+export function coverageMeasures(coverage: MetricCoverage | undefined) {
+	if (coverage?.mode !== "partial") return [];
+	const { metric, shown, total, omitted } = coverage;
+	return [
+		coverageMeasure("omitted", metric, omitted, "max", "max"),
+		...(shown ? [coverageMeasure("shown", metric, shown, "last", "sum")] : []),
+		...(total
+			? [
+					coverageMeasure("total", metric, total, "last", "sum"),
+					coverageMeasure("nodes", metric, total, "last", "count"),
+				]
+			: []),
 	];
 }

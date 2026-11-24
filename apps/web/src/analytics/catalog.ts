@@ -1,6 +1,5 @@
 import { getLocale } from "@recount/i18n/runtime";
 import { queryOptions, useQueries, useQuery } from "@tanstack/react-query";
-import preset from "../../presets/collector-metrics.json" with { type: "json" };
 import { resolveRange } from "../components/date-range/date-range";
 import { useDisplayTimeZone } from "../components/time-display";
 import { unwrapOperation } from "../lib/operation-result";
@@ -12,7 +11,13 @@ import {
 	runAnalyticsQuery,
 } from "./analytics.functions";
 import { commonAttributes } from "./calculated-metrics";
-import type { AnalyticsQuery, AttributeDefinition, Filter } from "./contracts";
+import type {
+	AnalyticsQuery,
+	AttributeDefinition,
+	Filter,
+	MetricCoverage,
+} from "./contracts";
+import { coverageMeasures } from "./coverage";
 
 /** Where attribute value suggestions come from: a project and, optionally, one metric. */
 export interface ValueSource {
@@ -131,66 +136,55 @@ export function useAttributeValues(source: ValueSource, field: string | null) {
 	});
 }
 
-const coverageMeasure = (
-	name: string,
-	kind: string,
-	calculation: "last" | "max",
-	combine: "sum" | "count" | "max",
-) => ({
-	name,
-	metric: preset.processCoverage,
-	calculation,
-	combine,
-	filters: [
-		{ field: 'attributes["coverage"]', op: "eq" as const, values: [kind] },
-	],
-});
-
-/**
- * How many processes the collector's capped per-process detail shows, from its coverage
- * counters: the latest count per node, summed, and whether the cap left any out.
- */
-export function useProcessCoverage(
+/** Coverage gauges report per-node populations, not individual subjects. */
+export function useMetricCoverage(
 	userId: string,
 	reference: ProjectReference,
 	scope: { range: Parameters<typeof resolveRange>[0]; filters: Filter[] },
-	enabled: boolean,
+	coverage: MetricCoverage | undefined,
 ) {
 	const zone = useDisplayTimeZone();
-	// Relative ranges resolve to the minute, so the query key stays put between renders.
-	const now = new Date(Math.floor(Date.now() / 60_000) * 60_000);
-	const { from, to } = resolveRange(scope.range, now, zone, getLocale());
-	const query: AnalyticsQuery = {
-		shape: "table",
-		range: { from: from.toISOString(), to: (to ?? now).toISOString() },
-		measures: [
-			coverageMeasure("shown", "detail_emitted", "last", "sum"),
-			coverageMeasure("total", "verified", "last", "sum"),
-			coverageMeasure("nodes", "verified", "last", "count"),
-			coverageMeasure("deferred", "detail_deferred", "max", "max"),
-		],
-		// Coverage is per node, so only node filters apply to it.
-		filters: scope.filters.filter(
-			({ field }) => field === "node" || field === "host",
-		),
-	};
+	const locale = getLocale();
+	const measures = coverageMeasures(coverage);
+	// Coverage is per node, so only node filters apply to it.
+	const filters = scope.filters.filter(
+		({ field }) => field === "node" || field === "host",
+	);
 	return useQuery({
-		queryKey: ["process-coverage", userId, reference.projectId, query],
+		queryKey: [
+			"metric-coverage",
+			userId,
+			reference.projectId,
+			measures,
+			filters,
+			scope.range,
+			zone,
+			locale,
+		],
 		queryFn: async ({ signal }) => {
+			const now = new Date();
+			const { from, to } = resolveRange(scope.range, now, zone, locale);
+			const query: AnalyticsQuery = {
+				shape: "table",
+				range: { from: from.toISOString(), to: (to ?? now).toISOString() },
+				measures,
+				filters,
+			};
 			const result = unwrapOperation(
 				await runAnalyticsQuery({ data: { ...reference, query }, signal }),
 			);
 			const value = (name: string) =>
 				result.series.find((series) => series.measure === name)?.points[0]
-					?.value ?? 0;
+					?.value ?? null;
 			return {
 				shown: value("shown"),
 				total: value("total"),
 				nodes: value("nodes"),
-				deferred: value("deferred"),
+				omitted: value("omitted"),
+				unit: result.measures[0]?.unit ?? "",
 			};
 		},
-		enabled,
+		enabled: measures.length > 0,
 		staleTime: 60_000,
 		retry: false,
 	});

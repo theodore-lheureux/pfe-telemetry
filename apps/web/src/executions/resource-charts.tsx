@@ -2,7 +2,7 @@ import { formatSeconds } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useId } from "react";
-import preset from "../../presets/collector-metrics.json" with { type: "json" };
+import { metricLabel } from "../analytics/definition-labels";
 import { TimeDisplay } from "../components/time-display";
 import type {
 	TelemetryPoint,
@@ -11,9 +11,7 @@ import type {
 } from "./contracts";
 
 function label(series: TelemetrySeries) {
-	if (series.metric === preset.nodeCpuTime) return m.node_cumulative_cpu_time();
-	if (series.metric === preset.nodeMemoryTotal) return m.node_total_memory();
-	return m.node_available_memory();
+	return metricLabel(series.metric);
 }
 function plotValue(point: TelemetryPoint) {
 	if (point.integer !== null) {

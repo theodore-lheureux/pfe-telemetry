@@ -3,6 +3,7 @@ import {
 	capabilities,
 	resultCountUnit,
 } from "../../src/analytics/capabilities";
+import { heatmapLayout } from "../../src/analytics/chart-heatmap";
 import { metricValuesFormatter } from "../../src/analytics/metric-units";
 
 test("series options need no metric name", () => {
@@ -44,4 +45,23 @@ test("an entire visual shares a scale", () => {
 	const format = metricValuesFormatter("By/s", [512, 2048], "en");
 	expect(format(512, 2).text).toBe("0.50 KiB/s");
 	expect(format(2048).text).toBe("2 KiB/s");
+});
+
+test("ratio heatmaps reach 100% by default, extend for data, and honor explicit bounds", () => {
+	const heatmap = {
+		bounds: [0, 0.05, 0.5, 1, 2],
+		columns: [{ bucketMs: 0, counts: [0, 2, 0, 0, 0, 0] }],
+		subject: "",
+		count: String,
+		range: ({ range }: { range: string }) => range,
+		scale: 1,
+	};
+	expect(heatmapLayout(heatmap, true).indices).toEqual([0, 1, 2, 3]);
+	expect(
+		heatmapLayout(
+			{ ...heatmap, columns: [{ bucketMs: 0, counts: [0, 2, 0, 0, 4, 0] }] },
+			true,
+		).last,
+	).toBe(4);
+	expect(heatmapLayout(heatmap, true, 0.5, 0.05).indices).toEqual([1, 2]);
 });

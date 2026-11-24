@@ -20,13 +20,14 @@ import {
 import type { ProjectReference } from "../../organizations/contracts";
 import { AttributeFilter } from "../attribute-filter";
 import { capabilities } from "../capabilities";
-import { useMetricAttributes, useProcessCoverage } from "../catalog";
+import { useMetricAttributes, useMetricCoverage } from "../catalog";
 import {
 	type Calculation,
 	type Combine,
 	MAX_FILTERS,
 	type MetricDefinition,
 } from "../contracts";
+import { coverageSummary } from "../coverage-labels";
 import { metricDescription } from "../definition-labels";
 import { FilterChips, withFilter } from "../filter-chips";
 import { MetricPicker } from "../metric-picker";
@@ -89,11 +90,11 @@ export function SeriesRow({
 		) ?? []),
 	);
 	const detail = options.coverage?.mode === "partial";
-	const { data: coverage } = useProcessCoverage(
+	const { data: coverage } = useMetricCoverage(
 		userId,
 		reference,
 		scope,
-		detail,
+		options.coverage,
 	);
 	// Percentiles across processes come from the distribution, which sees all of them.
 	const combineGroups = detail ? COMBINE_GROUPS.slice(0, 1) : COMBINE_GROUPS;
@@ -163,7 +164,7 @@ export function SeriesRow({
 						</Link>
 					</Button>
 				)}
-				{description && !definition?.calculated && (
+				{(description || detail) && !definition?.calculated && (
 					<Tooltip>
 						<TooltipTrigger asChild>
 							<Button
@@ -176,10 +177,10 @@ export function SeriesRow({
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent className="flex max-w-64 flex-col gap-1">
-							<span>{description}</span>
-							{coverage && (
+							{description && <span>{description}</span>}
+							{detail && (
 								<span className="text-muted-foreground">
-									{m.insight_process_coverage(coverage)}
+									{coverageSummary(coverage)}
 								</span>
 							)}
 						</TooltipContent>
@@ -280,9 +281,9 @@ export function SeriesRow({
 					<span className="shrink-0">{filter}</span>
 				</div>
 			)}
-			{coverage && coverage.deferred > 0 && (
+			{(coverage?.omitted ?? 0) > 0 && (
 				<InlineWarning className="border-t px-3 py-1.5">
-					{m.insight_process_deferred()}
+					{m.metric_coverage_warning()}
 				</InlineWarning>
 			)}
 			{series.filters.length > 0 && (

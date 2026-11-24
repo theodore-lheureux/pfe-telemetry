@@ -127,11 +127,6 @@ export function seriesView(
 		/** The subject every value counts, for the results or axis title, if they share one. */
 		subject,
 		subjectOf: (series: SeriesResult) => countUnits.get(series) ?? null,
-		/** Axis ticks, without a subject the axis title names. */
-		formatShort:
-			(series: SeriesResult | undefined) =>
-			(value: number | null, minimumFractionDigits = 0) =>
-				formatted(series, value, minimumFractionDigits, !!subject),
 		/** Table cells, whose subject the title or the series name carries. */
 		formatCell:
 			(series: SeriesResult) =>

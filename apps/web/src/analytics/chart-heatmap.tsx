@@ -2,6 +2,7 @@ import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { usePlotArea, useXAxisScale, useYAxisScale } from "recharts";
 import { TooltipSwatch } from "./chart-swatch";
+import { coverageOmissionLabel } from "./coverage-labels";
 import { bucketRange } from "./histograms";
 import { approximateCount, formatMetricValue } from "./metric-units";
 
@@ -11,7 +12,8 @@ export interface Heatmap {
 	subject: string;
 	count: (count: number, locale: string) => string;
 	range: (inputs: { range: string }) => string;
-	idle?: Map<number | null, number | null>;
+	omitted?: Map<number | null, number | null>;
+	omissionReason?: string;
 	scale?: number;
 }
 
@@ -104,7 +106,7 @@ export function HeatmapTooltip({
 			</p>
 		);
 	const total = counts.reduce((sum, value) => sum + value, 0);
-	const idle = heatmap.idle?.get(bucketMs);
+	const omitted = heatmap.omitted?.get(bucketMs) ?? 0;
 	return (
 		<>
 			<p className="flex items-center gap-1.5">
@@ -117,8 +119,8 @@ export function HeatmapTooltip({
 					share: formatMetricValue(count / total, "1", locale).text,
 					total: heatmap.count(total, locale),
 				})}
-				{idle
-					? ` ${m.histogram_idle({ count: approximateCount(idle, locale) })}`
+				{omitted > 0
+					? ` ${coverageOmissionLabel(heatmap.omissionReason, approximateCount(omitted, locale))}`
 					: ""}
 			</p>
 		</>

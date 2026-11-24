@@ -185,14 +185,19 @@ export interface MetricDefinition {
 	defaultBreakdown?: string;
 }
 
+export interface MetricCoverage {
+	metric: string;
+	omitted: string;
+	mode: "excluded" | "partial";
+	reason?: string;
+	shown?: string;
+	total?: string;
+}
+
 export interface MetricPresentation {
 	section?: string;
 	quantity?: string;
-	coverage?: {
-		metric: string;
-		omitted: string;
-		mode: "excluded" | "partial";
-	};
+	coverage?: MetricCoverage;
 }
 
 /** What members marked a metric or attribute as; unmarked definitions are visible. */
@@ -252,6 +257,8 @@ export interface QueryResult {
 	}[];
 	formulas: Formula[];
 	series: SeriesResult[];
+	/** Counts of subjects intentionally excluded from a distribution, keyed by its series. */
+	omissions?: SeriesResult[];
 	/** True when more groups matched than the series limit returned. */
 	limited: boolean;
 	/** The comparison window, when one was requested. */

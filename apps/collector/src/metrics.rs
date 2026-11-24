@@ -47,6 +47,7 @@ fn presentation(definition: &Definition) -> Vec<KeyValue> {
             ),
             string("recount.analytics.coverage.omitted", "cpu_idle"),
             string("recount.analytics.coverage.mode", "excluded"),
+            string("recount.analytics.coverage.reason", "idle"),
         ]);
     }
     if [
@@ -64,6 +65,8 @@ fn presentation(definition: &Definition) -> Vec<KeyValue> {
             ),
             string("recount.analytics.coverage.omitted", "detail_deferred"),
             string("recount.analytics.coverage.mode", "partial"),
+            string("recount.analytics.coverage.shown", "detail_emitted"),
+            string("recount.analytics.coverage.total", "verified"),
         ]);
     }
     metadata

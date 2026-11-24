@@ -46,15 +46,17 @@ export interface DraftFormula {
 	name?: string;
 }
 
-export type DisplayType =
-	| "line"
-	| "area"
-	| "bar"
-	| "stacked"
-	| "heatmap"
-	| "grid"
-	| "stat"
-	| "table";
+export const DISPLAY_TYPES = [
+	"line",
+	"area",
+	"bar",
+	"stacked",
+	"heatmap",
+	"grid",
+	"stat",
+	"table",
+] as const;
+export type DisplayType = (typeof DISPLAY_TYPES)[number];
 export type DisplayUnit =
 	| "auto"
 	| "none"
@@ -314,7 +316,7 @@ export function decodeDraft(text: unknown): InsightDraft {
 			value.series.length > MAX_MEASURES ||
 			!Array.isArray(value.filters) ||
 			typeof value.range?.kind !== "string" ||
-			typeof value.display?.type !== "string"
+			!DISPLAY_TYPES.includes(value.display?.type)
 		)
 			return DEFAULT_DRAFT;
 		const range = deserializeRange(value.range);
