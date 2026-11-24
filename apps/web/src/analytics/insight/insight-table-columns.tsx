@@ -21,6 +21,8 @@ export interface InsightTableRow {
 	series: SeriesResult;
 	label: string;
 	stats: ReturnType<typeof stats>;
+	/** Every value in the range is zero. */
+	idle: boolean;
 }
 
 export interface InsightTableMeta {
@@ -35,8 +37,8 @@ const STAT_COLUMNS = [
 	["average", m.insight_calc_avg],
 	["min", m.insight_calc_min],
 	["max", m.insight_calc_max],
-	["p95", m.insight_stat_p95],
-	["p99", m.insight_stat_p99],
+	["p95", m.insight_stat_p95, true],
+	["p99", m.insight_stat_p99, true],
 ] as const;
 
 const seriesColumn: Column = {
@@ -79,6 +81,8 @@ const seriesColumn: Column = {
 function numericColumn(
 	key: keyof InsightTableRow["stats"],
 	label: () => string,
+	// Percentiles over each row's buckets, which a bare p95 could pass for the series' own.
+	overTime = false,
 ): Column {
 	return {
 		id: key,
@@ -90,6 +94,9 @@ function numericColumn(
 		header: ({ column }) => (
 			<SortableHeader
 				label={label()}
+				hint={
+					overTime ? m.insight_stat_over_time({ stat: label() }) : undefined
+				}
 				column={column}
 				className="ml-auto -mr-2"
 				showUnsorted
@@ -118,7 +125,9 @@ export const insightTotalColumns: Column[] = [
 
 export const insightTimeseriesColumns: Column[] = [
 	seriesColumn,
-	...STAT_COLUMNS.map(([key, label]) => numericColumn(key, label)),
+	...STAT_COLUMNS.map(([key, label, overTime]) =>
+		numericColumn(key, label, overTime),
+	),
 ];
 
 export function insightTableRows(view: SeriesView): InsightTableRow[] {
@@ -126,6 +135,9 @@ export function insightTableRows(view: SeriesView): InsightTableRow[] {
 		series,
 		label: view.label(series),
 		stats: stats(series),
+		idle:
+			series.points.some((point) => point.value !== null) &&
+			series.points.every((point) => !point.value),
 	}));
 }
 

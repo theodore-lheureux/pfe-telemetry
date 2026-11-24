@@ -12,6 +12,7 @@ import {
 	insightTotalColumns,
 } from "../../src/analytics/insight/insight-table-columns";
 import { seriesView } from "../../src/analytics/insight/series-view";
+import { TooltipProvider } from "../../src/components/ui/tooltip";
 
 const result: QueryResult = {
 	shape: "table",
@@ -237,4 +238,52 @@ test("numeric table columns share precision and right alignment without changing
 	);
 	expect(html).toContain(">0.0015</span>");
 	expect(html).toContain(">1.0000</span>");
+});
+
+test("all-zero rows collapse behind one idle row, unless only one is idle", () => {
+	const series = (host: string, values: (number | null)[]) => ({
+		measure: "A",
+		group: [host],
+		points: values.map((value, index) => ({ bucketMs: index * 60_000, value })),
+	});
+	const render = (rows: ReturnType<typeof series>[]) => {
+		const data: QueryResult = {
+			...result,
+			shape: "timeseries",
+			bucketSeconds: 60,
+			groupBy: ["host"],
+			series: rows,
+		};
+		return renderToStaticMarkup(
+			<TooltipProvider>
+				<InsightTable
+					result={data}
+					view={seriesView(
+						data,
+						DEFAULT_DISPLAY,
+						(value) => value ?? "—",
+						{},
+						"en",
+					)}
+					hydrated
+					onHover={() => {}}
+				/>
+			</TooltipProvider>,
+		);
+	};
+	const html = render([
+		series("busy", [0, 3]),
+		series("quiet", [0, 0]),
+		series("still", [0, null]),
+		series("silent", [null, null]),
+	]);
+	expect(html).toContain("busy");
+	expect(html).toContain("silent");
+	expect(html).toContain("2 idle series");
+	expect(html).toContain('aria-expanded="false"');
+	expect(html).not.toContain("quiet");
+	expect(html).not.toContain("still");
+	const single = render([series("busy", [1, 3]), series("quiet", [0, 0])]);
+	expect(single).toContain("quiet");
+	expect(single).not.toContain("idle series");
 });

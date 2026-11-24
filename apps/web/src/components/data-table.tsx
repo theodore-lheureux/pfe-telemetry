@@ -5,8 +5,13 @@ import type {
 	TableFeatures,
 } from "@tanstack/react-table";
 import { cn } from "cn";
-import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon } from "lucide-react";
-import { Fragment, type ReactNode } from "react";
+import {
+	ArrowDownIcon,
+	ArrowUpDownIcon,
+	ArrowUpIcon,
+	ChevronRightIcon,
+} from "lucide-react";
+import { Fragment, type ReactNode, useState } from "react";
 import { Button } from "./ui/button";
 import {
 	Table,
@@ -16,6 +21,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "./ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 /** Column meta read by `DataTable`: classes for the column's cells, such as a width. */
 export interface DataTableColumnMeta {
@@ -53,6 +59,7 @@ export function DataTable<
 	label,
 	empty,
 	expanded,
+	collapse,
 	className,
 	embedded = false,
 	onRowHover,
@@ -63,12 +70,24 @@ export function DataTable<
 	empty?: ReactNode;
 	/** Content shown under a row across every column, or nothing while it is collapsed. */
 	expanded?: (row: TData) => ReactNode;
+	/** Rows that `match` move to the end, behind one row that shows or hides them. */
+	collapse?: {
+		match: (row: TData) => boolean;
+		label: (count: number) => ReactNode;
+	};
 	className?: string;
 	/** Use the parent card's frame and scroll within its available height. */
 	embedded?: boolean;
 	onRowHover?: (row: TData | null) => void;
 }) {
-	const rows = table.getRowModel().rows;
+	const [open, setOpen] = useState(false);
+	const all = table.getRowModel().rows;
+	const tail = collapse
+		? all.filter((row) => collapse.match(row.original))
+		: [];
+	const rows = tail.length
+		? all.filter((row) => !collapse?.match(row.original))
+		: all;
 	const columnCount = table.getHeaderGroups()[0]?.headers.length ?? 1;
 	return (
 		<div
@@ -97,10 +116,19 @@ export function DataTable<
 					))}
 				</TableHeader>
 				<TableBody>
-					{rows.map((row) => {
+					{[...rows, ...(open ? tail : [])].map((row, index) => {
 						const detail = expanded?.(row.original);
 						return (
 							<Fragment key={row.id}>
+								{collapse && index === rows.length && (
+									<CollapseRow
+										open
+										columns={columnCount}
+										onToggle={() => setOpen(false)}
+									>
+										{collapse.label(tail.length)}
+									</CollapseRow>
+								)}
 								<TableRow
 									// Lets a cell's link stretch over the whole row.
 									className="relative"
@@ -133,7 +161,16 @@ export function DataTable<
 							</Fragment>
 						);
 					})}
-					{rows.length === 0 && empty && (
+					{collapse && tail.length > 0 && !open && (
+						<CollapseRow
+							open={false}
+							columns={columnCount}
+							onToggle={() => setOpen(true)}
+						>
+							{collapse.label(tail.length)}
+						</CollapseRow>
+					)}
+					{all.length === 0 && empty && (
 						<TableRow>
 							<TableCell
 								colSpan={columnCount}
@@ -146,6 +183,38 @@ export function DataTable<
 				</TableBody>
 			</Table>
 		</div>
+	);
+}
+
+function CollapseRow({
+	open,
+	columns,
+	onToggle,
+	children,
+}: {
+	open: boolean;
+	columns: number;
+	onToggle: () => void;
+	children: ReactNode;
+}) {
+	return (
+		<TableRow className="hover:bg-transparent">
+			<TableCell colSpan={columns} className="py-1">
+				<Button
+					variant="ghost"
+					size="sm"
+					aria-expanded={open}
+					className="-ml-2 text-muted-foreground"
+					onClick={onToggle}
+				>
+					<ChevronRightIcon
+						aria-hidden="true"
+						className={cn("transition-transform", open && "rotate-90")}
+					/>
+					{children}
+				</Button>
+			</TableCell>
+		</TableRow>
 	);
 }
 
@@ -164,8 +233,11 @@ export function SortableHeader({
 	column,
 	className,
 	showUnsorted = false,
+	hint,
 }: {
 	label: string;
+	/** Explains the column when its label is terse, shown on hover and focus. */
+	hint?: string;
 	column: {
 		getIsSorted: () => false | "asc" | "desc";
 		getToggleSortingHandler: () => undefined | ((event: unknown) => void);
@@ -175,7 +247,7 @@ export function SortableHeader({
 }) {
 	const sorted = column.getIsSorted();
 	const Icon = SORT_ICON[sorted || "none"];
-	return (
+	const button = (
 		<Button
 			variant="ghost"
 			size="sm"
@@ -188,6 +260,13 @@ export function SortableHeader({
 				className={cn("size-3.5", !sorted && !showUnsorted && "opacity-0")}
 			/>
 		</Button>
+	);
+	if (!hint) return button;
+	return (
+		<Tooltip>
+			<TooltipTrigger asChild>{button}</TooltipTrigger>
+			<TooltipContent>{hint}</TooltipContent>
+		</Tooltip>
 	);
 }
 

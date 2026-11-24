@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { getLocale } from "@recount/i18n/runtime";
 import { type SortingState, useTable } from "@tanstack/react-table";
 import { DownloadIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -9,6 +10,7 @@ import { capabilities } from "../capabilities";
 import type { QueryResult, SeriesResult } from "../contracts";
 import {
 	type InsightTableMeta,
+	type InsightTableRow,
 	insightTableFeatures,
 	insightTablePrecision,
 	insightTableRows,
@@ -16,6 +18,19 @@ import {
 	insightTotalColumns,
 } from "./insight-table-columns";
 import { lineId, type SeriesView } from "./series-view";
+
+function idleLabel(count: number) {
+	const text =
+		new Intl.PluralRules(getLocale()).select(count) === "one"
+			? m.insight_idle_series_one({ count })
+			: m.insight_idle_series_other({ count });
+	return (
+		<>
+			{text}
+			<span className="font-normal">{` · ${m.insight_idle_series_hint()}`}</span>
+		</>
+	);
+}
 
 function exportCsv(
 	series: SeriesResult[],
@@ -82,6 +97,12 @@ export function InsightTable({
 		() => insightTablePrecision(rows, view),
 		[rows, view],
 	);
+	// A lone idle row stays in place, and so does a table with nothing else to show.
+	const idle = rows.filter((row) => row.idle).length;
+	const collapse =
+		idle > 1 && idle < rows.length
+			? { match: (row: InsightTableRow) => row.idle, label: idleLabel }
+			: undefined;
 	const meta: InsightTableMeta = { view, embedded, precision };
 	const table = useTable({
 		features: insightTableFeatures,
@@ -119,6 +140,7 @@ export function InsightTable({
 				table={table}
 				label={m.insight_results()}
 				embedded={embedded}
+				collapse={collapse}
 				onRowHover={(row) => onHover(row ? lineId(row.series) : null)}
 			/>
 		</div>
