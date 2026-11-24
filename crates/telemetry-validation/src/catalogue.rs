@@ -33,21 +33,27 @@ pub struct Definition {
     pub value: Value,
     pub adapter: Adapter,
     pub constraint: Constraint,
+    pub label: &'static str,
+    pub description: &'static str,
 }
 macro_rules! catalogue {
-    ($($id:ident => ($name:literal,$unit:literal,$kind:ident,$value:ident,$adapter:ident,$constraint:ident)),* $(,)?) => {
+    ($($id:ident => ($name:literal,$unit:literal,$kind:ident,$value:ident,$adapter:ident,$constraint:ident $(,$label:literal,$description:literal)?)),* $(,)?) => {
         $(pub const $id: Definition = Definition {
             name: $name, unit: $unit, kind: Kind::$kind, value: Value::$value,
             adapter: Adapter::$adapter, constraint: Constraint::$constraint,
+            label: catalogue!(@text $($label)?), description: catalogue!(@text $($description)?),
         };)*
         pub const METRICS: &[Definition] = &[$($id),*];
-    }
+    };
+    (@text $text:literal) => { $text };
+    (@text) => { "" };
 }
 catalogue! {
     NODE_CPU_TIME => ("recount.node.cpu.time","s",CumulativeMonotonic,Float64,Linux,NonNegative),
     NODE_MEMORY_TOTAL => ("recount.node.memory.total","By",Gauge,Int64,Linux,NonNegative),
     NODE_MEMORY_AVAILABLE => ("recount.node.memory.available","By",Gauge,Int64,Linux,NonNegative),
     NODE_DISK_IO => ("system.disk.io","By",CumulativeMonotonic,Int64,Linux,NonNegative),
+    NODE_NETWORK_IO => ("system.network.io","By",CumulativeMonotonic,Int64,Linux,NonNegative,"Network I/O","Bytes received and transmitted by each non-loopback network interface."),
     PROCESS_CPU_TIME => ("process.cpu.time","s",CumulativeMonotonic,Float64,Linux,NonNegative),
     PROCESS_MEMORY_RSS => ("recount.process.memory.rss","By",Gauge,Int64,Linux,NonNegative),
     PROCESS_DISK_IO => ("process.disk.io","By",CumulativeMonotonic,Int64,Linux,NonNegative),

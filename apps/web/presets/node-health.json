@@ -226,6 +226,7 @@
           ],
           "formulas": [],
           "filters": [],
+          "groupBy": "node",
           "limit": 25,
           "other": true,
           "range": {

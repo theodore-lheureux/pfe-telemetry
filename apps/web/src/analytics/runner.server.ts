@@ -341,6 +341,7 @@ export async function runQuery(
 			(measure, index) => ({
 				name: measure.name,
 				metric: measure.metric,
+				label: scopes[index].label,
 				presentation: scopes[index].presentation,
 				// Source counts have no unit; observation counts use the unit's annotation.
 				unit:

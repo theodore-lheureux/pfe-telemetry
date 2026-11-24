@@ -123,6 +123,9 @@ impl Collector {
             metrics.push(counter(&DISK_IO, disk_points));
         }
         statuses.push(self.read_status(&DISK_IO, disk_status, time));
+        let (network, status) = self.network_io()?;
+        metrics.extend(network);
+        statuses.push(status);
         metrics.push(gauge(&READ_STATUS, statuses));
         Ok(metrics)
     }

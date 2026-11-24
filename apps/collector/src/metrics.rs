@@ -23,6 +23,9 @@ fn presentation(definition: &Definition) -> Vec<KeyValue> {
         "node"
     };
     let mut metadata = vec![string("recount.analytics.section", section)];
+    if !definition.label.is_empty() {
+        metadata.push(string("recount.analytics.label", definition.label));
+    }
     let quantity = match name {
         n if n == catalogue::NODE_PROCESS_CPU_DISTRIBUTION.name => "cpu",
         n if n == catalogue::NODE_PROCESS_RSS_DISTRIBUTION.name => "memory",
@@ -111,13 +114,13 @@ pub(crate) fn counter(definition: &Definition, points: Vec<NumberDataPoint>) -> 
     Metric {
         name: definition.name.into(),
         unit: definition.unit.into(),
+        description: definition.description.into(),
         metadata: presentation(definition),
         data: Some(metric::Data::Sum(Sum {
             data_points: points,
             aggregation_temporality: AggregationTemporality::Cumulative as i32,
             is_monotonic: true,
         })),
-        ..Default::default()
     }
 }
 

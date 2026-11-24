@@ -74,6 +74,7 @@ function definition(row: MetricRow): MetricDefinition {
 		monotonic,
 		unit: row.unit,
 		description: row.description,
+		label: row.metadata["/recount.analytics.label"] || undefined,
 		behavior: metricBehavior(row.kind, row.temporality, monotonic),
 		presentation: presentation(row.metadata),
 		defaultBreakdown: defaultBreakdown(row.metadata),
