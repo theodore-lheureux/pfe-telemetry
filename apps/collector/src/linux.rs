@@ -5,7 +5,7 @@ mod setup;
 #[cfg(test)]
 mod tests;
 
-use process::discovered_entry;
+use process::{ProcessAttributions, discovered_entry};
 pub(crate) use setup::host_id_or_machine_id;
 
 use std::{
@@ -54,6 +54,7 @@ pub struct Collector {
     epoch_start: u64,
     clock: SamplingClock,
     continuity: Continuity,
+    process_attributions: ProcessAttributions,
     loss: LossTracker,
     loss_generation: u64,
     cycle_points: u64,
@@ -82,6 +83,7 @@ impl Collector {
         match self.scan() {
             Ok(contents) => {
                 self.continuity.finish_scan();
+                self.process_attributions.finish_scan();
                 if self.loss.generation() != generation {
                     // Export can report loss while a blocking scan is running.
                     // Do not release a scan bearing now-invalid segment IDs.
@@ -127,6 +129,7 @@ impl Collector {
     }
 
     fn scan(&mut self) -> io::Result<ScanContents> {
+        self.process_attributions.begin_scan();
         // Establish the scan window before the first source read.
         self.clock.timestamp()?;
         let started = Instant::now();

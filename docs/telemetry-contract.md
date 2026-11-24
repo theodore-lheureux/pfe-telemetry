@@ -22,6 +22,8 @@ The adapter resolves node/collector resources to the enrolled root and process r
 
 The collector exports only allowlisted identity and metric dimensions. Process metrics include the numeric Linux real UID (`process.real_user.id`) when readable, and `recount.slurm.job.id` plus an optional numeric `recount.slurm.step.id` for recognized Slurm v1 or v2 cgroups. Step names such as `batch` and `extern` do not produce a step ID. These dimensions support filtering and grouping; they are not evidence of execution membership, and job IDs are not globally unique. GPU allocation bytes use the same verified process identity, with `gpu.uuid` on the point. Unreadable fields are omitted or reported through acquisition status, not invented as zeros.
 
+UID and Slurm IDs describe the first verified observation of a process incarnation, not later credential changes or cgroup moves. The sampler caches up to 65,536 incarnations, including missing attribution, and drops entries not verified in a completed scan. At capacity, it samples new processes without these attributes until space is available.
+
 The metric sampler does not read arguments, environment variables, executable links, application files or process memory. It exports neither usernames nor raw cgroup paths. Separate opt-in execution discovery has its own allowlist. Standard OTLP attributes remain subject to shared structural/privacy rules rather than this collector-specific acquisition allowlist.
 
 ## Measurements

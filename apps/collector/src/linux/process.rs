@@ -1,4 +1,7 @@
-use std::io::{self, BufRead, BufReader};
+use std::{
+    collections::BTreeMap,
+    io::{self, BufRead, BufReader},
+};
 
 use opentelemetry_proto::tonic::metrics::v1::{ResourceMetrics, number_data_point::Value};
 use procfs::{ProcError, process::Process};
@@ -14,6 +17,63 @@ use crate::{
     identity::same_incarnation,
     metrics::{counter, gauge, integer, resource, string},
 };
+
+const MAX_PROCESS_ATTRIBUTIONS: usize = 65_536;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Attribution {
+    uid: Option<u32>,
+    job: Option<(u32, Option<u32>)>,
+}
+
+impl Attribution {
+    fn read(process: &Process) -> Self {
+        let uid = process
+            .open_relative("status")
+            .ok()
+            .and_then(|file| real_uid(BufReader::new(file)));
+        let job = process
+            .open_relative("cgroup")
+            .ok()
+            .and_then(|file| slurm_job(BufReader::new(file)));
+        Self { uid, job }
+    }
+}
+
+#[derive(Default)]
+pub(super) struct ProcessAttributions {
+    entries: BTreeMap<String, (Attribution, bool)>,
+}
+
+impl ProcessAttributions {
+    pub(super) fn begin_scan(&mut self) {
+        for (_, seen) in self.entries.values_mut() {
+            *seen = false;
+        }
+    }
+
+    fn cached_or_read(&self, incarnation: &str, read: impl FnOnce() -> Attribution) -> Attribution {
+        if let Some((attribution, _)) = self.entries.get(incarnation) {
+            return *attribution;
+        }
+        if self.entries.len() >= MAX_PROCESS_ATTRIBUTIONS {
+            return Attribution::default();
+        }
+        read()
+    }
+
+    fn remember_verified(&mut self, incarnation: String, attribution: Attribution) {
+        if let Some((_, seen)) = self.entries.get_mut(&incarnation) {
+            *seen = true;
+        } else if self.entries.len() < MAX_PROCESS_ATTRIBUTIONS {
+            self.entries.insert(incarnation, (attribution, true));
+        }
+    }
+
+    pub(super) fn finish_scan(&mut self) {
+        self.entries.retain(|_, (_, seen)| *seen);
+    }
+}
 
 impl Collector {
     pub(super) fn process_metrics(
@@ -31,15 +91,17 @@ impl Collector {
         let memory_time = self.clock.timestamp()?;
         let disk = process.io();
         let disk_time = self.clock.timestamp()?;
-        let uid = process
-            .open_relative("status")
-            .ok()
-            .and_then(|file| real_uid(BufReader::new(file)));
-        let job = process
-            .open_relative("cgroup")
-            .ok()
-            .and_then(|file| slurm_job(BufReader::new(file)));
-        // Do not create counter state or resource identity before this recheck.
+        let incarnation = ProcessIdentity {
+            boot: &self.boot,
+            namespace: &self.namespace,
+            pid: stat.pid as u64,
+            start_ticks: stat.starttime,
+        }
+        .incarnation();
+        let attribution = self
+            .process_attributions
+            .cached_or_read(&incarnation, || Attribution::read(process));
+        // Do not cache attribution or advance counters before verifying the incarnation.
         let recheck = process.stat();
         self.clock.timestamp()?;
         match recheck {
@@ -48,14 +110,9 @@ impl Collector {
             Ok(_) => return Ok(Err(ReadStatus::Failed)),
             Err(error) => return Ok(Err(ReadStatus::from_error(&error))),
         }
-        let incarnation = ProcessIdentity {
-            boot: &self.boot,
-            namespace: &self.namespace,
-            pid: stat.pid as u64,
-            start_ticks: stat.starttime,
-        }
-        .incarnation();
         let prefix = format!("process/{incarnation}");
+        self.process_attributions
+            .remember_verified(incarnation, attribution);
         let mut cpu_points = Vec::new();
         for (mode, ticks) in [("user", stat.utime), ("system", stat.stime)] {
             cpu_points.push(self.counter_point(
@@ -122,10 +179,10 @@ impl Collector {
             string(adapter::START_TICKS, stat.starttime.to_string()),
             integer(adapter::CLOCK_TICKS, self.ticks_per_second as i64),
         ]);
-        if let Some(uid) = uid {
+        if let Some(uid) = attribution.uid {
             attributes.push(integer(adapter::REAL_USER_ID, i64::from(uid)));
         }
-        if let Some((job, step)) = job {
+        if let Some((job, step)) = attribution.job {
             attributes.push(integer(adapter::SLURM_JOB_ID, i64::from(job)));
             if let Some(step) = step {
                 attributes.push(integer(adapter::SLURM_STEP_ID, i64::from(step)));
@@ -217,6 +274,57 @@ pub(super) fn discovered_entry(error: &ProcError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attribution_reads_only_for_new_incarnations_and_prunes_missing_processes() {
+        let mut cache = ProcessAttributions::default();
+        let first = Attribution {
+            uid: Some(1001),
+            job: Some((42, Some(7))),
+        };
+        assert_eq!(cache.cached_or_read("old", || first), first);
+        assert!(cache.entries.is_empty(), "an unverified read is not cached");
+        cache.remember_verified("old".into(), first);
+        cache.begin_scan();
+        let cached = cache.cached_or_read("old", || panic!("reopened process metadata"));
+        assert_eq!(cached, first);
+        cache.remember_verified("old".into(), cached);
+        cache.finish_scan();
+        assert!(cache.entries.contains_key("old"));
+
+        cache.begin_scan();
+        let absent = cache.cached_or_read("reused-pid", Attribution::default);
+        assert_eq!(absent, Attribution::default());
+        cache.remember_verified("reused-pid".into(), absent);
+        cache.finish_scan();
+        assert!(!cache.entries.contains_key("old"));
+        assert_eq!(
+            cache.cached_or_read("reused-pid", || panic!("missing fields must be cached")),
+            absent
+        );
+    }
+
+    #[test]
+    fn full_attribution_cache_skips_new_reads_without_evicting_live_entries() {
+        let mut cache = ProcessAttributions::default();
+        for id in 0..MAX_PROCESS_ATTRIBUTIONS {
+            cache.remember_verified(id.to_string(), Attribution::default());
+        }
+        cache.begin_scan();
+        let absent = cache.cached_or_read("new", || panic!("read beyond capacity"));
+        cache.remember_verified("new".into(), absent);
+        assert_eq!(cache.entries.len(), MAX_PROCESS_ATTRIBUTIONS);
+        assert!(!cache.entries.contains_key("new"));
+        cache.remember_verified("0".into(), Attribution::default());
+        cache.finish_scan();
+        assert_eq!(cache.entries.len(), 1);
+        assert!(cache.entries.contains_key("0"));
+        let fresh = Attribution {
+            uid: Some(101),
+            job: None,
+        };
+        assert_eq!(cache.cached_or_read("new", || fresh), fresh);
+    }
 
     #[test]
     fn owner_is_the_real_numeric_uid() {

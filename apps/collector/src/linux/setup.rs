@@ -114,6 +114,7 @@ impl Collector {
             epoch_start,
             clock,
             continuity: Continuity::default(),
+            process_attributions: Default::default(),
             loss_generation: loss.generation(),
             loss,
             cycle_points: 0,
