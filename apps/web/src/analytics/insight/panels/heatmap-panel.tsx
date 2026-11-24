@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import { getLocale } from "@recount/i18n/runtime";
 import { ChartNoAxesColumnIcon } from "lucide-react";
 import { IconEmptyState } from "../../../components/workspace";
 import { cn } from "../../../lib/utils";
@@ -6,8 +7,13 @@ import type { QueryResult, SeriesResult } from "../../contracts";
 import { omissionName } from "../../coverage";
 import { metricLabel } from "../../definition-labels";
 import { histogramLabels } from "../../histogram-labels";
-import { approximateCount, countText, ratioScale } from "../../metric-units";
-import { calculationLabel, seriesSource } from "../labels";
+import {
+	approximateCount,
+	countText,
+	metricValuesFormatter,
+	ratioScale,
+} from "../../metric-units";
+import { calculationLabel, formatValue, seriesSource } from "../labels";
 import { lineId } from "../series-view";
 import type { PanelProps } from "./types";
 
@@ -59,6 +65,7 @@ export function HeatmapPanel({
 	view,
 	fill,
 	height,
+	display,
 	emptyDetail,
 	timeline,
 }: PanelProps) {
@@ -94,6 +101,16 @@ export function HeatmapPanel({
 			{heatmaps.map((series) => {
 				const measure = seriesSource(result, series);
 				if (!measure) return null;
+				const locale = getLocale();
+				const auto = metricValuesFormatter(
+					measure.unit,
+					series.bounds ?? [],
+					locale,
+				);
+				const format = (value: number) =>
+					display.unit === "auto"
+						? auto(value).text
+						: formatValue(value, display, null, locale);
 				const title = [
 					multiple && metricLabel(measure.metric, measure.label),
 					view.groupLabel(series),
@@ -106,7 +123,10 @@ export function HeatmapPanel({
 						className={cn("flex flex-col gap-1", fill && "min-h-56 flex-1")}
 					>
 						{title && <h3 className="text-sm font-medium">{title}</h3>}
-						{timeline([], heatmapOf(measure, series, omittedOf(series)))}
+						{timeline([], {
+							...heatmapOf(measure, series, omittedOf(series)),
+							format,
+						})}
 					</section>
 				);
 			})}

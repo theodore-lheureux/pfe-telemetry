@@ -5,12 +5,12 @@ import {
 	EyeOffIcon,
 	type LucideIcon,
 } from "lucide-react";
+import { capabilities } from "../analytics/capabilities";
 import {
 	DEFAULT_DRAFT,
 	encodeDraft,
 	newSeries,
 } from "../analytics/insight/draft";
-import { ALLOWED_CALCULATIONS } from "../analytics/validation";
 import type { DefinitionStatus, MetricEntry } from "./contracts";
 
 // OTLP metric kinds as the catalog stores them.
@@ -91,16 +91,18 @@ export function exploreDraft(
 		"name" | "behavior" | "defaultBreakdown" | "calculated"
 	>,
 ) {
-	const calculation = ALLOWED_CALCULATIONS[metric.behavior][0];
+	const options = capabilities({
+		...metric,
+		defaultBreakdown: metric.defaultBreakdown ?? undefined,
+	});
 	return encodeDraft({
 		...DEFAULT_DRAFT,
 		series: [
 			{
 				...newSeries("A"),
 				metric: metric.name,
-				...(calculation ? { calculation } : {}),
-				combine:
-					!metric.calculated && metric.behavior === "gauge" ? "avg" : "sum",
+				calculation: options.defaultCalculation,
+				combine: options.defaultCombine,
 			},
 		],
 		...(metric.defaultBreakdown ? { groupBy: metric.defaultBreakdown } : {}),

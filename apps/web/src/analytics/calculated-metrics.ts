@@ -2,9 +2,10 @@ import { m } from "@recount/i18n/messages";
 import preset from "../../presets/collector-metrics.json" with { type: "json" };
 import { InputError } from "../lib/input-error";
 import type { ProjectReference } from "../organizations/contracts";
+import { capabilities } from "./capabilities";
 import type { Measure, MetricDefinition } from "./contracts";
 import { formulaMeasures, parseFormula } from "./formula";
-import { ALLOWED_CALCULATIONS, parseQuery } from "./validation";
+import { parseQuery } from "./validation";
 
 export const CALCULATED_PREFIX = "recount.calculated.";
 export const MAX_CALCULATED_INPUTS = 8;
@@ -208,7 +209,7 @@ export function availableCalculations(
 				const source = sources.get(input.metric);
 				return (
 					source !== undefined &&
-					ALLOWED_CALCULATIONS[source.behavior].includes(input.calculation)
+					capabilities(source).calculations.includes(input.calculation)
 				);
 			}),
 	);

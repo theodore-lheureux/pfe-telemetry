@@ -1,6 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import nodeHealth from "../../presets/node-health.json" with { type: "json" };
 import type { ProjectReference } from "../organizations/contracts";
+import { capabilities } from "./capabilities";
 import type { MetricDefinition } from "./contracts";
 import {
 	decodeDashboardFilters,
@@ -13,7 +14,6 @@ import type {
 } from "./dashboards";
 import { decodeDraft } from "./insight/draft";
 import gpu from "./templates/gpu.json" with { type: "json" };
-import { ALLOWED_CALCULATIONS } from "./validation";
 
 export interface TemplateVariable {
 	name: "$node";
@@ -197,7 +197,7 @@ export function templateCoverage(
 			return (
 				metric !== undefined &&
 				metric.status !== "hidden" &&
-				ALLOWED_CALCULATIONS[metric.behavior].includes(series.calculation)
+				capabilities(metric).calculations.includes(series.calculation)
 			);
 		}),
 	);

@@ -1,7 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { bucketRange } from "../analytics/histograms";
-import { formatMetricValue } from "../analytics/metric-units";
+import { metricValuesFormatter } from "../analytics/metric-units";
 import {
 	Table,
 	TableBody,
@@ -32,8 +32,8 @@ export function HistogramDetail({
 	const bounds = explicit_bounds.map(Number);
 	const locale = getLocale();
 	const storedUnit = typeof unit === "string" ? unit : "";
-	const format = (value: number) =>
-		formatMetricValue(value, storedUnit, locale).text;
+	const formatted = metricValuesFormatter(storedUnit, bounds, locale);
+	const format = (value: number) => formatted(value).text;
 	const integers = new Intl.NumberFormat(locale);
 	const mean =
 		typeof sum === "number" && Number(count) > 0 ? sum / Number(count) : null;

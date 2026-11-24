@@ -19,6 +19,7 @@ import {
 } from "../../components/ui/tooltip";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AttributeFilter } from "../attribute-filter";
+import { capabilities } from "../capabilities";
 import { useMetricAttributes, useProcessCoverage } from "../catalog";
 import {
 	type Calculation,
@@ -28,9 +29,7 @@ import {
 } from "../contracts";
 import { metricDescription } from "../definition-labels";
 import { FilterChips, withFilter } from "../filter-chips";
-import { isDistribution } from "../histograms";
 import { MetricPicker } from "../metric-picker";
-import { ALLOWED_CALCULATIONS } from "../validation";
 import type { DraftSeries, InsightDraft } from "./draft";
 import {
 	COMBINE_GROUPS,
@@ -82,17 +81,14 @@ export function SeriesRow({
 		wantsAttributes && series.metric !== undefined,
 	);
 	const definition = metrics.find((metric) => metric.name === series.metric);
-	const histogram = isDistribution(definition);
-	const allowed = definition
-		? ALLOWED_CALCULATIONS[histogram ? "histogram" : definition.behavior]
-		: [];
+	const options = capabilities(definition, attributes.data);
 	const fixedFilters = Math.max(
 		0,
 		...(definition?.calculated?.inputs.map(
 			(input) => input.filters?.length ?? 0,
 		) ?? []),
 	);
-	const detail = definition?.presentation?.coverage?.mode === "partial";
+	const detail = options.coverage?.mode === "partial";
 	const { data: coverage } = useProcessCoverage(
 		userId,
 		reference,
@@ -102,11 +98,11 @@ export function SeriesRow({
 	// Percentiles across processes come from the distribution, which sees all of them.
 	const combineGroups = detail ? COMBINE_GROUPS.slice(0, 1) : COMBINE_GROUPS;
 	// A heatmap shows every bucket, so a histogram row has no calculation to choose.
-	const controls = !(heatmap && histogram);
+	const controls = !heatmap;
 	const filter = (
 		<AttributeFilter
 			trigger="icon"
-			attributes={attributes.data}
+			attributes={options.attributes}
 			loading={attributes.isFetching}
 			values={{ userId, reference, metric: series.metric }}
 			disabled={disabled || series.filters.length + fixedFilters >= MAX_FILTERS}
@@ -142,33 +138,12 @@ export function SeriesRow({
 					onChange={(name) => {
 						const next = metrics.find((metric) => metric.name === name);
 						if (!next) return;
-						if (isDistribution(next)) {
-							onChange({
-								...series,
-								metric: next.name,
-								calculation: "p95",
-								combine: "sum",
-								filters: [],
-							});
-							return;
-						}
-						if (next.calculated) {
-							onChange({
-								...series,
-								metric: next.name,
-								calculation: "last",
-								combine: "sum",
-								filters: [],
-							});
-							return;
-						}
-						// Each kind starts on its most common calculation and combination.
-						const gauge = next.behavior === "gauge";
+						const settings = capabilities(next);
 						onChange({
 							...series,
 							metric: next.name,
-							calculation: gauge ? "avg" : "rate",
-							combine: gauge ? "avg" : "sum",
+							calculation: settings.defaultCalculation,
+							combine: settings.defaultCombine,
 							filters: [],
 						});
 					}}
@@ -261,14 +236,14 @@ export function SeriesRow({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent position="popper" align="start">
-									{allowed.map((value) => (
+									{options.calculations.map((value) => (
 										<SelectItem key={value} value={value}>
-											{calculationLabel(value, definition?.unit)}
+											{calculationLabel(value, options.unit)}
 										</SelectItem>
 									))}
 								</SelectContent>
 							</Select>
-							{!histogram && (
+							{!options.histogram && (
 								<Select
 									value={series.combine}
 									disabled={disabled}

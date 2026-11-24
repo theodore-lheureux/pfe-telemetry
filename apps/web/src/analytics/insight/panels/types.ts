@@ -18,6 +18,6 @@ export interface PanelProps {
 	onGroup?: (series: SeriesResult) => void;
 	timeline: (
 		series: ChartSeries[],
-		heatmap?: Heatmap & { quantity: string },
+		heatmap?: Heatmap & { quantity: string; format: (value: number) => string },
 	) => ReactNode;
 }

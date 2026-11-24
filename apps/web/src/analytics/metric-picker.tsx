@@ -14,11 +14,11 @@ import {
 	PopoverTrigger,
 } from "../components/ui/popover";
 import { cn } from "../lib/utils";
+import { capabilities } from "./capabilities";
 import type { MetricDefinition } from "./contracts";
 import { DefinitionChoice } from "./definition-choice";
 import { isNamedMetric, metricLabel } from "./definition-labels";
 import { DefinitionSourceIcon } from "./definition-source-icon";
-import { isDistribution } from "./histograms";
 import { unitLabel } from "./metric-units";
 
 const METRIC_SECTIONS = {
@@ -91,7 +91,7 @@ export function MetricPicker({
 		setOpen(false);
 	};
 	const distribution = (name: string) =>
-		isDistribution(metrics?.find((metric) => metric.name === name));
+		capabilities(metrics?.find((metric) => metric.name === name)).histogram;
 	// Within a family, distributions come first: their percentiles and heatmaps cover
 	// every subject, where named series cover a few.
 	const sectionOf = (name: string) => {

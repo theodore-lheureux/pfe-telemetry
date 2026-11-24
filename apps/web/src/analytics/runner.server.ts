@@ -3,6 +3,7 @@ import { getTelemetryClient } from "../executions/telemetry.server";
 import { InputError } from "../lib/input-error";
 import { OperationError } from "../lib/operation-error";
 import { aggregateGroups, PERCENTILE_LEVELS } from "./aggregate";
+import { capabilities } from "./capabilities";
 import { compileMeasure, type MeasureScope } from "./compile.server";
 import {
 	type AnalyticsQuery,
@@ -22,11 +23,7 @@ import {
 	SERIES_WINDOW,
 	seriesPointSource,
 } from "./series-source.server";
-import {
-	ALLOWED_CALCULATIONS,
-	comparisonRange,
-	resolveRange,
-} from "./validation";
+import { comparisonRange, resolveRange } from "./validation";
 
 // Analyses may read more rows than the point reader, but time, memory and threads stay
 // within the telemetry_read profile's constraints, which ClickHouse enforces anyway.
@@ -271,9 +268,7 @@ async function scopesForQuery(
 		const definition = definitions.get(measure.metric);
 		if (!definition)
 			throw new InputError("INVALID_QUERY", "Metric not found in this project");
-		if (
-			!ALLOWED_CALCULATIONS[definition.behavior].includes(measure.calculation)
-		)
+		if (!capabilities(definition).calculations.includes(measure.calculation))
 			throw new InputError(
 				"INVALID_CALCULATION",
 				"Calculation does not apply to this metric",

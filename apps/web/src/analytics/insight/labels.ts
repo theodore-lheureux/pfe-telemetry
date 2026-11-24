@@ -1,5 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { type FormattedNumber, formatNumeric } from "../../lib/number-format";
+import { calculatedValueUnit } from "../capabilities";
 import type {
 	Calculation,
 	Combine,
@@ -8,12 +9,7 @@ import type {
 	SeriesResult,
 } from "../contracts";
 import { metricLabel } from "../definition-labels";
-import {
-	countNoun,
-	countText,
-	formatMetricValue,
-	rateUnit,
-} from "../metric-units";
+import { countNoun, countText, formatMetricValue } from "../metric-units";
 import { isHistogramPercentile } from "../validation";
 import type { Display, DisplayUnit, InsightDraft } from "./draft";
 
@@ -22,6 +18,7 @@ export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	avg: m.insight_calc_avg,
 	min: m.insight_calc_min,
 	max: m.insight_calc_max,
+	sum: m.insight_calc_sum,
 	rate: m.insight_calc_rate,
 	increase: m.insight_calc_increase,
 	count: m.histogram_subject_observations,
@@ -227,8 +224,7 @@ export function formatValueDetails(
 			text: countText(stored.unit, counted.text, value, locale),
 		};
 	}
-	const storedUnit =
-		stored.calculation === "rate" ? rateUnit(stored.unit) : stored.unit;
+	const storedUnit = calculatedValueUnit(stored.unit, stored.calculation);
 	return formatMetricValue(value, storedUnit, locale, minimumFractionDigits);
 }
 

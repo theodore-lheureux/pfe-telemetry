@@ -6,10 +6,10 @@ import type { ProjectReference } from "../../organizations/contracts";
 import { AttributeFilter } from "../attribute-filter";
 import type { CalculatedMetric } from "../calculated-metrics";
 import { MAX_CALCULATED_INPUTS } from "../calculated-metrics";
+import { capabilities } from "../capabilities";
 import { useQueryAttributes } from "../catalog";
 import type { MetricDefinition } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
-import { isDistribution } from "../histograms";
 import {
 	draftMetricNames,
 	type InsightDraft,
@@ -71,6 +71,7 @@ export function QueryPanel({
 		draftMetricNames(draft),
 		wantsAttributes,
 	);
+	const breakdown = capabilities(undefined, attributes.data).attributes;
 	let next = nextSeriesName(draft.series);
 	const heatmap = draft.display.type === "heatmap";
 	if (editingCalculation && draft.series.length >= MAX_CALCULATED_INPUTS)
@@ -106,7 +107,9 @@ export function QueryPanel({
 						reference={reference}
 						series={series}
 						color={`var(--viz-${(index % 8) + 1})`}
-						metrics={heatmap ? metrics.filter(isDistribution) : metrics}
+						metrics={metrics.filter((metric) =>
+							capabilities(metric).charts.includes(draft.display.type),
+						)}
 						disabled={disabled}
 						removable={draft.series.length > 1}
 						heatmap={heatmap}
@@ -131,7 +134,7 @@ export function QueryPanel({
 								draft.display.type !== "stat" &&
 								!draft.groupBy &&
 								draft.series.length === 1
-									? selected?.defaultBreakdown
+									? capabilities(selected).breakdown
 									: undefined;
 							onChange({
 								...base,
@@ -175,7 +178,7 @@ export function QueryPanel({
 				action={
 					<AttributeFilter
 						trigger="ghost"
-						attributes={attributes.data}
+						attributes={breakdown}
 						loading={attributes.isFetching}
 						values={{ userId, reference }}
 						disabled={disabled}
@@ -204,7 +207,7 @@ export function QueryPanel({
 				<Section title={m.insight_group_by()}>
 					<GroupByFields
 						draft={draft}
-						attributes={attributes.data}
+						attributes={breakdown}
 						disabled={disabled}
 						onOpen={() => setWantsAttributes(true)}
 						onChange={onChange}

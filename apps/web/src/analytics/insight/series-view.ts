@@ -1,6 +1,7 @@
 import { combineValues } from "../aggregate";
+import { calculatedValueUnit, resultCountUnit } from "../capabilities";
 import type { QueryResult, SeriesResult } from "../contracts";
-import { countNoun } from "../metric-units";
+import { metricValuesFormatter } from "../metric-units";
 import type { Display } from "./draft";
 import {
 	type FormulaNames,
@@ -74,15 +75,40 @@ export function seriesView(
 			bare,
 		);
 	// A count names its subject once: in a title when every series shares it, else by its name.
-	const subjectOf = (series: SeriesResult) => {
-		const source = seriesSource(result, series);
-		return source?.calculation === "count" && display.unit === "auto"
-			? countNoun(source.unit)
-			: null;
-	};
-	const subjects = new Set(visible.map(subjectOf));
+	const countUnits = new Map(
+		visible.map((series) => {
+			const source = seriesSource(result, series);
+			const unit =
+				source && display.unit === "auto"
+					? resultCountUnit(source.unit, source.calculation)
+					: null;
+			return [series, unit] as const;
+		}),
+	);
+	const subjects = new Set(countUnits.values());
 	const [shared] = subjects;
 	const subject = subjects.size === 1 ? (shared ?? null) : null;
+	const chartFormat = (series: SeriesResult | undefined) => {
+		const source = series && seriesSource(result, series);
+		if (
+			!series ||
+			!source ||
+			display.unit !== "auto" ||
+			countUnits.get(series)
+		) {
+			return (value: number) => formatted(series, value, 0, !!subject).text;
+		}
+		const format = metricValuesFormatter(
+			calculatedValueUnit(source.unit, source.calculation),
+			series.points.flatMap(({ value, low, high }) =>
+				[value, low, high].filter(
+					(point): point is number => typeof point === "number",
+				),
+			),
+			locale,
+		);
+		return (value: number) => format(value).text;
+	};
 	return {
 		visible,
 		current,
@@ -91,6 +117,7 @@ export function seriesView(
 		label: (series: SeriesResult) =>
 			seriesLabel(result, series, groupLabel, names),
 		groupLabel: (series: SeriesResult) => groupText(series, groupLabel),
+		chartFormat,
 		format: (series: SeriesResult | undefined) => (value: number | null) =>
 			formatted(series, value).text,
 		formatDetails:
@@ -99,7 +126,7 @@ export function seriesView(
 				formatted(series, value, minimumFractionDigits),
 		/** The subject every value counts, for the results or axis title, if they share one. */
 		subject,
-		subjectOf,
+		subjectOf: (series: SeriesResult) => countUnits.get(series) ?? null,
 		/** Axis ticks, without a subject the axis title names. */
 		formatShort:
 			(series: SeriesResult | undefined) =>
@@ -109,7 +136,12 @@ export function seriesView(
 		formatCell:
 			(series: SeriesResult) =>
 			(value: number | null, minimumFractionDigits = 0) =>
-				formatted(series, value, minimumFractionDigits, !!subjectOf(series)),
+				formatted(
+					series,
+					value,
+					minimumFractionDigits,
+					!!countUnits.get(series),
+				),
 		empty: !visible.some((series) =>
 			series.points.some((point) => point.value !== null),
 		),

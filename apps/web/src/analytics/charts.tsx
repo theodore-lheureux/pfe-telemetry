@@ -48,6 +48,7 @@ export interface ChartPoint {
 }
 
 export interface ChartSeries {
+	format?: (value: number) => string;
 	key: string;
 	label: string;
 	/** A CSS color, normally one of the fixed `--viz-N` categorical slots. */
@@ -291,6 +292,7 @@ function seriesItem(
 	format: (value: number) => string,
 	missing?: string | null,
 ): TooltipItem {
+	const valueText = entry.format ?? format;
 	const value = row[entry.key] ?? row[`${entry.key}${TAIL}`];
 	const band = row[`${entry.key}${BAND}`] as [number, number] | undefined;
 	return {
@@ -298,8 +300,8 @@ function seriesItem(
 		label: entry.label,
 		color: entry.color,
 		faded: entry.comparison,
-		value: typeof value === "number" ? format(value) : null,
-		detail: band && `${format(band[0])}–${format(band[1])}`,
+		value: typeof value === "number" ? valueText(value) : null,
+		detail: band && `${valueText(band[0])}–${valueText(band[1])}`,
 		missing,
 	};
 }
@@ -520,7 +522,7 @@ export function TimeseriesChart({
 				valueAccessor={(label, index) => {
 					const value = (label.payload as Record<string, unknown>)[entry.key];
 					return index % labelEvery === 0 && typeof value === "number"
-						? format(value)
+						? (entry.format ?? format)(value)
 						: "";
 				}}
 				position="top"

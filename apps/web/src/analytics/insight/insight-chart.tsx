@@ -208,8 +208,8 @@ export function ChartBody({
 			label={m.insight_chart_label()}
 			series={series}
 			bucketSeconds={bucketSeconds}
-			format={view.format(view.current[0])}
-			axisFormat={(value) => view.formatShort(view.current[0])(value).text}
+			format={heatmap?.format ?? view.format(view.current[0])}
+			axisFormat={view.chartFormat(view.current[0])}
 			type={display.type as ChartType}
 			logScale={display.logScale}
 			beginAtZero={display.beginAtZero}

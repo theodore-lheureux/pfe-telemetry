@@ -15,9 +15,9 @@ import type { ProjectReference } from "../../organizations/contracts";
 import { runAnalyticsQuery } from "../analytics.functions";
 import { AnalyticsHeader } from "../analytics-header";
 import type { CalculatedMetric } from "../calculated-metrics";
+import { capabilities } from "../capabilities";
 import type { MetricDefinition, QueryResult } from "../contracts";
 import { withFilter } from "../filter-chips";
-import { isDistribution } from "../histograms";
 import { formulaNames, type InsightDraft, toQuery } from "./draft";
 import { InsightChart } from "./insight-chart";
 import { InsightTable } from "./insight-table";
@@ -60,9 +60,13 @@ export function InsightEditor({
 		() => metrics.filter((metric) => metric.behavior !== "unsupported"),
 		[metrics],
 	);
-	const distributions = draft.series.every((series) =>
-		isDistribution(usable.find((metric) => metric.name === series.metric)),
+	const options = draft.series.map(({ metric }) =>
+		capabilities(usable.find((item) => item.name === metric)),
 	);
+	const charts =
+		options[0]?.charts.filter((type) =>
+			options.every((item) => item.charts.includes(type)),
+		) ?? [];
 	const nodeNames = useMemo(
 		() => new Map(nodes.map((node) => [node.id, node.hostname])),
 		[nodes],
@@ -143,7 +147,7 @@ export function InsightEditor({
 							<LoadingBar active={result.isFetching && !!result.data} />
 							<InsightToolbar
 								draft={draft}
-								heatmap={distributions}
+								charts={charts}
 								disabled={!hydrated}
 								onChange={onDraft}
 							/>
@@ -175,7 +179,9 @@ export function InsightEditor({
 												return;
 											const { groupBy: _, ...rest } = draft;
 											// A distribution opens as its heatmap; other values as lines.
-											const type = distributions ? "heatmap" : "line";
+											const type = charts.includes("heatmap")
+												? "heatmap"
+												: "line";
 											onDraft({
 												...rest,
 												filters: withFilter(draft.filters, {

@@ -50,6 +50,7 @@ const CALCULATIONS: readonly Calculation[] = [
 	"avg",
 	"min",
 	"max",
+	"sum",
 	"rate",
 	"increase",
 	"count",
@@ -65,18 +66,6 @@ const OPERATORS: readonly FilterOperator[] = [
 ];
 const METRIC_NAME = /^[^\p{Cc}]{1,255}$/u;
 const MEASURE_NAME = /^[A-Za-z][A-Za-z0-9_]{0,31}$/;
-
-/** Calculations each metric behavior allows, from the semantic model. */
-export const ALLOWED_CALCULATIONS: Record<
-	MetricBehavior,
-	readonly Calculation[]
-> = {
-	gauge: ["last", "avg", "min", "max"],
-	counter: ["rate", "increase"],
-	delta: ["increase", "rate"],
-	histogram: [...HISTOGRAM_PERCENTILES, "avg", "count"],
-	unsupported: [],
-};
 
 /** Classifies a stored metric by OTLP kind, temporality and monotonicity. */
 export function metricBehavior(

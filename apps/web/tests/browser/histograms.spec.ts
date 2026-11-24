@@ -87,6 +87,7 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			table: `telemetry.${table}`,
 			values: [{ project_id: project.id, ...row }],
 			format: "JSONEachRow",
+			clickhouse_settings: { input_format_json_named_tuples_as_objects: 0 },
 		});
 	try {
 		for (let node = 0; node < nodes; node++) {

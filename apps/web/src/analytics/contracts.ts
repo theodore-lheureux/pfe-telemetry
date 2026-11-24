@@ -70,6 +70,7 @@ export type Calculation =
 	| "avg"
 	| "min"
 	| "max"
+	| "sum"
 	| "rate"
 	| "increase"
 	/** Observations a histogram counted. */

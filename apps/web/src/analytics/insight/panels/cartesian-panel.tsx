@@ -11,6 +11,7 @@ export function CartesianPanel({ view, pointsOf, timeline }: PanelProps) {
 			key: `s${index}`,
 			label: view.label(series),
 			color: view.color(series) ?? "var(--viz-1)",
+			format: view.chartFormat(series),
 			comparison: series.comparison,
 			coincident: values.indexOf(values[index]) < index,
 			points: points[index],

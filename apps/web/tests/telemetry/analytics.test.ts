@@ -187,7 +187,7 @@ test("sources combine by count and by exact percentiles", async () => {
 	const count = await total("count");
 	expect(count.series[0].points[0].value).toBe(4);
 	// A count has no unit, whatever the metric measures.
-	expect(count.measures[0].unit).toBe("1");
+	expect(count.measures[0].unit).toBe("");
 	// Percentiles are exact values from the sources, not interpolated.
 	expect((await total("p50")).series[0].points[0].value).toBe(30);
 	const p95 = await total("p95");

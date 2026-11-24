@@ -15,10 +15,11 @@ import {
 	commonAttributes,
 	parseCalculation,
 } from "./calculated-metrics";
+import { capabilities } from "./capabilities";
 import { withAnalyticsSlot } from "./capacity.server";
 import { listAttributeCatalog, metricDefinitions } from "./discovery.server";
 import { attributeField } from "./fields";
-import { ALLOWED_CALCULATIONS, parseField } from "./validation";
+import { parseField } from "./validation";
 
 type Database = ReturnType<typeof getDatabase>;
 function scope(reference: ProjectReference) {
@@ -184,7 +185,7 @@ export async function saveCalculation(
 			const definition = definitions.get(measure.metric);
 			if (
 				!definition ||
-				!ALLOWED_CALCULATIONS[definition.behavior].includes(measure.calculation)
+				!capabilities(definition).calculations.includes(measure.calculation)
 			)
 				throw new InputError(
 					"INVALID_CALCULATION",

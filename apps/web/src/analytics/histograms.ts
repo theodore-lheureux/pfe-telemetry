@@ -1,12 +1,3 @@
-import type { MetricDefinition } from "./contracts";
-
-/** Whether a metric stores histograms, which pool into percentiles and heatmaps. */
-export function isDistribution(
-	metric: Pick<MetricDefinition, "kind" | "temporality"> | undefined,
-) {
-	return metric?.kind === 3 && metric.temporality === 1;
-}
-
 /** The values histogram bucket `index` holds; one more bucket than bounds holds the rest. */
 export function bucketRange(
 	bounds: number[],

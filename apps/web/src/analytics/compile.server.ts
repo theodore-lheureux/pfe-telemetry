@@ -247,7 +247,8 @@ function perSeries(
 			avg: "avg(v)",
 			min: "min(v)",
 			max: "max(v)",
-		}[measure.calculation as "last" | "avg" | "min" | "max"];
+			sum: "sum(v)",
+		}[measure.calculation as "last" | "avg" | "min" | "max" | "sum"];
 		return `per_series AS (
   SELECT ${keys}, ${aggregate} AS value FROM base WHERE v IS NOT NULL GROUP BY ${keys}
 )`;

@@ -99,8 +99,12 @@ const BYTE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"];
 const FREQUENCY_UNITS = ["Hz", "kHz", "MHz", "GHz", "THz"];
 
 /** Seconds in the largest unit that keeps the number readable. */
-function duration(seconds: number, format: (value: number) => FormattedNumber) {
-	const absolute = Math.abs(seconds);
+function duration(
+	seconds: number,
+	format: (value: number) => FormattedNumber,
+	reference = seconds,
+) {
+	const absolute = Math.abs(reference);
 	let value = seconds / 3600,
 		unit = "h";
 	if (absolute < 1) {
@@ -123,6 +127,7 @@ export function formatMetricValue(
 	storedUnit: string,
 	locale: string,
 	minimumFractionDigits = 0,
+	reference?: number,
 ) {
 	const unit = physicalUnit(storedUnit);
 	const exact = `${exactNumberFormat(locale)(value)}${suffix(unit)}`;
@@ -147,13 +152,13 @@ export function formatMetricValue(
 		};
 	}
 	if (unit === "By" || unit === "By/s") {
-		let scaled = number,
-			index = 0;
+		let scaled = Math.abs(reference ?? number);
+		let index = 0;
 		while (Math.abs(scaled) >= 1024 && index < BYTE_UNITS.length - 1) {
 			scaled /= 1024;
 			index++;
 		}
-		const formatted = short(scaled);
+		const formatted = short(number / 1024 ** index);
 		return {
 			...formatted,
 			text: `${formatted.text} ${BYTE_UNITS[index]}${unit === "By/s" ? "/s" : ""}`,
@@ -161,16 +166,16 @@ export function formatMetricValue(
 		};
 	}
 	if (unit === "s") {
-		return { ...duration(number, short), exact };
+		return { ...duration(number, short, reference), exact };
 	}
 	if (unit === "Hz") {
-		let scaled = number;
+		let scaled = Math.abs(reference ?? number);
 		let index = 0;
 		while (Math.abs(scaled) >= 1000 && index < FREQUENCY_UNITS.length - 1) {
 			scaled /= 1000;
 			index++;
 		}
-		const formatted = short(scaled);
+		const formatted = short(number / 1000 ** index);
 		return {
 			...formatted,
 			text: `${formatted.text} ${FREQUENCY_UNITS[index]}`,
@@ -188,4 +193,18 @@ export function formatMetricValue(
 		text: `${formatted.text}${suffix(unit === "Cel" ? "°C" : unit)}`,
 		exact,
 	};
+}
+
+export function metricValuesFormatter(
+	unit: string,
+	values: Iterable<number>,
+	locale: string,
+) {
+	let reference = 0;
+	for (const value of values) {
+		if (Number.isFinite(value))
+			reference = Math.max(reference, Math.abs(value));
+	}
+	return (value: number, digits = 0) =>
+		formatMetricValue(value, unit, locale, digits, reference);
 }

@@ -28,7 +28,7 @@ import {
 	withDisplay,
 } from "./draft";
 import { INTERVAL_LABEL, PER_INTERVAL_LABEL } from "./labels";
-import { chartChoices, chartIcon, chartLabel } from "./panels/registry";
+import { chartIcon, chartLabel, chartTypes } from "./panels/registry";
 
 export const COMPARISONS: {
 	key: string;
@@ -69,13 +69,12 @@ export function comparisonKey(comparison: Comparison | undefined) {
 /** Time range, interval and comparison on the left; options and chart type on the right. */
 export function InsightToolbar({
 	draft,
-	heatmap,
+	charts,
 	disabled,
 	onChange,
 }: {
 	draft: InsightDraft;
-	/** Whether every series is a distribution, which a heatmap needs. */
-	heatmap: boolean;
+	charts: readonly DisplayType[];
 	disabled: boolean;
 	onChange: (draft: InsightDraft) => void;
 }) {
@@ -193,13 +192,13 @@ export function InsightToolbar({
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent position="popper" align="end">
-						{chartChoices(true).map((type) => {
+						{chartTypes.map((type) => {
 							const Icon = chartIcon(type);
 							return (
 								<SelectItem
 									key={type}
 									value={type}
-									disabled={type === "heatmap" && !heatmap}
+									disabled={!charts.includes(type)}
 								>
 									<Icon aria-hidden="true" />
 									{chartLabel(type)}
