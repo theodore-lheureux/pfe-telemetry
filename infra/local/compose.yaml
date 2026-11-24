@@ -261,8 +261,8 @@ services:
         read_only: true
         bind: { create_host_path: false }
     networks: [broker, analytics, clickhouse-access]
-    mem_limit: 1536m
-    memswap_limit: 1536m
+    mem_limit: ${RECOUNT_CLICKHOUSE_MEMORY_LIMIT:-1536m}
+    memswap_limit: ${RECOUNT_CLICKHOUSE_MEMORY_LIMIT:-1536m}
     cpus: 2
     pids_limit: 512
     restart: unless-stopped

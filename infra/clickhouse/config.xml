@@ -1,5 +1,6 @@
 <clickhouse>
-  <max_server_memory_usage>1342177280</max_server_memory_usage>
+  <!-- Follows the container limit so a local memory override needs no second setting. -->
+  <max_server_memory_usage_to_ram_ratio>0.85</max_server_memory_usage_to_ram_ratio>
   <background_pool_size>4</background_pool_size>
   <background_schedule_pool_size>8</background_schedule_pool_size>
   <!-- Each Kafka consumer with kafka_thread_per_consumer needs its own thread: 3 recent, late and participants. -->
