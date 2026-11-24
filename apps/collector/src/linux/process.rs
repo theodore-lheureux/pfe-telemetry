@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, BufRead, BufReader};
 
 use opentelemetry_proto::tonic::metrics::v1::{ResourceMetrics, number_data_point::Value};
 use procfs::{ProcError, process::Process};
@@ -31,6 +31,14 @@ impl Collector {
         let memory_time = self.clock.timestamp()?;
         let disk = process.io();
         let disk_time = self.clock.timestamp()?;
+        let uid = process
+            .open_relative("status")
+            .ok()
+            .and_then(|file| real_uid(BufReader::new(file)));
+        let job = process
+            .open_relative("cgroup")
+            .ok()
+            .and_then(|file| slurm_job(BufReader::new(file)));
         // Do not create counter state or resource identity before this recheck.
         let recheck = process.stat();
         self.clock.timestamp()?;
@@ -114,10 +122,82 @@ impl Collector {
             string(adapter::START_TICKS, stat.starttime.to_string()),
             integer(adapter::CLOCK_TICKS, self.ticks_per_second as i64),
         ]);
+        if let Some(uid) = uid {
+            attributes.push(integer(adapter::REAL_USER_ID, i64::from(uid)));
+        }
+        if let Some((job, step)) = job {
+            attributes.push(integer(adapter::SLURM_JOB_ID, i64::from(job)));
+            if let Some(step) = step {
+                attributes.push(integer(adapter::SLURM_STEP_ID, i64::from(step)));
+            }
+        }
         // Derived wall-clock start times are omitted: btime/tick precision alone
         // does not establish a truthful wall-clock resolution across steps.
         Ok(Ok(resource(attributes, metrics)))
     }
+}
+
+fn real_uid(status: impl BufRead) -> Option<u32> {
+    for line in status.lines() {
+        let line = line.ok()?;
+        if let Some(ids) = line.strip_prefix("Uid:") {
+            return ids.split_ascii_whitespace().next()?.parse().ok();
+        }
+    }
+    None
+}
+
+fn numeric_scope(component: &str, prefix: &str) -> Option<u32> {
+    let digits = component.strip_prefix(prefix)?;
+    digits
+        .bytes()
+        .all(|byte| byte.is_ascii_digit())
+        .then(|| digits.parse().ok())
+        .flatten()
+}
+
+fn slurm_path(path: &str) -> Option<(u32, Option<u32>)> {
+    let mut components = path.strip_prefix('/')?.split('/');
+    components.find(|name| {
+        *name == "slurm"
+            || *name == "slurmstepd.scope"
+            || name
+                .strip_suffix("-slurmstepd.scope")
+                .is_some_and(|prefix| !prefix.is_empty())
+    })?;
+    let mut job = components.next()?;
+    if numeric_scope(job, "uid_").is_some() {
+        job = components.next()?;
+    }
+    Some((
+        numeric_scope(job, "job_")?,
+        components
+            .next()
+            .and_then(|step| numeric_scope(step, "step_")),
+    ))
+}
+
+fn slurm_job(cgroups: impl BufRead) -> Option<(u32, Option<u32>)> {
+    let mut found = None;
+    for line in cgroups.lines() {
+        let line = line.ok()?;
+        let Some((_, path)) = line
+            .split_once(':')
+            .and_then(|(_, rest)| rest.split_once(':'))
+        else {
+            continue;
+        };
+        let Some((job, step)) = slurm_path(path) else {
+            continue;
+        };
+        match found {
+            Some((previous, _)) if previous != job => return None,
+            Some((_, Some(previous))) if step.is_some_and(|step| step != previous) => return None,
+            Some((_, Some(_))) => {}
+            _ => found = Some((job, step)),
+        }
+    }
+    found
 }
 
 pub(super) fn discovered_entry(error: &ProcError) -> bool {
@@ -137,6 +217,43 @@ pub(super) fn discovered_entry(error: &ProcError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owner_is_the_real_numeric_uid() {
+        assert_eq!(
+            real_uid(&b"Name:\tworker\nUid:\t1001\t0\t0\t0\n"[..]),
+            Some(1001)
+        );
+        assert_eq!(real_uid(&b"Uid:\troot\t0\t0\t0\n"[..]), None);
+        assert_eq!(real_uid(&b"Gid:\t1001\t0\t0\t0\n"[..]), None);
+    }
+
+    #[test]
+    fn slurm_job_matches_scheduler_scopes_across_cgroup_versions() {
+        for (input, expected) in [
+            (
+                "0::/system.slice/recount-slurmstepd.scope/job_42/step_7/user/task_0\n",
+                Some((42, Some(7))),
+            ),
+            (
+                "4:cpuset:/slurm/uid_1001/job_42/step_batch/nested\n",
+                Some((42, None)),
+            ),
+            (
+                "5:memory:/slurm/uid_1001/job_42\n4:cpuset:/slurm/uid_1001/job_42/step_7\n",
+                Some((42, Some(7))),
+            ),
+            (
+                "0::/system.slice/slurmstepd.scope/job_42/step_extern\n",
+                Some((42, None)),
+            ),
+            ("0::/user.slice/job_42/step_7\n", None),
+            ("0::/slurm/job_42extra/step_7\n", None),
+            ("4:cpuset:/slurm/job_42\n5:memory:/slurm/job_43\n", None),
+        ] {
+            assert_eq!(slurm_job(input.as_bytes()), expected, "{input}");
+        }
+    }
 
     #[test]
     fn discovery_does_not_invent_entries_for_directory_errors() {

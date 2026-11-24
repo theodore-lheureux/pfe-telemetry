@@ -1,11 +1,15 @@
 use super::{Identities, status};
 use crate::{clock::SamplingClock, diagnostics::ReadStatus};
 use nvml_wrapper::{
-    Device, Nvml, enums::device::UsedGpuMemory, error::NvmlError,
-    struct_wrappers::device::ProcessUtilizationSample,
+    Device, Nvml,
+    enums::device::UsedGpuMemory,
+    error::NvmlError,
+    struct_wrappers::device::{ProcessInfo, ProcessUtilizationSample},
 };
 use procfs::process::Process;
 use std::collections::BTreeMap;
+
+const MAX_PROCESS_RECORDS: usize = 4096;
 
 pub(super) struct Memory {
     pub bytes: Result<u64, ReadStatus>,
@@ -84,13 +88,7 @@ pub(super) fn read(
     let mut memory: BTreeMap<i32, Memory> = BTreeMap::new();
     let mut discovery = ReadStatus::Read;
     for graphics in [false, true] {
-        let result = retry(|| {
-            if graphics {
-                device.running_graphics_processes()
-            } else {
-                device.running_compute_processes()
-            }
-        });
+        let result = process_list(device, graphics);
         let time_ns = clock.timestamp().map_err(|_| ReadStatus::Unavailable)?;
         match result {
             Ok(processes) => {
@@ -113,7 +111,7 @@ pub(super) fn read(
             Err(error) => discovery = error,
         }
     }
-    let utilization = retry(|| device.process_utilization_stats(Some(cursor)));
+    let utilization = retry(|| device.process_utilization_stats(Some(cursor))).and_then(bounded);
     let finished_ns = clock.timestamp().map_err(|_| ReadStatus::Unavailable)?;
     Ok(Batch {
         uuid: uuid.into(),
@@ -122,6 +120,35 @@ pub(super) fn read(
         finished_ns,
         discovery,
     })
+}
+
+fn bounded<T>(records: Vec<T>) -> Result<Vec<T>, ReadStatus> {
+    if records.len() > MAX_PROCESS_RECORDS {
+        return Err(ReadStatus::OutOfRange);
+    }
+    Ok(records)
+}
+
+fn process_list(device: &Device<'_>, graphics: bool) -> Result<Vec<ProcessInfo>, ReadStatus> {
+    let count = if graphics {
+        device.running_graphics_processes_count()
+    } else {
+        device.running_compute_processes_count()
+    }
+    .map_err(|error| status(&error))?;
+    if count as usize > MAX_PROCESS_RECORDS {
+        return Err(ReadStatus::OutOfRange);
+    }
+    if count == 0 {
+        return Ok(Vec::new());
+    }
+    let records = if graphics {
+        device.running_graphics_processes()
+    } else {
+        device.running_compute_processes()
+    }
+    .map_err(|error| status(&error))?;
+    bounded(records)
 }
 
 pub(super) fn recheck(before: &Identities, batch: &Batch) -> Identities {

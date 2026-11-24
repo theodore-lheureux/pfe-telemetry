@@ -58,7 +58,7 @@ An enrolled root grants reporting within its namespace and explicitly allowed ad
 
 Private application reads independently authorize project access through Better Auth's canonical memberships. Route context and browser guards are not authorization boundaries. Keep ingestion's read-only authority role separate from the application's database role and ClickHouse query credential. See [collector enrollment](collector-enrollment.md) and [application access](application-access.md).
 
-The isolated development network uses plaintext OTLP/Kafka; production transport security is not supplied by that isolation. Do not log tokens or payloads. The Linux collector excludes arguments, environment variables, executable paths, application files and process memory. Retention/access policies apply to pending buffers, retained raw records and analytical projections alike.
+The isolated development network uses plaintext OTLP/Kafka; production transport security is not supplied by that isolation. Do not log tokens or payloads. Linux metric sampling collects numeric real UIDs and recognized Slurm job and step IDs for process attribution. GPU allocation measurements link a GPU UUID to a verified process incarnation. It does not export usernames or raw cgroup paths, and excludes arguments, environment variables, executable paths, application files and process memory. Opt-in execution discovery is separate. Retention and access policies apply to pending buffers, retained raw records and analytical projections alike.
 
 ## Measurements and validation
 

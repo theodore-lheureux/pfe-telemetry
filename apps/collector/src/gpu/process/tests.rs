@@ -148,6 +148,8 @@ fn process_gpu_resources_reuse_cpu_identity_keep_device_on_points_and_validate_a
         string(adapter::NAMESPACE_ID, "host"),
         string(adapter::START_TICKS, "10"),
         integer(adapter::PID, 42),
+        integer(adapter::REAL_USER_ID, 1001),
+        integer(adapter::SLURM_JOB_ID, 12345),
         integer(adapter::INTERVAL_NS, 100_000_000),
         string("recount.collection.source", "rust-procfs"),
     ];
@@ -171,6 +173,12 @@ fn process_gpu_resources_reuse_cpu_identity_keep_device_on_points_and_validate_a
     );
     assert_eq!(resources.len(), 1);
     let gpu_attrs = &resources[0].resource.as_ref().unwrap().attributes;
+    for key in [adapter::REAL_USER_ID, adapter::SLURM_JOB_ID] {
+        assert_eq!(
+            gpu_attrs.iter().find(|attr| attr.key == key),
+            attrs.iter().find(|attr| attr.key == key)
+        );
+    }
     assert_eq!(
         adapter::resource_identity(gpu_attrs)
             .unwrap()

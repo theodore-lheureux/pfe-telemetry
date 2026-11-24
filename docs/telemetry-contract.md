@@ -20,7 +20,9 @@ Process resources retain `process.pid`, `recount.process.namespace_id`, incarnat
 
 The adapter resolves node/collector resources to the enrolled root and process resources to its permitted local namespace. Independently identified VMs/devices need exact bindings rather than authority inferred from a parent/placement claim. Root reporting permission is not physical attestation. Unknown topology and execution association remain unknown.
 
-The collector exports only allowlisted identity and metric dimensions. It does not read arguments, environment variables, executable links, application files or process memory. Standard OTLP attributes remain subject to shared structural/privacy rules rather than this collector-specific acquisition allowlist.
+The collector exports only allowlisted identity and metric dimensions. Process metrics include the numeric Linux real UID (`process.real_user.id`) when readable, and `recount.slurm.job.id` plus an optional numeric `recount.slurm.step.id` for recognized Slurm v1 or v2 cgroups. Step names such as `batch` and `extern` do not produce a step ID. These dimensions support filtering and grouping; they are not evidence of execution membership, and job IDs are not globally unique. GPU allocation bytes use the same verified process identity, with `gpu.uuid` on the point. Unreadable fields are omitted or reported through acquisition status, not invented as zeros.
+
+The metric sampler does not read arguments, environment variables, executable links, application files or process memory. It exports neither usernames nor raw cgroup paths. Separate opt-in execution discovery has its own allowlist. Standard OTLP attributes remain subject to shared structural/privacy rules rather than this collector-specific acquisition allowlist.
 
 ## Measurements
 
