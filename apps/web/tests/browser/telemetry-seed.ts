@@ -14,6 +14,8 @@ export async function seedRecentTelemetry(
 		AND source.last_seen_unix_milli > toUInt64(now() - toIntervalMinute({minutes:UInt32})) * 1000
 		AND source.project_id != {project:String}`;
 	const query_params = { project, metrics, minutes, limit };
+	// One thread and small blocks keep the copy within a small reused server's memory.
+	const clickhouse_settings = { max_threads: 1, max_block_size: "8192" };
 	const shift = includePrevious ? 3_600_000 : 0;
 	// Test-only IDs isolate definitions from different source projects without
 	// needing to serialize copied dimensions back to the normalizer.
@@ -25,6 +27,7 @@ export async function seedRecentTelemetry(
 			if(first_seen_unix_milli >= ${shift}, first_seen_unix_milli - ${shift}, 0) AS first_seen_unix_milli)
 		FROM telemetry.metric_series AS source FINAL ${shared}`,
 		query_params,
+		clickhouse_settings,
 	});
 	await client.command({
 		query: `INSERT INTO telemetry.metric_points
@@ -37,6 +40,7 @@ export async function seedRecentTelemetry(
 			AND points.time_unix_milli > toUInt64(now() - toIntervalMinute({minutes:UInt32})) * 1000
 		LIMIT {limit:UInt32}`,
 		query_params,
+		clickhouse_settings,
 	});
 	if (includePrevious)
 		await client.command({
@@ -46,6 +50,7 @@ export async function seedRecentTelemetry(
 				toUInt32(intDiv(time_unix_milli - ${shift}, 86400000)) AS event_day)
 			FROM telemetry.metric_points WHERE project_id = {project:String}`,
 			query_params,
+			clickhouse_settings,
 		});
 }
 

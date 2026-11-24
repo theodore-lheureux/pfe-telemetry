@@ -89,8 +89,11 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await expect(
 			page.getByRole("heading", { name: "No dashboards yet" }),
 		).toBeVisible();
-		await page.getByRole("button", { name: "New dashboard" }).click();
+		await page
+			.getByRole("button", { name: "New dashboard", exact: true })
+			.click();
 		const dialog = page.getByRole("dialog");
+		await dialog.getByText("Blank dashboard", { exact: true }).click();
 		await dialog.getByLabel("Name").fill("Fleet health");
 		await dialog.getByLabel("Description").fill("CPU across the fleet.");
 		await dialog.getByRole("button", { name: "Save" }).click();
