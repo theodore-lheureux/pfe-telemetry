@@ -28,7 +28,7 @@ import type { ProjectReference } from "../../organizations/contracts";
 import { listSavedInsights } from "../analytics.functions";
 import { MAX_DASHBOARD_TILES } from "../dashboards";
 import { decodeDraft } from "../insight/draft";
-import { DISPLAY_ICON } from "../insight/labels";
+import { chartIcon } from "../insight/panels/registry";
 
 /** Chooses saved insights to add to a dashboard, searching them by name or tag. */
 export function AddTilesDialog({
@@ -102,8 +102,7 @@ export function AddTilesDialog({
 					<CommandEmpty>{m.saved_no_match()}</CommandEmpty>
 					<CommandGroup>
 						{insights.data.map((insight) => {
-							const Icon =
-								DISPLAY_ICON[decodeDraft(insight.draft).display.type];
+							const Icon = chartIcon(decodeDraft(insight.draft).display.type);
 							const selected = chosen.includes(insight.id);
 							return (
 								<CommandItem

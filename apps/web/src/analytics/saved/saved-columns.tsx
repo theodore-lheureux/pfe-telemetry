@@ -19,7 +19,7 @@ import { Badge } from "../../components/ui/badge";
 import { Checkbox } from "../../components/ui/checkbox";
 import { hasTag } from "../../lib/tags";
 import type { InsightDraft } from "../insight/draft";
-import { DISPLAY_ICON } from "../insight/labels";
+import { chartIcon } from "../insight/panels/registry";
 import type { InsightPerson, SavedInsight } from "../saved-insights";
 
 export interface SavedRow {
@@ -128,7 +128,7 @@ export const savedColumns: Column[] = [
 				.includes(value.toLocaleLowerCase()),
 		header: ({ column }) => <SortableHeader label={m.name()} column={column} />,
 		cell: ({ row, table }) => {
-			const Icon = DISPLAY_ICON[row.original.draft.display.type];
+			const Icon = chartIcon(row.original.draft.display.type);
 			return (
 				<div className="flex min-w-0 items-start gap-3">
 					<Icon

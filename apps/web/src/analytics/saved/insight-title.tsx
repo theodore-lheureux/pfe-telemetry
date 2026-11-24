@@ -31,7 +31,8 @@ import {
 	type InsightDraft,
 	sameDraft,
 } from "../insight/draft";
-import { DISPLAY_ICON, plottedNames } from "../insight/labels";
+import { plottedNames } from "../insight/labels";
+import { chartIcon } from "../insight/panels/registry";
 import {
 	MAX_INSIGHT_DESCRIPTION,
 	MAX_INSIGHT_NAME,
@@ -108,7 +109,7 @@ export function useInsightTitle({
 	// still reads as part of one control.
 	const savable = complete && (saved === null || changed);
 	const variant = savable ? "default" : "outline";
-	const Icon = DISPLAY_ICON[draft.display.type];
+	const Icon = chartIcon(draft.display.type);
 
 	const save = async (insightId: string, as: string) => {
 		const result = await mutation.submit({

@@ -11,7 +11,7 @@ import {
 } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import type { Display } from "./draft";
-import { DISPLAY_LABEL } from "./labels";
+import { chartLabel } from "./panels/registry";
 
 export function NumberDisplayOptions({
 	display,
@@ -60,7 +60,7 @@ export function NumberDisplayOptions({
 								<SelectGroup>
 									{(["line", "area", "bar"] as const).map((type) => (
 										<SelectItem key={type} value={type}>
-											{DISPLAY_LABEL[type]()}
+											{chartLabel(type)}
 										</SelectItem>
 									))}
 								</SelectGroup>

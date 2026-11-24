@@ -88,6 +88,7 @@ export interface Display {
 	yLabel?: string;
 	/** The Y axis' upper bound; automatic when absent. */
 	yMax?: number;
+	yMin?: number;
 	lineStyle?: LineStyle;
 	/** A least-squares line through each series. */
 	trend?: boolean;

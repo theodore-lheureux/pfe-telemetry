@@ -17,7 +17,11 @@ import {
 import type { ProjectReference } from "../../organizations/contracts";
 import { ChartTypePreview } from "../insight/chart-type-preview";
 import { DEFAULT_DRAFT, type DisplayType, encodeDraft } from "../insight/draft";
-import { DISPLAY_ICON, DISPLAY_LABEL } from "../insight/labels";
+import {
+	chartChoices,
+	chartIcon,
+	chartLabel,
+} from "../insight/panels/registry";
 
 const DESCRIPTION: Record<DisplayType, () => string> = {
 	line: m.saved_create_line,
@@ -57,42 +61,40 @@ export function NewInsightPicker({
 					</p>
 				</div>
 				<div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-					{(Object.keys(DISPLAY_LABEL) as DisplayType[])
-						.filter((type) => type !== "heatmap" && type !== "grid")
-						.map((type) => {
-							const Icon = DISPLAY_ICON[type];
-							const label = DISPLAY_LABEL[type]();
-							return (
-								<Link
-									key={type}
-									to="/organizations/$organizationId/projects/$projectId/explore"
-									params={reference}
-									search={{
-										q: encodeDraft({
-											...DEFAULT_DRAFT,
-											display: { ...DEFAULT_DRAFT.display, type },
-										}),
-									}}
-									aria-label={label}
-									onClick={() => setOpen(false)}
-									className="rounded-xl outline-none transition-shadow hover:ring-2 hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-ring"
-								>
-									<Card className="h-full gap-0 py-0">
-										<ChartTypePreview type={type} />
-										<CardHeader className="gap-1 border-t py-3">
-											<CardTitle className="flex items-center gap-2">
-												<Icon
-													aria-hidden="true"
-													className="size-4 shrink-0 text-primary"
-												/>
-												{label}
-											</CardTitle>
-											<CardDescription>{DESCRIPTION[type]()}</CardDescription>
-										</CardHeader>
-									</Card>
-								</Link>
-							);
-						})}
+					{chartChoices(false, false).map((type) => {
+						const Icon = chartIcon(type);
+						const label = chartLabel(type);
+						return (
+							<Link
+								key={type}
+								to="/organizations/$organizationId/projects/$projectId/explore"
+								params={reference}
+								search={{
+									q: encodeDraft({
+										...DEFAULT_DRAFT,
+										display: { ...DEFAULT_DRAFT.display, type },
+									}),
+								}}
+								aria-label={label}
+								onClick={() => setOpen(false)}
+								className="rounded-xl outline-none transition-shadow hover:ring-2 hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-ring"
+							>
+								<Card className="h-full gap-0 py-0">
+									<ChartTypePreview type={type} />
+									<CardHeader className="gap-1 border-t py-3">
+										<CardTitle className="flex items-center gap-2">
+											<Icon
+												aria-hidden="true"
+												className="size-4 shrink-0 text-primary"
+											/>
+											{label}
+										</CardTitle>
+										<CardDescription>{DESCRIPTION[type]()}</CardDescription>
+									</CardHeader>
+								</Card>
+							</Link>
+						);
+					})}
 				</div>
 			</PopoverContent>
 		</Popover>

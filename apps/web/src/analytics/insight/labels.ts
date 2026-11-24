@@ -1,15 +1,4 @@
 import { m } from "@recount/i18n/messages";
-import {
-	AreaChartIcon,
-	BarChart3Icon,
-	BarChartBigIcon,
-	Grid2X2Icon,
-	HashIcon,
-	LayoutGridIcon,
-	LineChartIcon,
-	type LucideIcon,
-	TableIcon,
-} from "lucide-react";
 import { type FormattedNumber, formatNumeric } from "../../lib/number-format";
 import type {
 	Calculation,
@@ -26,7 +15,7 @@ import {
 	rateUnit,
 } from "../metric-units";
 import { isHistogramPercentile } from "../validation";
-import type { Display, DisplayType, DisplayUnit, InsightDraft } from "./draft";
+import type { Display, DisplayUnit, InsightDraft } from "./draft";
 
 export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	last: m.insight_calc_last,
@@ -101,26 +90,6 @@ export const PER_INTERVAL_LABEL: Record<Interval, () => string> = {
 	"15m": m.insight_per_15m,
 	"1h": m.insight_per_1h,
 	"1d": m.insight_per_1d,
-};
-export const DISPLAY_ICON: Record<DisplayType, LucideIcon> = {
-	line: LineChartIcon,
-	area: AreaChartIcon,
-	bar: BarChart3Icon,
-	stacked: BarChartBigIcon,
-	heatmap: Grid2X2Icon,
-	grid: LayoutGridIcon,
-	stat: HashIcon,
-	table: TableIcon,
-};
-export const DISPLAY_LABEL: Record<DisplayType, () => string> = {
-	line: m.insight_display_line,
-	area: m.insight_display_area,
-	bar: m.insight_display_bar,
-	stacked: m.insight_display_stacked,
-	heatmap: m.insight_display_heatmap,
-	grid: m.insight_display_grid,
-	stat: m.insight_display_stat,
-	table: m.insight_display_table,
 };
 export const UNIT_LABEL: Record<DisplayUnit, () => string> = {
 	auto: m.insight_unit_auto,

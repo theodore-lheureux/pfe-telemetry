@@ -37,9 +37,9 @@ import { COMPARISONS, comparisonKey } from "../insight/insight-toolbar";
 import {
 	COMBINE_OPTION_LABEL,
 	calculationLabel,
-	DISPLAY_LABEL,
 	INTERVAL_LABEL,
 } from "../insight/labels";
+import { chartLabel } from "../insight/panels/registry";
 import {
 	PercentileWarning,
 	thinPercentiles,
@@ -188,7 +188,7 @@ export function TileInfo({
 				{result && warned && <PercentileWarning result={result} />}
 				<div className="flex flex-col gap-1">
 					<p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-						{DISPLAY_LABEL[draft.display.type]()} • {range}
+						{chartLabel(draft.display.type)} • {range}
 					</p>
 					<p className="font-medium">{insight.name}</p>
 					{insight.description && (

@@ -17,7 +17,7 @@ import { IconEmptyState } from "../../components/workspace";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AnalyticsHeader } from "../analytics-header";
 import { decodeDraft } from "../insight/draft";
-import { DISPLAY_ICON, DISPLAY_LABEL } from "../insight/labels";
+import { chartIcon, chartLabel } from "../insight/panels/registry";
 import type { InsightPerson, SavedInsight } from "../saved-insights";
 import { FacetFilter } from "./facet-filter";
 import { useInsightActions } from "./insight-actions";
@@ -166,10 +166,10 @@ export function SavedInsights({
 						selected={filterValue<string[]>("type", [])}
 						onChange={(value) => setFilter("type", value)}
 						options={types.map((type) => {
-							const Icon = DISPLAY_ICON[type];
+							const Icon = chartIcon(type);
 							return {
 								value: type,
-								label: DISPLAY_LABEL[type](),
+								label: chartLabel(type),
 								leading: <Icon aria-hidden="true" />,
 							};
 						})}

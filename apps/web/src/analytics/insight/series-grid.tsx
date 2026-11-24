@@ -7,12 +7,12 @@ import { useDisplayTimeZone } from "../../components/time-display";
 import { Button } from "../../components/ui/button";
 import { IconEmptyState } from "../../components/workspace";
 import { cn } from "../../lib/utils";
+import { heatColor } from "../chart-heatmap";
 import {
 	axisTime,
 	bucketTitle,
 	type ChartPoint,
 	ChartTooltipCard,
-	heatColor,
 	TooltipRows,
 } from "../charts";
 import type { SeriesResult } from "../contracts";

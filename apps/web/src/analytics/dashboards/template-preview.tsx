@@ -9,7 +9,7 @@ import {
 	templateCoverage,
 } from "../dashboard-templates";
 import { decodeDraft } from "../insight/draft";
-import { DISPLAY_ICON, DISPLAY_LABEL } from "../insight/labels";
+import { chartIcon, chartLabel } from "../insight/panels/registry";
 import {
 	TILE_COLUMN_CLASS,
 	TILE_HEIGHT_CLASS,
@@ -38,12 +38,12 @@ export function TemplatePreview({
 			<div className="grid grid-flow-row-dense auto-rows-[0.75rem] grid-cols-1 gap-1.5 rounded-lg bg-muted p-2 lg:grid-cols-12">
 				{tiles.map((tile, index) => {
 					const type = decodeDraft(tile.insight.draft).display.type;
-					const Icon = DISPLAY_ICON[type];
+					const Icon = chartIcon(type);
 					const unavailable = coverage && !coverage.available[index];
 					return (
 						<Card
 							key={tile.id}
-							title={DISPLAY_LABEL[type]()}
+							title={chartLabel(type)}
 							className={cn(
 								"min-w-0 flex-row items-start gap-1.5 rounded-md px-2 py-1.5 text-xs shadow-none",
 								TILE_WIDTH_CLASS[tile.width],

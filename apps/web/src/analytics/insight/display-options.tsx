@@ -27,13 +27,9 @@ import {
 	MAX_MOVING_AVERAGE,
 	MAX_UNIT_AFFIX,
 } from "./draft";
-import {
-	CUSTOM_UNITS,
-	DISPLAY_LABEL,
-	FORMAT_UNITS,
-	UNIT_LABEL,
-} from "./labels";
+import { CUSTOM_UNITS, FORMAT_UNITS, UNIT_LABEL } from "./labels";
 import { NumberDisplayOptions } from "./number-display-options";
+import { chartLabel, chartTypes } from "./panels/registry";
 
 const SECTION =
 	"text-xs font-medium tracking-wide text-muted-foreground uppercase";
@@ -146,6 +142,41 @@ const number = (text: string) => {
 	return Number.isFinite(value) ? { value } : null;
 };
 
+function AxisBounds({
+	id,
+	display,
+	disabled,
+	onCommit,
+}: {
+	id: string;
+	display: Display;
+	disabled: boolean;
+	onCommit: (key: "yMin" | "yMax", value: number | undefined) => void;
+}) {
+	const keys =
+		display.type === "heatmap"
+			? (["yMin", "yMax"] as const)
+			: (["yMax"] as const);
+	return keys.map((key) => (
+		<Row
+			key={key}
+			id={`${id}-${key}`}
+			label={key === "yMin" ? m.display_y_min() : m.display_y_max()}
+		>
+			<CommitInput
+				id={`${id}-${key}`}
+				type="number"
+				value={String(display[key] ?? "")}
+				placeholder={m.display_auto()}
+				disabled={disabled}
+				className="w-28"
+				parse={number}
+				onCommit={(value) => onCommit(key, value as number | undefined)}
+			/>
+		</Row>
+	));
+}
+
 /**
  * How an insight's chart looks: its type, then general, axis and line settings for
  * charts over time. Shared by the insight editor and a dashboard tile's menu.
@@ -217,9 +248,9 @@ export function DisplayOptions({
 					className="w-full"
 					onChange={(event) => set("type", event.target.value as DisplayType)}
 				>
-					{(Object.keys(DISPLAY_LABEL) as DisplayType[]).map((type) => (
+					{chartTypes.map((type) => (
 						<NativeSelectOption key={type} value={type}>
-							{DISPLAY_LABEL[type]()}
+							{chartLabel(type)}
 						</NativeSelectOption>
 					))}
 				</NativeSelect>
@@ -359,18 +390,12 @@ export function DisplayOptions({
 								onCommit={(value) => set("yLabel", value as string | undefined)}
 							/>
 						</div>
-						<Row id={`${id}-max`} label={m.display_y_max()}>
-							<CommitInput
-								id={`${id}-max`}
-								type="number"
-								value={display.yMax === undefined ? "" : String(display.yMax)}
-								placeholder={m.display_auto()}
-								disabled={disabled}
-								className="w-28"
-								parse={number}
-								onCommit={(value) => set("yMax", value as number | undefined)}
-							/>
-						</Row>
+						<AxisBounds
+							id={id}
+							display={display}
+							disabled={disabled}
+							onCommit={set}
+						/>
 						{lines && (
 							<Row id={`${id}-goal`} label={m.insight_goal()}>
 								<CommitInput

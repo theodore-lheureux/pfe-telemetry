@@ -27,12 +27,8 @@ import {
 	MAX_RANGE_DAYS,
 	withDisplay,
 } from "./draft";
-import {
-	DISPLAY_ICON,
-	DISPLAY_LABEL,
-	INTERVAL_LABEL,
-	PER_INTERVAL_LABEL,
-} from "./labels";
+import { INTERVAL_LABEL, PER_INTERVAL_LABEL } from "./labels";
+import { chartChoices, chartIcon, chartLabel } from "./panels/registry";
 
 export const COMPARISONS: {
 	key: string;
@@ -197,8 +193,8 @@ export function InsightToolbar({
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent position="popper" align="end">
-						{(Object.keys(DISPLAY_LABEL) as DisplayType[]).map((type) => {
-							const Icon = DISPLAY_ICON[type];
+						{chartChoices(true).map((type) => {
+							const Icon = chartIcon(type);
 							return (
 								<SelectItem
 									key={type}
@@ -206,7 +202,7 @@ export function InsightToolbar({
 									disabled={type === "heatmap" && !heatmap}
 								>
 									<Icon aria-hidden="true" />
-									{DISPLAY_LABEL[type]()}
+									{chartLabel(type)}
 								</SelectItem>
 							);
 						})}

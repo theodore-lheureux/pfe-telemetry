@@ -18,17 +18,26 @@ import {
 	ReferenceLine,
 	Tooltip,
 	usePlotArea,
-	useXAxisScale,
-	useYAxisScale,
 	XAxis,
 	YAxis,
 } from "recharts";
 import { useDisplayTimeZone } from "../components/time-display";
 import { type ChartConfig, ChartContainer } from "../components/ui/chart";
 import { cn } from "../lib/utils";
+import {
+	type Heatmap,
+	HeatmapCells,
+	HeatmapLegend,
+	HeatmapTooltip,
+	heatmapAxis,
+	heatmapLayout,
+} from "./chart-heatmap";
+import { AreaMark } from "./chart-marks/area";
+import { BarMark } from "./chart-marks/bar";
+import { LineMark } from "./chart-marks/line";
+import type { MarkProps } from "./chart-marks/types";
 import { movingAveragePoints, trendPoints } from "./chart-overlays";
-import { bucketRange } from "./histograms";
-import { approximateCount } from "./metric-units";
+import { TooltipSwatch } from "./chart-swatch";
 
 export interface ChartPoint {
 	bucketMs: number;
@@ -126,28 +135,6 @@ export interface TooltipItem {
 	missing?: string | null;
 }
 
-export function TooltipSwatch({
-	color,
-	block = false,
-	faded = false,
-}: {
-	color: string;
-	block?: boolean;
-	faded?: boolean;
-}) {
-	return (
-		<span
-			aria-hidden="true"
-			className={cn(
-				"shrink-0",
-				block ? "size-2.5 rounded-[2px]" : "h-0.5 w-3 rounded-full",
-				faded && "opacity-50",
-			)}
-			style={{ background: color }}
-		/>
-	);
-}
-
 /** The card every chart's tooltip shows: when, an optional note, then its content. */
 export function ChartTooltipCard({
 	title,
@@ -236,11 +223,6 @@ export function axisTime(locale: string, timeZone: string, span: number) {
 	});
 }
 
-/** A cell color between the muted background (0) and the first series color (1). */
-export function heatColor(ratio: number) {
-	return `color-mix(in oklab, var(--viz-1) ${100 * Math.min(1, Math.max(0, ratio))}%, var(--muted))`;
-}
-
 function TooltipCard({
 	active,
 	payload,
@@ -274,73 +256,6 @@ function TooltipCard({
 			{shown}
 		</ChartTooltipCard>
 	);
-}
-
-/** Bucket counts over time, drawn as cells on rows of buckets. */
-export interface Heatmap {
-	/** Bucket upper bounds; one more bucket holds the values above the last. */
-	bounds: number[];
-	columns: { bucketMs: number; counts: number[] }[];
-	/** What the counts count, such as processes, for the legend. */
-	subject: string;
-	/** A count with its subject, such as "5 processes". */
-	count: (count: number, locale: string) => string;
-	/** A bucket's value range in words, such as "using 1–5 % CPU". */
-	range: (inputs: { range: string }) => string;
-	/** Per bucket, the subjects left out as idle, when the histogram excludes them. */
-	idle?: Map<number | null, number | null>;
-	/** A value the rows always reach, such as 100 % for a ratio, unless `yMax` caps them. */
-	scale?: number;
-}
-
-/**
- * The buckets a heatmap shows: from zero, or the first occupied one, up to the bucket
- * holding `yMax`, or else the last occupied one or the one holding its scale.
- */
-function heatmapLayout(heatmap: Heatmap, beginAtZero: boolean, yMax?: number) {
-	const { bounds, columns } = heatmap;
-	const occupied = bounds
-		.concat(0)
-		.flatMap((_, index) =>
-			columns.some((column) => column.counts[index] > 0) ? [index] : [],
-		);
-	const lowest = beginAtZero
-		? Math.max(
-				0,
-				bounds.findIndex((bound) => bound >= 0),
-			)
-		: (occupied[0] ?? 0);
-	const holding = (value: number) => {
-		const index = bounds.findIndex((bound) => bound >= value);
-		return index < 0 ? bounds.length : index;
-	};
-	let last = occupied.at(-1) ?? lowest;
-	if (heatmap.scale !== undefined)
-		last = Math.max(last, holding(heatmap.scale));
-	if (yMax !== undefined && Number.isFinite(yMax)) last = holding(yMax);
-	const first = Math.min(lowest, last);
-	const peak = Math.max(
-		1,
-		...columns.flatMap((column) => column.counts.slice(first, last + 1)),
-	);
-	return { ...heatmap, first, last, peak };
-}
-
-type HeatmapLayout = ReturnType<typeof heatmapLayout>;
-
-function heatmapAxis(rows: HeatmapLayout, format: (value: number) => string) {
-	const heatmap = rows;
-	return {
-		scale: "auto" as const,
-		// Rows are buckets; each tick marks the bound between two of them.
-		domain: [rows.first, rows.last + 1],
-		ticks: Array.from(
-			{ length: rows.last - rows.first + 2 },
-			(_, offset) => rows.first + offset,
-		).filter((index) => heatmap.bounds[index - 1] !== undefined),
-		tickFormatter: (index: number) => format(heatmap.bounds[index - 1] ?? 0),
-		allowDataOverflow: true,
-	};
 }
 
 function valueAxis({
@@ -387,144 +302,6 @@ function seriesItem(
 		detail: band && `${format(band[0])}–${format(band[1])}`,
 		missing,
 	};
-}
-
-const SHARE_PHRASE: Record<number, typeof m.histogram_share_minute> = {
-	60000: m.histogram_share_minute,
-	3600000: m.histogram_share_hour,
-	86400000: m.histogram_share_day,
-};
-
-/** A hovered heatmap cell as a sentence: how many, in which range, and their share. */
-function HeatmapTooltip({
-	heatmap,
-	bucketMs,
-	index,
-	step,
-	format,
-}: {
-	heatmap: HeatmapLayout;
-	bucketMs: number;
-	index: number;
-	step: number;
-	format: (value: number) => string;
-}) {
-	const locale = getLocale();
-	const counts =
-		heatmap.columns.find((column) => column.bucketMs === bucketMs)?.counts ??
-		[];
-	const count = counts[index] ?? 0;
-	const total = counts.reduce((sum, value) => sum + value, 0);
-	const range = heatmap.range({
-		range: bucketRange(heatmap.bounds, index, format),
-	});
-	const idle = heatmap.idle?.get(bucketMs);
-	if (!count)
-		return (
-			<p className="text-muted-foreground">
-				{heatmap.count(0, locale)} {range}
-			</p>
-		);
-	const share = new Intl.NumberFormat(locale, {
-		style: "percent",
-		maximumFractionDigits: 1,
-	});
-	return (
-		<>
-			<p className="flex items-center gap-1.5">
-				<TooltipSwatch
-					color={heatColor(Math.log1p(count) / Math.log1p(heatmap.peak))}
-					block
-				/>
-				<span className="font-medium">{heatmap.count(count, locale)}</span>
-			</p>
-			<p>{range}</p>
-			<p className="text-muted-foreground">
-				{(SHARE_PHRASE[step] ?? m.histogram_share_interval)({
-					share: share.format(count / total),
-					total: heatmap.count(total, locale),
-				})}
-				{idle
-					? ` ${m.histogram_idle({ count: approximateCount(idle, locale) })}`
-					: ""}
-			</p>
-		</>
-	);
-}
-
-function HeatmapLegend({ subject, peak }: { subject: string; peak: number }) {
-	return (
-		<p className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-			<span>{subject}</span>
-			<span className="tabular-nums">0</span>
-			<span
-				aria-hidden="true"
-				className="h-2 w-24 rounded-sm bg-[linear-gradient(to_right,var(--muted),var(--viz-1))]"
-			/>
-			<span className="tabular-nums">
-				{approximateCount(peak, getLocale())}
-			</span>
-		</p>
-	);
-}
-
-function HeatmapCells({
-	rows,
-	step,
-	onRow,
-}: {
-	rows: HeatmapLayout;
-	step: number;
-	onRow: (index: number | null) => void;
-}) {
-	const x = useXAxisScale();
-	const y = useYAxisScale();
-	const area = usePlotArea();
-	if (!x || !y || !area) return null;
-	const indices = Array.from(
-		{ length: rows.last - rows.first + 1 },
-		(_, offset) => rows.first + offset,
-	);
-	return (
-		<g onPointerLeave={() => onRow(null)}>
-			{rows.columns.map((column) => {
-				const left = x(column.bucketMs) ?? 0;
-				const width = Math.max(
-					0,
-					(x(column.bucketMs + step) ?? left) - left - 1,
-				);
-				return indices.map((index) => {
-					const count = column.counts[index] ?? 0;
-					if (!count) return null;
-					const top = y(index + 1) ?? 0;
-					return (
-						<rect
-							key={`${column.bucketMs}:${index}`}
-							x={left}
-							y={top}
-							width={width}
-							height={Math.max(0, (y(index) ?? top) - top - 1)}
-							fill={heatColor(Math.log1p(count) / Math.log1p(rows.peak))}
-						/>
-					);
-				});
-			})}
-			{indices.map((index) => {
-				const top = y(index + 1) ?? 0;
-				return (
-					<rect
-						key={index}
-						x={area.x}
-						y={top}
-						width={area.width}
-						height={Math.max(0, (y(index) ?? top) - top)}
-						fill="transparent"
-						onPointerEnter={() => onRow(index)}
-					/>
-				);
-			})}
-		</g>
-	);
 }
 
 export type ChartType = "auto" | "line" | "area" | "bar" | "stacked";
@@ -577,6 +354,7 @@ export function TimeseriesChart({
 	xLabel,
 	yLabel,
 	yMax,
+	yMin,
 	smooth = false,
 	trend = false,
 	movingAverage,
@@ -614,6 +392,7 @@ export function TimeseriesChart({
 	yLabel?: string;
 	/** The Y axis' upper bound; automatic when absent. */
 	yMax?: number;
+	yMin?: number;
 	/** Curves between points instead of straight segments. */
 	smooth?: boolean;
 	/** Draws a least-squares line over each series. */
@@ -695,7 +474,7 @@ export function TimeseriesChart({
 	}, [series, trend, movingAverage, bucketSeconds, now]);
 	const drawn = useMemo(() => [...series, ...overlays], [series, overlays]);
 	const [heatmapRow, setHeatmapRow] = useState<number | null>(null);
-	const layout = heatmap && heatmapLayout(heatmap, beginAtZero, yMax);
+	const layout = heatmap && heatmapLayout(heatmap, beginAtZero, yMax, yMin);
 	const rows = useMemo(
 		() =>
 			layout
@@ -780,54 +559,25 @@ export function TimeseriesChart({
 					isAnimationActive={false}
 				/>
 			);
+		const props: MarkProps = {
+			entry,
+			curve,
+			opacity: emphasis(entry.key),
+			values: values(entry),
+		};
 		if (bars)
 			return (
-				<Bar
-					key={entry.key}
-					dataKey={entry.key}
-					fill={entry.color}
-					fillOpacity={emphasis(entry.key)}
-					stackId={type === "stacked" ? "stack" : undefined}
-					radius={type === "stacked" ? 0 : [3, 3, 0, 0]}
-					isAnimationActive={false}
-				>
-					{values(entry)}
-				</Bar>
+				<BarMark key={entry.key} {...props} stacked={type === "stacked"} />
 			);
 		if (filled)
 			return (
-				<Area
+				<AreaMark
 					key={entry.key}
-					dataKey={entry.key}
-					type={curve}
-					stroke={entry.color}
-					strokeOpacity={emphasis(entry.key)}
-					strokeWidth={2}
-					fill={current.length === 1 ? `url(#${gradient})` : entry.color}
-					fillOpacity={(current.length === 1 ? 1 : 0.12) * emphasis(entry.key)}
-					dot={false}
-					activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-					isAnimationActive={false}
-				>
-					{values(entry)}
-				</Area>
+					{...props}
+					gradient={current.length === 1 ? gradient : undefined}
+				/>
 			);
-		return (
-			<Line
-				key={entry.key}
-				dataKey={entry.key}
-				type={curve}
-				stroke={entry.color}
-				strokeOpacity={emphasis(entry.key)}
-				strokeWidth={2}
-				strokeDasharray={entry.coincident ? "6 6" : undefined}
-				dot={false}
-				activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-				isAnimationActive={false}
-			>
-				{values(entry)}
-			</Line>
-		);
+		return <LineMark key={entry.key} {...props} />;
 	};
 	return (
 		<div

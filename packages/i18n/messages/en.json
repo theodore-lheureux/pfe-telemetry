@@ -1475,6 +1475,7 @@
   "display_axis_label": "Label",
   "display_none": "None",
   "display_y_max": "Maximum",
+  "display_y_min": "Minimum",
   "display_auto": "Auto",
   "display_scale": "Scale",
   "display_scale_linear": "Linear",
