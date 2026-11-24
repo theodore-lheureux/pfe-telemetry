@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { useTable } from "@tanstack/react-table";
 import { renderToStaticMarkup } from "react-dom/server";
-import { attributeLabel, metricLabel } from "../../src/analytics/metric-names";
+import {
+	attributeLabel,
+	metricLabel,
+} from "../../src/analytics/definition-labels";
 import { DataTable } from "../../src/components/data-table";
 import { TooltipProvider } from "../../src/components/ui/tooltip";
 import {

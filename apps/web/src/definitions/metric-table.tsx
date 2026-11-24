@@ -7,7 +7,7 @@ import {
 	useTable,
 } from "@tanstack/react-table";
 import { useState } from "react";
-import { metricLabel } from "../analytics/metric-names";
+import { metricLabel } from "../analytics/definition-labels";
 import { DataTable } from "../components/data-table";
 import type { ProjectReference } from "../organizations/contracts";
 import type { MetricEntry } from "./contracts";

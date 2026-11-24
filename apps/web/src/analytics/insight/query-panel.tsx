@@ -10,7 +10,6 @@ import { useQueryAttributes } from "../catalog";
 import type { MetricDefinition } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
 import { isDistribution } from "../histograms";
-import { metricBreakdown } from "../metric-names";
 import {
 	draftMetricNames,
 	type InsightDraft,
@@ -132,8 +131,7 @@ export function QueryPanel({
 								draft.display.type !== "stat" &&
 								!draft.groupBy &&
 								draft.series.length === 1
-									? (metrics.find((metric) => metric.name === updated.metric)
-											?.defaultBreakdown ?? metricBreakdown(updated.metric))
+									? selected?.defaultBreakdown
 									: undefined;
 							onChange({
 								...base,

@@ -98,6 +98,18 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				metric_name: metric,
 				metric_kind: 3,
 				unit: "1{busy_process}",
+				metric_metadata: [
+					[
+						"/recount.analytics.section",
+						2,
+						"processes",
+						null,
+						null,
+						null,
+						null,
+					],
+					["/recount.analytics.quantity", 2, "cpu", null, null, null, null],
+				],
 				temporality: 1,
 				series_id: String(77 + node),
 				logical_series_id: String(77 + node),

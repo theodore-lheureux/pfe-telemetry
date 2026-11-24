@@ -2,7 +2,7 @@ import { m } from "@recount/i18n/messages";
 import { Link } from "@tanstack/react-router";
 import { TagIcon } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
-import { attributeLabel } from "../analytics/metric-names";
+import { attributeLabel } from "../analytics/definition-labels";
 import { FormFeedback } from "../components/form-feedback";
 import { TimeDisplay } from "../components/time-display";
 import { Badge } from "../components/ui/badge";

@@ -3,9 +3,9 @@ import { Link } from "@tanstack/react-router";
 import { Badge } from "../components/ui/badge";
 import type { ProjectReference } from "../organizations/contracts";
 import type { CalculatedMetric } from "./calculated-metrics";
+import { metricLabel } from "./definition-labels";
 import { filterText } from "./filter-chips";
 import { CALCULATION_LABEL, COMBINE_OPTION_LABEL } from "./insight/labels";
-import { metricLabel } from "./metric-names";
 
 export function CalculationSummary({
 	definition,

@@ -16,16 +16,19 @@ import {
 import { cn } from "../lib/utils";
 import type { MetricDefinition } from "./contracts";
 import { DefinitionChoice } from "./definition-choice";
+import { isNamedMetric, metricLabel } from "./definition-labels";
 import { DefinitionSourceIcon } from "./definition-source-icon";
 import { isDistribution } from "./histograms";
-import {
-	isNamedMetric,
-	METRIC_SECTION_LABEL,
-	METRIC_SECTIONS,
-	metricLabel,
-	metricSection,
-} from "./metric-names";
 import { unitLabel } from "./metric-units";
+
+const METRIC_SECTIONS = {
+	node: m.metric_section_node,
+	processes: m.metric_section_processes,
+	gpu: m.metric_section_gpu,
+	other: m.metric_section_other,
+	diagnostics: m.metric_section_diagnostics,
+};
+
 import {
 	metricPreview,
 	PICKER_CONTENT_CLASS,
@@ -91,10 +94,17 @@ export function MetricPicker({
 		isDistribution(metrics?.find((metric) => metric.name === name));
 	// Within a family, distributions come first: their percentiles and heatmaps cover
 	// every subject, where named series cover a few.
-	const groups = METRIC_SECTIONS.map((section) => ({
-		label: METRIC_SECTION_LABEL[section](),
+	const sectionOf = (name: string) => {
+		const section = metrics?.find((metric) => metric.name === name)
+			?.presentation?.section;
+		return section && Object.hasOwn(METRIC_SECTIONS, section)
+			? section
+			: "other";
+	};
+	const groups = Object.entries(METRIC_SECTIONS).map(([section, label]) => ({
+		label: label(),
 		names: names
-			.filter((name) => metricSection(name) === section)
+			.filter((name) => sectionOf(name) === section)
 			.sort(
 				(a, b) =>
 					Number(distribution(b)) - Number(distribution(a)) ||

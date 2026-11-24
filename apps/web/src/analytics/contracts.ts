@@ -160,7 +160,6 @@ export type MetricBehavior =
 	| "gauge"
 	| "counter"
 	| "delta"
-	| "population"
 	| "histogram"
 	| "unsupported";
 
@@ -174,6 +173,7 @@ export interface MetricDefinition {
 	unit: string;
 	description: string;
 	behavior: MetricBehavior;
+	presentation?: MetricPresentation;
 	firstSeen: Date;
 	lastSeen: Date;
 	/** Members' status; a hidden metric is left out of choices but still queryable. */
@@ -182,6 +182,16 @@ export interface MetricDefinition {
 	note?: string;
 	/** The attribute field members chose to break this metric down by. */
 	defaultBreakdown?: string;
+}
+
+export interface MetricPresentation {
+	section?: string;
+	quantity?: string;
+	coverage?: {
+		metric: string;
+		omitted: string;
+		mode: "excluded" | "partial";
+	};
 }
 
 /** What members marked a metric or attribute as; unmarked definitions are visible. */
@@ -236,6 +246,7 @@ export interface QueryResult {
 		metric: string;
 		label?: string;
 		unit: string;
+		presentation?: MetricPresentation;
 		calculation: Calculation;
 	}[];
 	formulas: Formula[];

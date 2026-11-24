@@ -18,7 +18,7 @@ import type {
 	QueryResult,
 	SeriesResult,
 } from "../contracts";
-import { metricLabel } from "../metric-names";
+import { metricLabel } from "../definition-labels";
 import {
 	countNoun,
 	countText,

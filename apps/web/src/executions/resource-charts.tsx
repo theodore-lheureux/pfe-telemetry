@@ -2,6 +2,7 @@ import { formatSeconds } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useId } from "react";
+import preset from "../../presets/collector-metrics.json" with { type: "json" };
 import { TimeDisplay } from "../components/time-display";
 import type {
 	TelemetryPoint,
@@ -10,10 +11,8 @@ import type {
 } from "./contracts";
 
 function label(series: TelemetrySeries) {
-	if (series.metric === "recount.node.cpu.time")
-		return m.node_cumulative_cpu_time();
-	if (series.metric === "recount.node.memory.total")
-		return m.node_total_memory();
+	if (series.metric === preset.nodeCpuTime) return m.node_cumulative_cpu_time();
+	if (series.metric === preset.nodeMemoryTotal) return m.node_total_memory();
 	return m.node_available_memory();
 }
 function plotValue(point: TelemetryPoint) {

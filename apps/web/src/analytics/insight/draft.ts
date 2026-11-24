@@ -18,8 +18,8 @@ import {
 	MAX_RANGE_SECONDS,
 	type Spread,
 } from "../contracts";
+import { breakdownFields } from "../fields";
 import { effectiveInterval } from "../intervals";
-import { breakdownFields } from "../metric-names";
 
 // An insight being edited. It is plain JSON so it can live in the URL and later be
 // saved; `toQuery` turns it into the server's query object when it runs.

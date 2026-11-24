@@ -35,7 +35,6 @@ import { encodeDraft, formulaNames, type InsightDraft } from "../insight/draft";
 import { ChartBody } from "../insight/insight-chart";
 import { InsightTable } from "../insight/insight-table";
 import { type SeriesView, seriesView } from "../insight/series-view";
-import { isProcessDetailMetric } from "../metric-names";
 import { TileInfo } from "./tile-info";
 import { TILE_COLOR_VAR, type TileTools } from "./tile-menu";
 import { useTileQuery } from "./use-tile-query";
@@ -277,8 +276,8 @@ export const DashboardTileCard = memo(function DashboardTileCard({
 					!flush && "px-3 pb-3",
 				)}
 			>
-				{draft.series.some((series) =>
-					isProcessDetailMetric(series.metric),
+				{result.data?.measures.some(
+					(measure) => measure.presentation?.coverage?.mode === "partial",
 				) && (
 					<p className="text-xs text-muted-foreground">
 						{m.process_detail_partial()}

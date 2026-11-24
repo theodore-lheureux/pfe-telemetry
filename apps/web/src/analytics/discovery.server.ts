@@ -1,7 +1,12 @@
 import type { ClickHouseClient } from "@clickhouse/client";
 import { readExecutions } from "../executions/participants.server";
 import { compileFields, isPointField } from "./compile.server";
-import type { AttributeDefinition, MetricDefinition } from "./contracts";
+import type {
+	AttributeDefinition,
+	MetricDefinition,
+	MetricPresentation,
+} from "./contracts";
+import { attributeField, isFieldKey } from "./fields";
 import {
 	POINT_FINAL_SETTINGS,
 	seriesLastSeen,
@@ -29,11 +34,26 @@ interface MetricRow {
 	monotonic: number;
 	unit: string;
 	description: string;
+	metadata: Record<string, string>;
 	firstSeenMs: string;
 	lastSeenMs: string;
 }
 
 const millisecondsDate = (value: string) => new Date(Number(BigInt(value)));
+
+function presentation(metadata: MetricRow["metadata"]): MetricPresentation {
+	const value = (key: string) => metadata[`/recount.analytics.${key}`];
+	const metric = value("coverage.metric");
+	const omitted = value("coverage.omitted");
+	const mode = value("coverage.mode");
+	return {
+		section: value("section"),
+		quantity: value("quantity"),
+		...(metric && omitted && (mode === "excluded" || mode === "partial")
+			? { coverage: { metric, omitted, mode } }
+			: {}),
+	};
+}
 
 function definition(row: MetricRow): MetricDefinition {
 	// 2 records an unknown monotonicity in the catalog's non-nullable key.
@@ -45,18 +65,57 @@ function definition(row: MetricRow): MetricDefinition {
 		monotonic,
 		unit: row.unit,
 		description: row.description,
-		behavior: metricBehavior(row.kind, row.temporality, monotonic, row.name),
+		behavior: metricBehavior(row.kind, row.temporality, monotonic),
+		presentation: presentation(row.metadata),
+		defaultBreakdown: defaultBreakdown(row.metadata),
 		firstSeen: millisecondsDate(row.firstSeenMs),
 		lastSeen: millisecondsDate(row.lastSeenMs),
 	};
 }
 
-const METRICS = `SELECT metric_name AS name, toUInt8(metric_kind) AS kind, toUInt8(temporality) AS temporal,
+function defaultBreakdown(metadata: MetricRow["metadata"]) {
+	const key = metadata["/recount.analytics.breakdown"];
+	return key && isFieldKey(key) ? attributeField("resource", key) : undefined;
+}
+
+const METRICS = `WITH arrayFilter(a -> a.kind = 2 AND startsWith(a.path, '/recount.analytics.'), metric_metadata) AS hints
+  SELECT metric_name AS name, toUInt8(metric_kind) AS kind, toUInt8(temporality) AS temporal,
     toUInt8(monotonic) AS monotonic_state, unit, argMax(description, last_seen_unix_milli) AS description,
+    argMax(mapFromArrays(arrayMap(a -> a.path, hints), arrayMap(a -> assumeNotNull(a.string_value), hints)), last_seen_unix_milli) AS metadata,
     toString(min(first_seen_unix_milli)) AS firstSeenMs,
     toString(max(last_seen_unix_milli)) AS lastSeenMs
   FROM metric_series
   WHERE project_id = {project:String}`;
+
+export async function heartbeatDefinition(
+	connection: ClickHouseClient,
+	projectId: string,
+	signal: AbortSignal,
+) {
+	const result = await connection.query({
+		query: `SELECT metric_name AS name,
+  toString(min(first_seen_unix_milli)) AS firstSeenMs,
+  toString(max(last_seen_unix_milli)) AS lastSeenMs
+FROM metric_series
+WHERE project_id = {project:String}
+  AND arrayExists(a -> a.path = '/recount.analytics.heartbeat' AND a.string_value = 'true', metric_metadata)
+GROUP BY name
+ORDER BY max(last_seen_unix_milli) DESC
+LIMIT 1`,
+		format: "JSONEachRow",
+		query_params: { project: projectId },
+		abort_signal: signal,
+		clickhouse_settings: SETTINGS,
+	});
+	const [row] =
+		await result.json<Pick<MetricRow, "name" | "firstSeenMs" | "lastSeenMs">>();
+	if (row)
+		return {
+			name: row.name,
+			firstSeen: millisecondsDate(row.firstSeenMs),
+			lastSeen: millisecondsDate(row.lastSeenMs),
+		};
+}
 
 /**
  * Metrics the project has sent, newest kind first for each name. A name sent with

@@ -1,8 +1,8 @@
+import { attributeLabel, metricLabel } from "./definition-labels";
 import {
 	type DefinitionKind,
 	DefinitionSourceIcon,
 } from "./definition-source-icon";
-import { attributeLabel, metricLabel } from "./metric-names";
 
 /** Shared content for metric and attribute choices; identifiers stay in search keys. */
 export function DefinitionChoice({

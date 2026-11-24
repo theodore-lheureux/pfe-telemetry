@@ -6,17 +6,19 @@ import { IconEmptyState } from "../../components/workspace";
 import { cn } from "../../lib/utils";
 import { type ChartSeries, type ChartType, TimeseriesChart } from "../charts";
 import type { QueryResult, SeriesResult } from "../contracts";
-import { metricLabel } from "../metric-names";
-import {
-	approximateCount,
-	countNoun,
-	countText,
-	ratioScale,
-} from "../metric-units";
+import { omissionName } from "../coverage";
+import { metricLabel } from "../definition-labels";
+import { histogramLabels } from "../histogram-labels";
+import { approximateCount, countText, ratioScale } from "../metric-units";
 import { ComputedAt, RefreshButton } from "../refresh-status";
 import type { Display } from "./draft";
 import { bucketGrid, coverageBands, coverageState, onGrid } from "./grid";
-import { type FormulaNames, plottedTitle, seriesSource } from "./labels";
+import {
+	calculationLabel,
+	type FormulaNames,
+	plottedTitle,
+	seriesSource,
+} from "./labels";
 import { NumberResults } from "./number-results";
 import { SeriesGrid } from "./series-grid";
 import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
@@ -311,7 +313,7 @@ export function ChartBody({
 	const idleOf = (series: SeriesResult) =>
 		result.series.find(
 			(other) =>
-				other.measure === `${series.measure}_idle` &&
+				other.measure === omissionName(series.measure) &&
 				JSON.stringify(other.group) === JSON.stringify(series.group),
 		);
 	if (
@@ -370,11 +372,14 @@ function heatmapOf(
 ) {
 	return {
 		bounds: series.bounds ?? [],
-		quantity: metricLabel(measure.metric, measure.label),
+		...histogramLabels(
+			measure.presentation?.quantity,
+			metricLabel(measure.metric, measure.label),
+		),
 		columns: series.points.flatMap(({ bucketMs, counts }) =>
 			bucketMs === null || !counts ? [] : [{ bucketMs, counts }],
 		),
-		subject: countNoun(measure.unit),
+		subject: calculationLabel("count", measure.unit),
 		count: (value: number, locale: string) =>
 			countText(
 				measure.unit,
@@ -382,7 +387,6 @@ function heatmapOf(
 				Math.round(value),
 				locale,
 			),
-		range: m.histogram_range_default,
 		scale: ratioScale(measure.unit),
 		idle:
 			idle &&

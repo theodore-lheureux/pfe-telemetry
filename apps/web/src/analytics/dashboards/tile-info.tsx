@@ -29,6 +29,7 @@ import { cn } from "../../lib/utils";
 import type { QueryResult } from "../contracts";
 import type { DashboardFilters, TileOverrides } from "../dashboard-filters";
 import type { DashboardTile } from "../dashboards";
+import { metricLabel } from "../definition-labels";
 import { filterKey, filterText } from "../filter-chips";
 import { groupFieldLabel } from "../group-by-picker";
 import type { InsightDraft } from "../insight/draft";
@@ -43,7 +44,6 @@ import {
 	PercentileWarning,
 	thinPercentiles,
 } from "../insight/percentile-warning";
-import { metricLabel } from "../metric-names";
 import { CreatorCell } from "../saved/saved-columns";
 
 function Row({

@@ -12,8 +12,8 @@ import {
 } from "@tanstack/react-table";
 import { ChevronDownIcon, ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { metricDescription, metricLabel } from "../analytics/definition-labels";
 import { DefinitionSourceIcon } from "../analytics/definition-source-icon";
-import { metricDescription, metricLabel } from "../analytics/metric-names";
 import { unitLabel } from "../analytics/metric-units";
 import { TagSummary } from "../analytics/saved/saved-columns";
 import { PlainHeader, SortableHeader } from "../components/data-table";

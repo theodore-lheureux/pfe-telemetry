@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { attributeLabel, metricLabel } from "../../src/analytics/metric-names";
+import {
+	attributeLabel,
+	metricLabel,
+} from "../../src/analytics/definition-labels";
 import { unitLabel } from "../../src/analytics/metric-units";
 import {
 	metricBehavior,

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import {
 	metricDescription,
 	metricLabel,
-} from "../../src/analytics/metric-names";
+} from "../../src/analytics/definition-labels";
 import { formatMetricValue as formatMeasurement } from "../../src/analytics/metric-units";
 
 test("shared UCUM formatting handles GPU temperature, clocks, power and rates in both locales", () => {

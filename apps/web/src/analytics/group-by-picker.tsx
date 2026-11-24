@@ -10,9 +10,9 @@ import {
 import { cn } from "../lib/utils";
 import { AttributeList, type ListOption } from "./attribute-list";
 import type { AttributeDefinition } from "./contracts";
+import { attributeLabel } from "./definition-labels";
 import { DefinitionSourceIcon } from "./definition-source-icon";
 import { parseAttributeField } from "./fields";
-import { attributeLabel } from "./metric-names";
 import { PICKER_CONTENT_CLASS } from "./picker-command";
 
 const CORE_GROUP_LABEL: Record<string, () => string> = {

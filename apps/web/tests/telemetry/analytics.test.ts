@@ -211,6 +211,7 @@ async function histogram(
 			metric_kind: "toUInt8(3)",
 			temporality: "toUInt8(1)",
 			unit: "'1{busy_process}'",
+			metric_metadata: `[${stringNode("/recount.analytics.coverage.metric", "'recount.collection.process.coverage'")},${stringNode("/recount.analytics.coverage.omitted", "'cpu_idle'")},${stringNode("/recount.analytics.coverage.mode", "'excluded'")}]`,
 			int_value: "CAST(NULL, 'Nullable(Int64)')",
 			explicit_bounds: "{bounds:Array(Float64)}",
 			bucket_counts: "{counts:Array(UInt64)}",
@@ -270,7 +271,7 @@ test("histogram percentiles pool counts on shared bounds, also for Other", async
 	// Node B's 5 bound is not shared, so its counts merge into the 0–10 bucket.
 	expect(pooled.series[0].bounds).toEqual([0, 10, 20]);
 	expect(
-		pooled.series.find((series) => series.measure === "cpu_idle")?.points[0]
+		pooled.series.find((series) => series.measure === "cpu_omitted")?.points[0]
 			.value,
 	).toBe(7);
 	expect(pooled.series[0].points[0].counts).toEqual([0, 99, 1, 0]);
@@ -676,6 +677,7 @@ test("timeseries report which buckets each node's collector was online in", asyn
 		fixture.client.command({
 			query: insertPoints({
 				metric_name: "'recount.collection.discovered.processes'",
+				metric_metadata: `[${stringNode("/recount.analytics.heartbeat", "'true'")}]`,
 			}),
 			query_params: {
 				project,

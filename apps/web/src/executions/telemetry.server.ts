@@ -4,6 +4,7 @@ import {
 	createClient,
 } from "@clickhouse/client";
 import * as z from "zod";
+import preset from "../../presets/collector-metrics.json" with { type: "json" };
 import {
 	POINT_FINAL_SETTINGS,
 	POINT_WINDOW,
@@ -40,13 +41,13 @@ const executionTelemetrySource = seriesPointSource(
     AND ({allHosts:UInt8}=1 OR host_id={host:String})
     AND resource_kind=1
     AND arrayExists(a -> a.path='/recount.collection.scope' AND a.kind=2 AND a.string_value='node',resource_attributes)
-    AND ((metric_name='recount.node.cpu.time' AND unit='s' AND metric_kind=2 AND temporality=2 AND monotonic=1)
-      OR (metric_name IN ('recount.node.memory.total','recount.node.memory.available') AND unit='By' AND metric_kind=1))`,
+    AND ((metric_name='${preset.nodeCpuTime}' AND unit='s' AND metric_kind=2 AND temporality=2 AND monotonic=1)
+      OR (metric_name IN ('${preset.nodeMemoryTotal}','${preset.nodeMemoryAvailable}') AND unit='By' AND metric_kind=1))`,
 	`${POINT_WINDOW}
     AND (bitAnd(flags,1)!=0 OR (value_kind=2 AND double_value>=0)
       OR (value_kind=1 AND int_value>=0))`,
 	"s.chart_id, s.unit, nullIf(s.host_id,'') AS host_id, s.cpu_mode",
-	"AND metric_name IN ('recount.node.cpu.time','recount.node.memory.total','recount.node.memory.available')",
+	`AND metric_name IN ('${preset.nodeCpuTime}','${preset.nodeMemoryTotal}','${preset.nodeMemoryAvailable}')`,
 	[
 		`hex(SHA256(toString(tuple(project_id,source_id,resource_id,resource_kind,host_id,
     resource_present,scope_present,scope_name,scope_version,resource_schema_url,scope_schema_url,

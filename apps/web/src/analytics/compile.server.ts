@@ -322,8 +322,7 @@ function measureSelect(
 		...allFilters.map(({ field }) => field),
 	].some((field) => continuityColumn(parseField(field)) !== undefined);
 	const metric = params.bind(measure.metric, "String");
-	const histogram =
-		scope.behavior === "histogram" || scope.behavior === "population";
+	const histogram = scope.behavior === "histogram";
 	const unit = histogram
 		? ` AND temporality = 1 AND unit = ${params.bind(scope.unit ?? "", "String")}`
 		: "";

@@ -9,6 +9,13 @@ export type AttributeScope = AttributeDefinition["scope"];
 const KEY = /^[^"\\\p{Cc}]{1,256}$/u;
 const FIELD = /^(resource\.)?attributes\["([^"\\\p{Cc}]{1,256})"\]$/u;
 
+/** Keep the executable name alongside a PID when a process is the breakdown. */
+export function breakdownFields(field: string) {
+	return field === attributeField("resource", "process.pid")
+		? [attributeField("resource", "process.executable.name"), field]
+		: [field];
+}
+
 /** Whether an attribute key can be written as a field. */
 export function isFieldKey(key: string) {
 	return KEY.test(key);

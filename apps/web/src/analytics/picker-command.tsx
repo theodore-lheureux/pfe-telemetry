@@ -10,10 +10,14 @@ import {
 import { kindLabel, valueTypeLabel } from "../definitions/labels";
 import type { AttributeDefinition, MetricDefinition } from "./contracts";
 import {
+	attributeLabel,
+	metricDescription,
+	metricLabel,
+} from "./definition-labels";
+import {
 	type DefinitionKind,
 	DefinitionSourceIcon,
 } from "./definition-source-icon";
-import { attributeLabel, metricDescription, metricLabel } from "./metric-names";
 import { unitLabel } from "./metric-units";
 
 export interface PickerPreview {

@@ -2,13 +2,11 @@ import { m } from "@recount/i18n/messages";
 
 // Friendly names for the metrics Recount's collector sends. Other metrics, including
 // any sent by standard OpenTelemetry exporters, keep their technical names.
-const METRICS: Record<
+export const METRIC_NAMES: Record<
 	string,
 	{
 		name: () => string;
 		description: () => string;
-		/** Per-process detail the collector caps per node; its coverage is reported. */
-		detail?: boolean;
 	}
 > = {
 	"recount.node.process.cpu.utilization.distribution": {
@@ -142,17 +140,14 @@ const METRICS: Record<
 	"process.cpu.time": {
 		name: m.metric_process_cpu_time,
 		description: m.metric_process_detail_description,
-		detail: true,
 	},
 	"recount.process.memory.rss": {
 		name: m.metric_process_memory_rss,
 		description: m.metric_process_detail_description,
-		detail: true,
 	},
 	"process.disk.io": {
 		name: m.metric_process_disk_io,
 		description: m.metric_process_detail_description,
-		detail: true,
 	},
 	"recount.collection.discovered.processes": {
 		name: m.metric_processes_discovered,
@@ -182,128 +177,16 @@ const METRICS: Record<
 		name: m.metric_clock_status,
 		description: m.metric_clock_status_description,
 	},
+	"recount.calculated.cpu-usage": {
+		name: m.calculated_cpu_usage,
+		description: m.calculated_cpu_usage_description,
+	},
+	"recount.calculated.memory-usage": {
+		name: m.calculated_memory_usage,
+		description: m.calculated_memory_usage_description,
+	},
+	"recount.calculated.process-cpu": {
+		name: m.calculated_process_cpu,
+		description: m.calculated_process_cpu_description,
+	},
 };
-
-const ATTRIBUTES: Record<string, () => string> = {
-	"cpu.mode": m.attribute_cpu_mode,
-	"disk.io.direction": m.attribute_disk_direction,
-	"system.device": m.attribute_device,
-	reason: m.attribute_reason,
-	"recount.metric.name": m.attribute_measured_metric,
-	"host.name": m.attribute_host_name,
-	"host.id": m.attribute_host_id,
-	"os.type": m.attribute_os_type,
-	"process.pid": m.attribute_process_pid,
-	"process.executable.name": m.attribute_process_name,
-	"process.real_user.id": m.attribute_process_real_uid,
-	"recount.slurm.job.id": m.attribute_slurm_job_id,
-	"recount.slurm.step.id": m.attribute_slurm_step_id,
-	"process.parent_pid": m.attribute_parent_pid,
-	"recount.collection.scope": m.attribute_collection_scope,
-	"recount.collection.source": m.attribute_collection_source,
-	"recount.collection.visibility": m.attribute_visibility,
-};
-const CALCULATED_NAMES: Record<string, () => string> = {
-	"recount.calculated.cpu-usage": m.calculated_cpu_usage,
-	"recount.calculated.memory-usage": m.calculated_memory_usage,
-	"recount.calculated.process-cpu": m.calculated_process_cpu,
-};
-
-/** A readable metric name; unknown metrics show their technical name. */
-export function metricLabel(name: string, label?: string) {
-	return METRICS[name]?.name() ?? CALCULATED_NAMES[name]?.() ?? label ?? name;
-}
-
-export function metricDescription(name: string) {
-	return METRICS[name]?.description() ?? null;
-}
-
-/**
- * The measure counting what a distribution leaves out as idle, from the collector's
- * coverage counters: its latest count per node, summed.
- */
-export function idleMeasure(name: string, measure: string) {
-	if (name !== "recount.node.process.cpu.utilization.distribution")
-		return undefined;
-	return {
-		name: `${measure}_idle`,
-		metric: "recount.collection.process.coverage",
-		calculation: "avg" as const,
-		combine: "sum" as const,
-		filters: [
-			{
-				field: 'attributes["coverage"]',
-				op: "eq" as const,
-				values: ["cpu_idle"],
-			},
-		],
-	};
-}
-
-/** Picker sections, in display order; collector diagnostics come last. */
-export const METRIC_SECTIONS = [
-	"node",
-	"processes",
-	"gpu",
-	"other",
-	"diagnostics",
-] as const;
-export type MetricSection = (typeof METRIC_SECTIONS)[number];
-
-export const METRIC_SECTION_LABEL: Record<MetricSection, () => string> = {
-	node: m.metric_section_node,
-	processes: m.metric_section_processes,
-	gpu: m.metric_section_gpu,
-	other: m.metric_section_other,
-	diagnostics: m.metric_section_diagnostics,
-};
-
-/** Where a metric is listed, by family; metrics from other sources are "other". */
-export function metricSection(name: string): MetricSection {
-	if (/^recount\.node\.process\./.test(name)) return "processes";
-	if (/^recount\.node\.gpu\./.test(name)) return "gpu";
-	if (
-		/^recount\.(collection|clock)\./.test(name) ||
-		name.endsWith(".discovery.status")
-	)
-		return "diagnostics";
-	if (/^recount\.(process\.)?gpu\./.test(name)) return "gpu";
-	if (
-		/^(process\.|recount\.process\.|recount\.calculated\.process-)/.test(name)
-	)
-		return "processes";
-	if (/^(recount\.node\.|system\.|recount\.calculated\.)/.test(name))
-		return "node";
-	return "other";
-}
-
-export function isProcessDetailMetric(name: string | null | undefined) {
-	return !!name && METRICS[name]?.detail === true;
-}
-
-const PROCESS_ID = 'resource.attributes["process.pid"]';
-
-/** The breakdown a metric opens with when members chose none: per-process detail by process. */
-export function metricBreakdown(name: string | undefined) {
-	return isProcessDetailMetric(name) ? PROCESS_ID : undefined;
-}
-
-/** The fields a breakdown queries: a process ID also brings its name, as in "python · 662". */
-export function breakdownFields(field: string) {
-	return field === PROCESS_ID
-		? ['resource.attributes["process.executable.name"]', field]
-		: [field];
-}
-
-/** Whether the metric has a friendly name distinct from its technical one. */
-export function isNamedMetric(name: string) {
-	return name in METRICS;
-}
-
-export function attributeLabel(key: string) {
-	return ATTRIBUTES[key]?.() ?? key;
-}
-
-export function isNamedAttribute(key: string) {
-	return key in ATTRIBUTES;
-}

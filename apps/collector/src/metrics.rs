@@ -6,7 +6,68 @@ use opentelemetry_proto::tonic::{
     },
     resource::v1::Resource,
 };
-use recount_telemetry_validation::catalogue::Definition;
+use recount_telemetry_validation::catalogue::{self, Definition};
+
+fn presentation(definition: &Definition) -> Vec<KeyValue> {
+    let name = definition.name;
+    let section = if name.starts_with("recount.collection.")
+        || name.starts_with("recount.clock.")
+        || name.ends_with(".discovery.status")
+    {
+        "diagnostics"
+    } else if name.contains(".gpu.") {
+        "gpu"
+    } else if name.contains(".process.") || name.starts_with("process.") {
+        "processes"
+    } else {
+        "node"
+    };
+    let mut metadata = vec![string("recount.analytics.section", section)];
+    let quantity = match name {
+        n if n == catalogue::NODE_PROCESS_CPU_DISTRIBUTION.name => "cpu",
+        n if n == catalogue::NODE_PROCESS_RSS_DISTRIBUTION.name => "memory",
+        n if n == catalogue::NODE_PROCESS_IO_DISTRIBUTION.name => "disk_io",
+        n if n == catalogue::NODE_GPU_UTILIZATION_DISTRIBUTION.name => "utilization",
+        n if n == catalogue::NODE_GPU_MEMORY_DISTRIBUTION.name => "gpu_memory",
+        n if n == catalogue::NODE_GPU_POWER_DISTRIBUTION.name => "power",
+        n if n == catalogue::NODE_TCP_RTT_DISTRIBUTION.name => "rtt",
+        _ => "",
+    };
+    if !quantity.is_empty() {
+        metadata.push(string("recount.analytics.quantity", quantity));
+    }
+    if name == catalogue::DISCOVERED_PROCESSES.name {
+        metadata.push(string("recount.analytics.heartbeat", "true"));
+    }
+    if name == catalogue::NODE_PROCESS_CPU_DISTRIBUTION.name {
+        metadata.extend([
+            string(
+                "recount.analytics.coverage.metric",
+                catalogue::PROCESS_COVERAGE.name,
+            ),
+            string("recount.analytics.coverage.omitted", "cpu_idle"),
+            string("recount.analytics.coverage.mode", "excluded"),
+        ]);
+    }
+    if [
+        catalogue::PROCESS_CPU_TIME.name,
+        catalogue::PROCESS_MEMORY_RSS.name,
+        catalogue::PROCESS_DISK_IO.name,
+    ]
+    .contains(&name)
+    {
+        metadata.extend([
+            string("recount.analytics.breakdown", "process.pid"),
+            string(
+                "recount.analytics.coverage.metric",
+                catalogue::PROCESS_COVERAGE.name,
+            ),
+            string("recount.analytics.coverage.omitted", "detail_deferred"),
+            string("recount.analytics.coverage.mode", "partial"),
+        ]);
+    }
+    metadata
+}
 
 pub(crate) fn string(key: &str, value: impl Into<String>) -> KeyValue {
     KeyValue {
@@ -47,6 +108,7 @@ pub(crate) fn counter(definition: &Definition, points: Vec<NumberDataPoint>) -> 
     Metric {
         name: definition.name.into(),
         unit: definition.unit.into(),
+        metadata: presentation(definition),
         data: Some(metric::Data::Sum(Sum {
             data_points: points,
             aggregation_temporality: AggregationTemporality::Cumulative as i32,
@@ -60,6 +122,7 @@ pub(crate) fn gauge(definition: &Definition, points: Vec<NumberDataPoint>) -> Me
     Metric {
         name: definition.name.into(),
         unit: definition.unit.into(),
+        metadata: presentation(definition),
         data: Some(metric::Data::Gauge(Gauge {
             data_points: points,
         })),
@@ -71,6 +134,7 @@ pub(crate) fn histogram(definition: &Definition, data_points: Vec<HistogramDataP
     Metric {
         name: definition.name.into(),
         unit: definition.unit.into(),
+        metadata: presentation(definition),
         data: Some(metric::Data::Histogram(Histogram {
             data_points,
             aggregation_temporality: AggregationTemporality::Delta as i32,

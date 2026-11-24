@@ -11,8 +11,8 @@ import {
 	tableFeatures,
 } from "@tanstack/react-table";
 import type { ReactNode } from "react";
+import { attributeLabel } from "../analytics/definition-labels";
 import { DefinitionSourceIcon } from "../analytics/definition-source-icon";
-import { attributeLabel } from "../analytics/metric-names";
 import { PlainHeader, SortableHeader } from "../components/data-table";
 import { TimeDisplay } from "../components/time-display";
 import { Badge } from "../components/ui/badge";

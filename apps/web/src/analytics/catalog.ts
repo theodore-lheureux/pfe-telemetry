@@ -1,5 +1,6 @@
 import { getLocale } from "@recount/i18n/runtime";
 import { queryOptions, useQueries, useQuery } from "@tanstack/react-query";
+import preset from "../../presets/collector-metrics.json" with { type: "json" };
 import { resolveRange } from "../components/date-range/date-range";
 import { useDisplayTimeZone } from "../components/time-display";
 import { unwrapOperation } from "../lib/operation-result";
@@ -130,7 +131,6 @@ export function useAttributeValues(source: ValueSource, field: string | null) {
 	});
 }
 
-const COVERAGE = "recount.collection.process.coverage";
 const coverageMeasure = (
 	name: string,
 	kind: string,
@@ -138,7 +138,7 @@ const coverageMeasure = (
 	combine: "sum" | "count" | "max",
 ) => ({
 	name,
-	metric: COVERAGE,
+	metric: preset.processCoverage,
 	calculation,
 	combine,
 	filters: [

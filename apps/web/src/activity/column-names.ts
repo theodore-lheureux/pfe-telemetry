@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
+import { attributeLabel } from "../analytics/definition-labels";
 import { parseAttributeField } from "../analytics/fields";
-import { attributeLabel } from "../analytics/metric-names";
 import { type BuiltInColumn, isBuiltIn } from "./columns";
 
 export type ColumnCategory = "fields" | "point" | "resource";

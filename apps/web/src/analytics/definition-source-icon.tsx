@@ -8,7 +8,7 @@ import {
 } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 import { isCalculatedMetric } from "./calculated-metrics";
-import { isNamedAttribute, isNamedMetric } from "./metric-names";
+import { isNamedAttribute, isNamedMetric } from "./definition-labels";
 
 export type DefinitionKind = "metric" | "attribute";
 

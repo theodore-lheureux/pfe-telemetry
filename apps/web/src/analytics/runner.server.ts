@@ -12,10 +12,10 @@ import {
 	type QueryResult,
 	type SeriesResult,
 } from "./contracts";
-import { metricDefinitions } from "./discovery.server";
+import { omissionMeasure } from "./coverage";
+import { heartbeatDefinition, metricDefinitions } from "./discovery.server";
 import { formulaSeries } from "./formula-series";
 import { pipelineIngestedThrough } from "./ingested-through.server";
-import { idleMeasure } from "./metric-names";
 import {
 	POINT_FINAL_SETTINGS,
 	POINT_WINDOW,
@@ -188,9 +188,6 @@ async function readWindow(
 	return { series, limited };
 }
 
-// Collectors report this once per collection cycle, whatever else they measure.
-const HEARTBEAT = "recount.collection.discovered.processes";
-
 /** Buckets per node in which its collector reported; null when unknown or unavailable. */
 async function coverage(
 	connection: ClickHouseClient,
@@ -199,6 +196,7 @@ async function coverage(
 	to: Date,
 	step: number,
 	signal: AbortSignal,
+	heartbeat: string,
 ): Promise<Record<string, number[]> | null> {
 	const millis = (date: Date) => String(date.getTime());
 	try {
@@ -216,7 +214,7 @@ LIMIT 500`,
 				from: millis(from),
 				to: millis(to),
 				step: (BigInt(step) * 1_000n).toString(),
-				heartbeat: HEARTBEAT,
+				heartbeat,
 			},
 			abort_signal: signal,
 			clickhouse_settings: SETTINGS,
@@ -235,6 +233,56 @@ LIMIT 500`,
 	}
 }
 
+async function scopesForQuery(
+	connection: ClickHouseClient,
+	projectId: string,
+	query: AnalyticsQuery,
+	signal: AbortSignal,
+) {
+	const definitions = await metricDefinitions(
+		connection,
+		projectId,
+		query.measures.map(({ metric }) => metric),
+		signal,
+	);
+	const companions = query.heatmap
+		? query.measures.flatMap(({ name, metric }) =>
+				omissionMeasure(name, definitions.get(metric)?.presentation?.coverage),
+			)
+		: [];
+	if (companions.length) {
+		const counters = await metricDefinitions(
+			connection,
+			projectId,
+			companions.map(({ metric }) => metric),
+			signal,
+		);
+		for (const [name, definition] of counters)
+			definitions.set(name, definition);
+		query = {
+			...query,
+			measures: [
+				...query.measures,
+				...companions.filter(({ metric }) => definitions.has(metric)),
+			],
+		};
+	}
+	const scopes = query.measures.map((measure) => {
+		const definition = definitions.get(measure.metric);
+		if (!definition)
+			throw new InputError("INVALID_QUERY", "Metric not found in this project");
+		if (
+			!ALLOWED_CALCULATIONS[definition.behavior].includes(measure.calculation)
+		)
+			throw new InputError(
+				"INVALID_CALCULATION",
+				"Calculation does not apply to this metric",
+			);
+		return definition;
+	});
+	return { query, scopes };
+}
+
 /** Runs a validated query for an already authorized project. */
 export async function runQuery(
 	projectId: string,
@@ -245,18 +293,12 @@ export async function runQuery(
 	if (signal?.aborted)
 		throw new OperationError("CANCELLED", "Analytics request cancelled");
 	// An aggregation reads up to the largest groups allowed, never folded into Other.
-	let query = input.aggregate
+	const requested = input.aggregate
 		? { ...input, limit: MAX_SERIES, other: false }
 		: input;
-	// A heatmap of a distribution that leaves idle subjects out also reads their count.
-	const companions = query.heatmap
-		? query.measures.flatMap(
-				(measure) => idleMeasure(measure.metric, measure.name) ?? [],
-			)
-		: [];
-	const { from, to } = resolveRange(query.range);
-	const compared = query.compare
-		? comparisonRange(query.compare, from, to)
+	const { from, to } = resolveRange(requested.range);
+	const compared = requested.compare
+		? comparisonRange(requested.compare, from, to)
 		: null;
 	const windows: Window[] = [
 		{ from, to, comparison: false, shiftMs: 0 },
@@ -274,43 +316,16 @@ export async function runQuery(
 	const abort = signal ? AbortSignal.any([signal, deadline]) : deadline;
 	try {
 		const bucketSeconds =
-			query.shape === "timeseries" && query.interval
-				? INTERVALS[query.interval]
+			requested.shape === "timeseries" && requested.interval
+				? INTERVALS[requested.interval]
 				: null;
 		const watermark = bucketSeconds ? pipelineIngestedThrough() : null;
-		const definitions = await metricDefinitions(
-			connection,
-			projectId,
-			[
-				...query.measures.map((measure) => measure.metric),
-				...companions.map((measure) => measure.metric),
-				...(bucketSeconds ? [HEARTBEAT] : []),
-			],
-			abort,
-		);
-		query = {
-			...query,
-			measures: [
-				...query.measures,
-				...companions.filter((measure) => definitions.has(measure.metric)),
-			],
-		};
-		const scopes = query.measures.map((measure) => {
-			const definition = definitions.get(measure.metric);
-			if (!definition)
-				throw new InputError(
-					"INVALID_QUERY",
-					"Metric not found in this project",
-				);
-			if (
-				!ALLOWED_CALCULATIONS[definition.behavior].includes(measure.calculation)
-			)
-				throw new InputError(
-					"INVALID_CALCULATION",
-					"Calculation does not apply to this metric",
-				);
-			return definition;
-		});
+		const [{ query, scopes }, heartbeat] = await Promise.all([
+			scopesForQuery(connection, projectId, requested, abort),
+			bucketSeconds
+				? heartbeatDefinition(connection, projectId, abort)
+				: undefined,
+		]);
 		const series: SeriesResult[] = [];
 		let limited = false;
 		for (const window of windows) {
@@ -329,6 +344,7 @@ export async function runQuery(
 			(measure, index) => ({
 				name: measure.name,
 				metric: measure.metric,
+				presentation: scopes[index].presentation,
 				// Source counts have no unit; observation counts use the unit's annotation.
 				unit:
 					measure.combine === "count" && measure.calculation !== "count"
@@ -338,7 +354,6 @@ export async function runQuery(
 			}),
 		);
 		const all = [...series, ...formulaSeries(query, series)];
-		const heartbeat = definitions.get(HEARTBEAT);
 		const ingestedThrough = await watermark;
 		return {
 			shape: query.shape,
@@ -353,6 +368,7 @@ export async function runQuery(
 							to,
 							bucketSeconds,
 							abort,
+							heartbeat.name,
 						)
 					: null,
 			ingestedThrough:

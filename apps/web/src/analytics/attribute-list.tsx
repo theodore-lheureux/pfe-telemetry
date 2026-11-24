@@ -7,8 +7,8 @@ import {
 } from "../components/ui/command";
 import type { AttributeDefinition } from "./contracts";
 import { DefinitionChoice } from "./definition-choice";
+import { attributeLabel } from "./definition-labels";
 import { attributeField, isFieldKey } from "./fields";
-import { attributeLabel } from "./metric-names";
 import {
 	attributePreview,
 	PickerCommand,

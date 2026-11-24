@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import preset from "../../presets/collector-metrics.json" with { type: "json" };
 import { InputError } from "../lib/input-error";
 import type { ProjectReference } from "../organizations/contracts";
 import type { Measure, MetricDefinition } from "./contracts";
@@ -97,7 +98,6 @@ export function parseCalculation(value: unknown): CalculationDefinition {
 	return definition;
 }
 
-const CPU = "recount.node.cpu.time";
 const epoch = new Date(0);
 export function builtInCalculations(): CalculatedMetric[] {
 	return [
@@ -108,7 +108,7 @@ export function builtInCalculations(): CalculatedMetric[] {
 			inputs: [
 				{
 					name: "A",
-					metric: CPU,
+					metric: preset.nodeCpuTime,
 					calculation: "rate",
 					combine: "sum",
 					filters: [
@@ -117,7 +117,7 @@ export function builtInCalculations(): CalculatedMetric[] {
 				},
 				{
 					name: "B",
-					metric: CPU,
+					metric: preset.nodeCpuTime,
 					calculation: "rate",
 					combine: "sum",
 					filters: [],
@@ -133,14 +133,14 @@ export function builtInCalculations(): CalculatedMetric[] {
 			inputs: [
 				{
 					name: "A",
-					metric: "recount.node.memory.available",
+					metric: preset.nodeMemoryAvailable,
 					calculation: "avg",
 					combine: "sum",
 					filters: [],
 				},
 				{
 					name: "B",
-					metric: "recount.node.memory.total",
+					metric: preset.nodeMemoryTotal,
 					calculation: "avg",
 					combine: "sum",
 					filters: [],
@@ -156,7 +156,7 @@ export function builtInCalculations(): CalculatedMetric[] {
 			inputs: [
 				{
 					name: "A",
-					metric: "recount.node.process.cpu.utilization.distribution",
+					metric: preset.processCpuDistribution,
 					calculation: "avg",
 					combine: "sum",
 					filters: [],
@@ -183,6 +183,9 @@ export function calculatedCatalogMetric(
 		temporality: 0,
 		monotonic: null,
 		behavior: "gauge",
+		presentation: definition.builtIn
+			? { section: definition.id === "process-cpu" ? "processes" : "node" }
+			: undefined,
 		unit: definition.unit,
 		description: definition.description,
 		firstSeen: definition.createdAt,

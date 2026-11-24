@@ -1,4 +1,5 @@
 import { m } from "@recount/i18n/messages";
+import nodeHealth from "../../presets/node-health.json" with { type: "json" };
 import type { ProjectReference } from "../organizations/contracts";
 import type { MetricDefinition } from "./contracts";
 import {
@@ -12,7 +13,6 @@ import type {
 } from "./dashboards";
 import { decodeDraft } from "./insight/draft";
 import gpu from "./templates/gpu.json" with { type: "json" };
-import nodeHealth from "./templates/node-health.json" with { type: "json" };
 import { ALLOWED_CALCULATIONS } from "./validation";
 
 export interface TemplateVariable {

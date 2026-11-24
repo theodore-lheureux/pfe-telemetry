@@ -26,9 +26,9 @@ import {
 	MAX_FILTERS,
 	type MetricDefinition,
 } from "../contracts";
+import { metricDescription } from "../definition-labels";
 import { FilterChips, withFilter } from "../filter-chips";
 import { isDistribution } from "../histograms";
-import { isProcessDetailMetric, metricDescription } from "../metric-names";
 import { MetricPicker } from "../metric-picker";
 import { ALLOWED_CALCULATIONS } from "../validation";
 import type { DraftSeries, InsightDraft } from "./draft";
@@ -92,7 +92,7 @@ export function SeriesRow({
 			(input) => input.filters?.length ?? 0,
 		) ?? []),
 	);
-	const detail = isProcessDetailMetric(series.metric);
+	const detail = definition?.presentation?.coverage?.mode === "partial";
 	const { data: coverage } = useProcessCoverage(
 		userId,
 		reference,
