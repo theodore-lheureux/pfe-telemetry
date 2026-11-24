@@ -76,9 +76,13 @@ export function InsightChart({
 		display.type === "heatmap"
 			? [
 					...new Set(
-						result.measures.map((measure) =>
-							metricLabel(measure.metric, measure.label),
-						),
+						result.measures
+							.filter((measure) =>
+								result.series.some(
+									(series) => series.measure === measure.name && series.bounds,
+								),
+							)
+							.map((measure) => metricLabel(measure.metric, measure.label)),
 					),
 				].join(", ")
 			: plottedTitle(result, names);
@@ -299,17 +303,44 @@ export function ChartBody({
 		/>
 	);
 	if (display.type !== "heatmap") return chart(chartSeries);
+	// Series without buckets, such as idle counts, annotate the heatmap they belong to.
+	const heatmaps = view.current.filter((series) => series.bounds);
+	const idleOf = (series: SeriesResult) =>
+		result.series.find(
+			(other) =>
+				other.measure === `${series.measure}_idle` &&
+				JSON.stringify(other.group) === JSON.stringify(series.group),
+		);
+	if (
+		!heatmaps.some((series) =>
+			series.points.some(({ counts }) => counts?.some((count) => count > 0)),
+		)
+	)
+		return (
+			<IconEmptyState
+				icon={<ChartNoAxesColumnIcon aria-hidden="true" />}
+				title={m.insight_empty_result()}
+				description={
+					heatmaps.some((series) =>
+						idleOf(series)?.points.some(({ value }) => value),
+					)
+						? m.insight_all_idle()
+						: emptyDetail()
+				}
+				className={height}
+			/>
+		);
+	const metrics = new Set(heatmaps.map((series) => series.measure)).size;
 	// One heatmap per series, titled by its group when the breakdown splits a measure.
 	return (
 		<div
 			className={cn("flex flex-col gap-4", fill && "h-full overflow-y-auto")}
 		>
-			{view.current.map((series) => {
+			{heatmaps.map((series) => {
 				const measure = seriesSource(result, series);
 				if (!measure) return null;
 				const title = [
-					result.measures.length > 1 &&
-						metricLabel(measure.metric, measure.label),
+					metrics > 1 && metricLabel(measure.metric, measure.label),
 					view.groupLabel(series),
 				]
 					.filter(Boolean)
@@ -320,7 +351,7 @@ export function ChartBody({
 						className={cn("flex flex-col gap-1", fill && "min-h-56 flex-1")}
 					>
 						{title && <h3 className="text-sm font-medium">{title}</h3>}
-						{chart([], heatmapOf(measure, series))}
+						{chart([], heatmapOf(measure, series, idleOf(series)))}
 					</section>
 				);
 			})}
@@ -332,6 +363,7 @@ export function ChartBody({
 function heatmapOf(
 	measure: QueryResult["measures"][number],
 	series: SeriesResult,
+	idle: SeriesResult | undefined,
 ) {
 	const labels = distributionLabels(measure.metric, measure.label);
 	// Ratios show at least their full scale, so cells keep their place over time.
@@ -345,5 +377,8 @@ function heatmapOf(
 		),
 		...labels,
 		scale,
+		idle:
+			idle &&
+			new Map(idle.points.map(({ bucketMs, value }) => [bucketMs, value])),
 	};
 }

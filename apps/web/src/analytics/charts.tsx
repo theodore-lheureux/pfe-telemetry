@@ -286,6 +286,8 @@ export interface Heatmap {
 	count: (count: number, locale: string) => string;
 	/** A bucket's value range in words, such as "using 1–5 % CPU". */
 	range: (inputs: { range: string }) => string;
+	/** Per bucket, the subjects left out as idle, when the histogram excludes them. */
+	idle?: Map<number | null, number | null>;
 	/** A value the rows always reach, such as 100 % for a ratio, unless `yMax` caps them. */
 	scale?: number;
 }
@@ -345,21 +347,23 @@ function valueAxis({
 	beginAtZero,
 	yMax,
 	overflows,
+	flat,
 	format,
 }: {
 	logScale: boolean;
 	beginAtZero: boolean;
 	yMax?: number;
 	overflows: boolean;
+	/** Every value is zero, where automatic ticks would stretch to an arbitrary 0–4. */
+	flat: boolean;
 	format: (value: number) => string;
 }): ComponentProps<typeof YAxis> {
+	let top: number | "auto" = flat ? 1 : "auto";
+	if (yMax !== undefined && Number.isFinite(yMax)) top = yMax;
 	return {
 		// A log axis cannot start at zero; non-positive values fall outside it.
 		scale: logScale ? ("log" as const) : ("auto" as const),
-		domain: [
-			logScale || !beginAtZero ? "auto" : 0,
-			yMax !== undefined && Number.isFinite(yMax) ? yMax : "auto",
-		],
+		domain: [logScale || !beginAtZero ? "auto" : 0, top],
 		allowDataOverflow: logScale || overflows,
 		tickFormatter: (value: number) => format(value),
 	};
@@ -413,6 +417,8 @@ function HeatmapTooltip({
 	const range = heatmap.range({
 		range: bucketRange(heatmap.bounds, index, format),
 	});
+	const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
+	const idle = heatmap.idle?.get(bucketMs);
 	if (!count)
 		return (
 			<p className="text-muted-foreground">
@@ -438,6 +444,7 @@ function HeatmapTooltip({
 					share: share.format(count / total),
 					total: heatmap.count(total, locale),
 				})}
+				{idle ? ` ${m.histogram_idle({ count: number.format(idle) })}` : ""}
 			</p>
 		</>
 	);
@@ -938,7 +945,16 @@ export function TimeseriesChart({
 						width="auto"
 						{...(layout
 							? heatmapAxis(layout, format)
-							: valueAxis({ logScale, beginAtZero, yMax, overflows, format }))}
+							: valueAxis({
+									logScale,
+									beginAtZero,
+									yMax,
+									overflows,
+									flat: drawn.every((entry) =>
+										entry.points.every((point) => !point.value),
+									),
+									format,
+								}))}
 						label={
 							yLabel
 								? {

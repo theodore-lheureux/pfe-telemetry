@@ -159,7 +159,7 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				.getByRole("combobox", { name: "Choose a metric" })
 				.click({ timeout: 6000 });
 			await page
-				.getByRole("option", { name: /^CPU per process/ })
+				.getByRole("option", { name: /^CPU per busy process/ })
 				.click({ timeout: 6000 });
 			// Histograms use the ordinary calculation menu, starting at p95.
 			const calculation = page.getByRole("combobox", { name: "Calculation" });
@@ -169,7 +169,7 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			await page.getByRole("option", { name: "p50", exact: true }).click();
 			await expect(page.locator(".recharts-surface").first()).toBeVisible();
 			await expect(
-				page.getByRole("heading", { level: 2, name: "CPU per process" }),
+				page.getByRole("heading", { level: 2, name: "CPU per busy process" }),
 			).toBeVisible();
 			await expect(
 				page.getByRole("row").filter({ hasText: /^p(50|95)/ }),
@@ -179,10 +179,12 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			const plot = page.locator(".recharts-surface").first();
 			await expect(plot.getByText("CPU per process")).toBeVisible();
 			await expect(plot.getByText("50%", { exact: true })).toBeVisible();
-			await expect(page.getByText("Processes", { exact: true })).toBeVisible();
+			await expect(
+				page.getByText("Busy processes", { exact: true }),
+			).toBeVisible();
 			await plot.hover();
 			const tooltip = page.locator(".recharts-tooltip-wrapper");
-			await expect(tooltip).toContainText(/\d+ processes/);
+			await expect(tooltip).toContainText(/\d+ busy processes/);
 			await expect(tooltip).toContainText("CPU");
 			await page.screenshot({
 				path: info.outputPath(`histogram-heatmap-${theme}.png`),

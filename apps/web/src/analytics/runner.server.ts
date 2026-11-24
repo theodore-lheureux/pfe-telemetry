@@ -15,6 +15,7 @@ import {
 import { metricDefinitions } from "./discovery.server";
 import { formulaSeries } from "./formula-series";
 import { pipelineIngestedThrough } from "./ingested-through.server";
+import { idleMeasure } from "./metric-names";
 import {
 	POINT_FINAL_SETTINGS,
 	POINT_WINDOW,
@@ -244,9 +245,15 @@ export async function runQuery(
 	if (signal?.aborted)
 		throw new OperationError("CANCELLED", "Analytics request cancelled");
 	// An aggregation reads up to the largest groups allowed, never folded into Other.
-	const query = input.aggregate
+	let query = input.aggregate
 		? { ...input, limit: MAX_SERIES, other: false }
 		: input;
+	// A heatmap of a distribution that leaves idle subjects out also reads their count.
+	const companions = query.heatmap
+		? query.measures.flatMap(
+				(measure) => idleMeasure(measure.metric, measure.name) ?? [],
+			)
+		: [];
 	const { from, to } = resolveRange(query.range);
 	const compared = query.compare
 		? comparisonRange(query.compare, from, to)
@@ -276,10 +283,18 @@ export async function runQuery(
 			projectId,
 			[
 				...query.measures.map((measure) => measure.metric),
+				...companions.map((measure) => measure.metric),
 				...(bucketSeconds ? [HEARTBEAT] : []),
 			],
 			abort,
 		);
+		query = {
+			...query,
+			measures: [
+				...query.measures,
+				...companions.filter((measure) => definitions.has(measure.metric)),
+			],
+		};
 		const scopes = query.measures.map((measure) => {
 			const definition = definitions.get(measure.metric);
 			if (!definition)
@@ -293,15 +308,6 @@ export async function runQuery(
 				throw new InputError(
 					"INVALID_CALCULATION",
 					"Calculation does not apply to this metric",
-				);
-			if (
-				query.heatmap &&
-				definition.behavior !== "histogram" &&
-				definition.behavior !== "population"
-			)
-				throw new InputError(
-					"INVALID_CALCULATION",
-					"A heatmap needs histogram metrics",
 				);
 			return definition;
 		});

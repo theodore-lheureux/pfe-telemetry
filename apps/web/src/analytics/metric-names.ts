@@ -2,6 +2,11 @@ import { m } from "@recount/i18n/messages";
 
 // What a histogram's observations are, so counts read "5 processes" in each locale.
 const SUBJECTS = {
+	busy: {
+		name: m.histogram_subject_busy,
+		one: m.histogram_count_busy_one,
+		other: m.histogram_count_busy_other,
+	},
 	processes: {
 		name: m.histogram_subject_processes,
 		one: m.histogram_count_processes_one,
@@ -29,13 +34,16 @@ type Distribution = {
 	subject: keyof typeof SUBJECTS;
 	/** Phrases a bucket's value range, such as "using 1–5 % CPU". */
 	range: (inputs: { range: string }) => string;
+	/** The coverage kind counting subjects left out as idle, if any. */
+	idle?: string;
 };
 
 const distribution = (
 	quantity: Distribution["quantity"],
 	subject: Distribution["subject"],
 	range: Distribution["range"],
-): Distribution => ({ quantity, subject, range });
+	idle?: string,
+): Distribution => ({ quantity, subject, range, idle });
 
 // Friendly names for the metrics Recount's collector sends. Other metrics, including
 // any sent by standard OpenTelemetry exporters, keep their technical names.
@@ -52,12 +60,13 @@ const METRICS: Record<
 > = {
 	"recount.node.process.cpu.utilization.distribution": {
 		name: m.metric_hist_process_cpu,
-		description: m.metric_hist_process_description,
+		description: m.metric_hist_process_cpu_description,
 		ratio: true,
 		distribution: distribution(
 			m.histogram_process_cpu,
-			"processes",
+			"busy",
 			m.histogram_range_process_cpu,
+			"cpu_idle",
 		),
 	},
 	"recount.node.process.memory.rss.distribution": {
@@ -317,6 +326,24 @@ export function distributionLabels(name: string, label?: string) {
 				: subject.other({ count: text });
 		},
 		range: entry?.range ?? m.histogram_range_default,
+	};
+}
+
+/**
+ * The measure counting what a distribution leaves out as idle, from the collector's
+ * coverage counters: its latest count per node, summed.
+ */
+export function idleMeasure(name: string, measure: string) {
+	const kind = METRICS[name]?.distribution?.idle;
+	if (!kind) return undefined;
+	return {
+		name: `${measure}_idle`,
+		metric: "recount.collection.process.coverage",
+		calculation: "avg" as const,
+		combine: "sum" as const,
+		filters: [
+			{ field: 'attributes["coverage"]', op: "eq" as const, values: [kind] },
+		],
 	};
 }
 
