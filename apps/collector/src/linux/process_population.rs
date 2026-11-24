@@ -136,6 +136,7 @@ impl Collector {
         let mut candidates = Vec::with_capacity(samples.len());
         let mut gpu_identities = BTreeMap::new();
         let mut capped = 0;
+        let mut idle = 0;
         let mut detail = self.process_detail;
         {
             let tracked = self.tracked_processes.as_ref().map(|rx| rx.borrow());
@@ -164,8 +165,11 @@ impl Collector {
                             / self.ticks_per_second as f64,
                     )
                 });
-                if let Some(value) = cpu_rate {
-                    cpu.observe(value);
+                // Only busy processes enter the CPU distribution; idle ones are counted.
+                match cpu_rate {
+                    Some(value) if value > 0.0 => cpu.observe(value),
+                    Some(_) => idle += 1,
+                    None => {}
                 }
                 let memory = s.rss.ok();
                 if let Some(value) = memory {
@@ -202,6 +206,7 @@ impl Collector {
         let coverage = [
             ("verified", samples.len() as u64),
             ("cpu", cpu.count()),
+            ("cpu_idle", idle),
             ("rss", rss.count()),
             ("disk_read", disk[0].count()),
             ("disk_write", disk[1].count()),

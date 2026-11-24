@@ -28,7 +28,7 @@ Apart from the kernel short process name (`process.executable.name`, read with e
 
 ## Measurements
 
-Each scan attempts baseline node and visible-process measurements. Available points and coverage diagnostics are emitted together, but individual reads have their own completion times: a scan is not an atomic snapshot. Successful discovery with no disks is valid; periodic discovery can miss short-lived processes.
+Each scan attempts baseline node and visible-process measurements. The process CPU distribution records only processes whose CPU time advanced since their previous read; idle processes are reported as the `cpu_idle` kind of `recount.collection.process.coverage`, so percentiles describe busy processes. Memory and disk distributions include every observation. Available points and coverage diagnostics are emitted together, but individual reads have their own completion times: a scan is not an atomic snapshot. Successful discovery with no disks is valid; periodic discovery can miss short-lived processes.
 
 The [collector measurement catalogue](../apps/collector/README.md#baseline-measurements) lists names, types, units and dimensions. The shared [catalogue implementation](../crates/telemetry-validation/src/catalogue.rs) validates adapter metric semantics. Current baselines include Recount node CPU/memory, standard system disk I/O and process CPU/disk I/O, plus Recount RSS. Standard metric/vendor identifiers retain their external spelling. [System conventions](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/), [process conventions](https://opentelemetry.io/docs/specs/semconv/system/process-metrics/)
 

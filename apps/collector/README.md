@@ -64,7 +64,7 @@ The worker discards the snapshot if either dump fails, is interrupted or exceeds
 
 ## Baseline measurements
 
-Process histograms cover all verified visible observations, whether or not the collector exports individual detail. CPU and disk observations require a valid adjacent read; RSS is a snapshot and may count shared pages more than once. Missing measurements are not zero.
+Process histograms cover all verified visible observations, whether or not the collector exports individual detail. CPU and disk observations require a valid adjacent read; RSS is a snapshot and may count shared pages more than once. The CPU histogram holds only busy processes, whose CPU time advanced since the previous read; `recount.collection.process.coverage` counts the idle ones as `cpu_idle`. Missing measurements are not zero.
 
 The collector exports details for at most 64 processes per scan by default. Tracked executions take priority; other candidates are the top 16 by CPU or RSS and processes that cross a detail threshold. Set `RECOUNT_COLLECTOR_PROCESS_DETAIL_CAP` to change the cap, or to `0` to profile all verified visible processes on a node. The threshold defaults are `50` for `RECOUNT_COLLECTOR_PROCESS_DETAIL_CPU_PERCENT` (percentage of one logical CPU), `1073741824` for `RECOUNT_COLLECTOR_PROCESS_DETAIL_RSS_BYTES`, and `10485760` for `RECOUNT_COLLECTOR_PROCESS_DETAIL_IO_BYTES_PER_SECOND` (read plus write).
 
