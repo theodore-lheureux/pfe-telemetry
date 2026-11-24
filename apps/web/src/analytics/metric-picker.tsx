@@ -98,7 +98,11 @@ export function MetricPicker({
 		label: METRIC_SECTION_LABEL[section](),
 		names: names
 			.filter((name) => metricSection(name) === section)
-			.sort((a, b) => Number(distribution(b)) - Number(distribution(a))),
+			.sort(
+				(a, b) =>
+					Number(distribution(b)) - Number(distribution(a)) ||
+					metricText(a).localeCompare(metricText(b)),
+			),
 	}));
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
@@ -126,7 +130,11 @@ export function MetricPicker({
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent className={PICKER_CONTENT_CLASS} align="start">
-				<PickerCommand search={m.insight_metric_search()} previews={previews}>
+				<PickerCommand
+					search={m.insight_metric_search()}
+					previews={previews}
+					current={value}
+				>
 					<CommandEmpty>{m.insight_no_metrics()}</CommandEmpty>
 					<CommandGroup>
 						{allLabel && (

@@ -71,8 +71,18 @@ export function AttributeList({
 			attributePreview(attribute),
 		]),
 	);
+	const chosen = filterable.find(
+		(attribute) => attributeField(attribute.scope, attribute.key) === selected,
+	);
+	const chosenOption = options.find((option) => option.value === selected);
+	let current: string | undefined;
+	if (chosen)
+		current = `${attributeField(chosen.scope, chosen.key)}/${chosen.kind}`;
+	else if (chosenOption)
+		current = `option ${chosenOption.label} ${chosenOption.value}`;
 	return (
 		<PickerCommand
+			current={current}
 			search={searchPlaceholder}
 			previews={showPreview ? previews : undefined}
 			searchAction={searchAction}

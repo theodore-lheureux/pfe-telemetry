@@ -126,16 +126,19 @@ export function PickerCommand({
 	previews,
 	searchAction,
 	outlined = false,
+	current,
 	children,
 }: {
 	search: string;
+	/** The chosen item's value, highlighted and previewed when the list opens. */
+	current?: string;
 	previews?: Map<string, PickerPreview>;
 	searchAction?: ReactNode;
 	outlined?: boolean;
 	children: ReactNode;
 }) {
 	return (
-		<Command>
+		<Command defaultValue={current}>
 			<CommandInput
 				placeholder={search}
 				endAddon={searchAction}
