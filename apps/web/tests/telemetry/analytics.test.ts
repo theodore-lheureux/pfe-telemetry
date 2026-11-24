@@ -203,6 +203,7 @@ async function histogram(
 	node: string,
 	bounds: number[],
 	counts: number[],
+	at = 0n,
 ) {
 	await fixture.client.command({
 		query: insertPoints({
@@ -218,7 +219,7 @@ async function histogram(
 			project,
 			source: node,
 			host: node,
-			time: ms.toString(),
+			time: (ms + at * SECOND).toString(),
 			integer: null as unknown as string,
 			bounds,
 			counts,
@@ -232,6 +233,8 @@ async function histogram(
 test("histogram percentiles pool counts on shared bounds, also for Other", async () => {
 	const project = randomUUID();
 	await histogram(project, "node-a", [0, 10, 20], [0, 1, 1, 0]);
+	// A second scan in the same minute averages with the first: counts are per scan.
+	await histogram(project, "node-a", [0, 10, 20], [0, 1, 1, 0], 2n);
 	await histogram(project, "node-b", [0, 5, 10, 20], [0, 40, 58, 0, 0]);
 	const measure = {
 		name: "cpu",

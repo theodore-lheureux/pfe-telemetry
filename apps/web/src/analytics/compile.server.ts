@@ -95,8 +95,10 @@ function histogramCombined(
 ) {
 	return `WITH base AS (
   SELECT ${columns}, explicit_bounds AS bounds,
-    arrayMap(n -> toFloat64(n), bucket_counts) AS counts,
-    if(bitTest(statistics_present, 1), \`sum\`, NULL) AS total
+    -- Each stream's scans in a bucket average into one, so counts are processes per scan.
+    count() OVER (PARTITION BY stream_id, bucket) AS scans,
+    arrayMap(n -> toFloat64(n) / scans, bucket_counts) AS counts,
+    if(bitTest(statistics_present, 1), \`sum\`, NULL) / scans AS total
   FROM ${source}
   WHERE ${[...filters, "bitAnd(flags, 1) = 0", "length(explicit_bounds) <= 64", "length(bucket_counts) = length(explicit_bounds) + 1"].join(" AND ")}
 ),

@@ -971,7 +971,7 @@
   "insight_calc_max": "Maximum",
   "insight_calc_rate": "Débit par seconde",
   "insight_calc_increase": "Augmentation",
-  "insight_calc_count": "Nombre d’observations",
+  "insight_calc_count": "Observations par relevé",
   "insight_combine": "Combiner les sources",
   "insight_group_by": "Ventilation",
   "insight_group_none": "Aucune ventilation",

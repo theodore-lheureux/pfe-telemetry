@@ -971,7 +971,7 @@
   "insight_calc_max": "Maximum",
   "insight_calc_rate": "Rate per second",
   "insight_calc_increase": "Increase",
-  "insight_calc_count": "Count of observations",
+  "insight_calc_count": "Observations per scan",
   "insight_combine": "Combine sources",
   "insight_group_by": "Breakdown",
   "insight_group_none": "No breakdown",

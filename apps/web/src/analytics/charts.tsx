@@ -28,6 +28,7 @@ import { type ChartConfig, ChartContainer } from "../components/ui/chart";
 import { cn } from "../lib/utils";
 import { movingAveragePoints, trendPoints } from "./chart-overlays";
 import { bucketRange } from "./histograms";
+import { approximateCount } from "./metric-names";
 
 export interface ChartPoint {
 	bucketMs: number;
@@ -417,7 +418,6 @@ function HeatmapTooltip({
 	const range = heatmap.range({
 		range: bucketRange(heatmap.bounds, index, format),
 	});
-	const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
 	const idle = heatmap.idle?.get(bucketMs);
 	if (!count)
 		return (
@@ -444,7 +444,9 @@ function HeatmapTooltip({
 					share: share.format(count / total),
 					total: heatmap.count(total, locale),
 				})}
-				{idle ? ` ${m.histogram_idle({ count: number.format(idle) })}` : ""}
+				{idle
+					? ` ${m.histogram_idle({ count: approximateCount(idle, locale) })}`
+					: ""}
 			</p>
 		</>
 	);
@@ -460,7 +462,7 @@ function HeatmapLegend({ subject, peak }: { subject: string; peak: number }) {
 				className="h-2 w-24 rounded-sm bg-[linear-gradient(to_right,var(--muted),var(--viz-1))]"
 			/>
 			<span className="tabular-nums">
-				{new Intl.NumberFormat(getLocale()).format(peak)}
+				{approximateCount(peak, getLocale())}
 			</span>
 		</p>
 	);

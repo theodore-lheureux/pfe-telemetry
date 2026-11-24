@@ -6,6 +6,10 @@ import {
 	plottedTitle,
 	seriesLabel,
 } from "../../src/analytics/insight/labels";
+import {
+	approximateCount,
+	distributionLabels,
+} from "../../src/analytics/metric-names";
 
 const measure = (name: string) => ({
 	name,
@@ -94,4 +98,14 @@ test("a chosen unit formats every value, including custom text around it", () =>
 	expect(formatValue(12.5, as("currency"), null, "en")).toBe("$12.50");
 	expect(formatValue(42, as("prefix", "~"), null, "en")).toBe("~42");
 	expect(formatValue(42, as("postfix", " req"), null, "en")).toBe("42 req");
+});
+
+test("per-scan process counts round to whole processes and mark the rounding", () => {
+	const cpu = distributionLabels(
+		"recount.node.process.cpu.utilization.distribution",
+	);
+	expect(String(cpu.count(24, "en"))).toBe("24 busy processes");
+	expect(String(cpu.count(23.6, "en"))).toBe("≈24 busy processes");
+	expect(String(cpu.count(1.2, "en"))).toBe("≈1 busy process");
+	expect(approximateCount(1234.4, "fr")).toMatch(/^≈1\s234$/u);
 });

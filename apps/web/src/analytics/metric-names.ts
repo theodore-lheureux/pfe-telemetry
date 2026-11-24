@@ -312,6 +312,13 @@ export function metricDescription(name: string) {
 	return METRICS[name]?.description() ?? null;
 }
 
+/** An average count rounded to whole units, marked "≈" when rounding changed it. */
+export function approximateCount(count: number, locale: string) {
+	const rounded = Math.round(count);
+	const text = new Intl.NumberFormat(locale).format(rounded);
+	return rounded === count ? text : `≈${text}`;
+}
+
 /** How a histogram's rows, counts and value ranges read in charts and tooltips. */
 export function distributionLabels(name: string, label?: string) {
 	const entry = METRICS[name]?.distribution;
@@ -320,8 +327,8 @@ export function distributionLabels(name: string, label?: string) {
 		quantity: entry?.quantity() ?? metricLabel(name, label),
 		subject: subject.name(),
 		count: (count: number, locale: string) => {
-			const text = new Intl.NumberFormat(locale).format(count);
-			return new Intl.PluralRules(locale).select(count) === "one"
+			const text = approximateCount(count, locale);
+			return new Intl.PluralRules(locale).select(Math.round(count)) === "one"
 				? subject.one({ count: text })
 				: subject.other({ count: text });
 		},
