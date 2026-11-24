@@ -32,6 +32,8 @@ Each scan attempts baseline node and visible-process measurements. The process C
 
 The [collector measurement catalogue](../apps/collector/README.md#baseline-measurements) lists names, types, units and dimensions. The shared [catalogue implementation](../crates/telemetry-validation/src/catalogue.rs) validates adapter metric semantics. Current baselines include Recount node CPU/memory, standard system disk I/O and process CPU/disk I/O, plus Recount RSS. Standard metric/vendor identifiers retain their external spelling. [System conventions](https://opentelemetry.io/docs/specs/semconv/system/system-metrics/), [process conventions](https://opentelemetry.io/docs/specs/semconv/system/process-metrics/)
 
+Collector histograms use UCUM annotations to identify what the buckets count. For example, in `1{busy_process}` the bucket boundaries are ratios and the counts are busy processes. The annotation does not scale the boundaries, min, max or sum. Coverage gauges use stand-alone count units such as `{process}`, `{gpu}` and `{connection}`.
+
 CPU and I/O baselines are cumulative monotonic sums, not percentages or rates. Byte counters must fit signed Int64; out-of-range values produce a status instead of wrapping or rounding. Node CPU aggregates logical CPUs, keeps guest time within user/nice and excludes decreasing iowait from monotonic counters. RSS includes shared pages and is not private memory. Disk partitions/devices can overlap; do not sum every I/O series indiscriminately.
 
 The shared catalogue describes owned Linux GPU metrics and external DCGM fixture mappings. The collector's optional [GPU acquisition](nvidia-gpu-collection.md) exports device/MIG profiling ratios and supported core gauges with native DCGM timestamps, explicit unavailable statuses and host-local UUID identity. It does not establish process/job attribution or completed hardware validation. Standard application histograms, exponential histograms and summaries retain their native structures through the point pipeline; they are not flattened into scalar collector measurements.
@@ -54,7 +56,7 @@ Wall/monotonic discontinuity checks abandon incomplete scans and start a new epo
 
 ## Missing readings
 
-Omit unavailable measurement values. For each attempted baseline category on the node or a verified process, emit `recount.collection.read.status`, an Int64 gauge with unit `1` and dimension `recount.metric.name`:
+Omit unavailable measurement values. For each attempted baseline category on the node or a verified process, emit `recount.collection.read.status`, an Int64 gauge with unit `{status}` and dimension `recount.metric.name`:
 
 | Code | Meaning                 |
 | ---- | ----------------------- |

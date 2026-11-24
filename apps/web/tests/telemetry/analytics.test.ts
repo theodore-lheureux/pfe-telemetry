@@ -210,7 +210,7 @@ async function histogram(
 			metric_name: "'recount.node.process.cpu.utilization.distribution'",
 			metric_kind: "toUInt8(3)",
 			temporality: "toUInt8(1)",
-			unit: "'1'",
+			unit: "'1{busy_process}'",
 			int_value: "CAST(NULL, 'Nullable(Int64)')",
 			explicit_bounds: "{bounds:Array(Float64)}",
 			bucket_counts: "{counts:Array(UInt64)}",

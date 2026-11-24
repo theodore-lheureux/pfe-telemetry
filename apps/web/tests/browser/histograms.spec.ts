@@ -97,7 +97,7 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				resource_kind: 1,
 				metric_name: metric,
 				metric_kind: 3,
-				unit: "1",
+				unit: "1{busy_process}",
 				temporality: 1,
 				series_id: String(77 + node),
 				logical_series_id: String(77 + node),

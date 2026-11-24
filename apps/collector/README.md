@@ -66,6 +66,18 @@ The worker discards the snapshot if either dump fails, is interrupted or exceeds
 
 Process histograms cover all verified visible observations, whether or not the collector exports individual detail. CPU and disk observations require a valid adjacent read; RSS is a snapshot and may count shared pages more than once. The CPU histogram holds only busy processes, whose CPU time advanced since the previous read; `recount.collection.process.coverage` counts the idle ones as `cpu_idle`. Missing measurements are not zero.
 
+These measurements are delta histograms. The UCUM unit describes the bucket boundaries and its annotation identifies what each bucket counts.
+
+| Histogram                                           | OTLP unit         |
+| --------------------------------------------------- | ----------------- |
+| `recount.node.process.cpu.utilization.distribution` | `1{busy_process}` |
+| `recount.node.process.memory.rss.distribution`      | `By{process}`     |
+| `recount.node.process.disk.io.rate.distribution`    | `By/s{process}`   |
+| `recount.node.gpu.utilization.distribution`         | `1{gpu}`          |
+| `recount.node.gpu.memory.used.distribution`         | `By{gpu}`         |
+| `recount.node.gpu.power.distribution`               | `W{gpu}`          |
+| `recount.node.tcp.rtt.distribution`                 | `s{connection}`   |
+
 The collector exports details for at most 64 processes per scan by default. Tracked executions take priority; other candidates are the top 16 by CPU or RSS and processes that cross a detail threshold. Set `RECOUNT_COLLECTOR_PROCESS_DETAIL_CAP` to change the cap, or to `0` to profile all verified visible processes on a node. The threshold defaults are `50` for `RECOUNT_COLLECTOR_PROCESS_DETAIL_CPU_PERCENT` (percentage of one logical CPU), `1073741824` for `RECOUNT_COLLECTOR_PROCESS_DETAIL_RSS_BYTES`, and `10485760` for `RECOUNT_COLLECTOR_PROCESS_DETAIL_IO_BYTES_PER_SECOND` (read plus write).
 
 To profile only while a selected execution is observed on a node, set `"profile_executions": ["slurm:123"]` in that node's root-owned participant configuration. A fresh, admitted membership that still matches a visible process incarnation enables full node detail for the scan. This is a collection setting, not an access grant. On shared nodes, account for the fact that users who can set an execution label can claim a configured key. Full detail raises queue and ingestion volume and does not guarantee that otherwise unreadable process metrics become available.
