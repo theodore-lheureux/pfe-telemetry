@@ -34,7 +34,7 @@ import {
 	type ThemeMode,
 	themeCookie,
 } from "../lib/theme";
-import css from "../styles.css?url";
+import "../styles.css";
 
 export const Route = createRootRouteWithContext<{
 	queryClient: QueryClient;
@@ -51,7 +51,6 @@ export const Route = createRootRouteWithContext<{
 			{ title: m.app_title() },
 		],
 		links: [
-			{ rel: "stylesheet", href: css },
 			{
 				rel: "icon",
 				type: "image/svg+xml",

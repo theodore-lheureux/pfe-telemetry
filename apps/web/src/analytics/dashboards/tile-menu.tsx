@@ -45,8 +45,8 @@ import {
 } from "../insight/draft";
 import type { SeriesView } from "../insight/series-view";
 import { DashboardPicker } from "./dashboard-picker";
+import { fittedColumn, type TileSize } from "./grid-placement";
 import { download, fileName, resultCsv, tilePng } from "./tile-export";
-import { fittedColumn, type TileSize } from "./tile-resize";
 
 const WIDTH_LABEL: Record<(typeof WIDTH_PRESETS)[number], () => string> = {
 	2: m.dashboard_width_sixth,

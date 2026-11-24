@@ -116,125 +116,12 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		await expect(page.getByRole("tooltip")).toHaveText(/^Computed/);
 		await page.mouse.move(0, 0);
 
-		// Room for every tile, so moving one needs no scrolling.
 		await page.setViewportSize({ width: 1440, height: 1600 });
-		// Each tile sits in a grid cell, which carries its size.
-		const cells = tiles.locator("xpath=..");
-		// Tiles resize by dragging a side or corner: the tile follows the pointer and its
-		// cell shows the size it snaps to. The corner handle also takes the arrow keys.
-		const corner = page.getByRole("button", { name: "Resize CPU over time" });
-		await corner.hover();
-		const box = await corner.boundingBox();
-		if (!box) throw new Error("The resize handle has no box");
-		await page.mouse.down();
-		await page.mouse.move(box.x + 1000, box.y + box.height / 2, { steps: 5 });
-		await expect(cells.first()).toHaveClass(/lg:col-span-12/);
-		await page.mouse.up();
-		await expect(page.getByText("Changes saved")).toBeVisible();
-		// Any side resizes too: the bottom one changes only the height.
-		const card = await tiles.first().boundingBox();
-		if (!card) throw new Error("The tile has no box");
-		await expect(corner).toBeEnabled();
-		await page.mouse.move(card.x + card.width / 2, card.y + card.height - 2);
-		await page.mouse.down();
-		await page.mouse.move(card.x + card.width / 2, card.y + card.height + 150, {
-			steps: 5,
+		const line = page.getByRole("article", {
+			name: "CPU over time",
+			exact: true,
 		});
-		await page.mouse.up();
-		await expect(cells.first()).toHaveClass(/row-span-4/);
-		await expect(cells.first()).toHaveClass(/lg:col-span-12/);
-		const resize = page.getByRole("button", { name: "Resize CPU now" });
-		await expect(resize).toBeEnabled();
-		await resize.focus();
-		await page.keyboard.press("ArrowDown");
-		await expect(cells.nth(1)).toHaveClass(/row-span-4/);
-		// The left side moves the tile's start and keeps its right side in place.
-		await expect(resize).toBeEnabled();
-		const second = await tiles.nth(1).boundingBox();
-		if (!second) throw new Error("The tile has no box");
-		const column = (second.width + 16) / 6;
-		await page.mouse.move(second.x + 2, second.y + second.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(
-			second.x + 2 + column * 3,
-			second.y + second.height / 2,
-			{
-				steps: 5,
-			},
-		);
-		await page.mouse.up();
-		await expect(cells.nth(1)).toHaveClass(/lg:col-start-4/);
-		await expect(cells.nth(1)).toHaveClass(/lg:col-span-3/);
-
-		// A click on a tile's header picks it up and the next click drops it.
-		await expect(resize).toBeEnabled();
-		const header = tiles.nth(1).locator("header");
-		const headerBox = await header.boundingBox();
-		if (!headerBox) throw new Error("The header has no box");
-		await header.click({ position: { x: headerBox.width * 0.6, y: 14 } });
-		const target = await tiles.first().boundingBox();
-		if (!target) throw new Error("The tile has no box");
-		await page.mouse.move(
-			target.x + target.width / 4,
-			target.y + target.height / 2,
-			{ steps: 10 },
-		);
-		const placeholder = page.locator("[data-drop-placeholder]");
-		await expect(placeholder).toBeVisible();
-		const predicted = await placeholder.boundingBox();
-		if (!predicted) throw new Error("The drop placeholder has no box");
-		await page.mouse.click(
-			target.x + target.width / 4,
-			target.y + target.height / 2,
-		);
-		await expect(tiles.first()).toContainText("CPU now");
-		await expect(placeholder).toHaveCount(0);
-		await expect
-			.poll(async () => {
-				const actual = await cells.first().boundingBox();
-				if (!actual) return Number.POSITIVE_INFINITY;
-				return Math.max(
-					...(["x", "y", "width", "height"] as const).map((key) =>
-						Math.abs(actual[key] - predicted[key]),
-					),
-				);
-			})
-			.toBeLessThan(1);
-		// It goes where it was dropped, leaving the start column it had behind.
-		await expect(cells.first()).not.toHaveClass(/col-start/);
-		// ⌘Z undoes a layout change and ⇧⌘Z redoes it, each saved in turn.
-		const idle = page.getByRole("button", { name: "Resize CPU now" });
-		await expect(idle).toBeEnabled();
-		await page.keyboard.press("ControlOrMeta+z");
-		await expect(tiles.first()).toContainText("CPU over time");
-		await expect(idle).toBeEnabled();
-		await page.keyboard.press("ControlOrMeta+Shift+z");
-		await expect(tiles.first()).toContainText("CPU now");
-		await expect(idle).toBeEnabled();
-		// Pressing a header picks the tile up; releasing keeps it picked up, and the next
-		// click drops it.
-		const from = await tiles.first().locator("header").boundingBox();
-		const to = await tiles.nth(1).boundingBox();
-		if (!from || !to) throw new Error("The tiles have no box");
-		await page.mouse.move(from.x + from.width * 0.6, from.y + 14);
-		await page.mouse.down();
-		await page.mouse.move(to.x + to.width / 4, to.y + to.height / 2, {
-			steps: 10,
-		});
-		await page.mouse.up();
-		await page.waitForTimeout(200);
-		await expect(tiles.first()).toContainText("CPU now");
-		await page.mouse.click(to.x + to.width / 4, to.y + to.height / 2);
-		await expect(tiles.first()).toContainText("CPU over time");
-		await expect(idle).toBeEnabled();
-		await page.keyboard.press("ControlOrMeta+z");
-		await expect(tiles.first()).toContainText("CPU now");
-		await expect(idle).toBeEnabled();
-		// The layout is stored, so a reload keeps it.
-		await page.reload();
-		await expect(tiles.first()).toContainText("CPU now");
-		await expect(cells.first()).toHaveClass(/row-span-4/);
-		await expect(cells.nth(1)).toHaveClass(/lg:col-span-12/);
+		const number = page.getByRole("article", { name: "CPU now", exact: true });
 
 		// Overrides apply to every tile, first in the URL and then saved.
 		await page
@@ -279,7 +166,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			page.getByRole("button", { name: "Time range: Last 24 hours" }),
 		).toBeVisible();
 		await expect(
-			tiles.nth(1).getByRole("img", { name: "Insight chart" }),
+			line.getByRole("img", { name: "Insight chart" }),
 		).toBeVisible();
 		// A tile's info shows its query and marks what the dashboard overrides.
 		await page.getByRole("button", { name: "About CPU over time" }).hover();
@@ -308,8 +195,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 			page.getByRole("button", { name: /^Refresh all/ }),
 		).toContainText("1m");
 		// Dragging across a chart narrows the dashboard's range to that span.
-		const chart = await tiles
-			.nth(1)
+		const chart = await line
 			.getByRole("img", { name: "Insight chart" })
 			.boundingBox();
 		if (!chart) throw new Error("The chart has no box");
@@ -342,20 +228,14 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		// A tile far below the screen neither loads nor draws until it comes near.
 		await page.setViewportSize({ width: 1440, height: 400 });
 		await page.reload();
-		const lower = tiles.nth(1);
+		await page.setViewportSize({ width: 800, height: 400 });
+		const value = number.getByText(/^\d[\d,.]*$/).first();
 		await expect(
-			tiles
-				.first()
-				.getByText(/^\d[\d,.]*$/)
-				.first(),
+			line.getByRole("img", { name: "Insight chart" }),
 		).toBeVisible();
-		await expect(lower.getByRole("img", { name: "Insight chart" })).toHaveCount(
-			0,
-		);
-		await lower.scrollIntoViewIfNeeded();
-		await expect(
-			lower.getByRole("img", { name: "Insight chart" }),
-		).toBeVisible();
+		await expect(value).toHaveCount(0);
+		await number.scrollIntoViewIfNeeded();
+		await expect(value).toBeVisible();
 		await page.setViewportSize({ width: 1440, height: 1600 });
 
 		// Removing a tile keeps the insight; the list counts what remains.

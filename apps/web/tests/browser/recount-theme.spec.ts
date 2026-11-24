@@ -98,6 +98,22 @@ async function exactTokens(page: Page, dark: boolean) {
 	expect(actual).toEqual(expected);
 }
 
+test("the initial document is styled without JavaScript", async ({
+	browser,
+	workspace,
+}) => {
+	const context = await browser.newContext({ javaScriptEnabled: false });
+	try {
+		const page = await context.newPage();
+		await page.goto(`${workspace.origin}/login`);
+		await expect(page.locator("body")).toHaveCSS("display", "flex");
+		await page.reload();
+		await expect(page.locator("body")).toHaveCSS("display", "flex");
+	} finally {
+		await context.close();
+	}
+});
+
 test("cookie SSR, hydration, translated toggle and form state stay consistent", async ({
 	page,
 	workspace,

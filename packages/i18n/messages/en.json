@@ -1368,7 +1368,6 @@
   "dashboard_list_empty_description": "Dashboards show several saved insights together, over one time range.",
   "dashboard_move_earlier": "Move earlier",
   "dashboard_move_later": "Move later",
-  "dashboard_resize_tile": "Resize {name}",
   "dashboard_resize_instructions": "Drag to resize, or use the arrow keys: left and right change the width, up and down the height.",
   "dashboard_name": "Name",
   "dashboard_new": "New dashboard",

@@ -4,6 +4,7 @@ import { Link, useHydrated } from "@tanstack/react-router";
 import { LineChartIcon, RefreshCwIcon, TriangleAlertIcon } from "lucide-react";
 import {
 	type HTMLAttributes,
+	memo,
 	type ReactNode,
 	useEffect,
 	useId,
@@ -79,7 +80,7 @@ export const TILE_COLUMN_CLASS: Record<number, string> = {
  * A saved insight on a dashboard: its name, when its result was computed, and the
  * result itself, which loads, refreshes and fails on its own.
  */
-export function DashboardTileCard({
+export const DashboardTileCard = memo(function DashboardTileCard({
 	tile,
 	draft,
 	userId,
@@ -290,9 +291,9 @@ export function DashboardTileCard({
 			{resizer}
 		</article>
 	);
-}
+});
 
-function TileBody({
+const TileBody = memo(function TileBody({
 	draft,
 	ready,
 	error,
@@ -374,4 +375,4 @@ function TileBody({
 			/>
 		</div>
 	);
-}
+});

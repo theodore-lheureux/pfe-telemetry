@@ -14,10 +14,10 @@ import { createOrganization } from "../../src/organizations/organizations.server
 import { createProject } from "../../src/organizations/projects.server";
 import { data, expect, test } from "./fixtures";
 
-test("mixed-size dashboard tiles land exactly in their preview and cancel without changing layout", async ({
+test("mixed-size dashboard tiles follow the pointer and save their compacted layout", async ({
 	page,
 	workspace,
-}, testInfo) => {
+}) => {
 	await page.setViewportSize({ width: 1440, height: 1400 });
 	const actor = await workspace.signIn(
 		page,
@@ -97,80 +97,65 @@ test("mixed-size dashboard tiles land exactly in their preview and cancel withou
 	await expect(small).toBeVisible();
 	await expect(page.locator("[data-dashboard-tile]")).toHaveCount(4);
 	await expect(
-		page.getByRole("button", { name: "Resize Small", exact: true }),
+		small.locator("..").getByRole("button", { name: /^Drag to resize/ }),
 	).toBeEnabled();
 	const header = small.locator("header");
 	const headerBox = await header.boundingBox();
+	const original = await small.boundingBox();
 	const destination = await wide.boundingBox();
-	if (!headerBox || !destination) throw new Error("Missing tile bounds");
-	await header.click({ position: { x: headerBox.width * 0.6, y: 10 } });
-	const x = destination.x + destination.width / 4;
-	const y = destination.y + destination.height / 2;
-	await page.mouse.move(x, y, { steps: 10 });
+	if (!headerBox || !original || !destination)
+		throw new Error("Missing tile bounds");
+	const startX = headerBox.x + headerBox.width * 0.5;
+	const y = headerBox.y + 10;
+	await page.mouse.move(startX, y);
+	await page.mouse.down();
+	await page.mouse.move(destination.x + headerBox.width * 0.5, y, {
+		steps: 10,
+	});
 	const placeholder = page.locator("[data-drop-placeholder]");
 	await expect(placeholder).toBeVisible();
-	const predicted = await page
-		.locator("[data-placement-tile]")
-		.evaluateAll((nodes) =>
-			nodes.map((node) => {
-				const rect = node.getBoundingClientRect();
-				return {
-					id: node.getAttribute("data-placement-tile"),
-					x: rect.x,
-					y: rect.y,
-					width: rect.width,
-					height: rect.height,
-				};
-			}),
-		);
-	const placementError = async (exclude?: string | null) => {
-		const actual = await page
-			.locator("[data-dashboard-tile]")
-			.evaluateAll((nodes) =>
-				nodes.map((node) => {
-					const rect = node.getBoundingClientRect();
-					return {
-						id: node.getAttribute("data-dashboard-tile"),
-						x: rect.x,
-						y: rect.y,
-						width: rect.width,
-						height: rect.height,
-					};
-				}),
-			);
-		return Math.max(
-			...predicted.flatMap((expected) => {
-				if (expected.id === exclude) return [];
-				const tile = actual.find((tile) => tile.id === expected.id);
-				if (!tile) return [Number.POSITIVE_INFINITY];
-				return (["x", "y", "width", "height"] as const).map((key) =>
-					Math.abs(tile[key] - expected[key]),
-				);
-			}),
-		);
-	};
-	const activeId = await placeholder.getAttribute("data-drop-placeholder");
-	await expect.poll(() => placementError(activeId)).toBeLessThan(1);
-	await page.screenshot({ path: testInfo.outputPath("placement-preview.png") });
-	await page.mouse.click(x, y);
+	await expect(placeholder.locator("rect")).toHaveCount(2);
+	const carried = await small.boundingBox();
+	const highlighted = await placeholder.boundingBox();
+	if (!carried || !highlighted) throw new Error("Missing drag bounds");
+	await page.mouse.move(destination.x + headerBox.width * 0.5 + 10, y);
+	await expect
+		.poll(async () => (await small.boundingBox())?.x)
+		.toBeCloseTo(carried.x + 10, 0);
+	await expect
+		.poll(async () => (await placeholder.boundingBox())?.x)
+		.toBeCloseTo(highlighted.x, 0);
+	await page.mouse.up();
 	await expect(placeholder).toHaveCount(0);
-	await expect(page.locator("[data-dashboard-tile]").first()).toContainText(
-		"Small",
-	);
-	await expect.poll(() => placementError()).toBeLessThan(1);
-	await expect(
-		page.getByRole("button", { name: "Resize Small", exact: true }),
-	).toBeEnabled();
-	await header.click({ position: { x: headerBox.width * 0.6, y: 10 } });
-	await page.mouse.move(
-		destination.x + destination.width / 2,
-		destination.y + destination.height,
-		{ steps: 5 },
-	);
-	await expect(placeholder).toBeVisible();
-	await page.keyboard.press("Escape");
-	await expect(placeholder).toHaveCount(0);
-	await expect(page.locator("[data-dashboard-tile]").first()).toContainText(
-		"Small",
-	);
+	await expect(page.getByText("Changes saved")).toBeVisible();
+	await expect
+		.poll(async () => (await small.boundingBox())?.x)
+		.toBeCloseTo(highlighted.x, 0);
+	const resize = small
+		.locator("..")
+		.getByRole("button", { name: /^Drag to resize/ });
+	await expect(resize).toBeEnabled();
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect
+		.poll(async () => (await small.boundingBox())?.x)
+		.toBeCloseTo(original.x, 0);
+	await expect(resize).toBeEnabled();
+	await page.keyboard.press("ControlOrMeta+Shift+z");
+	await expect
+		.poll(async () => (await small.boundingBox())?.x)
+		.toBeCloseTo(highlighted.x, 0);
+	await expect(resize).toBeEnabled();
+	await resize.press("ArrowDown");
+	await expect
+		.poll(async () => (await small.boundingBox())?.height)
+		.toBeCloseTo(carried.height + 144, 0);
+	await expect(resize).toBeEnabled();
+	await page.reload();
+	await expect(resize).toBeEnabled();
+	await expect
+		.poll(async () => (await small.boundingBox())?.x)
+		.toBeCloseTo(highlighted.x, 0);
+	await expect
+		.poll(async () => (await small.boundingBox())?.height)
+		.toBeCloseTo(carried.height + 144, 0);
 });

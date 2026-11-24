@@ -1368,7 +1368,6 @@
   "dashboard_list_empty_description": "Un tableau de bord affiche plusieurs analyses enregistrées ensemble, sur une même période.",
   "dashboard_move_earlier": "Déplacer avant",
   "dashboard_move_later": "Déplacer après",
-  "dashboard_resize_tile": "Redimensionner {name}",
   "dashboard_resize_instructions": "Faites glisser pour redimensionner, ou utilisez les flèches : gauche et droite changent la largeur, haut et bas la hauteur.",
   "dashboard_name": "Nom",
   "dashboard_new": "Nouveau tableau de bord",
