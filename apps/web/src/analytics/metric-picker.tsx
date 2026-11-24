@@ -92,11 +92,13 @@ export function MetricPicker({
 	};
 	const distribution = (name: string) =>
 		isDistribution(metrics?.find((metric) => metric.name === name));
+	// Within a family, distributions come first: their percentiles and heatmaps cover
+	// every subject, where named series cover a few.
 	const groups = METRIC_SECTIONS.map((section) => ({
 		label: METRIC_SECTION_LABEL[section](),
-		names: names.filter(
-			(name) => metricSection(name, distribution(name)) === section,
-		),
+		names: names
+			.filter((name) => metricSection(name) === section)
+			.sort((a, b) => Number(distribution(b)) - Number(distribution(a))),
 	}));
 	return (
 		<Popover open={open} onOpenChange={setOpen}>

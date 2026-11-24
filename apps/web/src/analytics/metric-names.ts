@@ -363,7 +363,6 @@ export function idleMeasure(name: string, measure: string) {
 export const METRIC_SECTIONS = [
 	"node",
 	"processes",
-	"distributions",
 	"gpu",
 	"other",
 	"diagnostics",
@@ -373,18 +372,15 @@ export type MetricSection = (typeof METRIC_SECTIONS)[number];
 export const METRIC_SECTION_LABEL: Record<MetricSection, () => string> = {
 	node: m.metric_section_node,
 	processes: m.metric_section_processes,
-	distributions: m.metric_section_distributions,
 	gpu: m.metric_section_gpu,
 	other: m.metric_section_other,
 	diagnostics: m.metric_section_diagnostics,
 };
 
-/** Where a metric is listed, from its family; metrics from other sources are "other". */
-export function metricSection(
-	name: string,
-	distribution: boolean,
-): MetricSection {
-	if (distribution) return "distributions";
+/** Where a metric is listed, by family; metrics from other sources are "other". */
+export function metricSection(name: string): MetricSection {
+	if (/^recount\.node\.process\./.test(name)) return "processes";
+	if (/^recount\.node\.gpu\./.test(name)) return "gpu";
 	if (
 		/^recount\.(collection|clock)\./.test(name) ||
 		name.endsWith(".discovery.status")

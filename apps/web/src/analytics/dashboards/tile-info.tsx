@@ -34,8 +34,8 @@ import { groupFieldLabel } from "../group-by-picker";
 import type { InsightDraft } from "../insight/draft";
 import { COMPARISONS, comparisonKey } from "../insight/insight-toolbar";
 import {
-	CALCULATION_LABEL,
 	COMBINE_OPTION_LABEL,
+	calculationLabel,
 	DISPLAY_LABEL,
 	INTERVAL_LABEL,
 } from "../insight/labels";
@@ -208,7 +208,7 @@ export function TileInfo({
 									<span>
 										{series.metric ? metricLabel(series.metric) : "—"}
 										<span className="text-muted-foreground">
-											{` · ${CALCULATION_LABEL[series.calculation]()} · ${COMBINE_OPTION_LABEL[series.combine]()}`}
+											{` · ${calculationLabel(series.calculation, series.metric)} · ${COMBINE_OPTION_LABEL[series.combine]()}`}
 										</span>
 									</span>
 								</li>

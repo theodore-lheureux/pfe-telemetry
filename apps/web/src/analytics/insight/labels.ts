@@ -34,13 +34,19 @@ export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	max: m.insight_calc_max,
 	rate: m.insight_calc_rate,
 	increase: m.insight_calc_increase,
-	count: m.insight_calc_count,
+	count: m.histogram_subject_observations,
 	p50: () => "p50",
 	p75: () => "p75",
 	p90: () => "p90",
 	p95: () => "p95",
 	p99: () => "p99",
 };
+/** A calculation's name; a histogram's count is named by what it counts, such as Busy processes. */
+export function calculationLabel(calculation: Calculation, metric?: string) {
+	return calculation === "count"
+		? distributionLabels(metric ?? "").subject
+		: CALCULATION_LABEL[calculation]();
+}
 /** How sources combine, phrased to read after the calculation: "Rate per second · Sum of all sources". */
 export const COMBINE_OPTION_LABEL: Record<Combine, () => string> = {
 	sum: m.insight_combine_option_sum,
@@ -335,9 +341,10 @@ function measureText(
 	result: QueryResult,
 	measure: QueryResult["measures"][number],
 ) {
-	if (calculationsOnly(result)) return CALCULATION_LABEL[measure.calculation]();
+	if (calculationsOnly(result))
+		return calculationLabel(measure.calculation, measure.metric);
 	if (isHistogramPercentile(measure.calculation))
-		return `${metricLabel(measure.metric, measure.label)} · ${CALCULATION_LABEL[measure.calculation]()}`;
+		return `${metricLabel(measure.metric, measure.label)} · ${calculationLabel(measure.calculation, measure.metric)}`;
 	if (result.measures.length > 1)
 		return `${measure.name} · ${metricLabel(measure.metric, measure.label)}`;
 	return metricLabel(measure.metric, measure.label);

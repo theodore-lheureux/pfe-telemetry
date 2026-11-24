@@ -159,7 +159,7 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				.getByRole("combobox", { name: "Choose a metric" })
 				.click({ timeout: 6000 });
 			await page
-				.getByRole("option", { name: /^CPU per busy process/ })
+				.getByRole("option", { name: /^Process CPU(?!\s*usage)/ })
 				.click({ timeout: 6000 });
 			// Histograms use the ordinary calculation menu, starting at p95.
 			const calculation = page.getByRole("combobox", { name: "Calculation" });
@@ -169,7 +169,7 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 			await page.getByRole("option", { name: "p50", exact: true }).click();
 			await expect(page.locator(".recharts-surface").first()).toBeVisible();
 			await expect(
-				page.getByRole("heading", { level: 2, name: "CPU per busy process" }),
+				page.getByRole("heading", { level: 2, name: "Process CPU" }),
 			).toBeVisible();
 			await expect(
 				page.getByRole("row").filter({ hasText: /^p(50|95)/ }),

@@ -33,9 +33,9 @@ import { MetricPicker } from "../metric-picker";
 import { ALLOWED_CALCULATIONS } from "../validation";
 import type { DraftSeries, InsightDraft } from "./draft";
 import {
-	CALCULATION_LABEL,
 	COMBINE_GROUPS,
 	COMBINE_OPTION_LABEL,
+	calculationLabel,
 } from "./labels";
 import { InlineWarning } from "./percentile-warning";
 
@@ -263,7 +263,7 @@ export function SeriesRow({
 								<SelectContent position="popper" align="start">
 									{allowed.map((value) => (
 										<SelectItem key={value} value={value}>
-											{CALCULATION_LABEL[value]()}
+											{calculationLabel(value, series.metric)}
 										</SelectItem>
 									))}
 								</SelectContent>
