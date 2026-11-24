@@ -9,6 +9,7 @@ import { MAX_CALCULATED_INPUTS } from "../calculated-metrics";
 import { useQueryAttributes } from "../catalog";
 import type { MetricDefinition } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
+import { isDistribution } from "../histograms";
 import { metricBreakdown } from "../metric-names";
 import {
 	draftMetricNames,
@@ -106,13 +107,7 @@ export function QueryPanel({
 						reference={reference}
 						series={series}
 						color={`var(--viz-${(index % 8) + 1})`}
-						metrics={
-							heatmap
-								? metrics.filter(
-										(metric) => metric.kind === 3 && metric.temporality === 1,
-									)
-								: metrics
-						}
+						metrics={heatmap ? metrics.filter(isDistribution) : metrics}
 						disabled={disabled}
 						removable={draft.series.length > 1}
 						heatmap={heatmap}
@@ -150,6 +145,19 @@ export function QueryPanel({
 							});
 						}}
 						onRemove={() => onChange(removeSeries(draft, series.name))}
+						onDuplicate={
+							next
+								? () =>
+										onChange({
+											...draft,
+											series: draft.series.flatMap((entry) =>
+												entry === series
+													? [entry, { ...entry, name: next }]
+													: [entry],
+											),
+										})
+								: undefined
+						}
 					/>
 				))}
 				{!heatmap && (

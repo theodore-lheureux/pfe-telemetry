@@ -1,5 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { TriangleAlertIcon } from "lucide-react";
+import type { ReactNode } from "react";
+import { cn } from "../../lib/utils";
 import type { QueryResult } from "../contracts";
 
 /**
@@ -37,19 +39,32 @@ export function PercentileWarning({ result }: { result: QueryResult }) {
 					values: entry.values,
 					needed: entry.needed,
 				});
-				return (
-					<p
-						key={entry.label}
-						className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400"
-					>
-						<TriangleAlertIcon
-							aria-hidden="true"
-							className="mt-px size-3.5 shrink-0"
-						/>
-						<span>{text}</span>
-					</p>
-				);
+				return <InlineWarning key={entry.label}>{text}</InlineWarning>;
 			})}
 		</div>
+	);
+}
+
+/** A short amber warning beside what it qualifies. */
+export function InlineWarning({
+	children,
+	className,
+}: {
+	children: ReactNode;
+	className?: string;
+}) {
+	return (
+		<p
+			className={cn(
+				"flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400",
+				className,
+			)}
+		>
+			<TriangleAlertIcon
+				aria-hidden="true"
+				className="mt-px size-3.5 shrink-0"
+			/>
+			<span>{children}</span>
+		</p>
 	);
 }

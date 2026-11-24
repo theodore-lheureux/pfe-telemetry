@@ -1,3 +1,12 @@
+import type { MetricDefinition } from "./contracts";
+
+/** Whether a metric stores histograms, which pool into percentiles and heatmaps. */
+export function isDistribution(
+	metric: Pick<MetricDefinition, "kind" | "temporality"> | undefined,
+) {
+	return metric?.kind === 3 && metric.temporality === 1;
+}
+
 /** The values histogram bucket `index` holds; one more bucket than bounds holds the rest. */
 export function bucketRange(
 	bounds: number[],
@@ -9,5 +18,10 @@ export function bucketRange(
 	if (upper === undefined)
 		return lower === undefined ? "" : `> ${format(lower)}`;
 	if (lower === undefined) return `≤ ${format(upper)}`;
-	return `${format(lower)} – ${format(upper)}`;
+	// Ends that share a unit show it once: "1–5 %", "1–2 MiB".
+	const [low, high] = [format(lower), format(upper)].map((text) =>
+		/^(.*\d)(\D*)$/.exec(text),
+	);
+	if (low && high && low[2] === high[2]) return `${low[1]}–${high[0]}`;
+	return `${format(lower)}–${format(upper)}`;
 }

@@ -20,7 +20,6 @@ import {
 } from "../../components/ui/select";
 import { type Comparison, INTERVALS, type Interval } from "../contracts";
 import { autoInterval, effectiveInterval, intervalFits } from "../intervals";
-import { isHistogramPercentile } from "../validation";
 import { DisplayOptions, spreadUnavailable } from "./display-options";
 import {
 	type DisplayType,
@@ -74,10 +73,13 @@ export function comparisonKey(comparison: Comparison | undefined) {
 /** Time range, interval and comparison on the left; options and chart type on the right. */
 export function InsightToolbar({
 	draft,
+	heatmap,
 	disabled,
 	onChange,
 }: {
 	draft: InsightDraft;
+	/** Whether every series is a distribution, which a heatmap needs. */
+	heatmap: boolean;
 	disabled: boolean;
 	onChange: (draft: InsightDraft) => void;
 }) {
@@ -201,12 +203,7 @@ export function InsightToolbar({
 								<SelectItem
 									key={type}
 									value={type}
-									disabled={
-										type === "heatmap" &&
-										!draft.series.every(({ calculation }) =>
-											isHistogramPercentile(calculation),
-										)
-									}
+									disabled={type === "heatmap" && !heatmap}
 								>
 									<Icon aria-hidden="true" />
 									{DISPLAY_LABEL[type]()}

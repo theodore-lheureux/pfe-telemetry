@@ -1,6 +1,7 @@
 import { m } from "@recount/i18n/messages";
 import { ChevronsUpDownIcon } from "lucide-react";
 import { type ReactNode, useState } from "react";
+import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
 	CommandEmpty,
@@ -16,10 +17,14 @@ import { cn } from "../lib/utils";
 import type { MetricDefinition } from "./contracts";
 import { DefinitionChoice } from "./definition-choice";
 import { DefinitionSourceIcon } from "./definition-source-icon";
+import { isDistribution } from "./histograms";
 import {
 	isNamedMetric,
 	isRatioMetric,
+	METRIC_SECTION_LABEL,
+	METRIC_SECTIONS,
 	metricLabel,
+	metricSection,
 	unitLabel,
 } from "./metric-names";
 import {
@@ -85,18 +90,14 @@ export function MetricPicker({
 		onChange(name);
 		setOpen(false);
 	};
-	const isDistribution = (name: string) =>
-		metrics?.some(
-			(metric) =>
-				metric.name === name && metric.kind === 3 && metric.temporality === 1,
-		);
-	const groups = [
-		{ label: undefined, names: names.filter((name) => !isDistribution(name)) },
-		{
-			label: m.insight_distribution_group(),
-			names: names.filter(isDistribution),
-		},
-	];
+	const distribution = (name: string) =>
+		isDistribution(metrics?.find((metric) => metric.name === name));
+	const groups = METRIC_SECTIONS.map((section) => ({
+		label: METRIC_SECTION_LABEL[section](),
+		names: names.filter(
+			(name) => metricSection(name, distribution(name)) === section,
+		),
+	}));
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
@@ -139,7 +140,7 @@ export function MetricPicker({
 					{groups
 						.filter((group) => group.names.length)
 						.map((group) => (
-							<CommandGroup key={group.label ?? ""} heading={group.label}>
+							<CommandGroup key={group.label} heading={group.label}>
 								{group.names.map((name) => (
 									<CommandItem
 										key={name}
@@ -155,6 +156,11 @@ export function MetricPicker({
 											label={metricText(name)}
 											description={previews.get(name)?.description}
 										/>
+										{distribution(name) && (
+											<Badge variant="outline">
+												{m.metric_distribution_badge()}
+											</Badge>
+										)}
 										{unit(name) && (
 											<span className="text-xs text-muted-foreground">
 												{unit(name)}

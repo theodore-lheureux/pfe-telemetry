@@ -12,11 +12,7 @@ import {
 	seriesPointSource,
 	streamEvidenceSource,
 } from "./series-source.server";
-import {
-	isHistogramPercentile,
-	type ParsedField,
-	parseField,
-} from "./validation";
+import { type ParsedField, parseField } from "./validation";
 
 // Combining the sources' values in a bucket. Percentiles are exact over those values.
 const COMBINE_SQL: Record<Combine, string> = {
@@ -49,7 +45,6 @@ const OTHER_SQL: Record<Combine, string> = {
 // Missing or no-recorded values stay NULL and are skipped, never counted as zero.
 const VALUE = `if(bitAnd(flags, 1) = 0,
     if(isNull(int_value), double_value, toFloat64(int_value)), NULL)`;
-const POPULATION_SUM = `if(bitAnd(flags, 1) = 0 AND bitTest(statistics_present, 1), \`sum\`, NULL)`;
 
 /**
  * A percentile of pooled bucket counts, interpolated linearly within the bucket that holds
@@ -73,8 +68,21 @@ const HEATMAP_COLUMNS = [
 	`, ${COUNTS("cumulative")} AS series_counts, shared AS series_bounds`,
 	`, ${COUNTS("sumForEach(cumulative)")} AS series_counts, any(shared) AS series_bounds`,
 ];
-const histogramLevel = (measure: Measure) =>
-	Number(measure.calculation.slice(1)) / 100;
+/** A histogram's value from pooled counts: a percentile, the mean or the observation count. */
+function histogramValue(
+	calculation: Measure["calculation"],
+	cumulative: string,
+	shared: string,
+	total: string,
+) {
+	if (calculation === "count") return `${cumulative}[-1]`;
+	if (calculation === "avg") return `${total} / nullIf(${cumulative}[-1], 0)`;
+	return histogramQuantile(
+		cumulative,
+		shared,
+		Number(calculation.slice(1)) / 100,
+	);
+}
 
 // Histograms pool their bucket counts per group and bucket. Layouts are reduced to the
 // bounds they all share, so every point's counts line up.
@@ -83,26 +91,27 @@ function histogramCombined(
 	source: string,
 	filters: string[],
 	keys: string,
-	level: number,
+	calculation: Measure["calculation"],
 ) {
 	return `WITH base AS (
   SELECT ${columns}, explicit_bounds AS bounds,
-    arrayMap(n -> toFloat64(n), bucket_counts) AS counts
+    arrayMap(n -> toFloat64(n), bucket_counts) AS counts,
+    if(bitTest(statistics_present, 1), \`sum\`, NULL) AS total
   FROM ${source}
   WHERE ${[...filters, "bitAnd(flags, 1) = 0", "length(explicit_bounds) <= 64", "length(bucket_counts) = length(explicit_bounds) + 1"].join(" AND ")}
 ),
 layouts AS (
-  SELECT ${keys}bucket, bounds, arrayCumSum(sumForEach(counts)) AS running,
+  SELECT ${keys}bucket, bounds, arrayCumSum(sumForEach(counts)) AS running, sum(total) AS total,
     arraySort(groupArrayIntersect(bounds) OVER ()) AS common
   FROM base GROUP BY ${keys}bucket, bounds
 ),
 pooled AS (
-  SELECT ${keys}bucket, any(common) AS shared,
+  SELECT ${keys}bucket, any(common) AS shared, sum(total) AS total,
     sumForEach(arrayPushBack(arrayMap(b -> running[indexOf(bounds, b)], common), running[-1])) AS cumulative
   FROM layouts GROUP BY ${keys}bucket
 ),
 combined AS (
-  SELECT *, ${histogramQuantile("cumulative", "shared", level)} AS value,
+  SELECT *, ${histogramValue(calculation, "cumulative", "shared", "total")} AS value,
     NULL AS low, NULL AS high, NULL AS sources
   FROM pooled
 )`;
@@ -230,7 +239,7 @@ function perSeries(
 	const keys = ["series", ...groups.split(", ").filter(Boolean), "bucket"].join(
 		", ",
 	);
-	if (behavior === "gauge" || behavior === "population") {
+	if (behavior === "gauge") {
 		const aggregate = {
 			last: "argMax(v, tuple(t, stream, storage_series))",
 			avg: "avg(v)",
@@ -311,7 +320,8 @@ function measureSelect(
 		...allFilters.map(({ field }) => field),
 	].some((field) => continuityColumn(parseField(field)) !== undefined);
 	const metric = params.bind(measure.metric, "String");
-	const histogram = isHistogramPercentile(measure.calculation);
+	const histogram =
+		scope.behavior === "histogram" || scope.behavior === "population";
 	const unit = histogram
 		? ` AND temporality = 1 AND unit = ${params.bind(scope.unit ?? "", "String")}`
 		: "";
@@ -368,7 +378,6 @@ function measureSelect(
 		: `(${points})`;
 	const groups = groupColumns.join(", ");
 	const keys = groups ? `${groups}, ` : "";
-	const level = histogramLevel(measure);
 	const columns = groupSelect ? `${groupSelect}, ` : "";
 	const layout = query.heatmap ? HEATMAP_COLUMNS : ["", ""];
 	// A sum or count is larger than each source, so their band would not surround it.
@@ -379,7 +388,12 @@ function measureSelect(
 	const partition = groups ? `PARTITION BY ${groups}` : "";
 	// Groups past the limit fold into one "Other" row per bucket, combined the same way.
 	const otherValue = histogram
-		? histogramQuantile("sumForEach(cumulative)", "any(shared)", level)
+		? histogramValue(
+				measure.calculation,
+				"sumForEach(cumulative)",
+				"any(shared)",
+				"sum(total)",
+			)
 		: OTHER_SQL[measure.combine];
 	const selection =
 		groups && query.other
@@ -397,12 +411,12 @@ FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
 				source,
 				pointFilters,
 				keys,
-				level,
+				measure.calculation,
 			)
 		: `WITH base AS (
   SELECT logical_series_id AS series, stream_id AS stream, series_id AS storage_series,
     ${columns}time_unix_milli AS t,
-    ${bucket} AS bucket, ${scope.behavior === "population" ? POPULATION_SUM : VALUE} AS v
+    ${bucket} AS bucket, ${VALUE} AS v
   FROM ${source}
   ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
 ),

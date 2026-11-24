@@ -159,30 +159,31 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				.getByRole("combobox", { name: "Choose a metric" })
 				.click({ timeout: 6000 });
 			await page
-				.getByRole("option", { name: /CPU per process · all processes/ })
+				.getByRole("option", { name: /^CPU per process/ })
 				.click({ timeout: 6000 });
-			await expect(page.getByLabel("Histogram percentile")).toHaveCount(1);
-			for (const percentile of ["p50", "p95", "p99"])
-				await expect(
-					page.getByRole("button", { name: percentile, exact: true }),
-				).toHaveAttribute("aria-pressed", "true");
+			// Histograms use the ordinary calculation menu, starting at p95.
+			const calculation = page.getByRole("combobox", { name: "Calculation" });
+			await expect(calculation).toHaveText("p95");
+			await page.getByRole("button", { name: "Duplicate series A" }).click();
+			await calculation.nth(1).click();
+			await page.getByRole("option", { name: "p50", exact: true }).click();
 			await expect(page.locator(".recharts-surface").first()).toBeVisible();
 			await expect(
-				page.getByRole("heading", { name: "CPU per process · all processes" }),
+				page.getByRole("heading", { level: 2, name: "CPU per process" }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("row").filter({ hasText: /^p(50|95|99)/ }),
-			).toHaveCount(3);
+				page.getByRole("row").filter({ hasText: /^p(50|95)/ }),
+			).toHaveCount(2);
 			await page.getByRole("combobox", { name: "Chart type" }).click();
 			await page.getByRole("option", { name: "Heatmap" }).click();
 			const plot = page.locator(".recharts-surface").first();
 			await expect(plot.getByText("CPU per process")).toBeVisible();
-			await expect(plot.getByText("50 %", { exact: true })).toBeVisible();
+			await expect(plot.getByText("50%", { exact: true })).toBeVisible();
 			await expect(page.getByText("Processes", { exact: true })).toBeVisible();
 			await plot.hover();
 			const tooltip = page.locator(".recharts-tooltip-wrapper");
-			await expect(tooltip).toContainText("CPU per process");
-			await expect(tooltip).toContainText("Processes");
+			await expect(tooltip).toContainText(/\d+ processes/);
+			await expect(tooltip).toContainText("CPU");
 			await page.screenshot({
 				path: info.outputPath(`histogram-heatmap-${theme}.png`),
 			});

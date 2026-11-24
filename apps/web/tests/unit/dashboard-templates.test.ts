@@ -128,15 +128,15 @@ test("recommendations count complete panels and require at least 60%, not 60% of
 		recommended: false,
 	});
 	expect(templateCoverage(template, catalog(raw))).toMatchObject({
-		count: 6,
+		count: 7,
 		total: 8,
 		recommended: true,
 	});
 	expect(templateCoverage(template, catalog(raw.slice(0, 4)))).toMatchObject({
-		count: 4,
+		count: 5,
 		total: 8,
-		recommended: false,
-		available: [true, true, true, false, false, true, false, false],
+		recommended: true,
+		available: [true, true, true, false, false, true, false, true],
 	});
 	const missingMemory = raw.filter(
 		(entry) => entry.name !== "recount.node.memory.available",
@@ -149,7 +149,7 @@ test("recommendations count complete panels and require at least 60%, not 60% of
 		true,
 		false,
 		false,
-		false,
+		true,
 	]);
 	const fivePanels = { ...template, tiles: template.tiles.slice(0, 5) };
 	expect(templateCoverage(fivePanels, catalog(raw.slice(0, 4)))).toMatchObject({

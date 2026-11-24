@@ -342,20 +342,21 @@
       "overrides": {},
       "options": {},
       "insight": {
-        "name": "dashboard_template_process_cpu_nodes",
+        "name": "dashboard_template_cpu_nodes",
         "description": "",
         "draft": {
           "series": [
             {
               "name": "A",
-              "metric": "recount.node.process.cpu.utilization.distribution",
-              "calculation": "p95",
+              "metric": "recount.calculated.cpu-usage",
+              "calculation": "last",
               "combine": "sum",
               "filters": []
             }
           ],
           "formulas": [],
           "filters": [],
+          "groupBy": "node",
           "limit": 1000,
           "other": false,
           "range": {
@@ -366,11 +367,11 @@
           "interval": "auto",
           "display": {
             "type": "grid",
-            "unit": "auto",
+            "unit": "percent",
             "logScale": false,
-            "beginAtZero": true
-          },
-          "groupBy": "node"
+            "beginAtZero": true,
+            "yMax": 100
+          }
         }
       }
     }

@@ -1,15 +1,19 @@
+import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { LayoutGridIcon } from "lucide-react";
 import { useRef, useState } from "react";
 import { useDisplayTimeZone } from "../../components/time-display";
 import { Button } from "../../components/ui/button";
+import { IconEmptyState } from "../../components/workspace";
 import { cn } from "../../lib/utils";
 import {
 	axisTime,
+	bucketTitle,
 	type ChartPoint,
 	ChartTooltipCard,
 	heatColor,
-	tooltipTime,
+	TooltipRows,
 } from "../charts";
 import type { SeriesResult } from "../contracts";
 import type { Display } from "./draft";
@@ -24,6 +28,7 @@ const TICKS = [0, 0.25, 0.5, 0.75, 1];
  */
 export function SeriesGrid({
 	view,
+	step,
 	display,
 	pointsOf,
 	gapLabel,
@@ -31,6 +36,8 @@ export function SeriesGrid({
 	onGroup,
 }: {
 	view: SeriesView;
+	/** Bucket length in ms. */
+	step: number;
 	display: Pick<Display, "beginAtZero" | "yMax">;
 	/** A series' points on the bucket grid. */
 	pointsOf: (series: SeriesResult) => ChartPoint[];
@@ -62,8 +69,7 @@ export function SeriesGrid({
 	);
 	const low = display.beginAtZero ? 0 : Math.min(...values);
 	const high = display.yMax ?? Math.max(...values);
-	const ratio = (value: number) =>
-		high > low ? (value - low) / (high - low) : 0;
+	const ratio = (value: number) => (value - low) / (high - low);
 	const format = view.format(rows[0]);
 	const time = axisTime(
 		locale,
@@ -76,6 +82,16 @@ export function SeriesGrid({
 		),
 	];
 	const hovered = hover && points[hover.row]?.[hover.bucket];
+	// Equal cells carry no color contrast, such as a p95 of mostly idle processes.
+	if (!(high > low))
+		return (
+			<IconEmptyState
+				icon={<LayoutGridIcon aria-hidden="true" />}
+				title={m.insight_grid_uniform({ value: format(high) })}
+				description={m.insight_grid_uniform_description()}
+				className={height}
+			/>
+		);
 	return (
 		<div className={cn("flex min-h-0 flex-col gap-2", height)}>
 			<div
@@ -162,21 +178,24 @@ export function SeriesGrid({
 					style={{ left: hover.x + 12, top: hover.y + 12 }}
 				>
 					<ChartTooltipCard
-						title={tooltipTime(locale, timeZone).format(hovered.bucketMs)}
-						items={[
-							{
-								key: "value",
-								label: view.label(rows[hover.row]),
-								color:
-									hovered.value === null
-										? undefined
-										: heatColor(ratio(hovered.value)),
-								block: true,
-								value: hovered.value === null ? null : format(hovered.value),
-								missing: gapLabel(rows[hover.row], hovered.bucketMs),
-							},
-						]}
-					/>
+						title={bucketTitle(hovered.bucketMs, step, locale, timeZone)}
+					>
+						<TooltipRows
+							items={[
+								{
+									key: "value",
+									label: view.label(rows[hover.row]),
+									color:
+										hovered.value === null
+											? undefined
+											: heatColor(ratio(hovered.value)),
+									block: true,
+									value: hovered.value === null ? null : format(hovered.value),
+									missing: gapLabel(rows[hover.row], hovered.bucketMs),
+								},
+							]}
+						/>
+					</ChartTooltipCard>
 				</div>
 			)}
 		</div>

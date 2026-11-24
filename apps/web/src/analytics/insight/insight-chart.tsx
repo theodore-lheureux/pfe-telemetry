@@ -108,19 +108,29 @@ export function InsightChart({
 				highlight={highlight}
 				onGroup={onGroup}
 			/>
-			{result.limited && (
-				<p className="text-xs text-muted-foreground">
-					{m.insight_groups_limited()}
-				</p>
-			)}
-			{view.current.length > CHART_SERIES &&
-				!["table", "grid", "heatmap"].includes(display.type) && (
-					<p className="text-xs text-muted-foreground">
-						{m.insight_chart_limited()}
-					</p>
-				)}
+			<ChartNote result={result} view={view} display={display} />
 		</div>
 	);
+}
+
+/** One note under the chart: groups cut by the limit, else lines left to the table. */
+function ChartNote({
+	result,
+	view,
+	display,
+}: {
+	result: QueryResult;
+	view: SeriesView;
+	display: Display;
+}) {
+	let note: string | null = null;
+	if (result.limited) note = m.insight_groups_limited();
+	else if (
+		view.current.length > CHART_SERIES &&
+		!["table", "grid", "heatmap"].includes(display.type)
+	)
+		note = m.insight_chart_limited();
+	return note && <p className="text-xs text-muted-foreground">{note}</p>;
 }
 
 /** The plotted result: a chart, stat cards, or nothing when the table shows it. */
@@ -201,6 +211,7 @@ export function ChartBody({
 		return (
 			<SeriesGrid
 				view={view}
+				step={step}
 				display={display}
 				pointsOf={pointsOf}
 				gapLabel={gapLabel}
@@ -220,11 +231,15 @@ export function ChartBody({
 			/>
 		);
 	const charting = view.visible.filter((series) => view.color(series));
+	const values = charting.map((series) =>
+		JSON.stringify(pointsOf(series).map((point) => point.value)),
+	);
 	const chartSeries: ChartSeries[] = charting.map((series, index) => ({
 		key: `s${index}`,
 		label: view.label(series),
 		color: view.color(series) ?? "var(--viz-1)",
 		comparison: series.comparison,
+		coincident: values.indexOf(values[index]) < index,
 		points: pointsOf(series),
 	}));
 	const bands = coverage.map(({ from, to, kind }) =>
@@ -268,7 +283,7 @@ export function ChartBody({
 			showValues={display.showValues}
 			xLabel={display.xLabel}
 			yLabel={display.yLabel ?? heatmap?.quantity}
-			yMax={display.yMax ?? heatmap?.yMax}
+			yMax={display.yMax}
 			smooth={display.lineStyle === "smooth"}
 			trend={display.trend}
 			movingAverage={display.movingAverage}
@@ -318,21 +333,17 @@ function heatmapOf(
 	measure: QueryResult["measures"][number],
 	series: SeriesResult,
 ) {
-	const { quantity, subject } = distributionLabels(
-		measure.metric,
-		measure.label,
-	);
-	// Ratios fill their full scale by default, so cells keep their place over time.
-	let yMax: number | undefined;
-	if (measure.unit === "%") yMax = 100;
-	if (measure.unit === "1" && isRatioMetric(measure.metric)) yMax = 1;
+	const labels = distributionLabels(measure.metric, measure.label);
+	// Ratios show at least their full scale, so cells keep their place over time.
+	let scale: number | undefined;
+	if (measure.unit === "%") scale = 100;
+	if (measure.unit === "1" && isRatioMetric(measure.metric)) scale = 1;
 	return {
 		bounds: series.bounds ?? [],
 		columns: series.points.flatMap(({ bucketMs, counts }) =>
 			bucketMs === null || !counts ? [] : [{ bucketMs, counts }],
 		),
-		subject,
-		quantity,
-		yMax,
+		...labels,
+		scale,
 	};
 }

@@ -6,6 +6,7 @@ import { DataTable } from "../../components/data-table";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 import type { QueryResult, SeriesResult } from "../contracts";
+import { isHistogramPercentile } from "../validation";
 import {
 	type InsightTableMeta,
 	insightTableFeatures,
@@ -58,8 +59,17 @@ export function InsightTable({
 	onHover: (line: string | null) => void;
 }) {
 	const [sorting, setSorting] = useState<SortingState>([]);
-	const columns =
-		result.shape === "table" ? insightTotalColumns : insightTimeseriesColumns;
+	const percentiles = result.measures.every(({ calculation }) =>
+		isHistogramPercentile(calculation),
+	);
+	const columns = useMemo(() => {
+		const all =
+			result.shape === "table" ? insightTotalColumns : insightTimeseriesColumns;
+		// Percentiles of percentile series would read as one more percentile.
+		return percentiles
+			? all.filter(({ id }) => id !== "p95" && id !== "p99")
+			: all;
+	}, [result.shape, percentiles]);
 	const visibleSorting = useMemo(
 		() =>
 			sorting.filter((entry) =>

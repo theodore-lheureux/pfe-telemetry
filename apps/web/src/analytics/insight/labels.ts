@@ -30,7 +30,10 @@ export const CALCULATION_LABEL: Record<Calculation, () => string> = {
 	max: m.insight_calc_max,
 	rate: m.insight_calc_rate,
 	increase: m.insight_calc_increase,
+	count: m.insight_calc_count,
 	p50: () => "p50",
+	p75: () => "p75",
+	p90: () => "p90",
 	p95: () => "p95",
 	p99: () => "p99",
 };
@@ -240,8 +243,15 @@ export function formatValueDetails(
 	if (!stored) return number();
 	const storedUnit = readableUnit(stored.unit);
 	if (stored.calculation === "rate") {
-		// Seconds per second (such as CPU time) is a plain ratio, roughly busy cores.
-		if (storedUnit === "s" || !storedUnit) return number();
+		// Seconds per second, such as CPU time, reads as a share of one core.
+		if (storedUnit === "s")
+			return formatNumeric(
+				value,
+				locale,
+				{ style: "percent", maximumFractionDigits: 1 },
+				minimumFractionDigits,
+			);
+		if (!storedUnit) return number();
 		return affixed(number(), "", ` ${storedUnit}/s`);
 	}
 	if (storedUnit === "%") return affixed(number(1), "", " %");
@@ -321,7 +331,11 @@ export function groupText(
 ) {
 	if (series.other) return m.insight_other();
 	if (!series.group.length) return null;
-	return series.group.map((value) => groupLabel(value)).join(", ");
+	// Extra keys name the group, such as a process name before its ID.
+	const shown = series.group.filter(
+		(value, index) => value !== null || index === series.group.length - 1,
+	);
+	return shown.map((value) => groupLabel(value)).join(" · ");
 }
 
 /**

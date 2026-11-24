@@ -24,7 +24,6 @@ import {
 import {
 	ALLOWED_CALCULATIONS,
 	comparisonRange,
-	isHistogramPercentile,
 	resolveRange,
 } from "./validation";
 
@@ -296,15 +295,13 @@ export async function runQuery(
 					"Calculation does not apply to this metric",
 				);
 			if (
-				definition.behavior === "population" &&
-				!isHistogramPercentile(measure.calculation) &&
-				(query.groupBy?.includes("execution") ||
-					query.filters?.some(({ field }) => field === "execution") ||
-					measure.filters?.some(({ field }) => field === "execution"))
+				query.heatmap &&
+				definition.behavior !== "histogram" &&
+				definition.behavior !== "population"
 			)
 				throw new InputError(
 					"INVALID_CALCULATION",
-					"Node population snapshots cannot be attributed to executions",
+					"A heatmap needs histogram metrics",
 				);
 			return definition;
 		});

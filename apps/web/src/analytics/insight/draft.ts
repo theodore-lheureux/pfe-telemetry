@@ -13,15 +13,13 @@ import {
 	type Comparison,
 	DEFAULT_SERIES_LIMIT,
 	type Filter,
-	HISTOGRAM_PERCENTILES,
-	type HistogramPercentile,
 	type Interval,
 	MAX_MEASURES,
 	MAX_RANGE_SECONDS,
 	type Spread,
 } from "../contracts";
 import { effectiveInterval } from "../intervals";
-import { isHistogramPercentile } from "../validation";
+import { breakdownFields } from "../metric-names";
 
 // An insight being edited. It is plain JSON so it can live in the URL and later be
 // saved; `toQuery` turns it into the server's query object when it runs.
@@ -37,7 +35,6 @@ export interface DraftSeries {
 	name: string;
 	metric?: string;
 	calculation: Calculation;
-	percentiles?: HistogramPercentile[];
 	combine: Combine;
 	filters: Filter[];
 }
@@ -133,35 +130,6 @@ export function newSeries(name: string): DraftSeries {
 	return { name, calculation: "avg", combine: "avg", filters: [] };
 }
 
-export function selectedPercentiles(series: DraftSeries) {
-	const choices = HISTOGRAM_PERCENTILES.filter((value) =>
-		series.percentiles?.includes(value),
-	);
-	if (choices.length) return choices;
-	return HISTOGRAM_PERCENTILES.filter((value) => value === series.calculation);
-}
-
-function queryMeasures(
-	series: DraftSeries[],
-	heatmap: boolean,
-): AnalyticsQuery["measures"] {
-	return series.flatMap((entry) => {
-		const measure = {
-			name: entry.name,
-			metric: entry.metric as string,
-			calculation: entry.calculation,
-			combine: entry.combine,
-			filters: entry.filters,
-		};
-		if (heatmap || !isHistogramPercentile(entry.calculation)) return [measure];
-		return selectedPercentiles(entry).map((calculation, index) => ({
-			...measure,
-			calculation,
-			name: index ? `${entry.name}_${calculation}` : entry.name,
-		}));
-	});
-}
-
 export const DEFAULT_DRAFT: InsightDraft = {
 	series: [newSeries("A")],
 	formulas: [],
@@ -245,12 +213,7 @@ export function toQuery(
 ): AnalyticsQuery | null {
 	const draft = withDisplay(input, input.display);
 	const heatmap = draft.display.type === "heatmap";
-	if (
-		draft.series.some(
-			(entry) =>
-				!entry.metric || (heatmap && !isHistogramPercentile(entry.calculation)),
-		)
-	)
+	if (!draft.series.length || draft.series.some((entry) => !entry.metric))
 		return null;
 	if (
 		draft.display.type === "stat" &&
@@ -270,12 +233,29 @@ export function toQuery(
 		...(heatmap ? { heatmap: true as const } : {}),
 		range: { from: from.toISOString(), to: to.toISOString() },
 		...(table ? {} : { interval }),
-		measures: queryMeasures(draft.series, heatmap),
+		// A heatmap shows a histogram whatever its calculation, so each one is read once.
+		measures: draft.series
+			.filter(
+				(entry, index, all) =>
+					!heatmap ||
+					all.findIndex(
+						(other) =>
+							other.metric === entry.metric &&
+							JSON.stringify(other.filters) === JSON.stringify(entry.filters),
+					) === index,
+			)
+			.map((entry) => ({
+				name: entry.name,
+				metric: entry.metric as string,
+				calculation: entry.calculation,
+				combine: entry.combine,
+				filters: entry.filters,
+			})),
 		...(!heatmap && formulas(draft).length
 			? { formulas: formulas(draft) }
 			: {}),
 		filters: draft.filters,
-		groupBy: grouped ? [draft.groupBy as string] : [],
+		groupBy: grouped ? breakdownFields(draft.groupBy as string) : [],
 		limit: draft.limit,
 		other: !heatmap && draft.other,
 		...(!heatmap && grouped && draft.aggregate

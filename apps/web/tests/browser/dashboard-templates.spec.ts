@@ -206,7 +206,7 @@ for (const locale of ["en", "fr"] as const) {
 			),
 		);
 		expect(reused.filters).toBe("{}");
-		expect(reused.tiles).toHaveLength(6);
+		expect(reused.tiles).toHaveLength(8);
 		expect(reused.tiles[0].insight.id).not.toBe(created.tiles[0].insight.id);
 		await page.goto(listUrl);
 		await page

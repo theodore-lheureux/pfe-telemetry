@@ -111,7 +111,7 @@ test("Insights shows the Node health template and charts discovered metrics in E
 			.click();
 		await expect(
 			page.getByRole("menuitem", { name: /^Node health/ }),
-		).toContainText("4 of 6 panels");
+		).toContainText("5 of 8 panels");
 		await page.keyboard.press("Escape");
 		await page.getByRole("link", { name: "Overview", exact: true }).click();
 		await expect(

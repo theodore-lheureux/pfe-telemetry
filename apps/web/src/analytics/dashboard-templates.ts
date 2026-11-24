@@ -97,7 +97,7 @@ const TEMPLATE_LABELS: Record<string, () => string> = {
 	dashboard_template_network_throughput:
 		m.dashboard_template_network_throughput,
 	dashboard_template_nodes: m.dashboard_template_nodes,
-	dashboard_template_process_cpu_nodes: m.dashboard_template_process_cpu_nodes,
+	dashboard_template_cpu_nodes: m.dashboard_template_cpu_nodes,
 	dashboard_template_gpu: m.dashboard_template_gpu,
 	dashboard_template_gpu_description: m.dashboard_template_gpu_description,
 	dashboard_template_gpu_utilization: m.dashboard_template_gpu_utilization,

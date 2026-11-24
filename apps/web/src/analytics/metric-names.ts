@@ -1,6 +1,41 @@
 import { m } from "@recount/i18n/messages";
 
-type DistributionLabels = { quantity: string; subject: string };
+// What a histogram's observations are, so counts read "5 processes" in each locale.
+const SUBJECTS = {
+	processes: {
+		name: m.histogram_subject_processes,
+		one: m.histogram_count_processes_one,
+		other: m.histogram_count_processes_other,
+	},
+	gpus: {
+		name: m.histogram_subject_gpus,
+		one: m.histogram_count_gpus_one,
+		other: m.histogram_count_gpus_other,
+	},
+	connections: {
+		name: m.histogram_subject_connections,
+		one: m.histogram_count_connections_one,
+		other: m.histogram_count_connections_other,
+	},
+	observations: {
+		name: m.histogram_subject_observations,
+		one: m.histogram_count_observations_one,
+		other: m.histogram_count_observations_other,
+	},
+};
+
+type Distribution = {
+	quantity: () => string;
+	subject: keyof typeof SUBJECTS;
+	/** Phrases a bucket's value range, such as "using 1–5 % CPU". */
+	range: (inputs: { range: string }) => string;
+};
+
+const distribution = (
+	quantity: Distribution["quantity"],
+	subject: Distribution["subject"],
+	range: Distribution["range"],
+): Distribution => ({ quantity, subject, range });
 
 // Friendly names for the metrics Recount's collector sends. Other metrics, including
 // any sent by standard OpenTelemetry exporters, keep their technical names.
@@ -10,7 +45,7 @@ const METRICS: Record<
 		name: () => string;
 		description: () => string;
 		ratio?: boolean;
-		distribution?: () => DistributionLabels;
+		distribution?: Distribution;
 		/** Per-process detail the collector caps per node; its coverage is reported. */
 		detail?: boolean;
 	}
@@ -19,59 +54,66 @@ const METRICS: Record<
 		name: m.metric_hist_process_cpu,
 		description: m.metric_hist_process_description,
 		ratio: true,
-		distribution: () => ({
-			quantity: m.histogram_process_cpu(),
-			subject: m.histogram_subject_processes(),
-		}),
+		distribution: distribution(
+			m.histogram_process_cpu,
+			"processes",
+			m.histogram_range_process_cpu,
+		),
 	},
 	"recount.node.process.memory.rss.distribution": {
 		name: m.metric_hist_process_memory,
 		description: m.metric_hist_process_description,
-		distribution: () => ({
-			quantity: m.histogram_process_memory(),
-			subject: m.histogram_subject_processes(),
-		}),
+		distribution: distribution(
+			m.histogram_process_memory,
+			"processes",
+			m.histogram_range_process_memory,
+		),
 	},
 	"recount.node.process.disk.io.rate.distribution": {
 		name: m.metric_hist_process_disk,
 		description: m.metric_hist_process_description,
-		distribution: () => ({
-			quantity: m.histogram_process_disk(),
-			subject: m.histogram_subject_processes(),
-		}),
+		distribution: distribution(
+			m.histogram_process_disk,
+			"processes",
+			m.histogram_range_process_disk,
+		),
 	},
 	"recount.node.gpu.utilization.distribution": {
 		name: m.metric_hist_gpu_utilization,
 		description: m.metric_hist_gpu_utilization,
 		ratio: true,
-		distribution: () => ({
-			quantity: m.histogram_gpu_utilization(),
-			subject: m.histogram_subject_gpus(),
-		}),
+		distribution: distribution(
+			m.histogram_gpu_utilization,
+			"gpus",
+			m.histogram_range_gpu_utilization,
+		),
 	},
 	"recount.node.gpu.memory.used.distribution": {
 		name: m.metric_hist_gpu_memory,
 		description: m.metric_hist_gpu_memory,
-		distribution: () => ({
-			quantity: m.histogram_gpu_memory(),
-			subject: m.histogram_subject_gpus(),
-		}),
+		distribution: distribution(
+			m.histogram_gpu_memory,
+			"gpus",
+			m.histogram_range_gpu_memory,
+		),
 	},
 	"recount.node.gpu.power.distribution": {
 		name: m.metric_hist_gpu_power,
 		description: m.metric_hist_gpu_power,
-		distribution: () => ({
-			quantity: m.histogram_gpu_power(),
-			subject: m.histogram_subject_gpus(),
-		}),
+		distribution: distribution(
+			m.histogram_gpu_power,
+			"gpus",
+			m.histogram_range_gpu_power,
+		),
 	},
 	"recount.node.tcp.rtt.distribution": {
 		name: m.metric_hist_tcp_rtt,
 		description: m.metric_hist_tcp_rtt,
-		distribution: () => ({
-			quantity: m.histogram_tcp_rtt(),
-			subject: m.histogram_subject_connections(),
-		}),
+		distribution: distribution(
+			m.histogram_tcp_rtt,
+			"connections",
+			m.histogram_range_tcp_rtt,
+		),
 	},
 	"recount.process.gpu.memory.used": {
 		name: m.gpu_process_memory,
@@ -237,6 +279,7 @@ const ATTRIBUTES: Record<string, () => string> = {
 	"host.id": m.attribute_host_id,
 	"os.type": m.attribute_os_type,
 	"process.pid": m.attribute_process_pid,
+	"process.executable.name": m.attribute_process_name,
 	"process.real_user.id": m.attribute_process_real_uid,
 	"recount.slurm.job.id": m.attribute_slurm_job_id,
 	"recount.slurm.step.id": m.attribute_slurm_step_id,
@@ -260,27 +303,80 @@ export function metricDescription(name: string) {
 	return METRICS[name]?.description() ?? null;
 }
 
-export function distributionLabels(
+/** How a histogram's rows, counts and value ranges read in charts and tooltips. */
+export function distributionLabels(name: string, label?: string) {
+	const entry = METRICS[name]?.distribution;
+	const subject = SUBJECTS[entry?.subject ?? "observations"];
+	return {
+		quantity: entry?.quantity() ?? metricLabel(name, label),
+		subject: subject.name(),
+		count: (count: number, locale: string) => {
+			const text = new Intl.NumberFormat(locale).format(count);
+			return new Intl.PluralRules(locale).select(count) === "one"
+				? subject.one({ count: text })
+				: subject.other({ count: text });
+		},
+		range: entry?.range ?? m.histogram_range_default,
+	};
+}
+
+/** Picker sections, in display order; collector diagnostics come last. */
+export const METRIC_SECTIONS = [
+	"node",
+	"processes",
+	"distributions",
+	"gpu",
+	"other",
+	"diagnostics",
+] as const;
+export type MetricSection = (typeof METRIC_SECTIONS)[number];
+
+export const METRIC_SECTION_LABEL: Record<MetricSection, () => string> = {
+	node: m.metric_section_node,
+	processes: m.metric_section_processes,
+	distributions: m.metric_section_distributions,
+	gpu: m.metric_section_gpu,
+	other: m.metric_section_other,
+	diagnostics: m.metric_section_diagnostics,
+};
+
+/** Where a metric is listed, from its family; metrics from other sources are "other". */
+export function metricSection(
 	name: string,
-	label?: string,
-): DistributionLabels {
-	return (
-		METRICS[name]?.distribution?.() ?? {
-			quantity: metricLabel(name, label),
-			subject: m.histogram_subject_observations(),
-		}
-	);
+	distribution: boolean,
+): MetricSection {
+	if (distribution) return "distributions";
+	if (
+		/^recount\.(collection|clock)\./.test(name) ||
+		name.endsWith(".discovery.status")
+	)
+		return "diagnostics";
+	if (/^recount\.(process\.)?gpu\./.test(name)) return "gpu";
+	if (
+		/^(process\.|recount\.process\.|recount\.calculated\.process-)/.test(name)
+	)
+		return "processes";
+	if (/^(recount\.node\.|system\.|recount\.calculated\.)/.test(name))
+		return "node";
+	return "other";
 }
 
 export function isProcessDetailMetric(name: string | null | undefined) {
 	return !!name && METRICS[name]?.detail === true;
 }
 
+const PROCESS_ID = 'resource.attributes["process.pid"]';
+
 /** The breakdown a metric opens with when members chose none: per-process detail by process. */
 export function metricBreakdown(name: string | undefined) {
-	return isProcessDetailMetric(name)
-		? 'resource.attributes["process.pid"]'
-		: undefined;
+	return isProcessDetailMetric(name) ? PROCESS_ID : undefined;
+}
+
+/** The fields a breakdown queries: a process ID also brings its name, as in "python · 662". */
+export function breakdownFields(field: string) {
+	return field === PROCESS_ID
+		? ['resource.attributes["process.executable.name"]', field]
+		: [field];
 }
 
 export function isRatioMetric(name: string) {

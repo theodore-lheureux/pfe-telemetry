@@ -57,7 +57,13 @@ export type CoreField =
 	| "resource.kind"
 	| "scope.name";
 
-export const HISTOGRAM_PERCENTILES = ["p50", "p95", "p99"] as const;
+export const HISTOGRAM_PERCENTILES = [
+	"p50",
+	"p75",
+	"p90",
+	"p95",
+	"p99",
+] as const;
 export type HistogramPercentile = (typeof HISTOGRAM_PERCENTILES)[number];
 export type Calculation =
 	| "last"
@@ -66,6 +72,8 @@ export type Calculation =
 	| "max"
 	| "rate"
 	| "increase"
+	/** Observations a histogram counted. */
+	| "count"
 	| HistogramPercentile;
 /** How the values of a measure's sources combine per bucket (and per group). */
 export const COMBINES = [

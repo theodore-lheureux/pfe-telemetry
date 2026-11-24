@@ -1,6 +1,12 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
-import { type ComponentProps, useId, useMemo, useState } from "react";
+import {
+	type ComponentProps,
+	type ReactNode,
+	useId,
+	useMemo,
+	useState,
+} from "react";
 import {
 	Area,
 	Bar,
@@ -39,6 +45,8 @@ export interface ChartSeries {
 	points: ChartPoint[];
 	/** A comparison line, such as the previous period: lighter and dashed. */
 	comparison?: boolean;
+	/** Every value equals an earlier series', so it is dashed to keep both visible. */
+	coincident?: boolean;
 	/** A trend or moving average drawn over another series: thin, dotted, unlisted. */
 	overlay?: boolean;
 }
@@ -117,70 +125,104 @@ export interface TooltipItem {
 	missing?: string | null;
 }
 
-/** The card every chart's tooltip shows: a time, an optional note, then labeled values. */
+export function TooltipSwatch({
+	color,
+	block = false,
+	faded = false,
+}: {
+	color: string;
+	block?: boolean;
+	faded?: boolean;
+}) {
+	return (
+		<span
+			aria-hidden="true"
+			className={cn(
+				"shrink-0",
+				block ? "size-2.5 rounded-[2px]" : "h-0.5 w-3 rounded-full",
+				faded && "opacity-50",
+			)}
+			style={{ background: color }}
+		/>
+	);
+}
+
+/** The card every chart's tooltip shows: when, an optional note, then its content. */
 export function ChartTooltipCard({
 	title,
 	note,
-	items,
+	children,
 	maxWidth,
 }: {
 	title: string;
 	note?: string;
-	items: TooltipItem[];
+	children: ReactNode;
 	maxWidth?: number;
 }) {
 	return (
 		<div
-			className="grid min-w-0 gap-1.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md"
+			className="grid min-w-0 gap-1.5 rounded-md border bg-popover px-3 py-2 text-xs text-popover-foreground tabular-nums shadow-md"
 			style={{ maxWidth }}
 		>
-			<p className="font-medium">{title}</p>
+			<p className="text-muted-foreground">{title}</p>
 			{note && <p className="text-muted-foreground">{note}</p>}
-			{items.map((item) => (
-				<div key={item.key} className="flex items-center justify-between gap-4">
-					<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-						{item.color && (
-							<span
-								aria-hidden="true"
-								className={cn(
-									"shrink-0",
-									item.block
-										? "size-2.5 rounded-[2px]"
-										: "h-0.5 w-3 rounded-full",
-									item.faded && "opacity-50",
-								)}
-								style={{ background: item.color }}
-							/>
-						)}
-						<span className="truncate">{item.label}</span>
-					</span>
-					{item.value === null ? (
-						<span className="shrink-0 text-muted-foreground italic">
-							{item.missing ?? "—"}
-						</span>
-					) : (
-						<span className="shrink-0 font-mono tabular-nums">
-							{item.value}
-							{item.detail && (
-								<span className="ml-1.5 text-muted-foreground">
-									{item.detail}
-								</span>
-							)}
-						</span>
-					)}
-				</div>
-			))}
+			{children}
 		</div>
 	);
 }
 
-/** Times as the display time zone shows them: a tooltip's full time. */
-export function tooltipTime(locale: string, timeZone: string) {
+/** Labeled values, one per line: the label muted, the value emphasized. */
+export function TooltipRows({ items }: { items: TooltipItem[] }) {
+	return items.map((item) => (
+		<div key={item.key} className="flex items-center justify-between gap-4">
+			<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+				{item.color && (
+					<TooltipSwatch
+						color={item.color}
+						block={item.block}
+						faded={item.faded}
+					/>
+				)}
+				<span className="truncate">{item.label}</span>
+			</span>
+			{item.value === null ? (
+				<span className="shrink-0 text-muted-foreground italic">
+					{item.missing ?? "—"}
+				</span>
+			) : (
+				<span className="shrink-0 font-medium">
+					{item.value}
+					{item.detail && (
+						<span className="ml-1.5 font-normal text-muted-foreground">
+							{item.detail}
+						</span>
+					)}
+				</span>
+			)}
+		</div>
+	));
+}
+
+/** A bucket's time span, with its date only when that is not today. */
+export function bucketTitle(
+	start: number,
+	step: number,
+	locale: string,
+	timeZone: string,
+) {
+	if (step >= 86_400_000)
+		return new Intl.DateTimeFormat(locale, {
+			dateStyle: "medium",
+			timeZone,
+		}).formatRange(start, start + step - 1);
+	const day = new Intl.DateTimeFormat(locale, { dateStyle: "short", timeZone });
 	return new Intl.DateTimeFormat(locale, {
-		dateStyle: "medium",
-		timeStyle: "short",
+		...(day.format(start) === day.format(Date.now())
+			? {}
+			: { dateStyle: "medium" }),
+		timeStyle: step < 60_000 ? "medium" : "short",
 		timeZone,
-	});
+	}).formatRange(start, start + step);
 }
 
 /** Time axis labels: days on ranges past a day, otherwise hours and minutes. */
@@ -202,14 +244,16 @@ function TooltipCard({
 	active,
 	payload,
 	label,
-	items,
+	content,
+	step,
 	bands,
 	timeZone,
 }: {
 	active?: boolean;
 	payload?: readonly { payload?: unknown }[];
 	label?: unknown;
-	items: (bucketMs: number, row: Record<string, unknown>) => TooltipItem[];
+	content: (bucketMs: number, row: Record<string, unknown>) => ReactNode;
+	step: number;
 	bands: ChartBand[];
 	timeZone: string;
 }) {
@@ -217,16 +261,17 @@ function TooltipCard({
 	const plot = usePlotArea();
 	if (!active || typeof label !== "number") return null;
 	const row = (payload?.[0]?.payload ?? {}) as Record<string, unknown>;
-	const shown = items(label, row);
-	if (!shown.length) return null;
+	const shown = content(label, row);
+	if (!shown) return null;
 	const band = bands.find((band) => label >= band.from && label < band.to);
 	return (
 		<ChartTooltipCard
-			title={tooltipTime(getLocale(), timeZone).format(label)}
+			title={bucketTitle(label, step, getLocale(), timeZone)}
 			note={band && (band.detail ?? band.label)}
-			items={shown}
 			maxWidth={plot?.width}
-		/>
+		>
+			{shown}
+		</ChartTooltipCard>
 	);
 }
 
@@ -235,13 +280,19 @@ export interface Heatmap {
 	/** Bucket upper bounds; one more bucket holds the values above the last. */
 	bounds: number[];
 	columns: { bucketMs: number; counts: number[] }[];
-	/** What the counts count, such as processes. */
+	/** What the counts count, such as processes, for the legend. */
 	subject: string;
+	/** A count with its subject, such as "5 processes". */
+	count: (count: number, locale: string) => string;
+	/** A bucket's value range in words, such as "using 1–5 % CPU". */
+	range: (inputs: { range: string }) => string;
+	/** A value the rows always reach, such as 100 % for a ratio, unless `yMax` caps them. */
+	scale?: number;
 }
 
 /**
  * The buckets a heatmap shows: from zero, or the first occupied one, up to the bucket
- * holding `yMax`, or the last occupied one.
+ * holding `yMax`, or else the last occupied one or the one holding its scale.
  */
 function heatmapLayout(heatmap: Heatmap, beginAtZero: boolean, yMax?: number) {
 	const { bounds, columns } = heatmap;
@@ -256,11 +307,14 @@ function heatmapLayout(heatmap: Heatmap, beginAtZero: boolean, yMax?: number) {
 				bounds.findIndex((bound) => bound >= 0),
 			)
 		: (occupied[0] ?? 0);
+	const holding = (value: number) => {
+		const index = bounds.findIndex((bound) => bound >= value);
+		return index < 0 ? bounds.length : index;
+	};
 	let last = occupied.at(-1) ?? lowest;
-	if (yMax !== undefined && Number.isFinite(yMax)) {
-		const holding = bounds.findIndex((bound) => bound >= yMax);
-		last = holding < 0 ? bounds.length : holding;
-	}
+	if (heatmap.scale !== undefined)
+		last = Math.max(last, holding(heatmap.scale));
+	if (yMax !== undefined && Number.isFinite(yMax)) last = holding(yMax);
 	const first = Math.min(lowest, last);
 	const peak = Math.max(
 		1,
@@ -330,44 +384,69 @@ function seriesItem(
 	};
 }
 
-/** A hovered heatmap cell: its bucket's range, then its count and share of the column. */
-function heatmapItems(
-	heatmap: HeatmapLayout,
-	bucketMs: number,
-	index: number | null,
-	{
-		label = "",
-		format,
-		locale,
-	}: { label?: string; format: (value: number) => string; locale: string },
-): TooltipItem[] {
-	if (index === null) return [];
+const SHARE_PHRASE: Record<number, typeof m.histogram_share_minute> = {
+	60000: m.histogram_share_minute,
+	3600000: m.histogram_share_hour,
+	86400000: m.histogram_share_day,
+};
+
+/** A hovered heatmap cell as a sentence: how many, in which range, and their share. */
+function HeatmapTooltip({
+	heatmap,
+	bucketMs,
+	index,
+	step,
+	format,
+}: {
+	heatmap: HeatmapLayout;
+	bucketMs: number;
+	index: number;
+	step: number;
+	format: (value: number) => string;
+}) {
+	const locale = getLocale();
 	const counts =
 		heatmap.columns.find((column) => column.bucketMs === bucketMs)?.counts ??
 		[];
 	const count = counts[index] ?? 0;
 	const total = counts.reduce((sum, value) => sum + value, 0);
+	const range = heatmap.range({
+		range: bucketRange(heatmap.bounds, index, format),
+	});
+	if (!count)
+		return (
+			<p className="text-muted-foreground">
+				{heatmap.count(0, locale)} {range}
+			</p>
+		);
 	const share = new Intl.NumberFormat(locale, {
 		style: "percent",
 		maximumFractionDigits: 1,
 	});
-	return [
-		{ key: "bucket", label, value: bucketRange(heatmap.bounds, index, format) },
-		{
-			key: "count",
-			label: heatmap.subject,
-			color: heatColor(Math.log1p(count) / Math.log1p(heatmap.peak)),
-			block: true,
-			value: new Intl.NumberFormat(locale).format(count),
-			detail: total ? share.format(count / total) : undefined,
-		},
-	];
+	return (
+		<>
+			<p className="flex items-center gap-1.5">
+				<TooltipSwatch
+					color={heatColor(Math.log1p(count) / Math.log1p(heatmap.peak))}
+					block
+				/>
+				<span className="font-medium">{heatmap.count(count, locale)}</span>
+			</p>
+			<p>{range}</p>
+			<p className="text-muted-foreground">
+				{(SHARE_PHRASE[step] ?? m.histogram_share_interval)({
+					share: share.format(count / total),
+					total: heatmap.count(total, locale),
+				})}
+			</p>
+		</>
+	);
 }
 
 function HeatmapLegend({ subject, peak }: { subject: string; peak: number }) {
 	return (
 		<p className="flex items-center justify-end gap-2 text-xs text-muted-foreground">
-			{subject}
+			<span>{subject}</span>
 			<span className="tabular-nums">0</span>
 			<span
 				aria-hidden="true"
@@ -729,6 +808,7 @@ export function TimeseriesChart({
 				stroke={entry.color}
 				strokeOpacity={emphasis(entry.key)}
 				strokeWidth={2}
+				strokeDasharray={entry.coincident ? "6 6" : undefined}
 				dot={false}
 				activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
 				isAnimationActive={false}
@@ -888,24 +968,32 @@ export function TimeseriesChart({
 						content={(props) => (
 							<TooltipCard
 								{...props}
-								items={
-									layout
-										? (bucketMs) =>
-												heatmapItems(layout, bucketMs, heatmapRow, {
-													label: yLabel,
-													format,
-													locale,
-												})
-										: (bucketMs, row) =>
-												drawn.map((entry) =>
+								step={bucketSeconds * 1000}
+								content={(bucketMs, row) => {
+									if (!layout)
+										return (
+											<TooltipRows
+												items={drawn.map((entry) =>
 													seriesItem(
 														entry,
 														row,
 														format,
 														gapLabel?.(entry.key, bucketMs),
 													),
-												)
-								}
+												)}
+											/>
+										);
+									if (heatmapRow === null) return null;
+									return (
+										<HeatmapTooltip
+											heatmap={layout}
+											bucketMs={bucketMs}
+											index={heatmapRow}
+											step={bucketSeconds * 1000}
+											format={format}
+										/>
+									);
+								}}
 								bands={bands}
 								timeZone={timeZone}
 							/>

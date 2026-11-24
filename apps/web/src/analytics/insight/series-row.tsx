@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { Link } from "@tanstack/react-router";
-import { InfoIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { CopyPlusIcon, InfoIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import {
@@ -12,7 +12,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "../../components/ui/select";
-import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import {
 	Tooltip,
 	TooltipContent,
@@ -24,25 +23,21 @@ import { useMetricAttributes, useProcessCoverage } from "../catalog";
 import {
 	type Calculation,
 	type Combine,
-	HISTOGRAM_PERCENTILES,
-	type HistogramPercentile,
 	MAX_FILTERS,
 	type MetricDefinition,
 } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
+import { isDistribution } from "../histograms";
 import { isProcessDetailMetric, metricDescription } from "../metric-names";
 import { MetricPicker } from "../metric-picker";
 import { ALLOWED_CALCULATIONS } from "../validation";
-import {
-	type DraftSeries,
-	type InsightDraft,
-	selectedPercentiles,
-} from "./draft";
+import type { DraftSeries, InsightDraft } from "./draft";
 import {
 	CALCULATION_LABEL,
 	COMBINE_GROUPS,
 	COMBINE_OPTION_LABEL,
 } from "./labels";
+import { InlineWarning } from "./percentile-warning";
 
 // Borderless selects read as a phrase, "Rate per second  Sum of all sources", and wrap
 // rather than truncate when the panel is narrow.
@@ -62,6 +57,7 @@ export function SeriesRow({
 	scope,
 	onChange,
 	onRemove,
+	onDuplicate,
 }: {
 	userId: string;
 	reference: ProjectReference;
@@ -75,6 +71,8 @@ export function SeriesRow({
 	scope: Pick<InsightDraft, "range" | "filters">;
 	onChange: (series: DraftSeries) => void;
 	onRemove: () => void;
+	/** Adds a copy below, such as to plot another percentile; absent when no letter is left. */
+	onDuplicate?: () => void;
 }) {
 	const [wantsAttributes, setWantsAttributes] = useState(false);
 	const attributes = useMetricAttributes(
@@ -84,7 +82,7 @@ export function SeriesRow({
 		wantsAttributes && series.metric !== undefined,
 	);
 	const definition = metrics.find((metric) => metric.name === series.metric);
-	const histogram = definition?.kind === 3 && definition.temporality === 1;
+	const histogram = isDistribution(definition);
 	const allowed = definition
 		? ALLOWED_CALCULATIONS[histogram ? "histogram" : definition.behavior]
 		: [];
@@ -103,10 +101,6 @@ export function SeriesRow({
 	);
 	// Percentiles across processes come from the distribution, which sees all of them.
 	const combineGroups = detail ? COMBINE_GROUPS.slice(0, 1) : COMBINE_GROUPS;
-	const combineLabel = (value: Combine) =>
-		detail && value === "sum"
-			? m.insight_combine_option_shown()
-			: COMBINE_OPTION_LABEL[value]();
 	// A heatmap shows every bucket, so a histogram row has no calculation to choose.
 	const controls = !(heatmap && histogram);
 	const filter = (
@@ -148,12 +142,11 @@ export function SeriesRow({
 					onChange={(name) => {
 						const next = metrics.find((metric) => metric.name === name);
 						if (!next) return;
-						if (next.kind === 3 && next.temporality === 1) {
+						if (isDistribution(next)) {
 							onChange({
 								...series,
 								metric: next.name,
-								calculation: "p50",
-								percentiles: [...HISTOGRAM_PERCENTILES],
+								calculation: "p95",
 								combine: "sum",
 								filters: [],
 							});
@@ -207,10 +200,30 @@ export function SeriesRow({
 								<InfoIcon aria-hidden="true" />
 							</Button>
 						</TooltipTrigger>
-						<TooltipContent className="max-w-64">{description}</TooltipContent>
+						<TooltipContent className="flex max-w-64 flex-col gap-1">
+							<span>{description}</span>
+							{coverage && (
+								<span className="text-muted-foreground">
+									{m.insight_process_coverage(coverage)}
+								</span>
+							)}
+						</TooltipContent>
 					</Tooltip>
 				)}
 				{definition && !controls && filter}
+				{onDuplicate && (
+					<Button
+						variant="ghost"
+						size="icon-xs"
+						aria-label={m.insight_series_duplicate({ name: series.name })}
+						title={m.insight_series_duplicate({ name: series.name })}
+						className="text-muted-foreground"
+						disabled={disabled}
+						onClick={onDuplicate}
+					>
+						<CopyPlusIcon aria-hidden="true" />
+					</Button>
+				)}
 				{removable && (
 					<Button
 						variant="ghost"
@@ -233,55 +246,28 @@ export function SeriesRow({
 					)}
 					{!definition.calculated && (
 						<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-							{histogram && (
-								<ToggleGroup
-									type="multiple"
+							<Select
+								value={series.calculation}
+								disabled={disabled}
+								onValueChange={(value) =>
+									onChange({ ...series, calculation: value as Calculation })
+								}
+							>
+								<SelectTrigger
 									size="sm"
-									variant="outline"
-									aria-label={m.insight_histogram_percentile()}
-									disabled={disabled}
-									value={selectedPercentiles(series)}
-									onValueChange={(values) => {
-										const percentiles = values as HistogramPercentile[];
-										if (percentiles.length)
-											onChange({ ...series, percentiles });
-									}}
+									aria-label={m.insight_calculation()}
+									className={INLINE}
 								>
-									{HISTOGRAM_PERCENTILES.map((value) => (
-										<ToggleGroupItem
-											key={value}
-											value={value}
-											aria-label={value}
-										>
-											{value}
-										</ToggleGroupItem>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent position="popper" align="start">
+									{allowed.map((value) => (
+										<SelectItem key={value} value={value}>
+											{CALCULATION_LABEL[value]()}
+										</SelectItem>
 									))}
-								</ToggleGroup>
-							)}
-							{!histogram && (
-								<Select
-									value={series.calculation}
-									disabled={disabled}
-									onValueChange={(value) =>
-										onChange({ ...series, calculation: value as Calculation })
-									}
-								>
-									<SelectTrigger
-										size="sm"
-										aria-label={m.insight_calculation()}
-										className={INLINE}
-									>
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent position="popper" align="start">
-										{allowed.map((value) => (
-											<SelectItem key={value} value={value}>
-												{CALCULATION_LABEL[value]()}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							)}
+								</SelectContent>
+							</Select>
 							{!histogram && (
 								<Select
 									value={series.combine}
@@ -299,16 +285,14 @@ export function SeriesRow({
 									</SelectTrigger>
 									<SelectContent position="popper" align="start">
 										<p className="max-w-64 px-1.5 py-1 text-xs text-muted-foreground">
-											{detail
-												? m.insight_combine_detail_help()
-												: m.insight_combine_help()}
+											{m.insight_combine_help()}
 										</p>
 										{combineGroups.map((group) => (
 											<SelectGroup key={group.values[0]}>
 												<SelectLabel>{group.label()}</SelectLabel>
 												{group.values.map((value) => (
 													<SelectItem key={value} value={value}>
-														{combineLabel(value)}
+														{COMBINE_OPTION_LABEL[value]()}
 													</SelectItem>
 												))}
 											</SelectGroup>
@@ -321,19 +305,10 @@ export function SeriesRow({
 					<span className="shrink-0">{filter}</span>
 				</div>
 			)}
-			{coverage && (
-				<div className="flex flex-col gap-0.5 border-t px-3 py-1.5 text-xs text-muted-foreground">
-					<span>{m.insight_process_coverage(coverage)}</span>
-					{coverage.deferred > 0 && (
-						<span className="flex items-start gap-1.5 text-amber-700 dark:text-amber-400">
-							<TriangleAlertIcon
-								aria-hidden="true"
-								className="mt-px size-3.5 shrink-0"
-							/>
-							{m.insight_process_deferred()}
-						</span>
-					)}
-				</div>
+			{coverage && coverage.deferred > 0 && (
+				<InlineWarning className="border-t px-3 py-1.5">
+					{m.insight_process_deferred()}
+				</InlineWarning>
 			)}
 			{series.filters.length > 0 && (
 				<div className="flex flex-wrap gap-1.5 border-t p-1.5">

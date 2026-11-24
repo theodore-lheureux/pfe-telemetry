@@ -17,7 +17,7 @@ import { AnalyticsHeader } from "../analytics-header";
 import type { CalculatedMetric } from "../calculated-metrics";
 import type { MetricDefinition, QueryResult } from "../contracts";
 import { withFilter } from "../filter-chips";
-import { isHistogramPercentile } from "../validation";
+import { isDistribution } from "../histograms";
 import { formulaNames, type InsightDraft, toQuery } from "./draft";
 import { InsightChart } from "./insight-chart";
 import { InsightTable } from "./insight-table";
@@ -59,6 +59,9 @@ export function InsightEditor({
 	const usable = useMemo(
 		() => metrics.filter((metric) => metric.behavior !== "unsupported"),
 		[metrics],
+	);
+	const distributions = draft.series.every((series) =>
+		isDistribution(usable.find((metric) => metric.name === series.metric)),
 	);
 	const nodeNames = useMemo(
 		() => new Map(nodes.map((node) => [node.id, node.hostname])),
@@ -140,6 +143,7 @@ export function InsightEditor({
 							<LoadingBar active={result.isFetching && !!result.data} />
 							<InsightToolbar
 								draft={draft}
+								heatmap={distributions}
 								disabled={!hydrated}
 								onChange={onDraft}
 							/>
@@ -161,7 +165,8 @@ export function InsightEditor({
 										onRefresh={() => setNow(new Date())}
 										highlight={hovered}
 										onGroup={(series) => {
-											const [value] = series.group;
+											// The breakdown field is the last group key; others only name it.
+											const value = series.group.at(-1);
 											if (
 												!draft.groupBy ||
 												value === null ||
@@ -170,11 +175,7 @@ export function InsightEditor({
 												return;
 											const { groupBy: _, ...rest } = draft;
 											// A distribution opens as its heatmap; other values as lines.
-											const type = draft.series.every(({ calculation }) =>
-												isHistogramPercentile(calculation),
-											)
-												? "heatmap"
-												: "line";
+											const type = distributions ? "heatmap" : "line";
 											onDraft({
 												...rest,
 												filters: withFilter(draft.filters, {

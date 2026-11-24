@@ -52,6 +52,7 @@ const CALCULATIONS: readonly Calculation[] = [
 	"max",
 	"rate",
 	"increase",
+	"count",
 	...HISTOGRAM_PERCENTILES,
 ];
 const OPERATORS: readonly FilterOperator[] = [
@@ -73,8 +74,8 @@ export const ALLOWED_CALCULATIONS: Record<
 	gauge: ["last", "avg", "min", "max"],
 	counter: ["rate", "increase"],
 	delta: ["increase", "rate"],
-	population: [...HISTOGRAM_PERCENTILES, "last", "avg", "min", "max"],
-	histogram: HISTOGRAM_PERCENTILES,
+	population: [...HISTOGRAM_PERCENTILES, "avg", "count"],
+	histogram: [...HISTOGRAM_PERCENTILES, "avg", "count"],
 	unsupported: [],
 };
 
@@ -229,16 +230,9 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 				"Interval is too small for this range",
 			);
 	}
-	const measures = list(
-		input.measures,
-		MAX_MEASURES * HISTOGRAM_PERCENTILES.length,
-		"measures",
-	).map(parseMeasure);
-	if (
-		measures.filter((measure) => !isHistogramPercentile(measure.calculation))
-			.length > MAX_MEASURES
-	)
-		throw new InputError("INVALID_QUERY", "Too many scalar measures");
+	const measures = list(input.measures, MAX_MEASURES, "measures").map(
+		parseMeasure,
+	);
 	if (!measures.length)
 		throw new InputError("INVALID_QUERY", "At least one measure is required");
 	if (new Set(measures.map((measure) => measure.name)).size !== measures.length)
@@ -299,7 +293,7 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		);
 	return {
 		shape: input.shape,
-		...heatmapOption(input, measures),
+		...heatmapOption(input),
 		range,
 		...(interval && { interval }),
 		measures,
@@ -312,7 +306,7 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 	};
 }
 
-function heatmapOption(input: Record<string, unknown>, measures: Measure[]) {
+function heatmapOption(input: Record<string, unknown>) {
 	if (input.heatmap === undefined) return {};
 	if (
 		input.heatmap !== true ||
@@ -320,8 +314,7 @@ function heatmapOption(input: Record<string, unknown>, measures: Measure[]) {
 		input.compare ||
 		input.aggregate ||
 		input.spread ||
-		(Array.isArray(input.formulas) && input.formulas.length > 0) ||
-		measures.some((measure) => !isHistogramPercentile(measure.calculation))
+		(Array.isArray(input.formulas) && input.formulas.length > 0)
 	)
 		throw new InputError("INVALID_QUERY", "Invalid heatmap options");
 	return { heatmap: true } as const;

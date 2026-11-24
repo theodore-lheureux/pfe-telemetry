@@ -250,6 +250,26 @@ test("histogram percentiles pool counts on shared bounds, also for Other", async
 	expect(pooled.series[0].bounds).toEqual([0, 10, 20]);
 	expect(pooled.series[0].points[0].counts).toEqual([0, 99, 1, 0]);
 	expect(pooled.series[0].points[0].value).toBeCloseTo(500 / 99);
+	const counted = await run(project, {
+		shape: "table",
+		range,
+		measures: [{ ...measure, calculation: "count" }],
+	});
+	expect(counted.series[0].points[0].value).toBe(100);
+	// A week per day starts days before the points and still finds them.
+	const week = await run(project, {
+		shape: "timeseries",
+		heatmap: true,
+		range: {
+			from: new Date(from.getTime() - 6 * 86_400_000).toISOString(),
+			to: range.to,
+		},
+		interval: "1d",
+		measures: [measure],
+	});
+	expect(week.series[0].points.map((point) => point.counts)).toEqual([
+		[0, 99, 1, 0],
+	]);
 	const grouped = await run(project, {
 		shape: "table",
 		range,
