@@ -379,7 +379,7 @@ function measureSelect(
 	const groups = groupColumns.join(", ");
 	const keys = groups ? `${groups}, ` : "";
 	const columns = groupSelect ? `${groupSelect}, ` : "";
-	const layout = query.heatmap ? HEATMAP_COLUMNS : ["", ""];
+	const layout = query.heatmap && histogram ? HEATMAP_COLUMNS : ["", ""];
 	// A sum or count is larger than each source, so their band would not surround it.
 	const banded =
 		query.spread && measure.combine !== "sum" && measure.combine !== "count";
