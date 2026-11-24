@@ -51,51 +51,61 @@ const VALUE = `if(bitAnd(flags, 1) = 0,
     if(isNull(int_value), double_value, toFloat64(int_value)), NULL)`;
 const POPULATION_SUM = `if(bitAnd(flags, 1) = 0 AND bitTest(statistics_present, 1), \`sum\`, NULL)`;
 
-function histogramSelect(
-	base: string,
-	columns: string[],
-	nodeGrid: boolean,
-	quantile: number,
+/**
+ * A percentile of pooled bucket counts, interpolated linearly within the bucket that holds
+ * its rank. `cumulative` counts observations up to each bound, then in total.
+ */
+function histogramQuantile(cumulative: string, bounds: string, level: number) {
+	const target = `${cumulative}[-1] * ${level}`;
+	const hit = `arrayFirstIndex(n -> n >= ${target}, ${cumulative})`;
+	return `multiIf(${cumulative}[-1] = 0 OR empty(${bounds}), NULL,
+    ${hit} = 1, ${bounds}[1],
+    ${hit} > length(${bounds}), ${bounds}[-1],
+    ${bounds}[${hit} - 1] + (${bounds}[${hit}] - ${bounds}[${hit} - 1])
+      * (${target} - ${cumulative}[${hit} - 1]) / (${cumulative}[${hit}] - ${cumulative}[${hit} - 1]))`;
+}
+
+const COUNTS = (cumulative: string) =>
+	`arrayPopFront(arrayDifference(arrayPushFront(${cumulative}, 0)))`;
+// A heatmap also returns each bucket's counts, on bounds every point shares: for a
+// group, and for the groups folded into Other.
+const HEATMAP_COLUMNS = [
+	`, ${COUNTS("cumulative")} AS series_counts, shared AS series_bounds`,
+	`, ${COUNTS("sumForEach(cumulative)")} AS series_counts, any(shared) AS series_bounds`,
+];
+const histogramLevel = (measure: Measure) =>
+	Number(measure.calculation.slice(1)) / 100;
+
+// Histograms pool their bucket counts per group and bucket. Layouts are reduced to the
+// bounds they all share, so every point's counts line up.
+function histogramCombined(
+	columns: string,
+	source: string,
+	filters: string[],
+	keys: string,
+	level: number,
 ) {
-	const keys = [...columns, "bucket", "bounds"].join(", ");
-	const groups = columns.join(", ");
-	const rank = groups ? `dense_rank() OVER (ORDER BY ${groups})` : "1";
-	const countArray = "sumForEach(arrayMap(n -> toUInt128(n), counts))";
-	const pooledCounts = nodeGrid
-		? countArray
-		: `arrayMap(n -> toString(n), ${countArray})`;
-	const ctes = `WITH base AS (${base}), pooled AS (
- SELECT ${keys}, ${pooledCounts} AS counts
- FROM base GROUP BY ${keys}
+	return `WITH base AS (
+  SELECT ${columns}, explicit_bounds AS bounds,
+    arrayMap(n -> toFloat64(n), bucket_counts) AS counts
+  FROM ${source}
+  WHERE ${[...filters, "bitAnd(flags, 1) = 0", "length(explicit_bounds) <= 64", "length(bucket_counts) = length(explicit_bounds) + 1"].join(" AND ")}
+),
+layouts AS (
+  SELECT ${keys}bucket, bounds, arrayCumSum(sumForEach(counts)) AS running,
+    arraySort(groupArrayIntersect(bounds) OVER ()) AS common
+  FROM base GROUP BY ${keys}bucket, bounds
+),
+pooled AS (
+  SELECT ${keys}bucket, any(common) AS shared,
+    sumForEach(arrayPushBack(arrayMap(b -> running[indexOf(bounds, b)], common), running[-1])) AS cumulative
+  FROM layouts GROUP BY ${keys}bucket
+),
+combined AS (
+  SELECT *, ${histogramQuantile("cumulative", "shared", level)} AS value,
+    NULL AS low, NULL AS high, NULL AS sources
+  FROM pooled
 )`;
-	if (nodeGrid)
-		return `${ctes}, cells AS (
- SELECT g0, bucket, groupArray(tuple(bounds, arrayCumSum(arrayMap(n -> toFloat64(n), counts)))) AS layouts,
- arrayFilter(b -> arrayAll(l -> has(l.1,b), layouts), layouts[1].1) AS shared,
- arrayMap(b -> arraySum(arrayMap(l -> l.2[indexOf(l.1,b)], layouts)), shared) AS cumulative,
- arraySum(arrayMap(l -> l.2[-1], layouts)) AS observations,
- observations * ${quantile} AS target,
- arrayFirstIndex(n -> n >= target, cumulative) AS hit,
- multiIf(observations = 0 OR empty(shared), NULL,
-   hit = 0, shared[-1], hit = 1, shared[1],
-   shared[hit - 1] + (shared[hit] - shared[hit - 1]) *
-     (target - cumulative[hit - 1]) / nullIf(cumulative[hit] - cumulative[hit - 1], 0)) AS q
- FROM pooled WHERE g0 IS NOT NULL GROUP BY g0, bucket
-), hosts AS (
- SELECT g0, groupArray(tuple(bucket, q)) AS values,
- dense_rank() OVER (ORDER BY max(q) DESC NULLS LAST, g0) AS series_rank
- FROM cells GROUP BY g0
-)
-SELECT g0 AS k_g0, toString(cell.1) AS bucket_ms, cell.2 AS series_value, series_rank, 0 AS other
-FROM (SELECT * FROM hosts WHERE series_rank <= 1001)
-ARRAY JOIN values AS cell ORDER BY series_rank, bucket_ms`;
-	return `${ctes}, ranked AS (
- SELECT *, ${rank} AS series_rank FROM pooled
-)
-SELECT ${columns.map((name) => `${name} AS k_${name}, `).join("")}
- toString(bucket) AS bucket_ms, bounds, counts, series_rank, 0 AS other
-FROM ranked WHERE series_rank <= {seriesLimit:UInt32} + 1
-ORDER BY series_rank, bucket, bounds LIMIT 32769`;
 }
 
 class Params {
@@ -356,22 +366,11 @@ function measureSelect(
 	const source = usesExecution
 		? executionPointSource(points, histogram)
 		: `(${points})`;
-	if (histogram)
-		return histogramSelect(
-			`SELECT ${groupSelect ? `${groupSelect}, ` : ""}
- ${bucket} AS bucket, explicit_bounds AS bounds, bucket_counts AS counts
- FROM ${source}
- WHERE ${[
-		...pointFilters,
-		"bitAnd(flags, 1) = 0",
-		"length(explicit_bounds) <= 64",
-		"length(bucket_counts) = length(explicit_bounds) + 1",
- ].join(" AND ")}`,
-			groupColumns,
-			query.nodeGrid === true,
-			Number(measure.calculation.slice(1)) / 100,
-		);
 	const groups = groupColumns.join(", ");
+	const keys = groups ? `${groups}, ` : "";
+	const level = histogramLevel(measure);
+	const columns = groupSelect ? `${groupSelect}, ` : "";
+	const layout = query.heatmap ? HEATMAP_COLUMNS : ["", ""];
 	// A sum or count is larger than each source, so their band would not surround it.
 	const banded =
 		query.spread && measure.combine !== "sum" && measure.combine !== "count";
@@ -379,29 +378,41 @@ function measureSelect(
 		banded && query.spread ? SPREAD_SQL[query.spread] : ["NULL", "NULL"];
 	const partition = groups ? `PARTITION BY ${groups}` : "";
 	// Groups past the limit fold into one "Other" row per bucket, combined the same way.
+	const otherValue = histogram
+		? histogramQuantile("sumForEach(cumulative)", "any(shared)", level)
+		: OTHER_SQL[measure.combine];
 	const selection =
 		groups && query.other
 			? `SELECT ${groupColumns.map((column) => `if(rank <= {seriesLimit:UInt32}, ${column}, NULL) AS k_${column}`).join(", ")},
-  rank > {seriesLimit:UInt32} AS other, toString(bucket) AS bucket_ms, ${OTHER_SQL[measure.combine]} AS series_value, min(rank) AS series_rank,
+  rank > {seriesLimit:UInt32} AS other, toString(bucket) AS bucket_ms, ${otherValue} AS series_value, min(rank) AS series_rank,
   if(other, NULL, any(low)) AS series_low, if(other, NULL, any(high)) AS series_high,
-  if(other, NULL, any(sources)) AS series_sources
+  if(other, NULL, any(sources)) AS series_sources${layout[1]}
 FROM ranked GROUP BY ${groupColumns.map((column) => `k_${column}`).join(", ")}, other, bucket_ms`
 			: `SELECT ${groupColumns.map((column) => `${column} AS k_${column}`).join(", ")}${groups ? ", " : ""}0 AS other, toString(bucket) AS bucket_ms, value AS series_value, rank AS series_rank,
-  low AS series_low, high AS series_high, sources AS series_sources
+  low AS series_low, high AS series_high, sources AS series_sources${layout[0]}
 FROM ranked WHERE rank <= {seriesLimit:UInt32} + 1`;
-	return `WITH base AS (
+	const combined = histogram
+		? histogramCombined(
+				`${columns}${bucket} AS bucket`,
+				source,
+				pointFilters,
+				keys,
+				level,
+			)
+		: `WITH base AS (
   SELECT logical_series_id AS series, stream_id AS stream, series_id AS storage_series,
-    ${groupSelect ? `${groupSelect},\n    ` : ""}time_unix_milli AS t,
+    ${columns}time_unix_milli AS t,
     ${bucket} AS bucket, ${scope.behavior === "population" ? POPULATION_SUM : VALUE} AS v
   FROM ${source}
   ${pointFilters.length ? `WHERE ${pointFilters.join(" AND ")}` : ""}
 ),
 ${perSeries(measure, scope.behavior, groups, query.shape === "timeseries")},
 combined AS (
-  SELECT ${groups ? `${groups}, ` : ""}bucket, ${COMBINE_SQL[measure.combine]} AS value,
+  SELECT ${keys}bucket, ${COMBINE_SQL[measure.combine]} AS value,
     ${low} AS low, ${high} AS high, count(per_series.value) AS sources
-  FROM per_series GROUP BY ${groups ? `${groups}, ` : ""}bucket
-),
+  FROM per_series GROUP BY ${keys}bucket
+)`;
+	return `${combined},
 ranked AS (
   SELECT *, dense_rank() OVER (ORDER BY weight DESC${groups ? `, ${groups}` : ""}) AS rank
   FROM (SELECT *, sum(abs(value)) OVER (${partition}) AS weight FROM combined)

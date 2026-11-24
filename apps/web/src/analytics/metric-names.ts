@@ -11,11 +11,13 @@ const METRICS: Record<
 		description: () => string;
 		ratio?: boolean;
 		distribution?: () => DistributionLabels;
+		/** Per-process detail the collector caps per node; its coverage is reported. */
+		detail?: boolean;
 	}
 > = {
 	"recount.node.process.cpu.utilization.distribution": {
 		name: m.metric_hist_process_cpu,
-		description: m.metric_hist_process_cpu,
+		description: m.metric_hist_process_description,
 		ratio: true,
 		distribution: () => ({
 			quantity: m.histogram_process_cpu(),
@@ -24,7 +26,7 @@ const METRICS: Record<
 	},
 	"recount.node.process.memory.rss.distribution": {
 		name: m.metric_hist_process_memory,
-		description: m.metric_hist_process_memory,
+		description: m.metric_hist_process_description,
 		distribution: () => ({
 			quantity: m.histogram_process_memory(),
 			subject: m.histogram_subject_processes(),
@@ -32,7 +34,7 @@ const METRICS: Record<
 	},
 	"recount.node.process.disk.io.rate.distribution": {
 		name: m.metric_hist_process_disk,
-		description: m.metric_hist_process_disk,
+		description: m.metric_hist_process_description,
 		distribution: () => ({
 			quantity: m.histogram_process_disk(),
 			subject: m.histogram_subject_processes(),
@@ -182,15 +184,18 @@ const METRICS: Record<
 	},
 	"process.cpu.time": {
 		name: m.metric_process_cpu_time,
-		description: m.metric_process_cpu_time_description,
+		description: m.metric_process_detail_description,
+		detail: true,
 	},
 	"recount.process.memory.rss": {
 		name: m.metric_process_memory_rss,
-		description: m.metric_process_memory_rss_description,
+		description: m.metric_process_detail_description,
+		detail: true,
 	},
 	"process.disk.io": {
 		name: m.metric_process_disk_io,
-		description: m.metric_process_disk_io_description,
+		description: m.metric_process_detail_description,
+		detail: true,
 	},
 	"recount.collection.discovered.processes": {
 		name: m.metric_processes_discovered,
@@ -265,6 +270,17 @@ export function distributionLabels(
 			subject: m.histogram_subject_observations(),
 		}
 	);
+}
+
+export function isProcessDetailMetric(name: string | null | undefined) {
+	return !!name && METRICS[name]?.detail === true;
+}
+
+/** The breakdown a metric opens with when members chose none: per-process detail by process. */
+export function metricBreakdown(name: string | undefined) {
+	return isProcessDetailMetric(name)
+		? 'resource.attributes["process.pid"]'
+		: undefined;
 }
 
 export function isRatioMetric(name: string) {

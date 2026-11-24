@@ -2,7 +2,12 @@
   "name": "dashboard_template_node_health",
   "description": "dashboard_template_node_health_description",
   "filters": {},
-  "variables": [{ "name": "$node", "field": "node" }],
+  "variables": [
+    {
+      "name": "$node",
+      "field": "node"
+    }
+  ],
   "tiles": [
     {
       "width": 4,
@@ -28,7 +33,11 @@
           "groupBy": "node",
           "limit": 25,
           "other": false,
-          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
           "interval": "auto",
           "display": {
             "type": "line",
@@ -64,7 +73,11 @@
           "groupBy": "node",
           "limit": 25,
           "other": false,
-          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
           "interval": "auto",
           "display": {
             "type": "line",
@@ -100,7 +113,11 @@
           "groupBy": "node",
           "limit": 25,
           "other": false,
-          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
           "interval": "auto",
           "display": {
             "type": "line",
@@ -153,7 +170,11 @@
           "filters": [],
           "limit": 25,
           "other": true,
-          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
           "interval": "auto",
           "display": {
             "type": "line",
@@ -207,7 +228,11 @@
           "filters": [],
           "limit": 25,
           "other": true,
-          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
           "interval": "auto",
           "display": {
             "type": "line",
@@ -257,7 +282,11 @@
           "groupBy": "node",
           "limit": 25,
           "other": false,
-          "range": { "kind": "last", "count": 1, "unit": "hours" },
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
           "interval": "auto",
           "display": {
             "type": "table",
@@ -289,17 +318,59 @@
           ],
           "formulas": [],
           "filters": [],
-          "groupBy": "node",
-          "limit": 4,
+          "limit": 25,
           "other": false,
-          "range": { "kind": "last", "count": 1, "unit": "hours" },
-          "interval": "1m",
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
           "display": {
             "type": "heatmap",
             "unit": "auto",
             "logScale": false,
             "beginAtZero": true
           }
+        }
+      }
+    },
+    {
+      "width": 12,
+      "height": 3,
+      "column": null,
+      "overrides": {},
+      "options": {},
+      "insight": {
+        "name": "dashboard_template_process_cpu_nodes",
+        "description": "",
+        "draft": {
+          "series": [
+            {
+              "name": "A",
+              "metric": "recount.node.process.cpu.utilization.distribution",
+              "calculation": "p95",
+              "combine": "sum",
+              "filters": []
+            }
+          ],
+          "formulas": [],
+          "filters": [],
+          "limit": 1000,
+          "other": false,
+          "range": {
+            "kind": "last",
+            "count": 1,
+            "unit": "hours"
+          },
+          "interval": "auto",
+          "display": {
+            "type": "grid",
+            "unit": "auto",
+            "logScale": false,
+            "beginAtZero": true
+          },
+          "groupBy": "node"
         }
       }
     }

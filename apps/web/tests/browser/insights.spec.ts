@@ -138,8 +138,8 @@ test("Insights shows the Node health template and charts discovered metrics in E
 			.click();
 		const pickerPreview = page.locator('[data-slot="hover-card-content"]');
 		await page.getByPlaceholder("Search metrics").fill("recount.node.cpu.time");
-		await page.getByRole("option", { name: /^Node CPU time/ }).hover();
-		await expect(pickerPreview).toContainText("Node CPU time");
+		await page.getByRole("option", { name: /^Node CPU/ }).hover();
+		await expect(pickerPreview).toContainText("Node CPU");
 		await expect(pickerPreview).toContainText("Counter");
 		await page.getByPlaceholder("Search metrics").fill("no-such-metric");
 		await expect(pickerPreview).toHaveCount(0);
@@ -147,15 +147,15 @@ test("Insights shows the Node health template and charts discovered metrics in E
 		await page.keyboard.press("ArrowDown");
 		await expect(pickerPreview).toContainText("Memory usage");
 		await page.getByPlaceholder("Search metrics").fill("recount.node.cpu.time");
-		await page.getByRole("option", { name: /^Node CPU time/ }).hover();
-		await expect(pickerPreview).toContainText("Node CPU time");
+		await page.getByRole("option", { name: /^Node CPU/ }).hover();
+		await expect(pickerPreview).toContainText("Node CPU");
 		await page.screenshot({
 			path: testInfo.outputPath("insights-metric-picker.png"),
 		});
-		await page.getByRole("option", { name: /^Node CPU time/ }).click();
+		await page.getByRole("option", { name: /^Node CPU/ }).click();
 		// Known metrics show their friendly name and a description.
 		await expect(
-			page.getByRole("combobox", { name: "Node CPU time", exact: true }),
+			page.getByRole("combobox", { name: "Node CPU", exact: true }),
 		).toBeVisible();
 		await page
 			.getByRole("button", { name: "About this metric", exact: true })
@@ -182,7 +182,7 @@ test("Insights shows the Node health template and charts discovered metrics in E
 		await page
 			.getByRole("combobox", { name: "Choose a metric", exact: true })
 			.click();
-		await page.getByRole("option", { name: /^Node CPU time/ }).click();
+		await page.getByRole("option", { name: /^Node CPU/ }).click();
 		await page.getByLabel("Formula mode", { exact: true }).click();
 		await page.getByLabel("Formula 1", { exact: true }).fill("A / B * 100");
 		const results = page.getByRole("table", { name: "Results" });

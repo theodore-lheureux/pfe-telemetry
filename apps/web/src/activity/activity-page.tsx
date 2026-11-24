@@ -3,7 +3,7 @@ import { getLocale } from "@recount/i18n/runtime";
 import { useHydrated } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAnalyticsCatalog } from "../analytics/catalog";
-import { isProcessDetailMetric } from "../analytics/histograms";
+import { isProcessDetailMetric } from "../analytics/metric-names";
 import {
 	DEFAULT_RANGE,
 	isDefaultRange,

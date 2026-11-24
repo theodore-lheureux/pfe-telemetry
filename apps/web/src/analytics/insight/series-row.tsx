@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { Link } from "@tanstack/react-router";
-import { InfoIcon, XIcon } from "lucide-react";
+import { InfoIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import {
@@ -20,7 +20,7 @@ import {
 } from "../../components/ui/tooltip";
 import type { ProjectReference } from "../../organizations/contracts";
 import { AttributeFilter } from "../attribute-filter";
-import { useMetricAttributes } from "../catalog";
+import { useMetricAttributes, useProcessCoverage } from "../catalog";
 import {
 	type Calculation,
 	type Combine,
@@ -30,10 +30,14 @@ import {
 	type MetricDefinition,
 } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
-import { metricDescription } from "../metric-names";
+import { isProcessDetailMetric, metricDescription } from "../metric-names";
 import { MetricPicker } from "../metric-picker";
 import { ALLOWED_CALCULATIONS } from "../validation";
-import { type DraftSeries, selectedPercentiles } from "./draft";
+import {
+	type DraftSeries,
+	type InsightDraft,
+	selectedPercentiles,
+} from "./draft";
 import {
 	CALCULATION_LABEL,
 	COMBINE_GROUPS,
@@ -55,6 +59,7 @@ export function SeriesRow({
 	disabled,
 	removable,
 	heatmap,
+	scope,
 	onChange,
 	onRemove,
 }: {
@@ -66,6 +71,8 @@ export function SeriesRow({
 	disabled: boolean;
 	removable: boolean;
 	heatmap: boolean;
+	/** The query's range and filters, which scope the process detail coverage. */
+	scope: Pick<InsightDraft, "range" | "filters">;
 	onChange: (series: DraftSeries) => void;
 	onRemove: () => void;
 }) {
@@ -86,6 +93,37 @@ export function SeriesRow({
 		...(definition?.calculated?.inputs.map(
 			(input) => input.filters?.length ?? 0,
 		) ?? []),
+	);
+	const detail = isProcessDetailMetric(series.metric);
+	const { data: coverage } = useProcessCoverage(
+		userId,
+		reference,
+		scope,
+		detail,
+	);
+	// Percentiles across processes come from the distribution, which sees all of them.
+	const combineGroups = detail ? COMBINE_GROUPS.slice(0, 1) : COMBINE_GROUPS;
+	const combineLabel = (value: Combine) =>
+		detail && value === "sum"
+			? m.insight_combine_option_shown()
+			: COMBINE_OPTION_LABEL[value]();
+	// A heatmap shows every bucket, so a histogram row has no calculation to choose.
+	const controls = !(heatmap && histogram);
+	const filter = (
+		<AttributeFilter
+			trigger="icon"
+			attributes={attributes.data}
+			loading={attributes.isFetching}
+			values={{ userId, reference, metric: series.metric }}
+			disabled={disabled || series.filters.length + fixedFilters >= MAX_FILTERS}
+			onOpen={() => setWantsAttributes(true)}
+			onAdd={(filter) =>
+				onChange({
+					...series,
+					filters: withFilter(series.filters, filter),
+				})
+			}
+		/>
 	);
 	const description =
 		definition?.note ||
@@ -172,6 +210,7 @@ export function SeriesRow({
 						<TooltipContent className="max-w-64">{description}</TooltipContent>
 					</Tooltip>
 				)}
+				{definition && !controls && filter}
 				{removable && (
 					<Button
 						variant="ghost"
@@ -185,7 +224,7 @@ export function SeriesRow({
 					</Button>
 				)}
 			</div>
-			{definition && (
+			{definition && controls && (
 				<div className="flex items-start gap-0.5 border-t px-1.5 py-1">
 					{definition.calculated && (
 						<span className="flex-1 self-center px-1.5 text-xs text-muted-foreground">
@@ -194,12 +233,7 @@ export function SeriesRow({
 					)}
 					{!definition.calculated && (
 						<div className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5">
-							{histogram && heatmap && (
-								<span className="px-1.5 text-xs text-muted-foreground">
-									{m.insight_heatmap_active()}
-								</span>
-							)}
-							{histogram && !heatmap && (
+							{histogram && (
 								<ToggleGroup
 									type="multiple"
 									size="sm"
@@ -234,11 +268,7 @@ export function SeriesRow({
 								>
 									<SelectTrigger
 										size="sm"
-										aria-label={
-											histogram
-												? m.insight_histogram_percentile()
-												: m.insight_calculation()
-										}
+										aria-label={m.insight_calculation()}
 										className={INLINE}
 									>
 										<SelectValue />
@@ -269,14 +299,16 @@ export function SeriesRow({
 									</SelectTrigger>
 									<SelectContent position="popper" align="start">
 										<p className="max-w-64 px-1.5 py-1 text-xs text-muted-foreground">
-											{m.insight_combine_help()}
+											{detail
+												? m.insight_combine_detail_help()
+												: m.insight_combine_help()}
 										</p>
-										{COMBINE_GROUPS.map((group) => (
+										{combineGroups.map((group) => (
 											<SelectGroup key={group.values[0]}>
 												<SelectLabel>{group.label()}</SelectLabel>
 												{group.values.map((value) => (
 													<SelectItem key={value} value={value}>
-														{COMBINE_OPTION_LABEL[value]()}
+														{combineLabel(value)}
 													</SelectItem>
 												))}
 											</SelectGroup>
@@ -286,24 +318,21 @@ export function SeriesRow({
 							)}
 						</div>
 					)}
-					<span className="shrink-0">
-						<AttributeFilter
-							trigger="icon"
-							attributes={attributes.data}
-							loading={attributes.isFetching}
-							values={{ userId, reference, metric: series.metric }}
-							disabled={
-								disabled || series.filters.length + fixedFilters >= MAX_FILTERS
-							}
-							onOpen={() => setWantsAttributes(true)}
-							onAdd={(filter) =>
-								onChange({
-									...series,
-									filters: withFilter(series.filters, filter),
-								})
-							}
-						/>
-					</span>
+					<span className="shrink-0">{filter}</span>
+				</div>
+			)}
+			{coverage && (
+				<div className="flex flex-col gap-0.5 border-t px-3 py-1.5 text-xs text-muted-foreground">
+					<span>{m.insight_process_coverage(coverage)}</span>
+					{coverage.deferred > 0 && (
+						<span className="flex items-start gap-1.5 text-amber-700 dark:text-amber-400">
+							<TriangleAlertIcon
+								aria-hidden="true"
+								className="mt-px size-3.5 shrink-0"
+							/>
+							{m.insight_process_deferred()}
+						</span>
+					)}
 				</div>
 			)}
 			{series.filters.length > 0 && (

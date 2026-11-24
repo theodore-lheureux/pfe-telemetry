@@ -198,6 +198,72 @@ test("sources combine by count and by exact percentiles", async () => {
 	expect((await total("min")).series[0].points[0].value).toBe(10);
 });
 
+async function histogram(
+	project: string,
+	node: string,
+	bounds: number[],
+	counts: number[],
+) {
+	await fixture.client.command({
+		query: insertPoints({
+			metric_name: "'recount.node.process.cpu.utilization.distribution'",
+			metric_kind: "toUInt8(3)",
+			temporality: "toUInt8(1)",
+			unit: "'1'",
+			int_value: "CAST(NULL, 'Nullable(Int64)')",
+			explicit_bounds: "{bounds:Array(Float64)}",
+			bucket_counts: "{counts:Array(UInt64)}",
+		}),
+		query_params: {
+			project,
+			source: node,
+			host: node,
+			time: ms.toString(),
+			integer: null as unknown as string,
+			bounds,
+			counts,
+			sample: randomUUID(),
+			stream: `${node}/cpu`,
+			epoch: "epoch",
+		},
+	});
+}
+
+test("histogram percentiles pool counts on shared bounds, also for Other", async () => {
+	const project = randomUUID();
+	await histogram(project, "node-a", [0, 10, 20], [0, 1, 1, 0]);
+	await histogram(project, "node-b", [0, 5, 10, 20], [0, 40, 58, 0, 0]);
+	const measure = {
+		name: "cpu",
+		metric: "recount.node.process.cpu.utilization.distribution",
+		calculation: "p50" as const,
+		combine: "sum" as const,
+	};
+	const pooled = await run(project, {
+		shape: "timeseries",
+		heatmap: true,
+		range,
+		interval: "1m",
+		measures: [measure],
+	});
+	// Node B's 5 bound is not shared, so its counts merge into the 0–10 bucket.
+	expect(pooled.series[0].bounds).toEqual([0, 10, 20]);
+	expect(pooled.series[0].points[0].counts).toEqual([0, 99, 1, 0]);
+	expect(pooled.series[0].points[0].value).toBeCloseTo(500 / 99);
+	const grouped = await run(project, {
+		shape: "table",
+		range,
+		measures: [{ ...measure, calculation: "p99" }],
+		groupBy: ["node"],
+		limit: 1,
+		other: true,
+	});
+	const [top, other] = grouped.series;
+	expect([top.group, other.other]).toEqual([["node-a"], true]);
+	expect(top.points[0].value).toBeCloseTo(19.8);
+	expect(other.points[0].value).toBeCloseTo(9.9);
+});
+
 test("a spread bounds each value by the sources it combines", async () => {
 	const project = randomUUID();
 	for (const [node, value] of [

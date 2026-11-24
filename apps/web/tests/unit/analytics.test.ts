@@ -130,7 +130,7 @@ test("metric behavior follows OTLP kind, temporality and monotonicity", () => {
 });
 
 test("known metrics get friendly names; others keep their technical names", () => {
-	expect(metricLabel("recount.node.cpu.time")).toBe("Node CPU time");
+	expect(metricLabel("recount.node.cpu.time")).toBe("Node CPU");
 	expect(metricLabel("vendor.custom.metric")).toBe("vendor.custom.metric");
 	expect(attributeLabel("cpu.mode")).toBe("CPU mode");
 	expect(attributeLabel("custom.key")).toBe("custom.key");

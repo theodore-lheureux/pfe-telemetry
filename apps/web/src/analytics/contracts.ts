@@ -27,12 +27,13 @@ export type RelativeRange = keyof typeof RELATIVE_RANGES;
 
 export const MAX_RANGE_SECONDS = 2592000;
 export const MAX_BUCKETS = 600;
-export const MAX_NODE_GRID_BUCKETS = 120;
 /** Series letters A–Z. */
 export const MAX_MEASURES = 26;
 export const MAX_FILTERS = 8;
 export const MAX_GROUP_BY = 2;
 export const MAX_SERIES = 50;
+/** The most groups a query may keep, such as one row per node of a cluster. */
+export const MAX_SERIES_LIMIT = 1000;
 export const DEFAULT_SERIES_LIMIT = 25;
 export const MAX_FORMULAS = 26;
 /** Rows one query may return: measures × groups × buckets, per window. */
@@ -116,8 +117,8 @@ export type Comparison =
 
 export interface AnalyticsQuery {
 	shape: "timeseries" | "table";
+	/** Also returns each bucket's histogram counts. */
 	heatmap?: true;
-	nodeGrid?: true;
 	range: QueryRange;
 	/** Required for timeseries; ignored for table results. */
 	interval?: Interval;
@@ -203,6 +204,8 @@ export interface SeriesResult {
 	 * bucket's percentile was taken over, which tells whether it can differ from the max.
 	 */
 	percentile?: { level: number; values: number };
+	/** A heatmap's bucket bounds, shared by every point's `counts`. */
+	bounds?: number[];
 	/** Bucket start in milliseconds since the epoch, or null for table results. */
 	/** `low` and `high` bound the sources' values when the query asks for a spread. */
 	points: {
@@ -210,7 +213,7 @@ export interface SeriesResult {
 		value: number | null;
 		low?: number | null;
 		high?: number | null;
-		histograms?: { bounds: number[]; counts: string[] }[];
+		counts?: number[];
 	}[];
 }
 

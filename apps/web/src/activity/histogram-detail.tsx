@@ -1,6 +1,6 @@
 import { m } from "@recount/i18n/messages";
 import { getLocale } from "@recount/i18n/runtime";
-import { histogramFormatter } from "../analytics/histograms";
+import { bucketRange } from "../analytics/histograms";
 import {
 	Table,
 	TableBody,
@@ -10,6 +10,7 @@ import {
 	TableRow,
 } from "../components/ui/table";
 import type { PointDetail } from "./contracts";
+import { formatMeasurement } from "./format";
 
 export function hasHistogramBuckets(measurement: PointDetail["measurement"]) {
 	const { bucket_counts, explicit_bounds, metric_kind } = measurement;
@@ -33,15 +34,7 @@ export function HistogramDetail({
 	const locale = getLocale();
 	const storedUnit = typeof unit === "string" ? unit : "";
 	const format = (value: number) =>
-		histogramFormatter(storedUnit, metric, locale, Math.abs(value)).value(
-			value,
-		);
-	const buckets = histogramFormatter(
-		storedUnit,
-		metric,
-		locale,
-		Math.max(...bounds.map(Math.abs), 0),
-	);
+		formatMeasurement(value, storedUnit, locale, 0, metric).text;
 	const integers = new Intl.NumberFormat(locale);
 	const mean =
 		typeof sum === "number" && Number(count) > 0 ? sum / Number(count) : null;
@@ -81,7 +74,7 @@ export function HistogramDetail({
 						{bucket_counts.map((value, index) => (
 							<TableRow key={bounds[index] ?? "overflow"}>
 								<TableHead scope="row">
-									{buckets.range(bounds, index)}
+									{bucketRange(bounds, index, format)}
 								</TableHead>
 								<TableCell className="text-right tabular-nums">
 									{integers.format(BigInt(String(value)))}

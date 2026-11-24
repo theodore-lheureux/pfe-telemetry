@@ -8,7 +8,7 @@ test("shared choices show source, friendly name and description without a duplic
 		{
 			kind: "metric" as const,
 			name: "recount.node.cpu.time",
-			label: "Node CPU time",
+			label: "Node CPU",
 		},
 		{ kind: "attribute" as const, name: "cpu.mode", label: "CPU mode" },
 	]) {

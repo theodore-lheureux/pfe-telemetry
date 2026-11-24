@@ -5,6 +5,7 @@ import {
 	BarChartBigIcon,
 	Grid2X2Icon,
 	HashIcon,
+	LayoutGridIcon,
 	LineChartIcon,
 	type LucideIcon,
 	TableIcon,
@@ -18,8 +19,7 @@ import type {
 	QueryResult,
 	SeriesResult,
 } from "../contracts";
-import { histogramFormatter } from "../histograms";
-import { metricLabel } from "../metric-names";
+import { isRatioMetric, metricLabel } from "../metric-names";
 import { isHistogramPercentile } from "../validation";
 import type { Display, DisplayType, DisplayUnit, InsightDraft } from "./draft";
 
@@ -94,7 +94,7 @@ export const DISPLAY_ICON: Record<DisplayType, LucideIcon> = {
 	bar: BarChart3Icon,
 	stacked: BarChartBigIcon,
 	heatmap: Grid2X2Icon,
-	"node-grid": Grid2X2Icon,
+	grid: LayoutGridIcon,
 	stat: HashIcon,
 	table: TableIcon,
 };
@@ -104,7 +104,7 @@ export const DISPLAY_LABEL: Record<DisplayType, () => string> = {
 	bar: m.insight_display_bar,
 	stacked: m.insight_display_stacked,
 	heatmap: m.insight_display_heatmap,
-	"node-grid": m.insight_display_node_grid,
+	grid: m.insight_display_grid,
 	stat: m.insight_display_stat,
 	table: m.insight_display_table,
 };
@@ -238,16 +238,6 @@ export function formatValueDetails(
 			break;
 	}
 	if (!stored) return number();
-	if (isHistogramPercentile(stored.calculation))
-		return {
-			text: histogramFormatter(
-				stored.unit,
-				stored.metric ?? "",
-				locale,
-				Math.abs(value),
-			).value(value),
-			fractionDigits: 0,
-		};
 	const storedUnit = readableUnit(stored.unit);
 	if (stored.calculation === "rate") {
 		// Seconds per second (such as CPU time) is a plain ratio, roughly busy cores.
@@ -255,7 +245,15 @@ export function formatValueDetails(
 		return affixed(number(), "", ` ${storedUnit}/s`);
 	}
 	if (storedUnit === "%") return affixed(number(1), "", " %");
-	if (Number.isInteger(value) || storedUnit === "By" || storedUnit === "s")
+	if (stored.unit === "1" && isRatioMetric(stored.metric ?? ""))
+		return formatMeasurement(
+			value,
+			"1",
+			locale,
+			minimumFractionDigits,
+			stored.metric,
+		);
+	if (Number.isInteger(value) || ["By", "By/s", "s"].includes(storedUnit))
 		return formatMeasurement(value, storedUnit, locale, minimumFractionDigits);
 	return affixed(number(), "", storedUnit ? ` ${storedUnit}` : "");
 }
@@ -293,12 +291,25 @@ function plotted(
 	return expression ?? series.measure;
 }
 
+/** Measures of one metric that differ only by calculation, such as its p50, p95 and p99. */
+function calculationsOnly(result: QueryResult) {
+	const [first] = result.measures;
+	return (
+		result.measures.length > 1 &&
+		!result.formulas.length &&
+		result.measures.every((measure) => measure.metric === first.metric) &&
+		new Set(result.measures.map((measure) => measure.calculation)).size ===
+			result.measures.length
+	);
+}
+
 function measureText(
 	result: QueryResult,
 	measure: QueryResult["measures"][number],
 ) {
+	if (calculationsOnly(result)) return CALCULATION_LABEL[measure.calculation]();
 	if (isHistogramPercentile(measure.calculation))
-		return `${metricLabel(measure.metric, measure.label)} ${CALCULATION_LABEL[measure.calculation]()}`;
+		return `${metricLabel(measure.metric, measure.label)} · ${CALCULATION_LABEL[measure.calculation]()}`;
 	if (result.measures.length > 1)
 		return `${measure.name} · ${metricLabel(measure.metric, measure.label)}`;
 	return metricLabel(measure.metric, measure.label);
@@ -327,10 +338,7 @@ export function seriesLabel(
 	const group = result.aggregate
 		? AGGREGATE_LABEL[result.aggregate]()
 		: groupText(series, groupLabel);
-	const source = seriesSource(result, series);
-	const histogram = source && isHistogramPercentile(source.calculation);
-	const parts =
-		!group || shown > 1 || histogram ? [plotted(result, series, names)] : [];
+	const parts = !group || shown > 1 ? [plotted(result, series, names)] : [];
 	if (group) parts.push(group);
 	const label = parts.join(" · ");
 	return series.comparison ? m.insight_previous_label({ label }) : label;
@@ -338,6 +346,9 @@ export function seriesLabel(
 
 /** What a broken-down chart plots when series labels show only their groups. */
 export function plottedTitle(result: QueryResult, names: FormulaNames = {}) {
+	const [measure] = result.measures;
+	if (calculationsOnly(result))
+		return metricLabel(measure.metric, measure.label);
 	const [first] = visibleSeries(result);
 	if (!first || (result.formulas.length || result.measures.length) > 1)
 		return null;

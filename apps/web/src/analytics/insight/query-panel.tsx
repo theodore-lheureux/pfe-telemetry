@@ -9,12 +9,10 @@ import { MAX_CALCULATED_INPUTS } from "../calculated-metrics";
 import { useQueryAttributes } from "../catalog";
 import type { MetricDefinition } from "../contracts";
 import { FilterChips, withFilter } from "../filter-chips";
-import { isHistogramPercentile } from "../validation";
+import { metricBreakdown } from "../metric-names";
 import {
-	activeHeatmapSeries,
 	draftMetricNames,
 	type InsightDraft,
-	isDistributionView,
 	newSeries,
 	nextSeriesName,
 	removeSeries,
@@ -74,10 +72,7 @@ export function QueryPanel({
 		wantsAttributes,
 	);
 	let next = nextSeriesName(draft.series);
-	const active = isDistributionView(draft.display.type)
-		? activeHeatmapSeries(draft)
-		: undefined;
-	if (active) next = null;
+	const heatmap = draft.display.type === "heatmap";
 	if (editingCalculation && draft.series.length >= MAX_CALCULATED_INPUTS)
 		next = null;
 	return (
@@ -104,7 +99,7 @@ export function QueryPanel({
 					)
 				}
 			>
-				{(active ? [active] : draft.series).map((series, index) => (
+				{draft.series.map((series, index) => (
 					<SeriesRow
 						key={series.name}
 						userId={userId}
@@ -112,15 +107,16 @@ export function QueryPanel({
 						series={series}
 						color={`var(--viz-${(index % 8) + 1})`}
 						metrics={
-							active
+							heatmap
 								? metrics.filter(
 										(metric) => metric.kind === 3 && metric.temporality === 1,
 									)
 								: metrics
 						}
 						disabled={disabled}
-						removable={!active && draft.series.length > 1}
-						heatmap={isDistributionView(draft.display.type)}
+						removable={draft.series.length > 1}
+						heatmap={heatmap}
+						scope={draft}
 						onChange={(updated) => {
 							const selected = metrics.find(
 								(metric) => metric.name === updated.metric,
@@ -141,18 +137,9 @@ export function QueryPanel({
 								draft.display.type !== "stat" &&
 								!draft.groupBy &&
 								draft.series.length === 1
-									? metrics.find((metric) => metric.name === updated.metric)
-											?.defaultBreakdown
+									? (metrics.find((metric) => metric.name === updated.metric)
+											?.defaultBreakdown ?? metricBreakdown(updated.metric))
 									: undefined;
-							if (
-								draft.series.length === 1 &&
-								updated.metric !== series.metric &&
-								isHistogramPercentile(updated.calculation) &&
-								!editingCalculation &&
-								!active
-							) {
-								base.display = { ...base.display, type: "line" };
-							}
 							onChange({
 								...base,
 								// An edited series no longer belongs to its calculated metric.
@@ -165,7 +152,7 @@ export function QueryPanel({
 						onRemove={() => onChange(removeSeries(draft, series.name))}
 					/>
 				))}
-				{!isDistributionView(draft.display.type) && (
+				{!heatmap && (
 					<FormulaFields
 						draft={draft}
 						disabled={disabled}
@@ -207,7 +194,7 @@ export function QueryPanel({
 					</p>
 				)}
 			</Section>
-			{draft.display.type !== "stat" && draft.display.type !== "node-grid" && (
+			{draft.display.type !== "stat" && (
 				<Section title={m.insight_group_by()}>
 					<GroupByFields
 						draft={draft}

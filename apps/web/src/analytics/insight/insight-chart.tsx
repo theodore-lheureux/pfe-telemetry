@@ -1,19 +1,22 @@
 import { formatSeconds } from "@recount/i18n";
 import { m } from "@recount/i18n/messages";
 import { ChartNoAxesColumnIcon } from "lucide-react";
-import { useDisplayTimeZone } from "../../components/time-display";
 import { Skeleton } from "../../components/ui/skeleton";
 import { IconEmptyState } from "../../components/workspace";
-import { type ChartSeries, TimeseriesChart } from "../charts";
+import { cn } from "../../lib/utils";
+import { type ChartSeries, type ChartType, TimeseriesChart } from "../charts";
 import type { QueryResult, SeriesResult } from "../contracts";
-import { metricLabel } from "../metric-names";
+import {
+	distributionLabels,
+	isRatioMetric,
+	metricLabel,
+} from "../metric-names";
 import { ComputedAt, RefreshButton } from "../refresh-status";
 import type { Display } from "./draft";
 import { bucketGrid, coverageBands, coverageState, onGrid } from "./grid";
-import { HistogramHeatmap } from "./histogram-heatmap";
 import { type FormulaNames, plottedTitle, seriesSource } from "./labels";
-import { NodeGrid } from "./node-grid";
 import { NumberResults } from "./number-results";
+import { SeriesGrid } from "./series-grid";
 import { CHART_SERIES, lineId, type SeriesView } from "./series-view";
 
 /** Why a series has no value in a bucket: its node, or any node when not grouped by node. */
@@ -50,7 +53,7 @@ export function InsightChart({
 	onRefresh,
 	onZoom,
 	highlight,
-	onNode,
+	onGroup,
 }: {
 	result: QueryResult;
 	view: SeriesView;
@@ -65,10 +68,12 @@ export function InsightChart({
 	onZoom: (from: Date, to: Date) => void;
 	/** The line hovered in the results table. */
 	highlight: string | null;
-	onNode?: (host: string) => void;
+	/** Opens one group of the breakdown on its own. */
+	onGroup?: (series: SeriesResult) => void;
 }) {
+	// A heatmap shows every bucket, not the percentile its measure ranks groups by.
 	const title =
-		display.type === "heatmap" || display.type === "node-grid"
+		display.type === "heatmap"
 			? [
 					...new Set(
 						result.measures.map((measure) =>
@@ -101,13 +106,19 @@ export function InsightChart({
 				hydrated={hydrated}
 				onZoom={onZoom}
 				highlight={highlight}
-				onNode={onNode}
+				onGroup={onGroup}
 			/>
-			{view.current.length > CHART_SERIES && display.type !== "table" && (
+			{result.limited && (
 				<p className="text-xs text-muted-foreground">
-					{m.insight_chart_limited()}
+					{m.insight_groups_limited()}
 				</p>
 			)}
+			{view.current.length > CHART_SERIES &&
+				!["table", "grid", "heatmap"].includes(display.type) && (
+					<p className="text-xs text-muted-foreground">
+						{m.insight_chart_limited()}
+					</p>
+				)}
 		</div>
 	);
 }
@@ -122,7 +133,7 @@ export function ChartBody({
 	highlight,
 	height = "h-72",
 	fill = false,
-	onNode,
+	onGroup,
 }: {
 	result: QueryResult;
 	view: SeriesView;
@@ -134,13 +145,8 @@ export function ChartBody({
 	height?: string;
 	/** Stretches stat cards across the space, as on a dashboard tile. */
 	fill?: boolean;
-	onNode?: (host: string) => void;
+	onGroup?: (series: SeriesResult) => void;
 }) {
-	const zone = useDisplayTimeZone();
-	if (display.type === "node-grid") {
-		if (!hydrated) return <Skeleton className={`${height} w-full`} />;
-		return <NodeGrid result={result} view={view} zone={zone} onNode={onNode} />;
-	}
 	const bucketSeconds = result.bucketSeconds ?? 60;
 	const step = bucketSeconds * 1000;
 	const watermark = result.ingestedThrough;
@@ -161,46 +167,6 @@ export function ChartBody({
 		)
 			return m.insight_no_data_received();
 	};
-	if (display.type === "heatmap") {
-		if (!hydrated) return <Skeleton className={`${height} w-full`} />;
-		const timeline = {
-			from: result.from.getTime(),
-			to: result.to.getTime(),
-			step,
-		};
-		return (
-			<div className="space-y-4">
-				{result.limited && <p role="status">{m.histogram_limited()}</p>}
-				{result.series.length === 0 && <p>{m.histogram_empty()}</p>}
-				{result.series.map((series) => {
-					const measure = seriesSource(result, series);
-					if (!measure) return null;
-					const rows = series.points.flatMap((point) =>
-						(point.histograms ?? []).map((layout) => ({
-							...layout,
-							bucket: String(point.bucketMs),
-						})),
-					);
-					const key = lineId(series);
-					const group = view.groupLabel(series);
-					return (
-						<section key={key} className="space-y-2">
-							{group && <h3 className="text-sm font-medium">{group}</h3>}
-							<HistogramHeatmap
-								rows={rows}
-								metric={measure.metric}
-								label={measure.label}
-								unit={measure.unit}
-								limited={false}
-								zone={zone}
-								timeline={timeline}
-							/>
-						</section>
-					);
-				})}
-			</div>
-		);
-	}
 	if (view.empty)
 		return (
 			<IconEmptyState
@@ -228,6 +194,19 @@ export function ChartBody({
 						],
 			),
 			grid,
+		);
+	const gapLabel = (series: SeriesResult, bucketMs: number) =>
+		gapReason(result, series, bucketMs, step);
+	if (display.type === "grid")
+		return (
+			<SeriesGrid
+				view={view}
+				display={display}
+				pointsOf={pointsOf}
+				gapLabel={gapLabel}
+				height={height}
+				onGroup={onGroup}
+			/>
 		);
 	if (display.type === "stat")
 		return (
@@ -259,13 +238,16 @@ export function ChartBody({
 				}
 			: { from, to, label: m.insight_no_data_received() },
 	);
-	return (
+	const chart = (
+		series: ChartSeries[],
+		heatmap?: ReturnType<typeof heatmapOf>,
+	) => (
 		<TimeseriesChart
 			label={m.insight_chart_label()}
-			series={chartSeries}
+			series={series}
 			bucketSeconds={bucketSeconds}
 			format={view.format(view.current[0])}
-			type={display.type}
+			type={display.type as ChartType}
 			logScale={display.logScale}
 			beginAtZero={display.beginAtZero}
 			goal={display.goal}
@@ -285,8 +267,8 @@ export function ChartBody({
 			legendPosition={display.legend}
 			showValues={display.showValues}
 			xLabel={display.xLabel}
-			yLabel={display.yLabel}
-			yMax={display.yMax}
+			yLabel={display.yLabel ?? heatmap?.quantity}
+			yMax={display.yMax ?? heatmap?.yMax}
 			smooth={display.lineStyle === "smooth"}
 			trend={display.trend}
 			movingAverage={display.movingAverage}
@@ -296,10 +278,61 @@ export function ChartBody({
 			}
 			gapLabel={(key, bucketMs) => {
 				const series = charting[Number(key.slice(1))];
-				return series
-					? gapReason(result, series, bucketMs, step)
-					: m.insight_gap_unknown();
+				return series ? gapLabel(series, bucketMs) : m.insight_gap_unknown();
 			}}
+			heatmap={heatmap}
 		/>
 	);
+	if (display.type !== "heatmap") return chart(chartSeries);
+	// One heatmap per series, titled by its group when the breakdown splits a measure.
+	return (
+		<div
+			className={cn("flex flex-col gap-4", fill && "h-full overflow-y-auto")}
+		>
+			{view.current.map((series) => {
+				const measure = seriesSource(result, series);
+				if (!measure) return null;
+				const title = [
+					result.measures.length > 1 &&
+						metricLabel(measure.metric, measure.label),
+					view.groupLabel(series),
+				]
+					.filter(Boolean)
+					.join(" · ");
+				return (
+					<section
+						key={lineId(series)}
+						className={cn("flex flex-col gap-1", fill && "min-h-56 flex-1")}
+					>
+						{title && <h3 className="text-sm font-medium">{title}</h3>}
+						{chart([], heatmapOf(measure, series))}
+					</section>
+				);
+			})}
+		</div>
+	);
+}
+
+/** A series' bucket counts, labeled by what the histogram measures and counts. */
+function heatmapOf(
+	measure: QueryResult["measures"][number],
+	series: SeriesResult,
+) {
+	const { quantity, subject } = distributionLabels(
+		measure.metric,
+		measure.label,
+	);
+	// Ratios fill their full scale by default, so cells keep their place over time.
+	let yMax: number | undefined;
+	if (measure.unit === "%") yMax = 100;
+	if (measure.unit === "1" && isRatioMetric(measure.metric)) yMax = 1;
+	return {
+		bounds: series.bounds ?? [],
+		columns: series.points.flatMap(({ bucketMs, counts }) =>
+			bucketMs === null || !counts ? [] : [{ bucketMs, counts }],
+		),
+		subject,
+		quantity,
+		yMax,
+	};
 }

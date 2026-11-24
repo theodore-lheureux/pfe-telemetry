@@ -17,7 +17,6 @@ import {
 	type HistogramPercentile,
 	type Interval,
 	MAX_MEASURES,
-	MAX_NODE_GRID_BUCKETS,
 	MAX_RANGE_SECONDS,
 	type Spread,
 } from "../contracts";
@@ -56,7 +55,7 @@ export type DisplayType =
 	| "bar"
 	| "stacked"
 	| "heatmap"
-	| "node-grid"
+	| "grid"
 	| "stat"
 	| "table";
 export type DisplayUnit =
@@ -77,7 +76,6 @@ export type LegendPosition = "bottom" | "right";
 export type LineStyle = "straight" | "smooth";
 
 export interface Display {
-	gridPercentile?: HistogramPercentile;
 	type: DisplayType;
 	unit: DisplayUnit;
 	/** The text a custom prefix or postfix unit adds to each value. */
@@ -133,16 +131,6 @@ export const DEFAULT_DISPLAY: Display = {
 
 export function newSeries(name: string): DraftSeries {
 	return { name, calculation: "avg", combine: "avg", filters: [] };
-}
-
-export function activeHeatmapSeries(draft: InsightDraft) {
-	return draft.series.find(
-		(entry) => entry.metric && isHistogramPercentile(entry.calculation),
-	);
-}
-
-export function isDistributionView(type: DisplayType) {
-	return type === "heatmap" || type === "node-grid";
 }
 
 export function selectedPercentiles(series: DraftSeries) {
@@ -256,14 +244,12 @@ export function toQuery(
 	locale: string,
 ): AnalyticsQuery | null {
 	const draft = withDisplay(input, input.display);
-	const nodeGrid = draft.display.type === "node-grid";
-	const heatmap = isDistributionView(draft.display.type);
-	const active = activeHeatmapSeries(draft);
-	const series = heatmap && active ? [active] : draft.series;
+	const heatmap = draft.display.type === "heatmap";
 	if (
-		(heatmap && !active) ||
-		!series.length ||
-		series.some((entry) => !entry.metric)
+		draft.series.some(
+			(entry) =>
+				!entry.metric || (heatmap && !isHistogramPercentile(entry.calculation)),
+		)
 	)
 		return null;
 	if (
@@ -275,37 +261,21 @@ export function toQuery(
 	const resolved = resolveRange(draft.range, now, zone, locale);
 	const from = resolved.from,
 		to = resolved.to ?? now;
-	const interval = effectiveInterval(
-		draft.interval,
-		from,
-		to,
-		nodeGrid ? MAX_NODE_GRID_BUCKETS : undefined,
-	);
+	const interval = effectiveInterval(draft.interval, from, to);
 	// A table shows one value per series over the whole range; every other view is a timeseries.
 	const table = draft.display.type === "table";
 	const grouped = draft.display.type !== "stat" && !!draft.groupBy;
 	return {
 		shape: table ? "table" : "timeseries",
-		...(draft.display.type === "heatmap" ? { heatmap: true as const } : {}),
-		...(nodeGrid ? { nodeGrid: true as const } : {}),
+		...(heatmap ? { heatmap: true as const } : {}),
 		range: { from: from.toISOString(), to: to.toISOString() },
 		...(table ? {} : { interval }),
-		measures: queryMeasures(
-			nodeGrid
-				? series.map((entry) => ({
-						...entry,
-						calculation: draft.display.gridPercentile ?? "p95",
-					}))
-				: series,
-			heatmap,
-		),
+		measures: queryMeasures(draft.series, heatmap),
 		...(!heatmap && formulas(draft).length
 			? { formulas: formulas(draft) }
 			: {}),
 		filters: draft.filters,
-		groupBy: nodeGrid
-			? ["host"]
-			: [...(grouped ? [draft.groupBy as string] : [])],
+		groupBy: grouped ? [draft.groupBy as string] : [],
 		limit: draft.limit,
 		other: !heatmap && draft.other,
 		...(!heatmap && grouped && draft.aggregate

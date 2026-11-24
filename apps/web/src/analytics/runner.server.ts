@@ -14,7 +14,6 @@ import {
 } from "./contracts";
 import { metricDefinitions } from "./discovery.server";
 import { formulaSeries } from "./formula-series";
-import { histogramQuantile } from "./histograms";
 import { pipelineIngestedThrough } from "./ingested-through.server";
 import {
 	POINT_FINAL_SETTINGS,
@@ -73,18 +72,7 @@ interface Window {
 	shiftMs: number;
 }
 
-type Row = Record<
-	string,
-	string | number | null | number[] | string[] | undefined
-> & {
-	bounds?: number[];
-	counts?: string[];
-};
-
-function measureSettings(nodeGrid?: boolean) {
-	if (nodeGrid) return { ...SETTINGS, max_threads: 1, max_block_size: "1024" };
-	return SETTINGS;
-}
+type Row = Record<string, string | number | null | number[] | undefined>;
 
 const number = (value: Row[string]) =>
 	typeof value === "number" || typeof value === "string" ? Number(value) : null;
@@ -100,6 +88,7 @@ function pointOf(row: Row, query: AnalyticsQuery, window: Window) {
 		...(query.spread
 			? { low: number(row.series_low), high: number(row.series_high) }
 			: {}),
+		...(Array.isArray(row.series_counts) ? { counts: row.series_counts } : {}),
 	};
 }
 
@@ -143,18 +132,12 @@ async function readWindow(
 			format: "JSONEachRow",
 			query_params: compiled.params,
 			abort_signal: abort,
-			clickhouse_settings: measureSettings(query.nodeGrid),
+			clickhouse_settings: SETTINGS,
 		});
-		const batch = await result.json<Row>();
-		if (
-			!query.nodeGrid &&
-			isHistogramPercentile(measure.calculation) &&
-			batch.length > 32768
-		)
-			throw new OperationError("CAPACITY", "Histogram result limit exceeded");
-		for (const row of batch) rows.push({ ...row, measure_index: index });
+		for (const row of await result.json<Row>())
+			rows.push({ ...row, measure_index: index });
 	}
-	const limit = query.nodeGrid ? 1000 : (query.limit ?? DEFAULT_SERIES_LIMIT);
+	const limit = query.limit ?? DEFAULT_SERIES_LIMIT;
 	const groups = new Map<string, SeriesResult & { rank: number }>();
 	let limited = false;
 	for (const row of rows) {
@@ -177,21 +160,16 @@ async function readWindow(
 				group,
 				...(other ? { other: true } : {}),
 				...(window.comparison ? { comparison: true } : {}),
+				...(Array.isArray(row.series_bounds)
+					? { bounds: row.series_bounds }
+					: {}),
 				points: [],
 				rank,
 			};
 			groups.set(key, entry);
 		}
 		countPercentile(entry, measure, row, other);
-		const point = pointOf(row, query, window);
-		if (row.bounds && row.counts) {
-			let last = entry.points.at(-1);
-			if (!last || last.bucketMs !== point.bucketMs) {
-				last = { ...point, histograms: [] };
-				entry.points.push(last);
-			}
-			last.histograms?.push({ bounds: row.bounds, counts: row.counts });
-		} else entry.points.push(point);
+		entry.points.push(pointOf(row, query, window));
 	}
 	// Rows arrive unordered: series follow the query's measures, then rank.
 	const series = [...groups.values()]
@@ -203,27 +181,11 @@ async function readWindow(
 		)
 		.map(({ rank: _, ...entry }) => ({
 			...entry,
-			points: finishHistogramPoints(entry, query).sort(
+			points: entry.points.sort(
 				(a, b) => (a.bucketMs ?? 0) - (b.bucketMs ?? 0),
 			),
 		}));
 	return { series, limited };
-}
-
-function finishHistogramPoints(entry: SeriesResult, query: AnalyticsQuery) {
-	const measure = query.measures.find(({ name }) => name === entry.measure);
-	if (
-		!measure ||
-		!isHistogramPercentile(measure.calculation) ||
-		query.heatmap ||
-		query.nodeGrid
-	)
-		return entry.points;
-	const percentile = Number(measure.calculation.slice(1)) / 100;
-	return entry.points.map(({ histograms, ...point }) => ({
-		...point,
-		value: histograms ? histogramQuantile(histograms, percentile) : null,
-	}));
 }
 
 // Collectors report this once per collection cycle, whatever else they measure.
@@ -335,8 +297,7 @@ export async function runQuery(
 				);
 			if (
 				definition.behavior === "population" &&
-				!query.heatmap &&
-				!query.nodeGrid &&
+				!isHistogramPercentile(measure.calculation) &&
 				(query.groupBy?.includes("execution") ||
 					query.filters?.some(({ field }) => field === "execution") ||
 					measure.filters?.some(({ field }) => field === "execution"))

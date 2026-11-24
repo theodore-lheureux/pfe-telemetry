@@ -171,7 +171,7 @@ test("dashboards arrange saved insights as tiles over one time range", async ({
 		// A tile's info shows its query and marks what the dashboard overrides.
 		await page.getByRole("button", { name: "About CPU over time" }).hover();
 		const info = page.locator('[data-slot="hover-card-content"]');
-		await expect(info.getByText("Node CPU time")).toBeVisible();
+		await expect(info.getByText("Node CPU")).toBeVisible();
 		await expect(
 			info.getByRole("definition").filter({ hasText: /^Host name/ }),
 		).toBeVisible();

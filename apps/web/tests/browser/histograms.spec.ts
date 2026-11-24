@@ -159,7 +159,7 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				.getByRole("combobox", { name: "Choose a metric" })
 				.click({ timeout: 6000 });
 			await page
-				.getByRole("option", { name: /Process CPU distribution/i })
+				.getByRole("option", { name: /CPU per process · all processes/ })
 				.click({ timeout: 6000 });
 			await expect(page.getByLabel("Histogram percentile")).toHaveCount(1);
 			for (const percentile of ["p50", "p95", "p99"])
@@ -168,47 +168,51 @@ test("Explore pools matching buckets and Explorer exposes the stored buckets", a
 				).toHaveAttribute("aria-pressed", "true");
 			await expect(page.locator(".recharts-surface").first()).toBeVisible();
 			await expect(
-				page.getByRole("row").filter({ hasText: "Process CPU distribution" }),
+				page.getByRole("heading", { name: "CPU per process · all processes" }),
+			).toBeVisible();
+			await expect(
+				page.getByRole("row").filter({ hasText: /^p(50|95|99)/ }),
 			).toHaveCount(3);
 			await page.getByRole("combobox", { name: "Chart type" }).click();
 			await page.getByRole("option", { name: "Heatmap" }).click();
-			await expect(
-				page.locator("svg [data-time-window]").first(),
-			).toBeVisible();
-			await expect(page.locator("[data-time-window] rect title")).toHaveCount(
-				0,
-			);
-			await expect(
-				page
-					.locator("figcaption")
-					.getByText("CPU per process", { exact: true }),
-			).toBeVisible();
-			await expect(
-				page.getByText("Processes · fewer → more (log scale)"),
-			).toBeVisible();
-			await expect(page.getByText("50–100 %", { exact: true })).toBeVisible();
-			await expect(page.getByLabel("Time slice")).toHaveCount(0);
-			const cell = page.locator("[data-time-window] rect").first();
-			await cell.hover();
-			const tooltip = page.getByRole("tooltip");
+			const plot = page.locator(".recharts-surface").first();
+			await expect(plot.getByText("CPU per process")).toBeVisible();
+			await expect(plot.getByText("50 %", { exact: true })).toBeVisible();
+			await expect(page.getByText("Processes", { exact: true })).toBeVisible();
+			await plot.hover();
+			const tooltip = page.locator(".recharts-tooltip-wrapper");
 			await expect(tooltip).toContainText("CPU per process");
 			await expect(tooltip).toContainText("Processes");
-			await expect(tooltip).toContainText(/% of this interval\)/);
-			await expect(tooltip).not.toContainText("Count:");
 			await page.screenshot({
 				path: info.outputPath(`histogram-heatmap-${theme}.png`),
 			});
-			await page.getByRole("combobox", { name: "Chart type" }).click();
-			await page.getByRole("option", { name: "Node grid" }).click();
-			const host = page
-				.getByRole("button", { name: /Open node heatmap: node-/ })
-				.first();
+			const grid = encodeDraft({
+				...DEFAULT_DRAFT,
+				series: [
+					{
+						name: "A",
+						metric,
+						calculation: "p95",
+						combine: "sum",
+						filters: [],
+					},
+				],
+				groupBy: "host",
+				range: { kind: "between", from: new Date(from), to: new Date(to) },
+				display: { ...DEFAULT_DRAFT.display, type: "grid" },
+			});
+			await page.goto(
+				`${path}/explore?q=${encodeURIComponent(JSON.stringify(grid))}`,
+			);
+			const host = page.getByRole("button", { name: "node-1", exact: true });
 			await expect(host).toBeVisible();
 			await page.screenshot({
 				path: info.outputPath(`histogram-grid-${theme}.png`),
 			});
 			await host.click();
-			await expect(page.locator("[data-time-window]").first()).toBeVisible();
+			await expect(
+				page.locator(".recharts-surface").first().getByText("CPU per process"),
+			).toBeVisible();
 
 			await page.goto(`${path}/activity`);
 			await page

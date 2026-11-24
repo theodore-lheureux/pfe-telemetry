@@ -178,6 +178,9 @@ export function DisplayOptions({
 		);
 	};
 	const overTime = display.type !== "stat" && display.type !== "table";
+	// Heatmaps and grids color their values instead of drawing lines.
+	const lines =
+		overTime && display.type !== "heatmap" && display.type !== "grid";
 	return (
 		// Typing in a menu would otherwise jump to the item starting with that letter.
 		<fieldset
@@ -225,10 +228,10 @@ export function DisplayOptions({
 				<TabsList className="w-full">
 					<TabsTrigger value="general">{m.display_general()}</TabsTrigger>
 					{overTime && (
-						<>
-							<TabsTrigger value="axes">{m.display_axes()}</TabsTrigger>
-							<TabsTrigger value="lines">{m.display_lines()}</TabsTrigger>
-						</>
+						<TabsTrigger value="axes">{m.display_axes()}</TabsTrigger>
+					)}
+					{lines && (
+						<TabsTrigger value="lines">{m.display_lines()}</TabsTrigger>
 					)}
 				</TabsList>
 				<TabsContent value="general" className="flex flex-col gap-3 pt-2">
@@ -239,7 +242,7 @@ export function DisplayOptions({
 							onChange={onChange}
 						/>
 					)}
-					{overTime && (
+					{lines && (
 						<>
 							<Row id={`${id}-values`} label={m.display_show_values()}>
 								<Switch
@@ -368,18 +371,20 @@ export function DisplayOptions({
 								onCommit={(value) => set("yMax", value as number | undefined)}
 							/>
 						</Row>
-						<Row id={`${id}-goal`} label={m.insight_goal()}>
-							<CommitInput
-								id={`${id}-goal`}
-								type="number"
-								value={display.goal === undefined ? "" : String(display.goal)}
-								placeholder={m.insight_goal_none()}
-								disabled={disabled}
-								className="w-28"
-								parse={number}
-								onCommit={(value) => set("goal", value as number | undefined)}
-							/>
-						</Row>
+						{lines && (
+							<Row id={`${id}-goal`} label={m.insight_goal()}>
+								<CommitInput
+									id={`${id}-goal`}
+									type="number"
+									value={display.goal === undefined ? "" : String(display.goal)}
+									placeholder={m.insight_goal_none()}
+									disabled={disabled}
+									className="w-28"
+									parse={number}
+									onCommit={(value) => set("goal", value as number | undefined)}
+								/>
+							</Row>
+						)}
 						<Row id={`${id}-zero`} label={m.insight_begin_at_zero()}>
 							<Switch
 								id={`${id}-zero`}
@@ -390,27 +395,29 @@ export function DisplayOptions({
 								}
 							/>
 						</Row>
-						<ToggleGroup
-							type="single"
-							variant="outline"
-							aria-label={m.display_scale()}
-							value={display.logScale ? "log" : "linear"}
-							disabled={disabled}
-							className="w-full"
-							onValueChange={(value) =>
-								value && set("logScale", value === "log")
-							}
-						>
-							<ToggleGroupItem value="linear" className="flex-1">
-								{m.display_scale_linear()}
-							</ToggleGroupItem>
-							<ToggleGroupItem value="log" className="flex-1">
-								{m.display_scale_log()}
-							</ToggleGroupItem>
-						</ToggleGroup>
+						{lines && (
+							<ToggleGroup
+								type="single"
+								variant="outline"
+								aria-label={m.display_scale()}
+								value={display.logScale ? "log" : "linear"}
+								disabled={disabled}
+								className="w-full"
+								onValueChange={(value) =>
+									value && set("logScale", value === "log")
+								}
+							>
+								<ToggleGroupItem value="linear" className="flex-1">
+									{m.display_scale_linear()}
+								</ToggleGroupItem>
+								<ToggleGroupItem value="log" className="flex-1">
+									{m.display_scale_log()}
+								</ToggleGroupItem>
+							</ToggleGroup>
+						)}
 					</TabsContent>
 				)}
-				{overTime && (
+				{lines && (
 					<TabsContent value="lines" className="flex flex-col gap-3 pt-2">
 						<p className={SECTION}>{m.display_style()}</p>
 						<ToggleGroup

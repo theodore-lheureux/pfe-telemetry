@@ -60,7 +60,7 @@ function MetricRows() {
 
 test("metric rows show friendly names with descriptions without repeating technical identifiers", () => {
 	const html = renderToStaticMarkup(<MetricRows />);
-	expect(html).toContain(">Node CPU time</span>");
+	expect(html).toContain(">Node CPU</span>");
 	expect(html).not.toContain(">recount.node.cpu.time<");
 	expect(html).toContain(">app.requests</span>");
 	expect(html).toContain("Collected description");

@@ -21,10 +21,10 @@ import {
 	MAX_FORMULAS,
 	MAX_GROUP_BY,
 	MAX_MEASURES,
-	MAX_NODE_GRID_BUCKETS,
 	MAX_RANGE_SECONDS,
 	MAX_RESULT_POINTS,
 	MAX_SERIES,
+	MAX_SERIES_LIMIT,
 	type Measure,
 	type MetricAttributesInput,
 	type MetricBehavior,
@@ -275,7 +275,7 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		input.limit !== undefined &&
 		(!Number.isInteger(input.limit) ||
 			(input.limit as number) < 1 ||
-			(input.limit as number) > MAX_SERIES)
+			(input.limit as number) > MAX_SERIES_LIMIT)
 	)
 		throw new InputError("INVALID_QUERY", "Invalid series limit");
 	if (input.other !== undefined && typeof input.other !== "boolean")
@@ -300,7 +300,6 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 	return {
 		shape: input.shape,
 		...heatmapOption(input, measures),
-		...nodeGridOption(input, measures, groupBy, buckets),
 		range,
 		...(interval && { interval }),
 		measures,
@@ -311,35 +310,6 @@ export function parseQuery(value: unknown): AnalyticsQuery {
 		...(input.other ? { other: true } : {}),
 		...comparisonOptions(input),
 	};
-}
-
-function nodeGridOption(
-	input: Record<string, unknown>,
-	measures: Measure[],
-	groups: unknown[],
-	buckets: number,
-) {
-	if (input.nodeGrid === undefined) return {};
-	if (
-		input.nodeGrid !== true ||
-		input.heatmap ||
-		input.shape !== "timeseries" ||
-		input.compare ||
-		input.aggregate ||
-		input.spread ||
-		input.other ||
-		groups.length !== 1 ||
-		groups[0] !== "host" ||
-		buckets > MAX_NODE_GRID_BUCKETS ||
-		(Array.isArray(input.formulas) && input.formulas.length > 0) ||
-		measures.length !== 1 ||
-		!isHistogramPercentile(measures[0].calculation)
-	)
-		throw new InputError(
-			"INVALID_QUERY",
-			"Node grid requires one histogram and at most 120 time buckets",
-		);
-	return { nodeGrid: true } as const;
 }
 
 function heatmapOption(input: Record<string, unknown>, measures: Measure[]) {
